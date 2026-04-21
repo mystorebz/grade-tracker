@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Belize ConnectUs | Connecting Schools, Parents & Students</title>
+    <title>ConnectUs | Connecting Schools, Parents & Students</title>
     <link rel="stylesheet" href="assets/css/global.css">
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
@@ -11,13 +11,12 @@
 
     <header class="bg-gradient-to-b from-blue-100 to-slate-50 pt-16 pb-12 px-4 text-center">
         <div class="max-w-3xl mx-auto">
-            <div class="text-6xl mb-4">🇧🇿</div>
-            <h1 class="text-5xl font-extrabold text-blue-900 tracking-tight mb-4">Belize ConnectUs</h1>
+            <h1 class="text-5xl font-extrabold text-blue-900 tracking-tight mb-4">ConnectUs</h1>
             <p class="text-xl text-slate-600 leading-relaxed font-medium">
                 Connecting parents, teachers, and students to academic progress.
             </p>
             <p class="text-md text-slate-500 mt-4 max-w-2xl mx-auto">
-                A seamless, modern platform designed specifically for Belizean schools to replace paperwork with real-time insights, ensuring every student has the support they need to succeed.
+                A seamless, modern platform designed for schools to replace paperwork with real-time insights, ensuring every student has the support they need to succeed.
             </p>
         </div>
     </header>
@@ -47,7 +46,7 @@
 
     <section class="bg-blue-900 text-white py-16 px-4 mt-8">
         <div class="max-w-5xl mx-auto text-center">
-            <h2 class="text-3xl font-bold mb-10">Why Schools Choose Belize ConnectUs</h2>
+            <h2 class="text-3xl font-bold mb-10">Why Schools Choose ConnectUs</h2>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
                 <div class="bg-blue-800 p-6 rounded-xl">
                     <div class="text-4xl mb-4">📱</div>
@@ -74,13 +73,13 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
                 <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                     <div class="flex text-yellow-400 mb-3">★★★★★</div>
-                    <p class="text-slate-600 italic mb-4">"Finally, a system built that understands what we need in Belize. It has completely transformed how our teachers communicate with parents. The transparency is amazing."</p>
-                    <p class="font-bold text-slate-800 text-sm">— High School Principal, Belize City</p>
+                    <p class="text-slate-600 italic mb-4">"Finally, a system built that understands what we need. It has completely transformed how our teachers communicate with parents. The transparency is amazing."</p>
+                    <p class="font-bold text-slate-800 text-sm">— High School Principal</p>
                 </div>
                 <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                     <div class="flex text-yellow-400 mb-3">★★★★★</div>
                     <p class="text-slate-600 italic mb-4">"I used to spend hours compiling reports. Now, I enter grades on my tablet, and parents see them instantly. It makes my job so much easier and keeps my students accountable."</p>
-                    <p class="font-bold text-slate-800 text-sm">— Standard 6 Teacher, Cayo District</p>
+                    <p class="font-bold text-slate-800 text-sm">— Standard 6 Teacher</p>
                 </div>
             </div>
         </div>
@@ -101,7 +100,7 @@
                     <div class="space-y-4">
                         <div>
                             <label class="block text-xs font-bold text-slate-600 uppercase mb-1">School Name *</label>
-                            <input type="text" id="schoolName" placeholder="e.g. Belize High School" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500 focus:bg-white transition">
+                            <input type="text" id="schoolName" placeholder="e.g. Valley High School" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500 focus:bg-white transition">
                         </div>
                         
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -117,7 +116,7 @@
 
                         <div>
                             <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Admin Email *</label>
-                            <input type="email" id="adminEmail" placeholder="principal@school.edu.bz" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500 focus:bg-white transition">
+                            <input type="email" id="adminEmail" placeholder="principal@school.edu" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500 focus:bg-white transition">
                         </div>
 
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -142,7 +141,7 @@
                     <div class="text-6xl mb-4">🎉</div>
                     <h2 class="text-2xl font-bold text-slate-800 mb-3">Request Received!</h2>
                     <p class="text-slate-600 mb-6 leading-relaxed">
-                        Thank you for your interest in Belize ConnectUs. Our team is reviewing your details to prepare a custom quote tailored to your school's size.
+                        Thank you for your interest in ConnectUs. Our team is reviewing your details to prepare a custom quote tailored to your school's size.
                         <br><br>
                         <strong>Please check your email shortly</strong> for pricing options and instructions on activating your secure database.
                     </p>
@@ -156,7 +155,7 @@
     </section>
 
     <footer class="bg-slate-900 text-slate-400 py-8 text-center text-sm">
-        <p>&copy; 2026 Belize ConnectUs. All rights reserved. Connecting Education in Belize.</p>
+        <p>&copy; 2026 ConnectUs. All rights reserved. Connecting Education.</p>
     </footer>
 
     <script type="module">
@@ -199,7 +198,7 @@
                     teachersCount: parseInt(teachersCount),
                     logoUrl: "", // Reserved for future upload via Admin Dashboard
                     createdAt: new Date().toISOString(),
-                    status: "pending" 
+                    isVerified: false // This blocks login until you manually change it to true
                 });
                 
                 document.getElementById('registrationFormContainer').classList.add('hidden');
