@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grade Tracker | Multi-School Portal</title>
+    <link rel="stylesheet" href="assets/css/global.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="text-center mb-10">
+        <div class="text-6xl mb-4">📚</div>
+        <h1 class="text-4xl font-extrabold text-slate-800">Grade Tracker</h1>
+        <p class="text-slate-500 mt-2">Professional School Management Portal</p>
+    </div>
+
+    <!-- Login Portals -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl w-full mb-12">
+        <a href="admin/index.html" class="bg-white p-6 rounded-xl shadow-sm border border-orange-200 hover:shadow-md transition text-center group cursor-pointer block">
+            <div class="text-4xl mb-3 group-hover:-translate-y-1 transition">🔑</div>
+            <h3 class="font-bold text-orange-700">School Admin</h3>
+            <p class="text-xs text-slate-500 mt-2">Manage teachers & settings</p>
+        </a>
+        <a href="teacher/index.html" class="bg-white p-6 rounded-xl shadow-sm border border-blue-200 hover:shadow-md transition text-center group cursor-pointer block">
+            <div class="text-4xl mb-3 group-hover:-translate-y-1 transition">🎓</div>
+            <h3 class="font-bold text-blue-700">Teacher Portal</h3>
+            <p class="text-xs text-slate-500 mt-2">Enter grades & manage classes</p>
+        </a>
+        <a href="student/index.html" class="bg-white p-6 rounded-xl shadow-sm border border-green-200 hover:shadow-md transition text-center group cursor-pointer block">
+            <div class="text-4xl mb-3 group-hover:-translate-y-1 transition">👪</div>
+            <h3 class="font-bold text-green-700">Student & Parent</h3>
+            <p class="text-xs text-slate-500 mt-2">View progress & reports</p>
+        </a>
+    </div>
+
+    <!-- Register New School -->
+    <div class="bg-white p-8 rounded-xl shadow-md border border-slate-200 max-w-md w-full">
+        <h2 class="text-xl font-bold text-slate-800 mb-2">Register a New School</h2>
+        <p class="text-xs text-slate-500 mb-6">Create a secure, isolated database for your school.</p>
+        
+        <div class="space-y-4">
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">School Name</label>
+                <input type="text" id="schoolName" placeholder="e.g. Belize High School" class="w-full p-2 border rounded text-sm outline-none focus:border-blue-500">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Admin Email</label>
+                <input type="email" id="adminEmail" placeholder="principal@school.edu" class="w-full p-2 border rounded text-sm outline-none focus:border-blue-500">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">School Logo URL (Optional)</label>
+                <input type="url" id="logoUrl" placeholder="https://link-to-your-logo.png" class="w-full p-2 border rounded text-sm outline-none focus:border-blue-500">
+            </div>
+            <button id="registerBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition">
+                Create School Database
+            </button>
+            <p id="regMessage" class="text-xs text-center font-bold hidden mt-2"></p>
+        </div>
+    </div>
+
+    <!-- Registration Logic -->
+    <script type="module">
+        import { db } from './assets/js/firebase-init.js';
+        import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        document.getElementById('registerBtn').addEventListener('click', async () => {
+            const name = document.getElementById('schoolName').value.trim();
+            const email = document.getElementById('adminEmail').value.trim();
+            const logo = document.getElementById('logoUrl').value.trim();
+            const msgEl = document.getElementById('regMessage');
+
+            if (!name || !email) {
+                msgEl.textContent = "Name and Email are required!";
+                msgEl.className = "text-xs text-center font-bold mt-2 text-red-600 block";
+                return;
+            }
+
+            // Create a web-friendly ID (e.g., "Belize High" -> "belize-high")
+            const schoolId = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+
+            try {
+                // Create the 'schools' collection and document
+                await setDoc(doc(db, "schools", schoolId), {
+                    schoolName: name,
+                    adminEmail: email,
+                    logoUrl: logo,
+                    createdAt: new Date().toISOString(),
+                    status: "active"
+                });
+                
+                msgEl.textContent = `Success! School ID: ${schoolId}`;
+                msgEl.className = "text-xs text-center font-bold mt-2 text-green-600 block";
+                
+                document.getElementById('schoolName').value = '';
+                document.getElementById('adminEmail').value = '';
+                document.getElementById('logoUrl').value = '';
+            } catch (error) {
+                console.error("Error registering school:", error);
+                msgEl.textContent = "Error saving to database. Check console.";
+                msgEl.className = "text-xs text-center font-bold mt-2 text-red-600 block";
+            }
+        });
+    </script>
+</body>
+</html>

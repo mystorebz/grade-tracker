@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Portal | Grade Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../assets/css/global.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans h-screen overflow-hidden flex">
+
+    <div id="loginScreen" class="absolute inset-0 z-50 bg-slate-50 flex flex-col items-center justify-center p-4">
+        <div class="mb-8 text-center">
+            <a href="../index.html" class="text-blue-600 text-sm hover:underline mb-4 inline-block">&larr; Back to Home</a>
+            <h1 class="text-3xl font-extrabold text-blue-700">Teacher Portal</h1>
+            <p class="text-slate-500 mt-2">Sign in with the code provided by your admin</p>
+        </div>
+        <div class="bg-white p-8 rounded-xl shadow-lg border border-slate-200 max-w-sm w-full">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">School ID</label>
+                    <input type="text" id="loginSchoolId" placeholder="e.g. belize-high" class="w-full p-2.5 border rounded-lg text-sm outline-none focus:border-blue-500 transition">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Teacher Code</label>
+                    <input type="password" id="loginTeacherCode" placeholder="e.g. MRS2024" class="w-full p-2.5 border rounded-lg text-sm outline-none focus:border-blue-500 transition uppercase">
+                </div>
+                <button id="loginBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg transition mt-4">
+                    Access Portal <i class="fa-solid fa-arrow-right ml-2"></i>
+                </button>
+                <p id="loginMsg" class="text-xs text-center font-bold hidden text-red-600 mt-2"></p>
+            </div>
+        </div>
+    </div>
+
+    <div id="onboardModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[60] flex items-center justify-center hidden">
+        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full p-8 text-center">
+            <div class="text-5xl mb-4">👋</div>
+            <h2 class="text-2xl font-bold text-slate-800 mb-2">Welcome to Grade Tracker!</h2>
+            <p class="text-slate-500 mb-6">Before you start, please select the class you teach.</p>
+            <div class="grid grid-cols-2 gap-3 mb-6" id="classGrid">
+                </div>
+            <button id="saveClassBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition hidden">
+                Save & Continue
+            </button>
+        </div>
+    </div>
+
+    <div id="dashboardApp" class="hidden w-full h-full flex">
+        
+        <aside class="w-64 bg-slate-900 text-slate-300 flex flex-col transition-all">
+            <div class="p-6 border-b border-slate-700 flex flex-col items-center text-center">
+                <div class="h-14 w-14 bg-blue-600 rounded-full flex items-center justify-center text-2xl font-bold text-white mb-3 shadow-inner" id="teacherAvatar">T</div>
+                <h2 id="displayTeacherName" class="font-bold text-white leading-tight">Loading...</h2>
+                <p id="displayTeacherClass" class="text-xs text-blue-400 mt-1 uppercase tracking-widest font-bold">Class</p>
+            </div>
+
+            <nav class="flex-1 p-4 space-y-2 overflow-y-auto">
+                <button onclick="switchTab('overview')" id="tab-overview" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-left bg-blue-600 text-white transition">
+                    <i class="fa-solid fa-chart-pie w-5"></i> Overview
+                </button>
+                <button onclick="switchTab('students')" id="tab-students" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-left hover:bg-slate-800 hover:text-white transition">
+                    <i class="fa-solid fa-users w-5"></i> My Students
+                </button>
+                <button onclick="switchTab('enter-grade')" id="tab-enter-grade" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-left hover:bg-slate-800 hover:text-white transition">
+                    <i class="fa-solid fa-plus-circle w-5 text-green-400"></i> Enter Grades
+                </button>
+                <button onclick="switchTab('gradebook')" id="tab-gradebook" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-left hover:bg-slate-800 hover:text-white transition">
+                    <i class="fa-solid fa-book w-5"></i> Gradebook
+                </button>
+            </nav>
+
+            <div class="p-4 border-t border-slate-700">
+                <button id="logoutBtn" class="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition">
+                    <i class="fa-solid fa-right-from-bracket"></i> Log Out
+                </button>
+            </div>
+        </aside>
+
+        <main class="flex-1 bg-slate-50 flex flex-col h-full overflow-hidden">
+            <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm z-10">
+                <h1 id="topbarTitle" class="text-xl font-bold text-slate-800">Overview</h1>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-slate-400 uppercase">Period:</span>
+                    <select id="activeSemester" class="bg-slate-100 border border-slate-200 text-sm font-bold text-slate-700 py-1.5 px-3 rounded-lg outline-none focus:border-blue-500 transition">
+                        <option value="">Loading...</option>
+                    </select>
+                </div>
+            </header>
+
+            <div class="flex-1 overflow-y-auto p-8">
+                
+                <div id="view-overview" class="view-section">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm border-l-4 border-l-blue-500">
+                            <p class="text-sm text-slate-500 font-bold uppercase">Active Students</p>
+                            <h3 id="stat-students" class="text-3xl font-black text-slate-800 mt-1">0</h3>
+                        </div>
+                        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm border-l-4 border-l-green-500">
+                            <p class="text-sm text-slate-500 font-bold uppercase">Grades Logged</p>
+                            <h3 id="stat-grades" class="text-3xl font-black text-slate-800 mt-1">0</h3>
+                            <p class="text-xs text-slate-400 mt-1">This period</p>
+                        </div>
+                        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm border-l-4 border-l-red-500">
+                            <p class="text-sm text-slate-500 font-bold uppercase">At Risk (< 65%)</p>
+                            <h3 id="stat-risk" class="text-3xl font-black text-red-600 mt-1">0</h3>
+                            <p class="text-xs text-slate-400 mt-1">Students needing attention</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="view-students" class="view-section hidden">
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+                            <div>
+                                <h3 class="font-bold text-lg text-slate-800">My Class Roster</h3>
+                                <p class="text-sm text-slate-500">Manage students and generate parent PINs.</p>
+                            </div>
+                            <button onclick="document.getElementById('addStudentModal').classList.remove('hidden')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-sm transition">
+                                <i class="fa-solid fa-plus mr-1"></i> Add Student
+                            </button>
+                        </div>
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-slate-100 text-slate-500 uppercase text-xs">
+                                <tr>
+                                    <th class="px-6 py-4 font-bold">Student Name</th>
+                                    <th class="px-6 py-4 font-bold">Parent PIN</th>
+                                    <th class="px-6 py-4 font-bold text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="studentsTableBody" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="view-enter-grade" class="view-section hidden">
+                    <div class="bg-white p-8 rounded-xl shadow-sm border border-slate-200 max-w-3xl">
+                        <h3 class="font-bold text-xl text-slate-800 mb-6 border-b pb-4">Enter New Grade</h3>
+                        <div class="grid grid-cols-2 gap-6 mb-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Student</label>
+                                <select id="eg-student" class="w-full p-2.5 border rounded-lg text-sm bg-slate-50"></select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Subject</label>
+                                <select id="eg-subject" class="w-full p-2.5 border rounded-lg text-sm bg-slate-50">
+                                    <option value="Mathematics">Mathematics</option>
+                                    <option value="English">English</option>
+                                    <option value="Science">Science</option>
+                                    <option value="Social Studies">Social Studies</option>
+                                    <option value="Spanish">Spanish</option>
+                                    <option value="Art">Art</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-6 mb-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Type</label>
+                                <select id="eg-type" class="w-full p-2.5 border rounded-lg text-sm bg-slate-50">
+                                    <option value="Test">Test</option>
+                                    <option value="Quiz">Quiz</option>
+                                    <option value="Assignment">Assignment</option>
+                                    <option value="Homework">Homework</option>
+                                    <option value="Project">Project</option>
+                                    <option value="Midterm Exam">Midterm Exam</option>
+                                    <option value="Final Exam">Final Exam</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Date</label>
+                                <input type="date" id="eg-date" class="w-full p-2.5 border rounded-lg text-sm bg-slate-50">
+                            </div>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Assignment Title</label>
+                            <input type="text" id="eg-title" placeholder="e.g. Chapter 4 Math Quiz" class="w-full p-2.5 border rounded-lg text-sm bg-slate-50">
+                        </div>
+                        <div class="grid grid-cols-2 gap-6 mb-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Score Obtained</label>
+                                <input type="number" id="eg-score" placeholder="85" class="w-full p-2.5 border rounded-lg text-sm bg-slate-50 font-bold text-blue-600">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Out of (Max Score)</label>
+                                <input type="number" id="eg-max" value="100" class="w-full p-2.5 border rounded-lg text-sm bg-slate-50">
+                            </div>
+                        </div>
+                        <div class="mb-6">
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Teacher Notes (Visible to Parents)</label>
+                            <textarea id="eg-notes" placeholder="Great job, but review fractions." class="w-full p-2.5 border rounded-lg text-sm bg-slate-50 h-24 resize-none"></textarea>
+                        </div>
+                        <button id="saveGradeBtn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg transition shadow-md">
+                            <i class="fa-solid fa-check mr-2"></i> Save Grade to Gradebook
+                        </button>
+                    </div>
+                </div>
+
+                <div id="view-gradebook" class="view-section hidden">
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="p-6 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+                            <h3 class="font-bold text-lg text-slate-800">Class Gradebook</h3>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm whitespace-nowrap">
+                                <thead class="bg-slate-100 text-slate-500 uppercase text-[10px] tracking-wider">
+                                    <tr>
+                                        <th class="px-4 py-3 font-bold">Student</th>
+                                        <th class="px-4 py-3 font-bold">Subject</th>
+                                        <th class="px-4 py-3 font-bold">Title</th>
+                                        <th class="px-4 py-3 font-bold">Type</th>
+                                        <th class="px-4 py-3 font-bold">Score</th>
+                                        <th class="px-4 py-3 font-bold">%</th>
+                                        <th class="px-4 py-3 font-bold text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="gradebookTableBody" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <div id="addStudentModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-xl shadow-xl max-w-sm w-full overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 class="font-bold text-lg text-slate-800">Add Student</h3>
+                <button onclick="document.getElementById('addStudentModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Student Full Name</label>
+                    <input type="text" id="sName" placeholder="e.g. John Smith" class="w-full p-2.5 border rounded-lg text-sm bg-slate-50">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Parent PIN (Leave blank for auto)</label>
+                    <input type="text" id="sPin" placeholder="4-digit PIN" maxlength="6" class="w-full p-2.5 border rounded-lg text-sm bg-slate-50 font-mono tracking-widest">
+                </div>
+                <button id="saveStudentBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg transition">Save Student</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="editGradeModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-amber-50">
+                <h3 class="font-bold text-lg text-amber-800"><i class="fa-solid fa-pen-to-square mr-2"></i>Edit Grade</h3>
+                <button onclick="document.getElementById('editGradeModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                <input type="hidden" id="editGradeId">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">New Score</label>
+                        <input type="number" id="ed-score" class="w-full p-2 border rounded-lg text-sm bg-slate-50 font-bold text-blue-600">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Out of (Max)</label>
+                        <input type="number" id="ed-max" class="w-full p-2 border rounded-lg text-sm bg-slate-50">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Teacher Notes</label>
+                    <textarea id="ed-notes" class="w-full p-2 border rounded-lg text-sm bg-slate-50 h-16"></textarea>
+                </div>
+                <div class="bg-amber-100/50 border border-amber-200 p-4 rounded-lg">
+                    <label class="block text-xs font-bold text-amber-800 uppercase mb-1">Reason for Change <span class="bg-red-500 text-white px-1.5 py-0.5 rounded ml-1 text-[10px]">REQUIRED</span></label>
+                    <textarea id="ed-reason" placeholder="e.g. Graded missed question. Corrected typo." class="w-full p-2 border border-amber-300 rounded-lg text-sm bg-white h-16"></textarea>
+                    <p class="text-[10px] text-amber-700 mt-1"><i class="fa-solid fa-triangle-exclamation"></i> This is permanently logged with a timestamp and visible to parents.</p>
+                </div>
+                <button id="updateGradeBtn" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 rounded-lg transition shadow-md">
+                    Update Grade & Log History
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { db } from '../assets/js/firebase-init.js';
+        import { collection, query, where, getDocs, doc, updateDoc, addDoc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        let session = { schoolId: null, teacherId: null, teacherData: null };
+        const classesBelize = ["Infant 1", "Infant 2", "Standard 1", "Standard 2", "Standard 3", "Standard 4", "Standard 5", "Standard 6"];
+
+        document.getElementById('eg-date').valueAsDate = new Date(); // Set default date
+
+        // --- UI ROUTING ---
+        window.switchTab = function(tabId) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('nav button').forEach(el => {
+                el.classList.remove('bg-blue-600', 'text-white');
+                if(!el.id.includes('logout')) el.classList.add('text-slate-300');
+            });
+            document.getElementById(`view-${tabId}`).classList.remove('hidden');
+            document.getElementById(`tab-${tabId}`).classList.add('bg-blue-600', 'text-white');
+            document.getElementById(`tab-${tabId}`).classList.remove('text-slate-300');
+            
+            const titles = { 'overview': 'Class Overview', 'students': 'My Roster', 'enter-grade': 'Enter Grade', 'gradebook': 'Gradebook' };
+            document.getElementById('topbarTitle').innerText = titles[tabId];
+
+            if(tabId === 'students') loadStudents();
+            if(tabId === 'gradebook') loadGradebook();
+            if(tabId === 'overview') updateOverviewStats();
+        };
+
+        // --- LOGIN LOGIC ---
+        document.getElementById('loginBtn').addEventListener('click', async () => {
+            const schoolId = document.getElementById('loginSchoolId').value.trim().toLowerCase();
+            const teacherCode = document.getElementById('loginTeacherCode').value.trim().toUpperCase();
+            const msgEl = document.getElementById('loginMsg');
+
+            if (!schoolId || !teacherCode) { msgEl.innerText = "Enter School ID and Teacher Code."; msgEl.classList.remove('hidden'); return; }
+
+            try {
+                // Find teacher by login code
+                const q = query(collection(db, "schools", schoolId, "teachers"), where("loginCode", "==", teacherCode));
+                const snap = await getDocs(q);
+
+                if (!snap.empty) {
+                    const tDoc = snap.docs[0];
+                    session = { schoolId, teacherId: tDoc.id, teacherData: tDoc.data() };
+                    
+                    document.getElementById('loginScreen').classList.add('hidden');
+                    
+                    // ONBOARDING CHECK: Does teacher have a class?
+                    if (!session.teacherData.className) {
+                        triggerOnboarding();
+                    } else {
+                        bootPortal();
+                    }
+                } else {
+                    msgEl.innerText = "Invalid School ID or Teacher Code.";
+                    msgEl.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error(error);
+                msgEl.innerText = "Connection error.";
+                msgEl.classList.remove('hidden');
+            }
+        });
+
+        // --- ONBOARDING ---
+        let selectedClass = null;
+        function triggerOnboarding() {
+            document.getElementById('onboardModal').classList.remove('hidden');
+            const grid = document.getElementById('classGrid');
+            grid.innerHTML = classesBelize.map(c => 
+                `<button onclick="selectClass('${c}')" id="clsBtn-${c.replace(/\s/g, '')}" class="p-3 border-2 border-slate-200 rounded-lg font-bold text-slate-600 hover:border-blue-500 transition cls-btn">${c}</button>`
+            ).join('');
+        }
+
+        window.selectClass = function(c) {
+            selectedClass = c;
+            document.querySelectorAll('.cls-btn').forEach(btn => {
+                btn.classList.remove('bg-blue-50', 'border-blue-500', 'text-blue-700');
+            });
+            document.getElementById(`clsBtn-${c.replace(/\s/g, '')}`).classList.add('bg-blue-50', 'border-blue-500', 'text-blue-700');
+            document.getElementById('saveClassBtn').classList.remove('hidden');
+        };
+
+        document.getElementById('saveClassBtn').addEventListener('click', async () => {
+            await updateDoc(doc(db, "schools", session.schoolId, "teachers", session.teacherId), { className: selectedClass });
+            session.teacherData.className = selectedClass;
+            document.getElementById('onboardModal').classList.add('hidden');
+            bootPortal();
+        });
+
+        // --- BOOT PORTAL ---
+        async function bootPortal() {
+            document.getElementById('dashboardApp').classList.remove('hidden');
+            document.getElementById('displayTeacherName').innerText = session.teacherData.name;
+            document.getElementById('displayTeacherClass').innerText = session.teacherData.className;
+            document.getElementById('teacherAvatar').innerText = session.teacherData.name.charAt(0);
+            
+            // Load Semesters into Dropdown
+            const semRef = collection(db, "schools", session.schoolId, "semesters");
+            const semSnap = await getDocs(semRef);
+            const semSelect = document.getElementById('activeSemester');
+            semSelect.innerHTML = '';
+            semSnap.forEach(d => { semSelect.innerHTML += `<option value="${d.id}">${d.data().name}</option>`; });
+
+            loadStudents(); // Populates roster and dropdowns
+        }
+
+        // --- STUDENTS LOGIC ---
+        async function loadStudents() {
+            const tbody = document.getElementById('studentsTableBody');
+            const select = document.getElementById('eg-student');
+            tbody.innerHTML = '<tr><td colspan="3" class="px-6 py-4 text-center">Loading...</td></tr>';
+            select.innerHTML = '<option value="">Select a student...</option>';
+
+            const q = query(collection(db, "schools", session.schoolId, "students"), where("teacherId", "==", session.teacherId));
+            const snap = await getDocs(q);
+            
+            tbody.innerHTML = '';
+            let sCount = 0;
+
+            if(snap.empty) { tbody.innerHTML = '<tr><td colspan="3" class="px-6 py-4 text-center italic text-slate-500">No students added.</td></tr>'; }
+
+            snap.forEach(d => {
+                const s = d.data();
+                sCount++;
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-50">
+                        <td class="px-6 py-3 font-bold text-slate-700">${s.name}</td>
+                        <td class="px-6 py-3"><span class="bg-blue-100 text-blue-800 font-mono font-bold px-2 py-1 rounded text-xs tracking-widest border border-blue-200">${s.pin}</span></td>
+                        <td class="px-6 py-3 text-right">
+                            <button onclick="deleteStudent('${d.id}')" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-trash"></i></button>
+                        </td>
+                    </tr>
+                `;
+                select.innerHTML += `<option value="${d.id}">${s.name}</option>`;
+            });
+
+            document.getElementById('stat-students').innerText = sCount;
+            updateOverviewStats();
+        }
+
+        document.getElementById('saveStudentBtn').addEventListener('click', async () => {
+            const name = document.getElementById('sName').value.trim();
+            const pinIn = document.getElementById('sPin').value.trim();
+            if(!name) return;
+            const finalPin = pinIn || Math.floor(1000 + Math.random() * 9000).toString(); // Auto 4-digit PIN
+
+            await addDoc(collection(db, "schools", session.schoolId, "students"), {
+                name: name, pin: finalPin, teacherId: session.teacherId, archived: false
+            });
+
+            document.getElementById('sName').value = ''; document.getElementById('sPin').value = '';
+            document.getElementById('addStudentModal').classList.add('hidden');
+            loadStudents();
+        });
+
+        window.deleteStudent = async function(id) {
+            if(confirm("Remove student from roster?")) {
+                await deleteDoc(doc(db, "schools", session.schoolId, "students", id));
+                loadStudents();
+            }
+        }
+
+        // --- GRADES LOGIC ---
+        function getGradeColorClass(percentage) {
+            if(percentage < 65) return "text-red-600 bg-red-50";
+            if(percentage >= 90) return "text-green-600 bg-green-50";
+            return "text-slate-700";
+        }
+
+        document.getElementById('saveGradeBtn').addEventListener('click', async () => {
+            const studentId = document.getElementById('eg-student').value;
+            const subject = document.getElementById('eg-subject').value;
+            const type = document.getElementById('eg-type').value;
+            const date = document.getElementById('eg-date').value;
+            const title = document.getElementById('eg-title').value.trim();
+            const score = parseFloat(document.getElementById('eg-score').value);
+            const max = parseFloat(document.getElementById('eg-max').value);
+            const notes = document.getElementById('eg-notes').value.trim();
+            const semId = document.getElementById('activeSemester').value;
+
+            if(!studentId || !title || isNaN(score) || isNaN(max)) return alert("Please fill all required fields properly.");
+
+            const btn = document.getElementById('saveGradeBtn');
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
+
+            await addDoc(collection(db, "schools", session.schoolId, "grades"), {
+                studentId, teacherId: session.teacherId, semesterId: semId,
+                subject, type, date, title, score, max, notes, historyLogs: []
+            });
+
+            document.getElementById('eg-title').value = '';
+            document.getElementById('eg-score').value = '';
+            document.getElementById('eg-notes').value = '';
+            btn.innerHTML = `<i class="fa-solid fa-check mr-2"></i> Saved!`;
+            setTimeout(() => btn.innerHTML = `<i class="fa-solid fa-check mr-2"></i> Save Grade to Gradebook`, 2000);
+            updateOverviewStats();
+        });
+
+        // --- GRADEBOOK & EDITING ---
+        let studentMap = {}; // cache student names for rendering gradebook
+
+        async function loadGradebook() {
+            const tbody = document.getElementById('gradebookTableBody');
+            tbody.innerHTML = '<tr><td colspan="7" class="p-4 text-center">Loading...</td></tr>';
+            const semId = document.getElementById('activeSemester').value;
+
+            // Cache student names (optimization)
+            if(Object.keys(studentMap).length === 0) {
+                const sSnap = await getDocs(query(collection(db, "schools", session.schoolId, "students"), where("teacherId", "==", session.teacherId)));
+                sSnap.forEach(d => studentMap[d.id] = d.data().name);
+            }
+
+            const q = query(collection(db, "schools", session.schoolId, "grades"), 
+                where("teacherId", "==", session.teacherId), 
+                where("semesterId", "==", semId));
+            const snap = await getDocs(q);
+
+            tbody.innerHTML = '';
+            if(snap.empty) { tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-slate-400 italic">No grades for this period.</td></tr>'; return;}
+
+            snap.forEach(d => {
+                const g = d.data();
+                const p = Math.round((g.score / g.max) * 100);
+                const colorCls = getGradeColorClass(p);
+                const isRed = p < 65 ? 'bg-red-50' : 'hover:bg-slate-50';
+
+                tbody.innerHTML += `
+                    <tr class="${isRed} border-b border-slate-100 transition">
+                        <td class="px-4 py-3 font-bold text-slate-700">${studentMap[g.studentId] || 'Unknown'}</td>
+                        <td class="px-4 py-3 text-slate-500 text-xs">${g.subject}</td>
+                        <td class="px-4 py-3 text-slate-800">${g.title} <br><span class="text-[10px] text-slate-400">${g.date}</span></td>
+                        <td class="px-4 py-3"><span class="bg-slate-200 text-slate-600 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">${g.type}</span></td>
+                        <td class="px-4 py-3 text-slate-600">${g.score}/${g.max}</td>
+                        <td class="px-4 py-3 font-black ${colorCls} rounded px-2">${p}%</td>
+                        <td class="px-4 py-3 text-right">
+                            <button onclick="openEditModal('${d.id}')" class="text-amber-500 hover:text-amber-600 p-1 bg-white rounded shadow-sm border border-slate-200 mr-1" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                            <button onclick="deleteGrade('${d.id}')" class="text-red-400 hover:text-red-600 p-1 bg-white rounded shadow-sm border border-slate-200" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        let currentEditGrade = null;
+        window.openEditModal = async function(id) {
+            const gRef = doc(db, "schools", session.schoolId, "grades", id);
+            const snap = await getDoc(gRef);
+            if(!snap.exists()) return;
+            currentEditGrade = { id, ...snap.data() };
+
+            document.getElementById('editGradeId').value = id;
+            document.getElementById('ed-score').value = currentEditGrade.score;
+            document.getElementById('ed-max').value = currentEditGrade.max;
+            document.getElementById('ed-notes').value = currentEditGrade.notes || "";
+            document.getElementById('ed-reason').value = ""; // Clear reason
+            document.getElementById('editGradeModal').classList.remove('hidden');
+        }
+
+        document.getElementById('updateGradeBtn').addEventListener('click', async () => {
+            const reason = document.getElementById('ed-reason').value.trim();
+            if(!reason) {
+                alert("A reason for this change is strictly REQUIRED.");
+                document.getElementById('ed-reason').focus();
+                return;
+            }
+
+            const nScore = parseFloat(document.getElementById('ed-score').value);
+            const nMax = parseFloat(document.getElementById('ed-max').value);
+            const nNotes = document.getElementById('ed-notes').value;
+
+            // Generate Timestamped Log
+            const oldP = Math.round((currentEditGrade.score / currentEditGrade.max) * 100);
+            const newP = Math.round((nScore / nMax) * 100);
+            const dateStr = new Date().toLocaleString();
+            let logEntry = `[${dateStr}] `;
+            if(nScore !== currentEditGrade.score || nMax !== currentEditGrade.max) {
+                logEntry += `Score changed: ${currentEditGrade.score}/${currentEditGrade.max} (${oldP}%) -> ${nScore}/${nMax} (${newP}%). `;
+            }
+            logEntry += `Reason: ${reason}`;
+
+            const updatedLogs = [...(currentEditGrade.historyLogs || []), logEntry];
+
+            await updateDoc(doc(db, "schools", session.schoolId, "grades", currentEditGrade.id), {
+                score: nScore, max: nMax, notes: nNotes, historyLogs: updatedLogs
+            });
+
+            document.getElementById('editGradeModal').classList.add('hidden');
+            loadGradebook();
+            updateOverviewStats();
+        });
+
+        window.deleteGrade = async function(id) {
+            if(confirm("Delete this grade permanently?")) {
+                await deleteDoc(doc(db, "schools", session.schoolId, "grades", id));
+                loadGradebook();
+                updateOverviewStats();
+            }
+        }
+
+        // --- DASHBOARD STATS ---
+        async function updateOverviewStats() {
+            const semId = document.getElementById('activeSemester').value;
+            if(!semId) return;
+
+            const q = query(collection(db, "schools", session.schoolId, "grades"), 
+                where("teacherId", "==", session.teacherId), 
+                where("semesterId", "==", semId));
+            const snap = await getDocs(q);
+            
+            document.getElementById('stat-grades').innerText = snap.size;
+
+            // Calculate At-Risk Students
+            let studentGrades = {};
+            snap.forEach(d => {
+                const g = d.data();
+                if(!studentGrades[g.studentId]) studentGrades[g.studentId] = { totalSc: 0, totalMax: 0 };
+                studentGrades[g.studentId].totalSc += (g.score / g.max) * 100; // Average of percentages
+                studentGrades[g.studentId].count = (studentGrades[g.studentId].count || 0) + 1;
+            });
+
+            let riskCount = 0;
+            for(let sid in studentGrades) {
+                const avg = studentGrades[sid].totalSc / studentGrades[sid].count;
+                if(avg < 65) riskCount++;
+            }
+            document.getElementById('stat-risk').innerText = riskCount;
+        }
+
+        // Listen for semester changes to reload data
+        document.getElementById('activeSemester').addEventListener('change', () => {
+            if(!document.getElementById('view-gradebook').classList.contains('hidden')) loadGradebook();
+            updateOverviewStats();
+        });
+
+        // Logout
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            location.reload();
+        });
+    </script>
+</body>
+</html>

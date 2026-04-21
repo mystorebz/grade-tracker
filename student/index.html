@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student & Parent Portal | Grade Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../assets/css/global.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans h-screen flex flex-col overflow-hidden">
+
+    <div id="loginScreen" class="absolute inset-0 z-50 bg-[#f0fdf4] flex flex-col items-center justify-center p-4">
+        <div class="mb-8 text-center max-w-md">
+            <a href="../index.html" class="text-green-700 text-sm hover:underline mb-4 inline-block font-bold">&larr; Back to Home</a>
+            <div class="text-6xl mb-4 text-green-600">👪</div>
+            <h1 class="text-3xl font-extrabold text-slate-800">Family Portal</h1>
+            <p class="text-slate-600 mt-2 text-sm">Welcome! Please enter your School ID and the secure Student PIN provided by your teacher.</p>
+        </div>
+        <div class="bg-white p-8 rounded-2xl shadow-xl border border-green-100 max-w-sm w-full">
+            <div class="space-y-5">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">School ID</label>
+                    <input type="text" id="loginSchoolId" placeholder="e.g. belize-high" class="w-full p-3 border border-slate-200 rounded-xl text-sm outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Student PIN</label>
+                    <input type="password" id="loginPin" placeholder="Enter 4-6 digit PIN" class="w-full p-3 border border-slate-200 rounded-xl text-center text-xl tracking-[0.5em] font-mono outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition">
+                </div>
+                <button id="loginBtn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-xl shadow-md hover:shadow-lg transition-all mt-2">
+                    View Progress <i class="fa-solid fa-arrow-right ml-2"></i>
+                </button>
+                <p id="loginMsg" class="text-xs text-center font-bold hidden text-red-600 mt-2 bg-red-50 p-2 rounded"></p>
+            </div>
+        </div>
+    </div>
+
+    <div id="dashboardApp" class="hidden w-full h-full flex flex-col bg-slate-50">
+        
+        <nav class="bg-green-700 text-white shadow-md z-10 flex-shrink-0">
+            <div class="max-w-5xl mx-auto px-4 py-3 flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <div class="bg-white/20 p-2 rounded-lg text-xl"><i class="fa-solid fa-graduation-cap"></i></div>
+                    <div>
+                        <h1 id="topStudentName" class="font-bold text-lg leading-tight">Student Name</h1>
+                        <p id="topTeacherInfo" class="text-xs text-green-200 font-medium">Loading Teacher Info...</p>
+                    </div>
+                </div>
+                <button id="logoutBtn" class="text-green-100 hover:text-white text-sm font-bold bg-green-800 hover:bg-green-900 px-4 py-2 rounded-lg transition">
+                    Log Out
+                </button>
+            </div>
+        </nav>
+
+        <main class="flex-1 overflow-y-auto p-4 md:p-8">
+            <div class="max-w-5xl mx-auto">
+                
+                <div class="bg-amber-50 border-l-4 border-amber-400 p-4 rounded-r-lg mb-6 flex gap-3 shadow-sm">
+                    <i class="fa-solid fa-circle-info text-amber-500 mt-0.5"></i>
+                    <div>
+                        <h4 class="font-bold text-amber-800 text-sm">Please Note</h4>
+                        <p class="text-xs text-amber-700 mt-1">Averages shown here are estimates calculated from logged grades only. Teachers may apply bonus points or adjustments not reflected here. Always confirm final grades with your teacher.</p>
+                    </div>
+                </div>
+
+                <div class="flex flex-col md:flex-row md:justify-between md:items-center mb-6 gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <h2 class="text-xl font-extrabold text-slate-800"><i class="fa-solid fa-chart-line text-green-600 mr-2"></i> Academic Progress</h2>
+                    <div class="flex items-center gap-3">
+                        <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Select Period:</label>
+                        <select id="activeSemester" class="bg-slate-50 border border-slate-300 text-slate-700 text-sm font-bold py-2 px-4 rounded-lg outline-none focus:border-green-500 transition shadow-sm cursor-pointer">
+                            <option value="">Loading...</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="gradesContainer" class="space-y-6">
+                    <div class="text-center py-10 text-slate-500 italic">Select a period to view grades.</div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <div id="notesModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-blue-50">
+                <h3 class="font-bold text-lg text-blue-900"><i class="fa-solid fa-clipboard-list mr-2 text-blue-600"></i> Assignment Details</h3>
+                <button onclick="document.getElementById('notesModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-700 bg-white rounded-full h-8 w-8 flex items-center justify-center shadow-sm"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto flex-1">
+                <h2 id="modalTitle" class="text-xl font-bold text-slate-800 mb-1">Title</h2>
+                <p id="modalMeta" class="text-sm text-slate-500 mb-4 font-medium">Date • Type</p>
+                
+                <div class="flex gap-4 mb-6">
+                    <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 flex-1 text-center">
+                        <span class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Score</span>
+                        <span id="modalScore" class="font-bold text-lg text-slate-700">0/100</span>
+                    </div>
+                    <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 flex-1 text-center">
+                        <span class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Percentage</span>
+                        <span id="modalPercentage" class="font-black text-lg">0%</span>
+                    </div>
+                </div>
+
+                <div class="mb-6">
+                    <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2"><i class="fa-solid fa-comment-dots text-blue-500 mr-1"></i> Teacher Notes</h4>
+                    <div id="modalNotes" class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-lg text-sm text-blue-900 whitespace-pre-wrap leading-relaxed">
+                        No notes provided.
+                    </div>
+                </div>
+
+                <div id="historySection" class="hidden">
+                    <h4 class="text-xs font-bold text-amber-600 uppercase tracking-wider mb-2"><i class="fa-solid fa-clock-rotate-left mr-1"></i> Grade History Log</h4>
+                    <div id="modalHistory" class="space-y-2">
+                        </div>
+                </div>
+            </div>
+            <div class="p-4 border-t border-slate-100 bg-slate-50">
+                <button onclick="document.getElementById('notesModal').classList.add('hidden')" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold py-2.5 rounded-lg transition">Close Details</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { db } from '../assets/js/firebase-init.js';
+        import { collection, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        let session = { schoolId: null, studentId: null, studentData: null, teacherData: null };
+        let currentGradesData = []; // Cache to prevent re-querying when viewing notes
+
+        // --- LOGIN LOGIC ---
+        document.getElementById('loginBtn').addEventListener('click', async () => {
+            const schoolId = document.getElementById('loginSchoolId').value.trim().toLowerCase();
+            const pin = document.getElementById('loginPin').value.trim();
+            const msgEl = document.getElementById('loginMsg');
+
+            if (!schoolId || !pin) { msgEl.innerText = "Please enter both fields."; msgEl.classList.remove('hidden'); return; }
+            msgEl.classList.add('hidden');
+            document.getElementById('loginBtn').innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Verifying...`;
+
+            try {
+                // 1. Find Student
+                const q = query(collection(db, "schools", schoolId, "students"), where("pin", "==", pin));
+                const snap = await getDocs(q);
+
+                if (!snap.empty) {
+                    const sDoc = snap.docs[0];
+                    const sData = sDoc.data();
+
+                    if(sData.archived) {
+                        msgEl.innerText = "This record is archived. Contact school.";
+                        msgEl.classList.remove('hidden');
+                        resetLoginBtn(); return;
+                    }
+
+                    // 2. Fetch Teacher Info
+                    let tName = "Unknown Teacher", tClass = "";
+                    if(sData.teacherId) {
+                        const tSnap = await getDoc(doc(db, "schools", schoolId, "teachers", sData.teacherId));
+                        if(tSnap.exists()) {
+                            tName = tSnap.data().name;
+                            tClass = tSnap.data().className || "Unassigned Class";
+                        }
+                    }
+
+                    // Save session
+                    session = { schoolId, studentId: sDoc.id, studentData: sData, teacherData: { name: tName, className: tClass } };
+                    
+                    // Boot Portal
+                    document.getElementById('loginScreen').classList.add('hidden');
+                    document.getElementById('dashboardApp').classList.remove('hidden');
+                    
+                    document.getElementById('topStudentName').innerText = sData.name;
+                    document.getElementById('topTeacherInfo').innerText = `${tClass} • ${tName}`;
+
+                    loadSemesters();
+                } else {
+                    msgEl.innerText = "Invalid School ID or PIN.";
+                    msgEl.classList.remove('hidden');
+                    resetLoginBtn();
+                }
+            } catch (error) {
+                console.error(error);
+                msgEl.innerText = "Connection error. Please try again.";
+                msgEl.classList.remove('hidden');
+                resetLoginBtn();
+            }
+        });
+
+        function resetLoginBtn() {
+            document.getElementById('loginBtn').innerHTML = `View Progress <i class="fa-solid fa-arrow-right ml-2"></i>`;
+        }
+
+        // --- LOAD SEMESTERS ---
+        async function loadSemesters() {
+            const semRef = collection(db, "schools", session.schoolId, "semesters");
+            const semSnap = await getDocs(semRef);
+            const semSelect = document.getElementById('activeSemester');
+            
+            let sems = [];
+            semSnap.forEach(d => sems.push({ id: d.id, ...d.data() }));
+            sems.sort((a,b) => a.order - b.order);
+
+            semSelect.innerHTML = '';
+            if(sems.length === 0) {
+                semSelect.innerHTML = '<option value="">No periods found</option>';
+            } else {
+                sems.forEach(s => { semSelect.innerHTML += `<option value="${s.id}">${s.name}</option>`; });
+                loadGrades(); // Load grades for the first available semester
+            }
+        }
+
+        // --- LOAD GRADES ---
+        document.getElementById('activeSemester').addEventListener('change', loadGrades);
+
+        function getGradeStyle(percentage) {
+            if(percentage >= 90) return { cls: 'text-green-700 bg-green-100', ltr: 'A' };
+            if(percentage >= 80) return { cls: 'text-blue-700 bg-blue-100', ltr: 'B' };
+            if(percentage >= 70) return { cls: 'text-teal-700 bg-teal-100', ltr: 'C' };
+            if(percentage >= 65) return { cls: 'text-amber-700 bg-amber-100', ltr: 'D' };
+            return { cls: 'text-red-700 bg-red-100', ltr: 'F' };
+        }
+
+        async function loadGrades() {
+            const semId = document.getElementById('activeSemester').value;
+            const container = document.getElementById('gradesContainer');
+            if(!semId) return;
+
+            container.innerHTML = '<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin text-3xl text-green-600 mb-3"></i><p class="text-slate-500">Loading your grades...</p></div>';
+
+            const q = query(collection(db, "schools", session.schoolId, "grades"), 
+                where("studentId", "==", session.studentId), 
+                where("semesterId", "==", semId));
+            const snap = await getDocs(q);
+
+            currentGradesData = [];
+            let subjectsMap = {};
+
+            if(snap.empty) {
+                container.innerHTML = `
+                    <div class="bg-white p-10 rounded-2xl border border-slate-200 text-center shadow-sm">
+                        <div class="text-5xl mb-4 text-slate-300">📝</div>
+                        <h3 class="text-xl font-bold text-slate-700">No Grades Yet</h3>
+                        <p class="text-slate-500 mt-2">Your teacher hasn't published any grades for this period.</p>
+                    </div>`;
+                return;
+            }
+
+            // Group by Subject
+            snap.forEach(d => {
+                const g = { id: d.id, ...d.data() };
+                currentGradesData.push(g);
+                if(!subjectsMap[g.subject]) subjectsMap[g.subject] = [];
+                subjectsMap[g.subject].push(g);
+            });
+
+            container.innerHTML = '';
+
+            // Render Subject Cards
+            for(let subName in subjectsMap) {
+                const grades = subjectsMap[subName];
+                grades.sort((a,b) => new Date(b.date) - new Date(a.date)); // Sort newest first
+
+                // Calculate Subject Average (average of percentages)
+                let totalP = 0;
+                grades.forEach(g => { totalP += (g.score / g.max) * 100; });
+                const avgP = Math.round(totalP / grades.length);
+                const avgStyle = getGradeStyle(avgP);
+                const isRisk = avgP < 65;
+
+                // Build Table Rows for assignments
+                const rows = grades.map(g => {
+                    const p = Math.round((g.score / g.max) * 100);
+                    const pStyle = getGradeStyle(p);
+                    const hasNotes = g.notes || (g.historyLogs && g.historyLogs.length > 0);
+                    
+                    return `
+                    <tr class="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition">
+                        <td class="py-3 px-4">
+                            <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider mr-2">${g.type}</span>
+                            <span class="font-bold text-slate-700">${g.title}</span>
+                            <div class="text-[11px] text-slate-400 mt-0.5">${g.date}</div>
+                        </td>
+                        <td class="py-3 px-4 text-center whitespace-nowrap">
+                            <span class="text-slate-600 text-sm mr-2">${g.score}/${g.max}</span>
+                            <span class="font-black px-2 py-1 rounded text-sm ${pStyle.cls}">${p}%</span>
+                        </td>
+                        <td class="py-3 px-4 text-right">
+                            <button onclick="viewGradeDetails('${g.id}')" class="${hasNotes ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'} px-3 py-1.5 rounded-lg text-xs font-bold transition">
+                                ${hasNotes ? '<i class="fa-solid fa-comment-dots mr-1"></i> Notes' : 'Details'}
+                            </button>
+                        </td>
+                    </tr>`;
+                }).join('');
+
+                // Append Subject Card
+                container.innerHTML += `
+                <div class="bg-white rounded-2xl shadow-sm border ${isRisk ? 'border-red-200' : 'border-slate-200'} overflow-hidden">
+                    <div class="${isRisk ? 'bg-red-50' : 'bg-slate-50'} p-5 border-b ${isRisk ? 'border-red-100' : 'border-slate-100'} flex justify-between items-center cursor-pointer hover:bg-slate-100 transition" onclick="toggleAccordion('acc-${subName.replace(/\s/g, '')}')">
+                        <div>
+                            <h3 class="text-lg font-extrabold text-slate-800">${subName}</h3>
+                            <p class="text-xs text-slate-500 font-medium">${grades.length} Grade${grades.length !== 1 ? 's' : ''} Logged</p>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <div class="text-right">
+                                <span class="block text-[10px] uppercase font-bold text-slate-400 mb-0.5">Est. Average</span>
+                                <span class="px-3 py-1 rounded-lg font-black text-sm ${avgStyle.cls}">${avgP}% • ${avgStyle.ltr}</span>
+                            </div>
+                            <i class="fa-solid fa-chevron-down text-slate-400 transition-transform duration-200" id="icon-acc-${subName.replace(/\s/g, '')}"></i>
+                        </div>
+                    </div>
+                    <div id="acc-${subName.replace(/\s/g, '')}" class="hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left">
+                                <tbody>${rows}</tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>`;
+            }
+        }
+
+        // --- UI HELPERS ---
+        window.toggleAccordion = function(id) {
+            const el = document.getElementById(id);
+            const icon = document.getElementById('icon-' + id);
+            if(el.classList.contains('hidden')) {
+                el.classList.remove('hidden');
+                icon.style.transform = 'rotate(180deg)';
+            } else {
+                el.classList.add('hidden');
+                icon.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        window.viewGradeDetails = function(gradeId) {
+            const g = currentGradesData.find(x => x.id === gradeId);
+            if(!g) return;
+
+            const p = Math.round((g.score / g.max) * 100);
+            const pStyle = getGradeStyle(p);
+
+            document.getElementById('modalTitle').innerText = g.title;
+            document.getElementById('modalMeta').innerText = `${g.date} • ${g.subject} • ${g.type}`;
+            document.getElementById('modalScore').innerText = `${g.score} / ${g.max}`;
+            
+            const pEl = document.getElementById('modalPercentage');
+            pEl.innerText = `${p}%`;
+            pEl.className = `font-black text-lg ${pStyle.cls.split(' ')[0]}`; // Apply text color only
+
+            const notesEl = document.getElementById('modalNotes');
+            if(g.notes) {
+                notesEl.innerText = g.notes;
+                notesEl.classList.remove('hidden', 'text-slate-400', 'italic');
+                notesEl.classList.add('text-blue-900');
+            } else {
+                notesEl.innerText = "No specific notes provided by teacher.";
+                notesEl.classList.remove('text-blue-900');
+                notesEl.classList.add('text-slate-500', 'italic');
+            }
+
+            const histSec = document.getElementById('historySection');
+            const histEl = document.getElementById('modalHistory');
+            if(g.historyLogs && g.historyLogs.length > 0) {
+                histSec.classList.remove('hidden');
+                histEl.innerHTML = g.historyLogs.map(log => 
+                    `<div class="bg-amber-50 border-l-2 border-amber-400 p-2 text-xs text-amber-800 rounded-r shadow-sm font-medium leading-relaxed">${log}</div>`
+                ).join('');
+            } else {
+                histSec.classList.add('hidden');
+            }
+
+            document.getElementById('notesModal').classList.remove('hidden');
+        }
+
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            location.reload();
+        });
+    </script>
+</body>
+</html>

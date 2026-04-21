@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Portal | Grade Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../assets/css/global.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans h-screen overflow-hidden flex">
+
+    <div id="loginScreen" class="absolute inset-0 z-50 bg-slate-50 flex flex-col items-center justify-center p-4">
+        <div class="mb-8 text-center">
+            <a href="../index.html" class="text-blue-600 text-sm hover:underline mb-4 inline-block">&larr; Back to Home</a>
+            <h1 class="text-3xl font-extrabold text-slate-800">Admin Portal</h1>
+            <p class="text-slate-500 mt-2">Sign in to manage your school</p>
+        </div>
+        <div class="bg-white p-8 rounded-xl shadow-lg border border-slate-200 max-w-sm w-full">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">School ID</label>
+                    <input type="text" id="loginSchoolId" placeholder="e.g. belize-high" class="w-full p-2.5 border rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Admin Code</label>
+                    <input type="password" id="loginAdminCode" placeholder="Default: ADMIN2024" class="w-full p-2.5 border rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
+                </div>
+                <button id="loginBtn" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-2.5 px-4 rounded-lg transition mt-4">
+                    Secure Login <i class="fa-solid fa-arrow-right ml-2"></i>
+                </button>
+                <p id="loginMsg" class="text-xs text-center font-bold hidden text-red-600 mt-2"></p>
+            </div>
+        </div>
+    </div>
+
+    <div id="dashboardApp" class="hidden w-full h-full flex">
+        
+        <aside class="w-64 bg-slate-900 text-slate-300 flex flex-col transition-all">
+            <div class="p-6 border-b border-slate-700 flex flex-col items-center text-center">
+                <img id="schoolLogo" src="" alt="School Logo" class="h-16 w-16 object-contain rounded-lg bg-white p-1 mb-3 hidden">
+                <div id="schoolLogoFallback" class="h-16 w-16 bg-slate-800 rounded-lg flex items-center justify-center text-2xl font-bold text-white mb-3 shadow-inner">🏫</div>
+                <h2 id="displaySchoolName" class="font-bold text-white leading-tight">Loading...</h2>
+                <p class="text-xs text-slate-500 mt-1 uppercase tracking-widest">Administrator</p>
+            </div>
+
+            <nav class="flex-1 p-4 space-y-2 overflow-y-auto">
+                <button onclick="switchTab('overview')" id="tab-overview" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-left hover:bg-slate-800 hover:text-white transition bg-slate-800 text-white">
+                    <i class="fa-solid fa-chart-pie w-5"></i> Overview
+                </button>
+                <button onclick="switchTab('teachers')" id="tab-teachers" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-left hover:bg-slate-800 hover:text-white transition">
+                    <i class="fa-solid fa-chalkboard-user w-5"></i> Teachers
+                </button>
+                <button onclick="switchTab('semesters')" id="tab-semesters" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-left hover:bg-slate-800 hover:text-white transition">
+                    <i class="fa-solid fa-calendar-days w-5"></i> Grading Periods
+                </button>
+                <button onclick="switchTab('settings')" id="tab-settings" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-left hover:bg-slate-800 hover:text-white transition">
+                    <i class="fa-solid fa-gear w-5"></i> Settings
+                </button>
+            </nav>
+
+            <div class="p-4 border-t border-slate-700">
+                <button id="logoutBtn" class="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition">
+                    <i class="fa-solid fa-right-from-bracket"></i> Log Out
+                </button>
+            </div>
+        </aside>
+
+        <main class="flex-1 bg-slate-50 flex flex-col h-full overflow-hidden">
+            <header class="h-16 bg-white border-b border-slate-200 flex items-center px-8 shadow-sm z-10">
+                <h1 id="topbarTitle" class="text-xl font-bold text-slate-800">Overview</h1>
+            </header>
+
+            <div class="flex-1 overflow-y-auto p-8">
+                
+                <div id="view-overview" class="view-section">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4 border-l-4 border-l-blue-500">
+                            <div class="bg-blue-100 text-blue-600 h-12 w-12 rounded-full flex items-center justify-center text-xl"><i class="fa-solid fa-users"></i></div>
+                            <div><p class="text-sm text-slate-500 font-bold uppercase">Total Teachers</p><h3 id="stat-teachers" class="text-2xl font-black text-slate-800">0</h3></div>
+                        </div>
+                        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4 border-l-4 border-l-green-500">
+                            <div class="bg-green-100 text-green-600 h-12 w-12 rounded-full flex items-center justify-center text-xl"><i class="fa-solid fa-user-graduate"></i></div>
+                            <div><p class="text-sm text-slate-500 font-bold uppercase">Total Students</p><h3 id="stat-students" class="text-2xl font-black text-slate-800">0</h3></div>
+                        </div>
+                        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4 border-l-4 border-l-purple-500">
+                            <div class="bg-purple-100 text-purple-600 h-12 w-12 rounded-full flex items-center justify-center text-xl"><i class="fa-solid fa-clock"></i></div>
+                            <div><p class="text-sm text-slate-500 font-bold uppercase">Active Period</p><h3 id="stat-period" class="text-xl font-black text-slate-800">Loading...</h3></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="view-teachers" class="view-section hidden">
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+                            <div>
+                                <h3 class="font-bold text-lg text-slate-800">Manage Teachers</h3>
+                                <p class="text-sm text-slate-500">Add staff and generate login codes.</p>
+                            </div>
+                            <button onclick="document.getElementById('addTeacherModal').classList.remove('hidden')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-sm transition">
+                                <i class="fa-solid fa-plus mr-1"></i> Add Teacher
+                            </button>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-slate-100 text-slate-500 uppercase text-xs">
+                                    <tr>
+                                        <th class="px-6 py-4 font-bold">Teacher Name</th>
+                                        <th class="px-6 py-4 font-bold">Class / Grade</th>
+                                        <th class="px-6 py-4 font-bold">Login Code</th>
+                                        <th class="px-6 py-4 font-bold text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="teachersTableBody" class="divide-y divide-slate-100">
+                                    <tr><td colspan="4" class="px-6 py-8 text-center text-slate-500 italic">Loading teachers...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="view-semesters" class="view-section hidden">
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden max-w-3xl">
+                        <div class="p-6 border-b border-slate-200 bg-slate-50">
+                            <h3 class="font-bold text-lg text-slate-800">Grading Periods</h3>
+                            <p class="text-sm text-slate-500">Define the semesters or terms for your school year.</p>
+                        </div>
+                        <div class="p-6">
+                            <div class="flex gap-3 mb-6">
+                                <input type="text" id="newSemName" placeholder="e.g. Semester 1, Midterm..." class="flex-1 p-2 border rounded-lg text-sm outline-none focus:border-blue-500">
+                                <button id="addSemBtn" class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-sm transition">Add Period</button>
+                            </div>
+                            <div id="semestersList" class="space-y-2">
+                                </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="view-settings" class="view-section hidden">
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden max-w-2xl mb-8">
+                        <div class="p-6 border-b border-slate-200 bg-slate-50">
+                            <h3 class="font-bold text-lg text-slate-800">Admin Security</h3>
+                            <p class="text-sm text-slate-500">Update your master admin login code.</p>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">New Admin Code</label>
+                                <input type="password" id="newAdminCode" class="w-full p-2 border rounded-lg text-sm outline-none focus:border-blue-500">
+                            </div>
+                            <button id="updateCodeBtn" class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-sm transition">Update Code</button>
+                            <p id="settingsMsg" class="text-sm hidden font-bold mt-2"></p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <div id="addTeacherModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 class="font-bold text-lg text-slate-800">Add New Teacher</h3>
+                <button onclick="document.getElementById('addTeacherModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Teacher's Full Name</label>
+                    <input type="text" id="tName" placeholder="e.g. Mrs. Jane Doe" class="w-full p-2.5 border rounded-lg text-sm outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Login Code (Leave blank to auto-generate)</label>
+                    <input type="text" id="tCode" placeholder="e.g. JANE2024" class="w-full p-2.5 border rounded-lg text-sm outline-none focus:border-blue-500 uppercase">
+                </div>
+                <button id="saveTeacherBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg transition mt-2 shadow-sm">
+                    Create Teacher Account
+                </button>
+                <p class="text-xs text-slate-500 text-center mt-3">The teacher will select their Class/Grade upon first login.</p>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { db } from '../assets/js/firebase-init.js';
+        import { doc, getDoc, updateDoc, collection, addDoc, getDocs, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        let currentSchoolId = null;
+        let schoolData = null;
+
+        // --- UI UTILS ---
+        window.switchTab = function(tabId) {
+            // Hide all views
+            document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+            // Reset sidebar tabs
+            document.querySelectorAll('nav button').forEach(el => {
+                el.classList.remove('bg-slate-800', 'text-white');
+                el.classList.add('text-slate-300');
+            });
+            // Show selected
+            document.getElementById(`view-${tabId}`).classList.remove('hidden');
+            document.getElementById(`tab-${tabId}`).classList.add('bg-slate-800', 'text-white');
+            document.getElementById(`tab-${tabId}`).classList.remove('text-slate-300');
+            
+            // Set Header Title
+            const titles = { 'overview': 'School Overview', 'teachers': 'Manage Staff', 'semesters': 'Grading Periods', 'settings': 'System Settings' };
+            document.getElementById('topbarTitle').innerText = titles[tabId];
+            
+            if(tabId === 'teachers') loadTeachers();
+            if(tabId === 'semesters') loadSemesters();
+        };
+
+        function generateCode() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            return Array.from({length: 6}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+        }
+
+        // --- LOGIN LOGIC ---
+        document.getElementById('loginBtn').addEventListener('click', async () => {
+            const schoolId = document.getElementById('loginSchoolId').value.trim().toLowerCase();
+            const adminCodeInput = document.getElementById('loginAdminCode').value.trim();
+            const msgEl = document.getElementById('loginMsg');
+
+            if (!schoolId || !adminCodeInput) {
+                msgEl.innerText = "Please enter both fields.";
+                msgEl.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                const schoolRef = doc(db, "schools", schoolId);
+                const schoolSnap = await getDoc(schoolRef);
+
+                if (schoolSnap.exists()) {
+                    const data = schoolSnap.data();
+                    const correctCode = data.adminCode || "ADMIN2024"; // Default if not set
+
+                    if (adminCodeInput === correctCode) {
+                        // Login Success!
+                        currentSchoolId = schoolId;
+                        schoolData = data;
+                        document.getElementById('loginScreen').classList.add('hidden');
+                        document.getElementById('dashboardApp').classList.remove('hidden');
+                        
+                        // Setup Dashboard Header & Logo
+                        document.getElementById('displaySchoolName').innerText = data.schoolName;
+                        if(data.logoUrl) {
+                            document.getElementById('schoolLogo').src = data.logoUrl;
+                            document.getElementById('schoolLogo').classList.remove('hidden');
+                            document.getElementById('schoolLogoFallback').classList.add('hidden');
+                        }
+                        
+                        loadOverviewStats();
+                        loadSemesters(); // Ensure default semesters exist
+                    } else {
+                        msgEl.innerText = "Incorrect Admin Code.";
+                        msgEl.classList.remove('hidden');
+                    }
+                } else {
+                    msgEl.innerText = "School ID not found.";
+                    msgEl.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error("Login Error:", error);
+                msgEl.innerText = "Error connecting to database.";
+                msgEl.classList.remove('hidden');
+            }
+        });
+
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            currentSchoolId = null;
+            document.getElementById('loginScreen').classList.remove('hidden');
+            document.getElementById('dashboardApp').classList.add('hidden');
+            document.getElementById('loginAdminCode').value = '';
+        });
+
+        // --- DASHBOARD DATA LOGIC ---
+        async function loadOverviewStats() {
+            const teachersRef = collection(db, "schools", currentSchoolId, "teachers");
+            const studentsRef = collection(db, "schools", currentSchoolId, "students");
+            
+            const [tSnap, sSnap] = await Promise.all([getDocs(teachersRef), getDocs(studentsRef)]);
+            
+            document.getElementById('stat-teachers').innerText = tSnap.size;
+            document.getElementById('stat-students').innerText = sSnap.size;
+        }
+
+        async function loadTeachers() {
+            const tBody = document.getElementById('teachersTableBody');
+            tBody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-slate-500">Loading...</td></tr>';
+            
+            const q = collection(db, "schools", currentSchoolId, "teachers");
+            const querySnapshot = await getDocs(q);
+            
+            if(querySnapshot.empty) {
+                tBody.innerHTML = '<tr><td colspan="4" class="px-6 py-8 text-center text-slate-500 italic">No teachers added yet.</td></tr>';
+                return;
+            }
+
+            tBody.innerHTML = '';
+            querySnapshot.forEach((doc) => {
+                const t = doc.data();
+                tBody.innerHTML += `
+                    <tr class="hover:bg-slate-50 transition">
+                        <td class="px-6 py-4 border-b border-slate-100 font-bold text-slate-700 flex items-center gap-3">
+                            <div class="h-8 w-8 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-bold text-xs">${t.name.charAt(0)}</div>
+                            ${t.name}
+                        </td>
+                        <td class="px-6 py-4 border-b border-slate-100 text-slate-600">${t.className || '<span class="text-amber-500 italic text-xs">Pending Setup</span>'}</td>
+                        <td class="px-6 py-4 border-b border-slate-100"><span class="bg-slate-100 text-slate-700 px-2 py-1 rounded text-xs font-mono font-bold tracking-wider border border-slate-200">${t.loginCode}</span></td>
+                        <td class="px-6 py-4 border-b border-slate-100 text-right">
+                            <button onclick="deleteTeacher('${doc.id}')" class="text-red-500 hover:text-red-700 p-1"><i class="fa-solid fa-trash-can"></i></button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        // Add Teacher
+        document.getElementById('saveTeacherBtn').addEventListener('click', async () => {
+            const name = document.getElementById('tName').value.trim();
+            const codeInput = document.getElementById('tCode').value.trim().toUpperCase();
+            if(!name) return alert("Name is required!");
+
+            const finalCode = codeInput || generateCode();
+            const btn = document.getElementById('saveTeacherBtn');
+            btn.innerText = "Saving...";
+
+            try {
+                await addDoc(collection(db, "schools", currentSchoolId, "teachers"), {
+                    name: name,
+                    loginCode: finalCode,
+                    className: "",
+                    archived: false,
+                    createdAt: new Date().toISOString()
+                });
+                
+                document.getElementById('tName').value = '';
+                document.getElementById('tCode').value = '';
+                document.getElementById('addTeacherModal').classList.add('hidden');
+                btn.innerText = "Create Teacher Account";
+                loadTeachers();
+                loadOverviewStats();
+            } catch (error) {
+                console.error("Error adding teacher", error);
+                alert("Failed to add teacher.");
+                btn.innerText = "Create Teacher Account";
+            }
+        });
+
+        // Make delete function global
+        window.deleteTeacher = async function(id) {
+            if(confirm("Are you sure you want to remove this teacher?")) {
+                import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js').then(async ({deleteDoc, doc}) => {
+                    await deleteDoc(doc(db, "schools", currentSchoolId, "teachers", id));
+                    loadTeachers();
+                    loadOverviewStats();
+                });
+            }
+        }
+
+        // --- SEMESTERS LOGIC ---
+        const defaultSemesters = [
+            { id: "sem1", name: "Semester 1", order: 1 },
+            { id: "sem2", name: "Midterm", order: 2 },
+            { id: "sem3", name: "Semester 2", order: 3 },
+            { id: "sem4", name: "Semester 3", order: 4 }
+        ];
+
+        async function loadSemesters() {
+            const sRef = collection(db, "schools", currentSchoolId, "semesters");
+            const snap = await getDocs(sRef);
+            const listEl = document.getElementById('semestersList');
+            
+            // Auto-populate defaults if absolutely empty
+            if(snap.empty) {
+                for(let s of defaultSemesters) {
+                    await setDoc(doc(db, "schools", currentSchoolId, "semesters", s.id), s);
+                }
+                loadSemesters(); // Reload after seeding
+                return;
+            }
+
+            let sems = [];
+            snap.forEach(d => sems.push({ id: d.id, ...d.data() }));
+            sems.sort((a,b) => a.order - b.order);
+
+            // Update Overview Card
+            if(sems.length > 0) document.getElementById('stat-period').innerText = sems[0].name;
+
+            listEl.innerHTML = sems.map(s => `
+                <div class="flex justify-between items-center bg-white p-3 border border-slate-200 rounded-lg shadow-sm">
+                    <span class="font-bold text-slate-700"><i class="fa-solid fa-bars-staggered text-slate-300 mr-2"></i> ${s.name}</span>
+                    <button onclick="deleteSem('${s.id}')" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            `).join('');
+        }
+
+        document.getElementById('addSemBtn').addEventListener('click', async () => {
+            const name = document.getElementById('newSemName').value.trim();
+            if(!name) return;
+            try {
+                await addDoc(collection(db, "schools", currentSchoolId, "semesters"), {
+                    name: name,
+                    order: Date.now() // Simple ordering trick
+                });
+                document.getElementById('newSemName').value = '';
+                loadSemesters();
+            } catch(e) { console.error(e); }
+        });
+
+        window.deleteSem = async function(id) {
+            if(confirm("Delete this grading period?")) {
+                import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js').then(async ({deleteDoc, doc}) => {
+                    await deleteDoc(doc(db, "schools", currentSchoolId, "semesters", id));
+                    loadSemesters();
+                });
+            }
+        }
+
+        // --- SETTINGS LOGIC ---
+        document.getElementById('updateCodeBtn').addEventListener('click', async () => {
+            const newCode = document.getElementById('newAdminCode').value.trim();
+            const msg = document.getElementById('settingsMsg');
+            if(newCode.length < 5) {
+                msg.innerText = "Code must be at least 5 characters.";
+                msg.className = "text-sm mt-2 font-bold text-red-600 block";
+                return;
+            }
+
+            try {
+                await updateDoc(doc(db, "schools", currentSchoolId), { adminCode: newCode });
+                msg.innerText = "Admin code updated successfully!";
+                msg.className = "text-sm mt-2 font-bold text-green-600 block";
+                document.getElementById('newAdminCode').value = '';
+                setTimeout(() => msg.classList.add('hidden'), 3000);
+            } catch(e) {
+                console.error(e);
+                msg.innerText = "Error updating code.";
+                msg.className = "text-sm mt-2 font-bold text-red-600 block";
+            }
+        });
+
+    </script>
+</body>
+</html>
