@@ -12,6 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <style>
+html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; }
 * { font-family: 'Nunito', sans-serif; }
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -41,19 +42,6 @@
 .orb-4 { width:160px;height:160px; background:radial-gradient(circle,rgba(99,102,241,0.2),transparent 70%); bottom:25%;right:8%; animation:orbFloat 16s ease-in-out infinite 1s; }
 .orb-5 { width:300px;height:300px; background:radial-gradient(circle,rgba(59,130,246,0.12),transparent 70%); top:50%;left:35%; animation:orbFloat 20s ease-in-out infinite 3s; }
 
-/* Floating badges */
-.float-badge {
-  position:absolute; background:rgba(255,255,255,0.07);
-  border:1px solid rgba(255,255,255,0.14); backdrop-filter:blur(10px);
-  border-radius:14px; padding:10px 16px;
-  display:flex; align-items:center; gap:8px;
-  color:#c7d9ff; font-size:0.75rem; font-weight:800; white-space:nowrap;
-}
-@keyframes badgeBob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-7px)} }
-.fb-1 { top:18%;left:3%; animation:badgeBob 5s ease-in-out infinite; }
-.fb-2 { top:32%;right:2%; animation:badgeBob 6s ease-in-out infinite 1s; }
-.fb-3 { bottom:20%;left:2%; animation:badgeBob 4.5s ease-in-out infinite 0.5s; }
-.fb-4 { bottom:33%;right:3%; animation:badgeBob 5.5s ease-in-out infinite 1.5s; }
 
 /* Card entrance */
 @keyframes cardUp { from{opacity:0;transform:translateY(36px) scale(0.96)} to{opacity:1;transform:translateY(0) scale(1)} }
@@ -140,18 +128,14 @@
 }
 </style>
 </head>
-<body class="text-slate-800 h-screen overflow-hidden flex">
+<body class="text-slate-800" style="width:100%;height:100%;overflow:hidden;position:relative;display:flex;">
 
 <!-- LOGIN SCREEN -->
-<div id="loginScreen" class="absolute inset-0 z-50 flex flex-col items-center justify-center p-4">
+<div id="loginScreen" style="position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1rem;overflow-y:auto;">
   <div class="orb orb-1"></div><div class="orb orb-2"></div><div class="orb orb-3"></div>
   <div class="orb orb-4"></div><div class="orb orb-5"></div>
 
-  <!-- Floating badges (desktop only) -->
-  <div class="float-badge fb-1 hidden lg:flex"><span class="text-xl">🔒</span> Bank-grade Security</div>
-  <div class="float-badge fb-2 hidden lg:flex"><span class="text-xl">⚡</span> Real-Time Grades</div>
-  <div class="float-badge fb-3 hidden lg:flex"><span class="text-xl">🇧🇿</span> Built for Belize</div>
-  <div class="float-badge fb-4 hidden lg:flex"><span class="text-xl">📊</span> Live Dashboards</div>
+
 
   <!-- Back link -->
   <div class="relative z-10 mb-5">
@@ -222,7 +206,7 @@
 </div>
 
 <!-- MAIN DASHBOARD -->
-<div id="dashboardApp" class="hidden w-full h-full flex">
+<div id="dashboardApp" class="hidden" style="position:fixed;inset:0;display:flex;width:100%;height:100%;">
 
   <!-- SIDEBAR -->
   <aside id="sidebar" class="text-slate-300 flex flex-col shadow-2xl z-20 flex-shrink-0" style="width:272px">
@@ -612,9 +596,9 @@ window.switchTab=function(tabId){
 function filterTable(tabId){const term=document.getElementById('searchInput').value.toLowerCase();Array.from(document.getElementById(tabId==='teachers'?'teachersTableBody':'studentsTableBody').querySelectorAll('tr.trow')).forEach(row=>{row.style.display=row.textContent.toLowerCase().includes(term)?'':'none';});}
 
 function launchDashboard(data){
-  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('loginScreen').style.display='none';
   document.getElementById('forceResetModal').classList.add('hidden');
-  document.getElementById('dashboardApp').classList.remove('hidden');
+  const app=document.getElementById('dashboardApp');app.style.display='flex';app.classList.remove('hidden');
   document.getElementById('displaySchoolName').textContent=data.schoolName;
   document.getElementById('sidebarSchoolId').textContent=currentSchoolId;
   if(data.logoUrl){document.getElementById('schoolLogo').src=data.logoUrl;document.getElementById('schoolLogo').classList.remove('hidden');document.getElementById('schoolLogoFallback').classList.add('hidden');}
@@ -653,8 +637,8 @@ document.getElementById('saveForceCodeBtn').addEventListener('click',async()=>{
 
 document.getElementById('logoutBtn').addEventListener('click',()=>{
   currentSchoolId=null;schoolData=null;
-  document.getElementById('loginScreen').classList.remove('hidden');
-  document.getElementById('dashboardApp').classList.add('hidden');
+  document.getElementById('loginScreen').style.display='flex';
+  const app=document.getElementById('dashboardApp');app.style.display='none';app.classList.add('hidden');
   document.getElementById('loginAdminCode').value='';
 });
 
