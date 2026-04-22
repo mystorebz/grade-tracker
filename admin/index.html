@@ -87,7 +87,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
 </head>
 <body class="text-slate-800" style="width:100%;height:100%;overflow:hidden;position:relative;display:flex;">
 
-<!-- ══ LOGIN ══ -->
 <div id="loginScreen" style="position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1rem;overflow-y:auto;">
   <div class="orb orb-1"></div><div class="orb orb-2"></div><div class="orb orb-3"></div><div class="orb orb-4"></div><div class="orb orb-5"></div>
   <div class="relative z-10 mb-5"><a href="../index.html" class="back-btn"><i class="fa-solid fa-arrow-left text-xs"></i> Back to Main Site</a></div>
@@ -113,7 +112,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
   </div>
 </div>
 
-<!-- ══ FORCE RESET MODAL ══ -->
 <div id="forceResetModal" class="absolute inset-0 bg-slate-900/90 backdrop-blur-md z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
   <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden" id="forceResetModalInner">
     <div class="h-1.5 bg-gradient-to-r from-amber-400 to-orange-500"></div>
@@ -131,10 +129,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
   </div>
 </div>
 
-<!-- ══ MAIN DASHBOARD ══ -->
 <div id="dashboardApp" class="hidden" style="position:fixed;inset:0;display:flex;width:100%;height:100%;">
 
-  <!-- SIDEBAR -->
   <aside id="sidebar" class="text-slate-300 flex flex-col shadow-2xl z-20 flex-shrink-0" style="width:272px">
     <div class="p-5 border-b border-white/5">
       <div class="school-badge rounded-2xl p-4 flex flex-col items-center text-center">
@@ -163,10 +159,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
     </div>
   </aside>
 
-  <!-- MAIN -->
   <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden bg-[#eef2ff]">
 
-    <!-- TOPBAR -->
     <header class="topbar h-16 bg-white border-b border-slate-200 flex items-center px-8 z-10 justify-between flex-shrink-0 shadow-sm">
       <div>
         <h1 id="topbarTitle" class="text-xl font-black text-slate-800 leading-none">Overview</h1>
@@ -177,7 +171,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
           <i class="fa-solid fa-magnifying-glass text-slate-400 text-sm"></i>
           <input type="text" id="searchInput" placeholder="Search..." class="bg-transparent text-sm outline-none w-44 font-semibold text-slate-700">
         </div>
-        <!-- Global period selector (shown on classes tab) -->
         <div id="topbarPeriod" class="hidden items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">
           <i class="fa-solid fa-calendar-days text-blue-500 text-sm"></i>
           <span class="text-xs font-black text-blue-700 uppercase tracking-wider">Period:</span>
@@ -189,17 +182,44 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
 
     <div class="flex-1 overflow-y-auto p-7">
 
-      <!-- ── OVERVIEW ── -->
       <div id="view-overview" class="view-section">
+        
+        <div id="capacityWarningBanner" class="hidden mb-6 bg-rose-50 border border-rose-200 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between shadow-sm gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-rose-100 text-rose-600 rounded-xl flex items-center justify-center text-lg flex-shrink-0"><i class="fa-solid fa-lock"></i></div>
+                <div>
+                    <h4 class="font-black text-rose-700 text-sm">School Capacity Reached</h4>
+                    <p class="text-xs text-rose-600 font-semibold mt-0.5">You have reached the maximum number of students for your current plan. Teachers cannot add new students.</p>
+                </div>
+            </div>
+            <button class="bg-rose-600 hover:bg-rose-700 text-white text-xs font-black px-4 py-2.5 rounded-xl transition shadow-md whitespace-nowrap"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i> Contact to Upgrade</button>
+        </div>
+
         <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
           <div class="stat-card bg-gradient-to-br from-blue-600 to-blue-700 p-6 rounded-2xl shadow-lg shadow-blue-500/20 text-white border border-blue-500/30">
             <div class="flex items-center justify-between mb-3"><div class="bg-white/20 h-12 w-12 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-chalkboard-user"></i></div><span class="text-blue-200 text-xs font-black uppercase tracking-wider">Staff</span></div>
             <h3 id="stat-teachers" class="text-5xl font-black">0</h3><p class="text-blue-100 text-sm font-bold mt-1">Active Teachers</p>
           </div>
-          <div class="stat-card bg-gradient-to-br from-emerald-500 to-teal-600 p-6 rounded-2xl shadow-lg shadow-emerald-500/20 text-white border border-emerald-400/30">
-            <div class="flex items-center justify-between mb-3"><div class="bg-white/20 h-12 w-12 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-user-graduate"></i></div><span class="text-emerald-100 text-xs font-black uppercase tracking-wider">Enrolled</span></div>
-            <h3 id="stat-students" class="text-5xl font-black">0</h3><p class="text-emerald-100 text-sm font-bold mt-1">Active Students</p>
+          
+          <div class="stat-card bg-gradient-to-br from-emerald-500 to-teal-600 p-6 rounded-2xl shadow-lg shadow-emerald-500/20 text-white border border-emerald-400/30 flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-2">
+                <div class="bg-white/20 h-10 w-10 rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-user-graduate"></i></div>
+                <span id="planNameDisplay" class="text-emerald-100 text-[10px] font-black uppercase tracking-wider bg-black/10 px-3 py-1 rounded-full border border-white/10 shadow-inner">Loading Plan...</span>
+            </div>
+            <div>
+                <h3 class="text-4xl font-black leading-none mt-2">
+                    <span id="stat-students">0</span>
+                    <span class="text-xl text-emerald-200 font-bold"> / <span id="stat-limit">0</span></span>
+                </h3>
+                <p class="text-emerald-100 text-xs font-bold mt-1">Active Students</p>
+            </div>
+            <div class="mt-3">
+                <div class="h-1.5 w-full bg-black/20 rounded-full overflow-hidden">
+                    <div id="capacityBar" class="h-full bg-white rounded-full" style="width: 0%; transition: width 0.5s ease, background-color 0.3s ease;"></div>
+                </div>
+            </div>
           </div>
+
           <div class="stat-card bg-gradient-to-br from-amber-500 to-orange-500 p-6 rounded-2xl shadow-lg shadow-amber-500/20 text-white border border-amber-400/30">
             <div class="flex items-center justify-between mb-3"><div class="bg-white/20 h-12 w-12 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-calendar-check"></i></div><span class="text-amber-100 text-xs font-black uppercase tracking-wider">Current</span></div>
             <p class="text-amber-100 text-xs font-black uppercase tracking-wider mb-2">Active Grading Period</p>
@@ -218,7 +238,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
         </div>
       </div>
 
-      <!-- ── TEACHERS ── -->
       <div id="view-teachers" class="view-section hidden">
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div class="p-6 border-b border-slate-100 flex flex-wrap gap-4 justify-between items-center bg-gradient-to-r from-white to-blue-50/40">
@@ -244,7 +263,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
         </div>
       </div>
 
-      <!-- ── CLASSES ── -->
       <div id="view-classes" class="view-section hidden">
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div class="p-6 border-b border-slate-100 flex flex-wrap gap-4 justify-between items-center bg-gradient-to-r from-white to-indigo-50/40">
@@ -266,7 +284,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
         </div>
       </div>
 
-      <!-- ── STUDENTS ── -->
       <div id="view-students" class="view-section hidden">
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div class="p-6 border-b border-slate-100 flex flex-wrap gap-4 justify-between items-center bg-gradient-to-r from-white to-emerald-50/40">
@@ -291,7 +308,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
         </div>
       </div>
 
-      <!-- ── GRADING PERIODS ── -->
       <div id="view-semesters" class="view-section hidden">
         <div class="max-w-2xl">
           <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -307,10 +323,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
         </div>
       </div>
 
-      <!-- ── SETTINGS ── -->
       <div id="view-settings" class="view-section hidden">
         <div class="max-w-2xl space-y-5">
-          <!-- Security -->
           <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-blue-50/40">
               <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-lock"></i></div>
@@ -324,7 +338,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
               <p id="settingsSecurityMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
             </div>
           </div>
-          <!-- School Profile -->
           <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-green-50/40">
               <div class="w-10 h-10 bg-green-100 text-green-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-school"></i></div>
@@ -344,7 +357,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
               <p id="settingsProfileMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
             </div>
           </div>
-          <!-- Archive Management -->
           <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-amber-50/40">
               <div class="w-10 h-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-box-archive"></i></div>
@@ -371,7 +383,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
   </main>
 </div>
 
-<!-- ══ ADD TEACHER MODAL ══ -->
 <div id="addTeacherModal" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0">
   <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200" id="addTeacherModalInner">
     <div class="h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-600"></div>
@@ -392,7 +403,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
   </div>
 </div>
 
-<!-- ══ VIEW/EDIT TEACHER PANEL ══ -->
 <div id="teacherPanel" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-end hidden opacity-0">
   <div id="teacherPanelInner" class="side-panel bg-white w-full max-w-xl h-full shadow-2xl flex flex-col translate-x-full">
     <div class="h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-600 flex-shrink-0"></div>
@@ -432,7 +442,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
   </div>
 </div>
 
-<!-- ══ CLASS DETAIL PANEL ══ -->
 <div id="classPanel" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-end hidden opacity-0">
   <div id="classPanelInner" class="side-panel bg-[#f0f4ff] w-full max-w-2xl h-full shadow-2xl flex flex-col translate-x-full">
     <div class="h-1 bg-gradient-to-r from-indigo-500 via-blue-400 to-cyan-500 flex-shrink-0"></div>
@@ -446,7 +455,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
   </div>
 </div>
 
-<!-- ══ STUDENT RECORDS PANEL ══ -->
 <div id="studentPanel" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-end hidden opacity-0">
   <div id="studentPanelInner" class="side-panel bg-[#f8faff] w-full max-w-2xl h-full shadow-2xl flex flex-col translate-x-full">
     <div class="h-1 bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-500 flex-shrink-0"></div>
@@ -461,7 +469,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
   </div>
 </div>
 
-<!-- ══ ASSIGNMENT DETAIL MODAL ══ -->
 <div id="assignmentModal" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0">
   <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200" id="assignmentModalInner">
     <div class="h-1 bg-gradient-to-r from-blue-500 to-cyan-400"></div>
@@ -473,7 +480,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
   </div>
 </div>
 
-<!-- ══ FIREBASE + LOGIC ══ -->
 <script type="module">
 import { db } from '../assets/js/firebase-init.js';
 import { doc,getDoc,updateDoc,collection,addDoc,getDocs,setDoc,deleteDoc,query,where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
@@ -536,6 +542,17 @@ window.switchTab=function(tabId){
 };
 function filterTable(tabId){const term=document.getElementById('searchInput').value.toLowerCase();Array.from(document.getElementById(tabId==='teachers'?'teachersTableBody':'studentsTableBody').querySelectorAll('tr.trow')).forEach(row=>{row.style.display=row.textContent.toLowerCase().includes(term)?'':'none';});}
 
+// ── DYNAMIC LIMITS FETCHING ───────────────────────────────────────────────
+async function fetchPlanDetails(planId) {
+    try {
+        const planSnap = await getDoc(doc(db, 'subscriptionPlans', planId || 'starter'));
+        if (planSnap.exists()) {
+            return { limit: planSnap.data().limit, name: planSnap.data().name };
+        }
+    } catch (e) { console.error("Error fetching plan details:", e); }
+    return { limit: 50, name: 'Starter Plan' }; // Fallback
+}
+
 // ── LAUNCH DASHBOARD ──────────────────────────────────────────────────────
 function launchDashboard(data){
   document.getElementById('loginScreen').style.display='none';
@@ -561,7 +578,17 @@ document.getElementById('loginBtn').addEventListener('click',async()=>{
     else{const data=snap.data();
       if(data.isVerified!==true){msgEl.textContent='Account pending approval. Contact ConnectUs.';msgEl.classList.remove('hidden');}
       else if(codeIn!==(data.adminCode||'ADMIN2024')){msgEl.textContent='Incorrect Admin Code.';msgEl.classList.remove('hidden');}
-      else{currentSchoolId=snap.id;schoolData=data;if(data.requiresPinReset)openOverlay('forceResetModal','forceResetModalInner');else launchDashboard(data);}
+      else{
+        currentSchoolId=snap.id;
+        schoolData=data;
+
+        // Fetch Dynamic Plan Limits
+        const planDetails = await fetchPlanDetails(data.subscriptionPlan);
+        schoolData.planLimit = planDetails.limit;
+        schoolData.planName = planDetails.name;
+
+        if(data.requiresPinReset)openOverlay('forceResetModal','forceResetModalInner');else launchDashboard(data);
+      }
     }
   }catch(e){console.error(e);msgEl.textContent='Connection error. Please try again.';msgEl.classList.remove('hidden');}
   btn.disabled=false;btn.innerHTML=`<i class="fa-solid fa-arrow-right-to-bracket"></i> Secure Login`;
@@ -589,8 +616,29 @@ document.getElementById('logoutBtn').addEventListener('click',()=>{
 // ── OVERVIEW ──────────────────────────────────────────────────────────────
 async function loadOverviewStats(){
   const[tSnap,sSnap]=await Promise.all([getDocs(collection(db,'schools',currentSchoolId,'teachers')),getDocs(collection(db,'schools',currentSchoolId,'students'))]);
-  document.getElementById('stat-teachers').textContent=[...tSnap.docs].filter(d=>!d.data().archived).length;
-  document.getElementById('stat-students').textContent=[...sSnap.docs].filter(d=>!d.data().archived).length;
+  const activeTeachers = [...tSnap.docs].filter(d=>!d.data().archived).length;
+  const activeStudents = [...sSnap.docs].filter(d=>!d.data().archived).length;
+  const limit = schoolData.planLimit || 50;
+
+  document.getElementById('stat-teachers').textContent = activeTeachers;
+  document.getElementById('stat-students').textContent = activeStudents;
+  document.getElementById('stat-limit').textContent = limit;
+  document.getElementById('planNameDisplay').textContent = schoolData.planName || 'Plan';
+
+  // Capacity Progress Bar Logic
+  const pct = Math.min(100, Math.round((activeStudents / limit) * 100));
+  const bar = document.getElementById('capacityBar');
+  bar.style.width = pct + '%';
+  
+  if (pct >= 90) bar.classList.replace('bg-white', 'bg-red-400');
+  else bar.classList.replace('bg-red-400', 'bg-white');
+
+  // Trigger Warning Banner if at capacity
+  if (activeStudents >= limit) {
+      document.getElementById('capacityWarningBanner').classList.remove('hidden');
+  } else {
+      document.getElementById('capacityWarningBanner').classList.add('hidden');
+  }
 }
 
 // ── SEMESTERS ─────────────────────────────────────────────────────────────
@@ -789,32 +837,26 @@ window.openClassPanel=function(classData){
     <td class="px-4 py-3 text-right"><button onclick="openStudentPanel('${s.id}')" class="text-xs font-black text-emerald-700 hover:bg-emerald-600 hover:text-white border border-emerald-200 px-3 py-1 rounded-lg transition">Grades</button></td></tr>`).join('');
 
   document.getElementById('classPanelBody').innerHTML=`
-    <!-- Teacher card -->
     ${teacher?`<div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex items-center gap-4">
       <div class="h-12 w-12 bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl flex items-center justify-center font-black text-lg shadow-sm flex-shrink-0">${teacher.name.charAt(0)}</div>
       <div><p class="font-black text-slate-800">${teacher.name}</p><p class="text-xs text-slate-400 font-semibold">${teacher.email||''} ${teacher.phone?'· '+teacher.phone:''}</p>
         <p class="text-xs text-slate-500 font-semibold mt-1">Code: <span class="font-mono font-black text-blue-600">${teacher.loginCode}</span></p></div>
     </div>`:'<div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm font-bold text-amber-700"><i class="fa-solid fa-triangle-exclamation mr-2"></i>No teacher assigned to this class yet.</div>'}
-    <!-- Stats -->
     <div class="grid grid-cols-3 gap-3">
       <div class="bg-white border border-slate-200 rounded-2xl p-4 text-center shadow-sm"><p class="text-xs font-black text-slate-400 uppercase tracking-wider mb-1">Class Avg</p><p class="text-3xl font-black ${classAvg!==null?gradeColorClass(classAvg):'text-slate-400'}">${classAvg!==null?classAvg+'%':'—'}</p></div>
       <div class="bg-white border border-slate-200 rounded-2xl p-4 text-center shadow-sm"><p class="text-xs font-black text-slate-400 uppercase tracking-wider mb-1">Students</p><p class="text-3xl font-black text-indigo-600">${students.length}</p></div>
       <div class="bg-white border border-slate-200 rounded-2xl p-4 text-center shadow-sm"><p class="text-xs font-black text-slate-400 uppercase tracking-wider mb-1">At Risk</p><p class="text-3xl font-black ${atRiskStudents.length?'text-red-600':'text-emerald-600'}">${atRiskStudents.length}</p></div>
     </div>
-    <!-- Distribution -->
     <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
       <h4 class="text-xs font-black text-slate-500 uppercase tracking-wider mb-3">Grade Distribution</h4>
       <div class="dist-bar">${dist.a?`<div class="dist-seg bg-emerald-500" style="width:${dist.a/total*100}%">A:${dist.a}</div>`:''}${dist.b?`<div class="dist-seg bg-blue-500" style="width:${dist.b/total*100}%">B:${dist.b}</div>`:''}${dist.c?`<div class="dist-seg bg-teal-500" style="width:${dist.c/total*100}%">C:${dist.c}</div>`:''}${dist.d?`<div class="dist-seg bg-amber-500" style="width:${dist.d/total*100}%">D:${dist.d}</div>`:''}${dist.f?`<div class="dist-seg bg-red-500" style="width:${dist.f/total*100}%">F:${dist.f}</div>`:''}${!total?`<div class="dist-seg bg-slate-300" style="width:100%">No Data</div>`:''}</div>
       <div class="flex gap-4 mt-3 flex-wrap">${[['A',dist.a,'bg-emerald-500'],['B',dist.b,'bg-blue-500'],['C',dist.c,'bg-teal-500'],['D',dist.d,'bg-amber-500'],['F',dist.f,'bg-red-500']].map(([l,n,c])=>`<div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-sm ${c}"></div><span class="text-xs font-black text-slate-600">${l}: ${n}</span></div>`).join('')}</div>
     </div>
-    <!-- At Risk -->
     ${atRiskStudents.length?`<div class="bg-red-50 border border-red-200 rounded-2xl p-5"><h4 class="font-black text-red-700 text-sm uppercase tracking-wider mb-3 flex items-center gap-2"><i class="fa-solid fa-triangle-exclamation"></i>At Risk (${atRiskStudents.length})</h4><div class="space-y-2">${atRiskStudents.map(s=>{const sg=grades.filter(g=>g.studentId===s.id);const avg=sg.length?Math.round(sg.reduce((a,g)=>a+(g.max?g.score/g.max*100:0),0)/sg.length):null;return`<div class="flex items-center justify-between bg-white border border-red-100 rounded-xl p-3"><span class="font-black text-slate-700 text-sm">${s.name}</span><span class="font-black text-red-600">${avg!==null?avg+'%':'—'}</span></div>`;}).join('')}</div></div>`:''}
-    <!-- Subject Breakdown -->
     ${subjectRows?`<div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
       <div class="px-5 py-4 border-b border-slate-100 bg-slate-50"><h4 class="font-black text-slate-700 text-sm uppercase tracking-wider">Subject Breakdown</h4></div>
       <div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200"><tr><th class="px-4 py-3 font-black text-left">Subject</th><th class="px-4 py-3 font-black text-center">Students</th><th class="px-4 py-3 font-black text-center">Grades</th><th class="px-4 py-3 font-black text-center">Average</th></tr></thead><tbody>${subjectRows}</tbody></table></div>
     </div>`:''}
-    <!-- Student List -->
     <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
       <div class="px-5 py-4 border-b border-slate-100 bg-slate-50"><h4 class="font-black text-slate-700 text-sm uppercase tracking-wider">Student Roster</h4></div>
       <div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200"><tr><th class="px-4 py-3 font-black text-left">Student</th><th class="px-4 py-3 font-black text-center">Average</th><th class="px-4 py-3 font-black text-center">Standing</th><th class="px-4 py-3 font-black text-center">Grades</th><th class="px-4 py-3 font-black text-right"></th></tr></thead><tbody>${stuRows||'<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 italic">No students.</td></tr>'}</tbody></table></div>
