@@ -404,10 +404,10 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
             console.log('[FamilyPortal] Step 3 — showing dashboard for:', sData.name);
             session = { schoolId: actualSchoolId, studentId: sDoc.id, studentData: sData };
 
-            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('loginScreen').style.display = 'none'; // inline style beats #loginScreen{display:flex} ID rule
             const app = document.getElementById('dashboardApp');
-            app.style.display = 'flex';         // override the inline style="display:none"
-            app.classList.remove('hidden');     // remove the Tailwind hidden class
+            app.style.display = 'flex';
+            app.classList.remove('hidden');
 
             document.getElementById('displaySchoolName').innerText  = schoolSnap.data().schoolName;
             document.getElementById('displayStudentName').innerText = sData.name;
