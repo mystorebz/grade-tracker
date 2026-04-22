@@ -295,10 +295,16 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
               <button onclick="printStudents()" class="no-print flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-4 py-2 rounded-xl text-sm transition border border-slate-200"><i class="fa-solid fa-print"></i> Print</button>
             </div>
           </div>
+          
+          <div class="p-4 border-b border-slate-100 bg-slate-50 flex gap-3 flex-wrap">
+            <select id="filterStudentClass" onchange="loadStudents()" class="form-input w-auto p-2 text-sm bg-white"><option value="">All Classes</option><option value="unassigned">Unassigned Only</option></select>
+            <select id="filterStudentTeacher" onchange="loadStudents()" class="form-input w-auto p-2 text-sm bg-white"><option value="">All Teachers</option></select>
+          </div>
+
           <div class="overflow-x-auto">
             <table class="w-full text-left text-sm">
               <thead class="bg-slate-50 text-slate-500 uppercase text-xs tracking-wider border-b border-slate-200">
-                <tr><th class="px-6 py-4 font-black">Student</th><th class="px-6 py-4 font-black">Class</th><th class="px-6 py-4 font-black">Teacher</th><th class="px-6 py-4 font-black">Parent Phone</th><th class="px-6 py-4 font-black text-right">Records</th></tr>
+                <tr><th class="px-6 py-4 font-black">Student</th><th class="px-6 py-4 font-black">Class</th><th class="px-6 py-4 font-black">Teacher</th><th class="px-6 py-4 font-black">Parent Phone</th><th class="px-6 py-4 font-black text-right">Actions</th></tr>
               </thead>
               <tbody id="studentsTableBody" class="divide-y divide-slate-100">
                 <tr><td colspan="5" class="px-6 py-16 text-center text-slate-400 font-semibold"><i class="fa-solid fa-spinner fa-spin text-emerald-400 text-2xl mb-3 block"></i>Loading students...</td></tr>
@@ -480,6 +486,32 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
   </div>
 </div>
 
+<div id="reassignStudentModal" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200" id="reassignStudentModalInner">
+    <div class="h-1 bg-gradient-to-r from-emerald-500 to-teal-400"></div>
+    <div class="px-7 py-5 border-b border-slate-100 flex justify-between items-center">
+      <h3 class="font-black text-xl text-slate-800">Edit / Reassign Student</h3>
+      <button onclick="closeReassignModal()" class="text-slate-400 hover:text-red-500 h-8 w-8 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+    </div>
+    <div class="p-7 space-y-4 bg-slate-50/50">
+      <div>
+        <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Student Name</label>
+        <input type="text" id="rsName" class="form-input w-full p-3 bg-white text-sm">
+      </div>
+      <div>
+        <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Assign to Class</label>
+        <select id="rsClass" class="form-input w-full p-3 bg-white text-sm"></select>
+      </div>
+      <div>
+        <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Assign Teacher</label>
+        <select id="rsTeacher" class="form-input w-full p-3 bg-white text-sm"></select>
+      </div>
+      <button id="saveReassignBtn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3.5 rounded-xl transition shadow-md text-base mt-2">Save Changes</button>
+      <p id="reassignMsg" class="text-sm hidden font-bold p-3 rounded-xl text-center"></p>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { db } from '../assets/js/firebase-init.js';
 import { doc,getDoc,updateDoc,collection,addDoc,getDocs,setDoc,deleteDoc,query,where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
@@ -488,6 +520,12 @@ import { doc,getDoc,updateDoc,collection,addDoc,getDocs,setDoc,deleteDoc,query,w
 let currentSchoolId=null,schoolData=null,currentTeacherId=null,currentStudentId=null;
 let allTeachersCache=[],allStudentsCache=[];
 let allSemesters=[];
+
+const CLASSES={
+  'Primary':['Infant 1','Infant 2','Standard 1','Standard 2','Standard 3','Standard 4','Standard 5','Standard 6'],
+  'High School':['First Form','Second Form','Third Form','Fourth Form'],
+  'Junior College':['Year 1','Year 2']
+};
 
 // ── HELPERS ────────────────────────────────────────────────────────────────
 function letterGrade(p){return p>=90?'A':p>=80?'B':p>=70?'C':p>=65?'D':'F';}
@@ -756,24 +794,18 @@ async function loadClasses(){
   tbody.innerHTML=`<tr><td colspan="9" class="px-6 py-16 text-center text-slate-400 font-semibold"><i class="fa-solid fa-spinner fa-spin text-indigo-400 text-2xl mb-3 block"></i>Loading classes...</td></tr>`;
   const semId=document.getElementById('globalPeriodSelect').value||schoolData.activeSemesterId||'';
 
-  // Load all teachers and students
   const[tSnap,sSnap]=await Promise.all([getDocs(collection(db,'schools',currentSchoolId,'teachers')),getDocs(collection(db,'schools',currentSchoolId,'students'))]);
   const teachers=tSnap.docs.filter(d=>!d.data().archived).map(d=>({id:d.id,...d.data()}));
   const students=sSnap.docs.filter(d=>!d.data().archived).map(d=>({id:d.id,...d.data()}));
 
-  // Build teacher map
   const teacherMap={};teachers.forEach(t=>{teacherMap[t.id]=t;});
-
-  // Group students by className
   const classesByName={};
   students.forEach(s=>{const cls=s.className||'Unassigned';if(!classesByName[cls])classesByName[cls]={students:[],teacher:null};classesByName[cls].students.push(s);});
 
-  // Assign teacher to each class
   teachers.forEach(t=>{const classes=getTeacherClasses(t);classes.forEach(cls=>{if(classesByName[cls])classesByName[cls].teacher=t;});});
 
   if(!Object.keys(classesByName).length){tbody.innerHTML=`<tr><td colspan="9" class="px-6 py-16 text-center text-slate-400 italic font-semibold">No classes found. Students need to be assigned to classes.</td></tr>`;return;}
 
-  // Load grades for all students in parallel, then compute stats per class
   const classStats=await Promise.all(Object.entries(classesByName).sort((a,b)=>a[0].localeCompare(b[0])).map(async([className,classData])=>{
     const allGrades=[];
     await Promise.all(classData.students.map(async s=>{
@@ -805,7 +837,6 @@ async function loadClasses(){
     </tr>`).join('');
 }
 
-// ── CLASS DETAIL PANEL ─────────────────────────────────────────────────────
 window.openClassPanel=function(classData){
   document.getElementById('cpPanelTitle').textContent=classData.className;
   const semName=document.getElementById('globalPeriodSelect').options[document.getElementById('globalPeriodSelect').selectedIndex]?.text||'';
@@ -816,12 +847,10 @@ window.openClassPanel=function(classData){
   const {teacher,students,grades,classAvg,atRisk,subjectCount}=classData;
   const atRiskStudents=students.filter(s=>{const sg=grades.filter(g=>g.studentId===s.id);const avg=sg.length?sg.reduce((a,g)=>a+(g.max?g.score/g.max*100:0),0)/sg.length:null;return avg!==null&&avg<65;});
 
-  // Grade distribution by student avg
   const stuAvgData=students.map(s=>{const sg=grades.filter(g=>g.studentId===s.id);const avg=sg.length?Math.round(sg.reduce((a,g)=>a+(g.max?g.score/g.max*100:0),0)/sg.length):null;return{...s,avg,gradeCount:sg.length};});
   const dist={a:0,b:0,c:0,d:0,f:0};stuAvgData.filter(s=>s.avg!==null).forEach(s=>{if(s.avg>=90)dist.a++;else if(s.avg>=80)dist.b++;else if(s.avg>=70)dist.c++;else if(s.avg>=65)dist.d++;else dist.f++;});
   const total=stuAvgData.filter(s=>s.avg!==null).length||1;
 
-  // Subject breakdown
   const bySubject={};grades.forEach(g=>{const sub=g.subject||'Uncategorized';if(!bySubject[sub])bySubject[sub]=[];bySubject[sub].push(g);});
   const subjectRows=Object.entries(bySubject).sort((a,b)=>a[0].localeCompare(b[0])).map(([sub,sg])=>{
     const avg=Math.round(sg.reduce((a,g)=>a+(g.max?g.score/g.max*100:0),0)/sg.length);
@@ -864,23 +893,111 @@ window.openClassPanel=function(classData){
 };
 window.closeClassPanel=function(){closeOverlay('classPanel','classPanelInner',true);};
 
-// ── STUDENTS ──────────────────────────────────────────────────────────────
+// ── PHASE 2: STUDENTS ─────────────────────────────────────────────────────
 async function loadStudents(){
   const tbody=document.getElementById('studentsTableBody');
   tbody.innerHTML=`<tr><td colspan="5" class="px-6 py-16 text-center text-slate-400 font-semibold"><i class="fa-solid fa-spinner fa-spin text-emerald-400 text-2xl mb-3 block"></i>Loading students...</td></tr>`;
+  
   const[sSnap,tSnap]=await Promise.all([getDocs(collection(db,'schools',currentSchoolId,'students')),getDocs(collection(db,'schools',currentSchoolId,'teachers'))]);
-  const tm={};tSnap.forEach(d=>{tm[d.id]=d.data().name;});
+  
+  const tm={};
+  allTeachersCache = [];
+  tSnap.forEach(d=>{
+      tm[d.id]=d.data().name;
+      if(!d.data().archived) allTeachersCache.push({id:d.id, ...d.data()});
+  });
+  
   allStudentsCache=sSnap.docs.filter(d=>!d.data().archived).map(d=>({id:d.id,...d.data(),teacherName:tm[d.data().teacherId]||'—'}));
-  if(!allStudentsCache.length){tbody.innerHTML=`<tr><td colspan="5" class="px-6 py-16 text-center text-slate-400 italic font-semibold">No active students found.</td></tr>`;return;}
-  tbody.innerHTML=allStudentsCache.map(s=>`
-    <tr class="trow border-b border-slate-100">
+  
+  // Setup directory filters dynamically
+  const tf = document.getElementById('filterStudentTeacher');
+  if(tf && tf.options.length <= 1) {
+      tf.innerHTML = '<option value="">All Teachers</option>' + allTeachersCache.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+  }
+  const cf = document.getElementById('filterStudentClass');
+  if(cf && cf.options.length <= 2) {
+      const classList = CLASSES[schoolData?.schoolType || 'Primary'] || CLASSES['Primary'];
+      cf.innerHTML = '<option value="">All Classes</option><option value="unassigned">Unassigned Only</option>' + classList.map(c=>`<option value="${c}">${c}</option>`).join('');
+  }
+
+  // Apply filters
+  let filtered = allStudentsCache;
+  const filterT = tf?.value;
+  const filterC = cf?.value;
+  const term = document.getElementById('searchInput')?.value.toLowerCase() || '';
+
+  if(filterT) filtered = filtered.filter(s => s.teacherId === filterT);
+  if(filterC === 'unassigned') filtered = filtered.filter(s => !s.className || !s.teacherId);
+  else if(filterC) filtered = filtered.filter(s => s.className === filterC);
+
+  if(!filtered.length){
+      tbody.innerHTML=`<tr><td colspan="5" class="px-6 py-16 text-center text-slate-400 italic font-semibold">No students match the selected criteria.</td></tr>`;
+      return;
+  }
+
+  tbody.innerHTML=filtered.map(s=>{
+    const classBadge = s.className ? s.className : '<span class="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">Unassigned</span>';
+    const teacherBadge = s.teacherName !== '—' ? s.teacherName : '<span class="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">Unassigned</span>';
+
+    return`
+    <tr class="trow border-b border-slate-100" style="${(s.name||'').toLowerCase().includes(term) ? '' : 'display:none;'}">
       <td class="px-6 py-4"><div class="flex items-center gap-3"><div class="h-10 w-10 bg-gradient-to-br from-emerald-400 to-teal-500 text-white rounded-xl flex items-center justify-center font-black text-sm shadow-sm flex-shrink-0">${(s.name||'?').charAt(0).toUpperCase()}</div><span class="font-black text-slate-700">${s.name||'Unnamed'}</span></div></td>
-      <td class="px-6 py-4 text-slate-600 font-semibold">${s.className||'—'}</td>
-      <td class="px-6 py-4 text-slate-600 font-semibold">${s.teacherName}</td>
+      <td class="px-6 py-4 text-slate-600 font-semibold">${classBadge}</td>
+      <td class="px-6 py-4 text-slate-600 font-semibold">${teacherBadge}</td>
       <td class="px-6 py-4 text-slate-600 font-semibold">${s.parentPhone||'—'}</td>
-      <td class="px-6 py-4 text-right"><button onclick="openStudentPanel('${s.id}')" class="bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 font-black px-4 py-2 rounded-xl text-xs transition border border-emerald-200 hover:border-emerald-600">View Records</button></td>
-    </tr>`).join('');
+      <td class="px-6 py-4 text-right">
+        <div class="flex items-center justify-end gap-2">
+            <button onclick="openReassignModal('${s.id}')" class="bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 font-black px-3 py-1.5 rounded-lg text-xs transition border border-blue-200">Reassign</button>
+            <button onclick="openStudentPanel('${s.id}')" class="bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 font-black px-3 py-1.5 rounded-lg text-xs transition border border-emerald-200 hover:border-emerald-600">Records</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
 }
+
+// ── PHASE 2: REASSIGN MODAL LOGIC ─────────────────────────────────────────
+window.openReassignModal = function(id) {
+    currentStudentId = id;
+    const s = allStudentsCache.find(x => x.id === id);
+    document.getElementById('rsName').value = s.name || '';
+    document.getElementById('reassignMsg').classList.add('hidden');
+
+    const cSelect = document.getElementById('rsClass');
+    const classList = CLASSES[schoolData?.schoolType || 'Primary'] || CLASSES['Primary'];
+    cSelect.innerHTML = '<option value="">-- Unassigned --</option>' + classList.map(c => `<option value="${c}" ${s.className===c?'selected':''}>${c}</option>`).join('');
+
+    const tSelect = document.getElementById('rsTeacher');
+    tSelect.innerHTML = '<option value="">-- Unassigned --</option>' + allTeachersCache.map(t => `<option value="${t.id}" ${s.teacherId===t.id?'selected':''}>${t.name}</option>`).join('');
+
+    openOverlay('reassignStudentModal', 'reassignStudentModalInner');
+};
+
+window.closeReassignModal = function() {
+    closeOverlay('reassignStudentModal', 'reassignStudentModalInner');
+};
+
+document.getElementById('saveReassignBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('saveReassignBtn');
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`; 
+    btn.disabled = true;
+
+    try {
+        const name = document.getElementById('rsName').value.trim();
+        const className = document.getElementById('rsClass').value;
+        const teacherId = document.getElementById('rsTeacher').value;
+
+        await updateDoc(doc(db, 'schools', currentSchoolId, 'students', currentStudentId), {
+            name, className, teacherId
+        });
+
+        closeReassignModal();
+        loadStudents(); 
+    } catch(e) {
+        showMsg('reassignMsg', 'Error updating student record.', true);
+    }
+    btn.innerHTML = `Save Changes`; 
+    btn.disabled = false;
+});
 
 // ── STUDENT RECORDS PANEL ─────────────────────────────────────────────────
 window.openStudentPanel=async function(studentId){
