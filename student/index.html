@@ -315,7 +315,6 @@ function gradeColorText(p) {
     return 'text-red-600';
 }
 function isNew(dateString, createdAtString) {
-    // Check if grade was created/entered within last 5 days
     const d = createdAtString ? new Date(createdAtString) : new Date(dateString);
     if(isNaN(d)) return false;
     const diffTime = Math.abs(new Date() - d);
@@ -350,7 +349,6 @@ window.switchTab = function(tabId) {
     document.getElementById('topbarSub').textContent = subs[tabId];
 
     if(tabId === 'history' && allSemesters.length > 0) {
-        // Default history to the first archived/past semester, or just the active one if none
         const pastSems = allSemesters.filter(s => s.id !== activeSemesterId);
         if(pastSems.length > 0) {
             document.getElementById('historySemesterSelect').value = pastSems[0].id;
@@ -369,7 +367,6 @@ window.toggleAccordion = function(h) {
 
 // ── LOGIN ──────────────────────────────────────────────────────────────────
 document.getElementById('loginBtn').addEventListener('click', async () => {
-    // 1. Get raw input
     const rawSchoolId = document.getElementById('loginSchoolId').value.trim();
     const pin = document.getElementById('loginPin').value.trim().toUpperCase(); 
     const msgEl = document.getElementById('loginMsg');
@@ -383,12 +380,11 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         let schoolSnap = null;
         let actualSchoolId = null;
 
-        // 2. Smart loop: Check Uppercase, Lowercase, and exact input
         for (const id of [rawSchoolId.toUpperCase(), rawSchoolId.toLowerCase(), rawSchoolId]) {
             const tempSnap = await getDoc(doc(db, "schools", id));
             if (tempSnap.exists()) {
                 schoolSnap = tempSnap;
-                actualSchoolId = id; // Store the exact matching case
+                actualSchoolId = id;
                 break;
             }
         }
@@ -402,7 +398,6 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         
         activeSemesterId = schoolSnap.data().activeSemesterId || '';
 
-        // Query the students collection using the verified, correctly cased School ID
         const q = query(collection(db, "schools", actualSchoolId, "students"), where("pin", "==", pin));
         const snap = await getDocs(q);
 
@@ -410,7 +405,6 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
             const sDoc = snap.docs[0];
             const sData = sDoc.data();
 
-            // 1b. Archive Block
             if(sData.archived) {
                 msgEl.innerText = "This student record has been archived. Please contact the school administration.";
                 msgEl.classList.remove('hidden'); resetLoginBtn(); return;
@@ -422,10 +416,8 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
             
             document.getElementById('displaySchoolName').innerText = schoolSnap.data().schoolName;
             document.getElementById('displayStudentName').innerText = sData.name;
-            document.getElementById('topStudentName').innerText = sData.name;
             document.getElementById('studentAvatar').innerText = sData.name.charAt(0).toUpperCase();
 
-            // Current Class / Status
             const clsStatus = sData.className ? `Class: ${sData.className}` : 'Unassigned Class';
             document.getElementById('displayStudentClass').innerText = clsStatus;
 
@@ -445,23 +437,18 @@ function resetLoginBtn() {
 
 // ── BOOT PORTAL & DATA FETCHING ───────────────────────────────────────────
 async function bootPortal() {
-    // Fetch Semesters
     const semSnap = await getDocs(collection(db, "schools", session.schoolId, "semesters"));
     allSemesters = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.order||0) - (b.order||0));
     
-    // Set Topbar Period Display
     const activeSemObj = allSemesters.find(s => s.id === activeSemesterId);
     document.getElementById('activeSemesterDisplay').textContent = activeSemObj ? activeSemObj.name : 'Unknown';
 
-    // Populate History Dropdown
     const histSel = document.getElementById('historySemesterSelect');
     histSel.innerHTML = allSemesters.map(s => `<option value="${s.id}">${s.name} ${s.id===activeSemesterId?'(Current)':''}</option>`).join('');
 
-    // Fetch Teachers (for mapping names)
     const tSnap = await getDocs(collection(db, "schools", session.schoolId, "teachers"));
     tSnap.forEach(d => { teachersMap[d.id] = d.data().name; });
 
-    // Fetch ALL Grades for this student
     const gSnap = await getDocs(collection(db, "schools", session.schoolId, "students", session.studentId, "grades"));
     allGrades = gSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
@@ -473,7 +460,6 @@ async function bootPortal() {
 function renderDashboard() {
     const currentGrades = allGrades.filter(g => g.semesterId === activeSemesterId);
     
-    // 1. Calculate Average
     if(currentGrades.length > 0) {
         const total = currentGrades.reduce((acc, g) => acc + (g.max ? (g.score/g.max)*100 : 0), 0);
         const avg = Math.round(total / currentGrades.length);
@@ -482,10 +468,8 @@ function renderDashboard() {
         document.getElementById('dashAvg').textContent = '--';
     }
 
-    // 2. Total Assignments
     document.getElementById('dashTotalGrades').textContent = currentGrades.length;
 
-    // 3. Recent Updates (Last 7 days, from any semester but usually current)
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     
@@ -495,7 +479,7 @@ function renderDashboard() {
     }).sort((a,b) => {
         const da = a.createdAt ? new Date(a.createdAt) : new Date(a.date);
         const db = b.createdAt ? new Date(b.createdAt) : new Date(b.date);
-        return db - da; // newest first
+        return db - da;
     });
 
     document.getElementById('dashRecentCount').textContent = recentGrades.length;
@@ -504,7 +488,6 @@ function renderDashboard() {
     if(recentGrades.length === 0) {
         actList.innerHTML = `<div class="text-center py-6 text-slate-400 font-semibold"><i class="fa-solid fa-mug-hot text-2xl mb-2 block text-slate-300"></i>No new grades posted in the last 7 days.</div>`;
     } else {
-        // Show max 5 on dashboard
         actList.innerHTML = recentGrades.slice(0,5).map(g => {
             const tName = teachersMap[g.teacherId] || 'Teacher';
             const pct = g.max ? Math.round((g.score/g.max)*100) : 0;
@@ -618,8 +601,6 @@ window.loadHistoricalGrades = function() {
 
     const histGrades = allGrades.filter(g => g.semesterId === semId);
     
-    // Attempt to figure out who the primary teacher was for this semester
-    // We look at the most frequent teacherId in the grades for this period
     const tCount = {};
     let topTeacherId = null; let topCount = 0;
     histGrades.forEach(g => {
