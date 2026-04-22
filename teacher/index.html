@@ -39,7 +39,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
 .login-input{width:100%;padding:0.9rem 1.1rem;background:#f0fdf4;border:2px solid #bbf7d0;border-radius:14px;font-size:0.9rem;font-family:'Nunito',sans-serif;outline:none;transition:all 0.2s;color:#1e293b;font-weight:600;}
 .login-input:focus{border-color:#10b981;background:#fff;box-shadow:0 0 0 4px rgba(16,185,129,0.14);}
 .form-input{transition:border-color 0.2s,box-shadow 0.2s;}
-.form-input:focus{border-color:#10b981;box-shadow:0 0 0 3px rgba(16,185,129,0.12);outline:none;}
+.form-input:focus:not(:disabled){border-color:#10b981;box-shadow:0 0 0 3px rgba(16,185,129,0.12);outline:none;}
+.form-input:disabled{background-color:#f1f5f9;color:#64748b;cursor:not-allowed;border-color:#e2e8f0;}
 
 /* ── SIDEBAR ── */
 #sidebar{background:linear-gradient(180deg,#022c22 0%,#063d2e 50%,#064e3b 100%);border-right:1px solid rgba(255,255,255,0.04);}
@@ -49,6 +50,10 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
 .nav-item.active::before{content:'';position:absolute;left:-16px;top:50%;transform:translateY(-50%);width:3px;height:70%;background:#34d399;border-radius:0 4px 4px 0;}
 .school-badge{background:linear-gradient(135deg,rgba(5,150,105,0.22),rgba(6,182,212,0.12));border:1px solid rgba(52,211,153,0.22);}
 .class-pill{display:inline-block;background:rgba(16,185,129,0.2);border:1px solid rgba(52,211,153,0.35);color:#6ee7b7;font-size:9px;font-weight:800;padding:2px 8px;border-radius:999px;letter-spacing:0.08em;text-transform:uppercase;}
+.quick-stat-strip{display:flex;justify-content:space-between;background:rgba(0,0,0,0.15);border-radius:10px;padding:8px 12px;margin-top:12px;border:1px solid rgba(255,255,255,0.05);}
+.quick-stat-item{display:flex;flex-direction:column;align-items:center;flex:1;}
+.quick-stat-label{font-size:8px;text-transform:uppercase;letter-spacing:1px;color:#a7f3d0;font-weight:800;}
+.quick-stat-val{font-size:12px;font-weight:900;color:#fff;}
 
 /* ── DASHBOARD ── */
 .stat-card{position:relative;overflow:hidden;transition:transform 0.22s,box-shadow 0.22s;}
@@ -198,6 +203,20 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
         <div id="teacherAvatar" class="h-14 w-14 bg-emerald-700/60 border border-emerald-500/40 rounded-xl flex items-center justify-center text-2xl font-black text-white mb-2 shadow-inner">T</div>
         <h2 id="displayTeacherName" class="font-black text-white text-sm leading-tight">Loading...</h2>
         <div id="displayTeacherClasses" class="flex flex-wrap justify-center gap-1 mt-2"></div>
+        <div class="quick-stat-strip w-full">
+            <div class="quick-stat-item border-r border-white/10 pr-2">
+                <span class="quick-stat-label">Students</span>
+                <span class="quick-stat-val" id="sb-students">0</span>
+            </div>
+            <div class="quick-stat-item border-r border-white/10 px-2">
+                <span class="quick-stat-label">Period</span>
+                <span class="quick-stat-val text-emerald-400" id="sb-period">—</span>
+            </div>
+            <div class="quick-stat-item pl-2">
+                <span class="quick-stat-label">At Risk</span>
+                <span class="quick-stat-val text-rose-400" id="sb-risk">0</span>
+            </div>
+        </div>
       </div>
     </div>
     <nav class="flex-1 p-4 space-y-1 overflow-y-auto mt-1">
@@ -280,14 +299,37 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
 
       <div id="view-students" class="view-section hidden">
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          <div class="p-6 border-b border-slate-100 flex flex-wrap gap-4 justify-between items-center bg-gradient-to-r from-white to-emerald-50/40">
-            <div class="flex items-center gap-3"><div class="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-users"></i></div>
-              <div><h3 class="font-black text-xl text-slate-800">My Class Roster</h3><p class="text-sm text-slate-400 font-semibold">Manage students, PINs and academic standing</p></div>
+          <div class="p-6 border-b border-slate-100 flex flex-col gap-4 bg-gradient-to-r from-white to-emerald-50/40">
+            <div class="flex flex-wrap gap-4 justify-between items-center w-full">
+                <div class="flex items-center gap-3"><div class="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-users"></i></div>
+                  <div><h3 class="font-black text-xl text-slate-800">My Class Roster</h3><p class="text-sm text-slate-400 font-semibold">Manage students, PINs and academic standing</p></div>
+                </div>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <button onclick="exportRosterCSV()" class="no-print flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-4 py-2 rounded-xl text-sm transition border border-slate-200"><i class="fa-solid fa-download"></i> CSV</button>
+                  <button onclick="printRoster()" class="no-print flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-4 py-2 rounded-xl text-sm transition border border-slate-200"><i class="fa-solid fa-print"></i> Print</button>
+                  <button onclick="openAddStudentModal()" class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black px-5 py-2.5 rounded-xl text-sm shadow-md shadow-emerald-500/25 transition"><i class="fa-solid fa-plus"></i> Add Student</button>
+                </div>
             </div>
-            <div class="flex items-center gap-2 flex-wrap">
-              <button onclick="exportRosterCSV()" class="no-print flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-4 py-2 rounded-xl text-sm transition border border-slate-200"><i class="fa-solid fa-download"></i> CSV</button>
-              <button onclick="printRoster()" class="no-print flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-4 py-2 rounded-xl text-sm transition border border-slate-200"><i class="fa-solid fa-print"></i> Print</button>
-              <button onclick="openAddStudentModal()" class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black px-5 py-2.5 rounded-xl text-sm shadow-md shadow-emerald-500/25 transition"><i class="fa-solid fa-plus"></i> Add Student</button>
+            
+            <div class="flex flex-wrap gap-3 mt-2 border-t border-slate-200 pt-4 w-full">
+                <div class="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm">
+                    <i class="fa-solid fa-chalkboard text-slate-400 text-xs"></i>
+                    <select id="rf-class" onchange="applyRosterFilters()" class="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer">
+                        <option value="">All Classes</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm">
+                    <i class="fa-solid fa-ranking-star text-slate-400 text-xs"></i>
+                    <select id="rf-standing" onchange="applyRosterFilters()" class="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer">
+                        <option value="">All Standings</option>
+                        <option value="excelling">Excelling (90-100)</option>
+                        <option value="good">Good Standing (80-89)</option>
+                        <option value="ontrack">On Track (70-79)</option>
+                        <option value="needsattention">Needs Attention (65-69)</option>
+                        <option value="atrisk">At Risk (< 65)</option>
+                        <option value="none">No Grades</option>
+                    </select>
+                </div>
             </div>
           </div>
           <div class="overflow-x-auto">
@@ -298,7 +340,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
                   <th class="px-6 py-4 font-black">Class</th><th class="px-6 py-4 font-black">Parent Phone</th>
                   <th class="px-6 py-4 font-black">Parent PIN</th><th class="px-6 py-4 font-black text-center">Subjects</th>
                   <th class="px-6 py-4 font-black text-center">Avg</th><th class="px-6 py-4 font-black">Standing</th>
-                  <th class="px-6 py-4 font-black text-right">Action</th>
+                  <th class="px-6 py-4 font-black text-right">Actions</th>
                 </tr>
               </thead>
               <tbody id="studentsTableBody" class="divide-y divide-slate-100">
@@ -310,7 +352,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
       </div>
 
       <div id="view-enter-grade" class="view-section hidden">
-        <div class="max-w-3xl">
+        <div class="max-w-5xl mx-auto">
           <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div class="p-6 border-b border-slate-100 bg-gradient-to-r from-white to-blue-50/40 flex items-center justify-between gap-3">
               <div class="flex items-center gap-3">
@@ -328,42 +370,61 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
             <div id="gradeSavedBanner" class="hidden mx-6 mt-5 bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center justify-between">
               <div class="flex items-center gap-3">
                 <div class="w-9 h-9 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-circle-check"></i></div>
-                <div><p class="font-black text-emerald-700">Grade saved successfully!</p><p class="text-xs text-emerald-600 font-semibold">Form cleared — ready to enter another.</p></div>
+                <div><p class="font-black text-emerald-700">Grade saved successfully!</p><p class="text-xs text-emerald-600 font-semibold">Ready for the next entry (student and subject kept).</p></div>
               </div>
               <button onclick="document.getElementById('gradeSavedBanner').classList.add('hidden')" class="text-emerald-400 hover:text-emerald-700"><i class="fa-solid fa-xmark"></i></button>
             </div>
             
-            <div id="enterGradeFormWrap" class="p-7 space-y-5">
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Student *</label><select id="eg-student" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"><option value="">— Select Student —</option></select></div>
-                <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Subject *</label><select id="eg-subject" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"><option value="">— Select Subject —</option></select></div>
-                <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Grade Type *</label>
-                  <select id="eg-type" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm">
-                    <option>Test</option><option>Quiz</option><option>Assignment</option><option>Homework</option><option>Project</option><option>Midterm Exam</option><option>Final Exam</option>
-                  </select></div>
-                <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Date</label><input type="date" id="eg-date" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-600"></div>
-              </div>
-              <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Assignment Title *</label><input type="text" id="eg-title" placeholder="e.g. Chapter 4 Math Quiz" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"></div>
-              <div class="p-5 bg-emerald-50/50 border border-emerald-100 rounded-2xl space-y-4">
-                <div class="grid grid-cols-2 gap-5">
-                  <div><label class="block text-xs font-black text-emerald-800 uppercase tracking-wider mb-1.5">Score Obtained</label>
-                    <input type="number" id="eg-score" placeholder="85" oninput="updateLivePreview()" class="form-input w-full p-3 bg-white border border-emerald-200 rounded-xl text-2xl font-black text-emerald-700 text-center"></div>
-                  <div><label class="block text-xs font-black text-slate-600 uppercase tracking-wider mb-1.5">Out of (Max)</label>
-                    <input type="number" id="eg-max" value="100" oninput="updateLivePreview()" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-2xl font-bold text-slate-600 text-center"></div>
+            <div id="enterGradeFormWrap" class="p-7">
+              <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+                
+                <div class="lg:col-span-3 space-y-5">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                        <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Student *</label><select id="eg-student" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"><option value="">— Select Student —</option></select></div>
+                        <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Subject *</label><select id="eg-subject" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"><option value="">— Select Subject —</option></select></div>
+                        <div>
+                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5 flex justify-between items-center">
+                                <span>Grade Type *</span>
+                                <button type="button" onclick="switchTab('settings')" class="text-[9px] text-blue-600 hover:underline normal-case font-bold">+ Manage Types</button>
+                            </label>
+                            <select id="eg-type" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"></select>
+                        </div>
+                        <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Date</label><input type="date" id="eg-date" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-600"></div>
+                    </div>
+                    <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Assignment Title *</label><input type="text" id="eg-title" placeholder="e.g. Chapter 4 Math Quiz" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"></div>
+                    <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Teacher Notes <span class="text-[10px] font-semibold normal-case text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded ml-1">Visible to Parents</span></label>
+                        <textarea id="eg-notes" placeholder="Optional feedback for the student and parent..." class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm h-24 resize-none"></textarea></div>
                 </div>
-                <div id="eg-preview" class="hidden bg-white border border-emerald-200 rounded-xl p-4">
-                  <div class="flex items-center gap-4">
-                    <span id="prev-pct" class="text-3xl font-black">—</span>
-                    <span id="prev-letter" class="text-lg font-black px-4 py-1.5 rounded-xl border text-center min-w-[48px]">—</span>
-                    <div class="flex-1"><div class="h-3 bg-slate-100 rounded-full overflow-hidden"><div id="prev-bar" class="h-full rounded-full transition-all duration-300" style="width:0%"></div></div><p id="prev-label" class="text-xs font-bold mt-1"></p></div>
-                  </div>
+
+                <div class="lg:col-span-2 flex flex-col justify-between space-y-5">
+                    <div class="p-6 bg-emerald-50/50 border border-emerald-100 rounded-3xl space-y-6 flex-1 flex flex-col justify-center">
+                        <div class="grid grid-cols-2 gap-5">
+                        <div><label class="block text-xs font-black text-emerald-800 uppercase tracking-wider mb-1.5 text-center">Score Obtained</label>
+                            <input type="number" id="eg-score" placeholder="85" oninput="updateLivePreview()" class="form-input w-full p-4 bg-white border-2 border-emerald-200 rounded-2xl text-4xl font-black text-emerald-700 text-center shadow-sm"></div>
+                        <div><label class="block text-xs font-black text-slate-600 uppercase tracking-wider mb-1.5 text-center">Out of (Max)</label>
+                            <input type="number" id="eg-max" value="100" oninput="updateLivePreview()" class="form-input w-full p-4 bg-white border-2 border-slate-200 rounded-2xl text-4xl font-bold text-slate-600 text-center shadow-sm"></div>
+                        </div>
+                        
+                        <div id="eg-preview" class="bg-white border-2 border-emerald-200 rounded-2xl p-5 shadow-sm">
+                            <div class="flex flex-col items-center gap-3 text-center">
+                                <div class="flex items-center justify-center gap-4 w-full">
+                                    <span id="prev-pct" class="text-4xl font-black text-slate-300">—</span>
+                                    <span id="prev-letter" class="text-2xl font-black px-5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-400 text-center min-w-[64px]">—</span>
+                                </div>
+                                <div class="w-full">
+                                    <div class="h-4 bg-slate-100 rounded-full overflow-hidden w-full"><div id="prev-bar" class="h-full rounded-full transition-all duration-300" style="width:0%"></div></div>
+                                    <p id="prev-label" class="text-sm font-black mt-2 text-slate-400">Enter score to preview</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button id="saveGradeBtn" class="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-black py-4 rounded-2xl transition shadow-lg shadow-emerald-500/30 text-base flex justify-center items-center gap-2">
+                        <i class="fa-solid fa-check-circle"></i> Save Grade to Gradebook
+                    </button>
                 </div>
+
               </div>
-              <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Teacher Notes <span class="text-[10px] font-semibold normal-case text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded ml-1">Visible to Parents</span></label>
-                <textarea id="eg-notes" placeholder="Optional feedback for the student and parent..." class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm h-24 resize-none"></textarea></div>
-              <button id="saveGradeBtn" class="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-black py-4 rounded-2xl transition shadow-lg shadow-emerald-500/30 text-base flex justify-center items-center gap-2">
-                <i class="fa-solid fa-check-circle"></i> Save Grade to Gradebook
-              </button>
             </div>
           </div>
         </div>
@@ -411,7 +472,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
             <div class="flex flex-wrap gap-3">
               <div class="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm"><i class="fa-solid fa-user text-slate-400 text-xs"></i><select id="gbFilterStudent" onchange="applyGradebookFilters()" class="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer"><option value="">All Students</option></select></div>
               <div class="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm"><i class="fa-solid fa-book text-slate-400 text-xs"></i><select id="gbFilterSubject" onchange="applyGradebookFilters()" class="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer"><option value="">All Subjects</option></select></div>
-              <div class="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm"><i class="fa-solid fa-tag text-slate-400 text-xs"></i><select id="gbFilterType" onchange="applyGradebookFilters()" class="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer"><option value="">All Types</option><option>Test</option><option>Quiz</option><option>Assignment</option><option>Homework</option><option>Project</option><option>Midterm Exam</option><option>Final Exam</option></select></div>
+              <div class="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm"><i class="fa-solid fa-tag text-slate-400 text-xs"></i><select id="gbFilterType" onchange="applyGradebookFilters()" class="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer"><option value="">All Types</option></select></div>
               <div id="gbRecordCount" class="flex items-center bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2"><span class="text-xs font-black text-emerald-700">— records</span></div>
             </div>
           </div>
@@ -427,91 +488,125 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
       </div>
 
       <div id="view-settings" class="view-section hidden">
-        <div class="max-w-2xl space-y-5">
-
-          <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-emerald-50/40">
-              <div class="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-lock"></i></div>
-              <div><h3 class="font-black text-slate-800">Security</h3><p class="text-xs text-slate-400 font-semibold">Change your login code — current code required</p></div>
-            </div>
-            <div class="p-6 space-y-4">
-              <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Current Login Code</label><input type="password" id="currentTeacherCode" placeholder="Your current code" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"></div>
-              <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">New Login Code</label><input type="password" id="newTeacherCode" placeholder="Min. 5 characters" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"></div>
-              <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Confirm New Code</label><input type="password" id="confirmTeacherCode" placeholder="Type it again" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"></div>
-              <button id="updateCodeBtn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-black text-sm shadow-md transition">Update Login Code</button>
-              <p id="settingsSecurityMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
-            </div>
-          </div>
-
-          <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-teal-50/40">
-              <div class="w-10 h-10 bg-teal-100 text-teal-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-user"></i></div>
-              <div><h3 class="font-black text-slate-800">My Profile</h3><p class="text-xs text-slate-400 font-semibold">Update your name and phone number</p></div>
-            </div>
-            <div class="p-6 space-y-4">
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Full Name</label><input type="text" id="profileName" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"></div>
-                <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Phone Number</label><input type="tel" id="profilePhone" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"></div>
-              </div>
-              <button id="saveProfileBtn" class="bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-xl font-black text-sm shadow-md transition">Save Profile</button>
-              <p id="settingsProfileMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
-            </div>
-          </div>
-
-          <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-emerald-50/40">
-              <div class="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-chalkboard"></i></div>
-              <div><h3 class="font-black text-slate-800">My Class(es)</h3><p class="text-xs text-slate-400 font-semibold">Update the class(es) you currently teach</p></div>
-            </div>
-            <div class="p-6">
-              <p class="text-xs text-slate-500 font-semibold mb-3">Current: <span id="currentClassesDisplay" class="text-emerald-700 font-black"></span></p>
-              <div id="settingsClassGrid" class="cls-cb-wrap max-h-56 overflow-y-auto mb-4"></div>
-              <button id="saveClassesBtn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-black text-sm shadow-md transition">Update My Classes</button>
-              <p id="settingsClassMsg" class="text-sm hidden font-bold p-3 rounded-xl mt-3"></p>
-            </div>
-          </div>
-
-          <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-white to-teal-50/40">
-              <div class="flex items-center gap-3">
-                <div class="w-10 h-10 bg-teal-100 text-teal-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-layer-group"></i></div>
-                <div><h3 class="font-black text-slate-800">Manage Subjects</h3><p class="text-xs text-slate-400 font-semibold">Add, rename or archive your teaching subjects</p></div>
-              </div>
-              <button onclick="openSubjectFormModal()" class="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-black px-4 py-2 rounded-xl text-xs transition shadow-md"><i class="fa-solid fa-plus"></i> Add</button>
-            </div>
-            <div class="p-6 space-y-3">
-              <div id="activeSubjectsList" class="space-y-2"></div>
-              <p id="subjectsMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
-            </div>
-            <div class="border-t border-slate-100">
-              <button onclick="toggleArchivedSubjects()" class="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-slate-50 transition">
-                <div class="flex items-center gap-2">
-                  <div class="w-7 h-7 bg-amber-100 text-amber-600 rounded-lg flex items-center justify-center text-xs"><i class="fa-solid fa-box-archive"></i></div>
-                  <span class="font-black text-slate-600 text-sm">Archived Subjects</span>
-                  <span id="archivedSubjectsCount" class="text-xs font-black bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">0</span>
+        <div class="space-y-6">
+            
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full">
+                    <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-white to-emerald-50/40">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-lock"></i></div>
+                            <div><h3 class="font-black text-slate-800">Security</h3><p class="text-xs text-slate-400 font-semibold">Change your login code</p></div>
+                        </div>
+                        <button id="securityEditBtn" onclick="toggleSecurityEdit(true)" class="text-xs font-black text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-pen mr-1"></i> Edit</button>
+                    </div>
+                    <div class="p-6 space-y-4 flex-1">
+                        <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Current Login Code</label><input type="password" id="currentTeacherCode" disabled placeholder="••••••••" class="form-input w-full p-3 border border-slate-200 rounded-xl text-sm"></div>
+                        <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">New Login Code</label><input type="password" id="newTeacherCode" disabled placeholder="••••••••" class="form-input w-full p-3 border border-slate-200 rounded-xl text-sm"></div>
+                        <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Confirm New Code</label><input type="password" id="confirmTeacherCode" disabled placeholder="••••••••" class="form-input w-full p-3 border border-slate-200 rounded-xl text-sm"></div>
+                        <div id="securityActionBtns" class="hidden flex gap-2 pt-2">
+                            <button id="updateCodeBtn" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-black text-sm shadow-md transition">Save Code</button>
+                            <button onclick="toggleSecurityEdit(false)" class="px-5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-black py-3 rounded-xl transition text-sm">Cancel</button>
+                        </div>
+                        <p id="settingsSecurityMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
+                    </div>
                 </div>
-                <i id="archivedSubjectsArrow" class="fa-solid fa-chevron-down text-slate-400 text-sm transition-transform"></i>
-              </button>
-              <div id="archivedSubjectsSection" class="hidden px-6 pb-6 space-y-2">
-                <div id="archivedSubjectsList" class="space-y-2"></div>
-              </div>
-            </div>
-          </div>
 
-          <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-amber-50/40">
-              <div class="w-10 h-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-box-archive"></i></div>
-              <div><h3 class="font-black text-slate-800">Archive Management</h3><p class="text-xs text-slate-400 font-semibold">Restore or permanently delete archived students</p></div>
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full">
+                    <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-white to-teal-50/40">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-teal-100 text-teal-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-user"></i></div>
+                            <div><h3 class="font-black text-slate-800">My Profile</h3><p class="text-xs text-slate-400 font-semibold">Update your contact info</p></div>
+                        </div>
+                        <button id="profileEditBtn" onclick="toggleProfileEdit(true)" class="text-xs font-black text-teal-600 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-pen mr-1"></i> Edit</button>
+                    </div>
+                    <div class="p-6 space-y-4 flex-1">
+                        <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Full Name</label><input type="text" id="profileName" disabled class="form-input w-full p-3 border border-slate-200 rounded-xl text-sm font-bold text-slate-700"></div>
+                        <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Phone Number</label><input type="tel" id="profilePhone" disabled placeholder="e.g. 555-1234" class="form-input w-full p-3 border border-slate-200 rounded-xl text-sm font-bold text-slate-700"></div>
+                        <div id="profileActionBtns" class="hidden flex gap-2 pt-4">
+                            <button id="saveProfileBtn" class="flex-1 bg-teal-600 hover:bg-teal-700 text-white py-3 rounded-xl font-black text-sm shadow-md transition">Save Profile</button>
+                            <button onclick="toggleProfileEdit(false)" class="px-5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-black py-3 rounded-xl transition text-sm">Cancel</button>
+                        </div>
+                        <p id="settingsProfileMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
+                    </div>
+                </div>
             </div>
-            <div class="p-6"><div id="archiveStudentsList" class="space-y-2"></div></div>
-          </div>
 
-          <div class="danger-zone p-6">
-            <h4 class="font-black text-red-700 flex items-center gap-2 mb-2"><i class="fa-solid fa-triangle-exclamation"></i> Danger Zone</h4>
-            <p class="text-xs text-red-600 font-semibold mb-1">Permanent deletions cannot be undone.</p>
-            <p class="text-xs text-slate-500 font-semibold italic">• Archive a student first from the Roster, then permanently delete them above.</p>
-            <p class="text-xs text-slate-500 font-semibold italic mt-1">• Archive a subject first from Manage Subjects, then permanently delete it from the Archived Subjects section above.</p>
-          </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full">
+                    <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-blue-50/40">
+                        <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-chalkboard"></i></div>
+                        <div><h3 class="font-black text-slate-800">My Class(es)</h3><p class="text-xs text-slate-400 font-semibold">Update the class(es) you teach</p></div>
+                    </div>
+                    <div class="p-6 flex-1 flex flex-col">
+                        <p class="text-xs text-slate-500 font-semibold mb-3">Current: <span id="currentClassesDisplay" class="text-blue-700 font-black"></span></p>
+                        <div id="settingsClassGrid" class="cls-cb-wrap max-h-56 overflow-y-auto mb-4 flex-1"></div>
+                        <button id="saveClassesBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-black text-sm shadow-md transition w-full">Update My Classes</button>
+                        <p id="settingsClassMsg" class="text-sm hidden font-bold p-3 rounded-xl mt-3"></p>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full">
+                    <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-white to-indigo-50/40">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-tags"></i></div>
+                            <div><h3 class="font-black text-slate-800">Grade Types</h3><p class="text-xs text-slate-400 font-semibold">Manage assignment categories</p></div>
+                        </div>
+                    </div>
+                    <div class="p-6 flex-1 flex flex-col space-y-4">
+                        <div class="flex gap-2">
+                            <input type="text" id="newGradeTypeInput" placeholder="e.g. Lab Report" class="form-input flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                            <button onclick="addGradeType()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-black text-sm shadow-md transition"><i class="fa-solid fa-plus"></i></button>
+                        </div>
+                        <p id="gradeTypeMsg" class="text-sm hidden font-bold p-2 rounded-xl"></p>
+                        <div class="flex-1 overflow-y-auto max-h-48 border border-slate-100 rounded-xl bg-slate-50 p-2" id="gradeTypesList">
+                            </div>
+                        <p class="text-[10px] text-slate-400 font-semibold italic text-center">Built-in defaults cannot be deleted.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden w-full">
+                <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-white to-teal-50/40">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-teal-100 text-teal-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-layer-group"></i></div>
+                    <div><h3 class="font-black text-slate-800">Manage Subjects</h3><p class="text-xs text-slate-400 font-semibold">Add, rename or archive your teaching subjects</p></div>
+                </div>
+                <button onclick="openSubjectFormModal()" class="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-black px-4 py-2 rounded-xl text-xs transition shadow-md"><i class="fa-solid fa-plus"></i> Add Subject</button>
+                </div>
+                <div class="p-6 space-y-3">
+                <div id="activeSubjectsList" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                <p id="subjectsMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
+                </div>
+                <div class="border-t border-slate-100">
+                <button onclick="toggleArchivedSubjects()" class="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-slate-50 transition">
+                    <div class="flex items-center gap-2">
+                    <div class="w-7 h-7 bg-amber-100 text-amber-600 rounded-lg flex items-center justify-center text-xs"><i class="fa-solid fa-box-archive"></i></div>
+                    <span class="font-black text-slate-600 text-sm">Archived Subjects</span>
+                    <span id="archivedSubjectsCount" class="text-xs font-black bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">0</span>
+                    </div>
+                    <i id="archivedSubjectsArrow" class="fa-solid fa-chevron-down text-slate-400 text-sm transition-transform"></i>
+                </button>
+                <div id="archivedSubjectsSection" class="hidden px-6 pb-6 pt-2">
+                    <div id="archivedSubjectsList" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden w-full">
+                <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-amber-50/40">
+                <div class="w-10 h-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-box-archive"></i></div>
+                <div><h3 class="font-black text-slate-800">Archived Students</h3><p class="text-xs text-slate-400 font-semibold">Restore or permanently delete archived students</p></div>
+                </div>
+                <div class="p-6"><div id="archiveStudentsList" class="space-y-3"></div></div>
+            </div>
+
+            <div class="danger-zone p-6 w-full">
+                <h4 class="font-black text-red-700 flex items-center gap-2 mb-2"><i class="fa-solid fa-triangle-exclamation"></i> Danger Zone</h4>
+                <p class="text-xs text-red-600 font-semibold mb-1">Permanent deletions cannot be undone.</p>
+                <p class="text-xs text-slate-500 font-semibold italic">• Archive a student first from the Roster, then permanently delete them above.</p>
+                <p class="text-xs text-slate-500 font-semibold italic mt-1">• Archive a subject first from Manage Subjects, then permanently delete it from the Archived Subjects section above.</p>
+            </div>
+
         </div>
       </div>
 
@@ -578,10 +673,11 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
 <div id="studentPanel" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-end hidden opacity-0">
   <div id="studentPanelInner" class="side-panel bg-[#f8fffe] w-full max-w-2xl h-full shadow-2xl flex flex-col translate-x-full">
     <div class="h-1 bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-500 flex-shrink-0"></div>
-    <div class="px-7 py-5 border-b border-slate-200 bg-white flex justify-between items-center flex-shrink-0">
+    <div class="px-7 py-5 border-b border-slate-200 bg-white flex justify-between items-center flex-shrink-0 flex-wrap gap-3">
       <div><h3 id="sPanelName" class="font-black text-2xl text-slate-800">Student</h3><p id="sPanelMeta" class="text-sm text-emerald-600 font-bold mt-0.5">—</p></div>
-      <div class="flex items-center gap-2">
-        <button id="sPanelPrintBtn" class="no-print flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black px-4 py-2 rounded-xl text-sm transition border border-slate-200"><i class="fa-solid fa-print"></i> Print</button>
+      <div class="flex items-center gap-2 flex-wrap">
+        <button id="spQuickGradeBtn2" class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-2 rounded-xl text-sm transition shadow-md"><i class="fa-solid fa-plus"></i> Enter Grade</button>
+        <button onclick="openPrintStudentModal()" class="no-print flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black px-4 py-2 rounded-xl text-sm transition border border-slate-200"><i class="fa-solid fa-print"></i> Print</button>
         <button onclick="toggleStudentEdit()" class="no-print flex items-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-black px-4 py-2 rounded-xl text-sm transition border border-emerald-200"><i class="fa-solid fa-pen"></i> Edit</button>
         <button onclick="closeStudentPanel()" class="text-slate-400 hover:text-red-500 h-9 w-9 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-xl"></i></button>
       </div>
@@ -589,13 +685,31 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
     <div class="flex-1 overflow-y-auto p-7 space-y-6">
       <div id="sPanelLoader" class="flex flex-col items-center justify-center py-16"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-emerald-500"></i></div>
       <div id="sViewMode" class="hidden space-y-5">
-        <div class="grid grid-cols-3 gap-3" id="sInfoGrid"></div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div class="md:col-span-2 grid grid-cols-2 gap-3" id="sInfoGrid"></div>
+            <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex flex-col justify-center text-center">
+                <p class="text-[10px] font-black text-indigo-400 uppercase tracking-wider mb-2"><i class="fa-solid fa-key mr-1"></i>Parent PIN</p>
+                <div id="pinDisplayArea">
+                    <p class="font-mono font-black text-2xl text-indigo-700 mb-2 tracking-widest" id="spinReadonly">—</p>
+                    <button onclick="togglePinResetUI(true)" class="text-xs font-black text-indigo-600 bg-white border border-indigo-200 px-3 py-1.5 rounded-lg hover:bg-indigo-600 hover:text-white transition w-full">Reset PIN</button>
+                </div>
+                <div id="pinEditArea" class="hidden space-y-2">
+                    <input type="text" id="inlineNewPin" placeholder="4-6 digits" maxlength="6" class="form-input w-full p-2 bg-white border border-indigo-200 rounded-lg text-sm font-mono text-center uppercase tracking-widest">
+                    <div class="flex gap-1">
+                        <button onclick="saveInlinePin()" id="inlinePinSaveBtn" class="flex-1 bg-indigo-600 text-white text-xs font-black py-2 rounded-lg hover:bg-indigo-700 transition">Save</button>
+                        <button onclick="togglePinResetUI(false)" class="flex-1 bg-white border border-slate-200 text-slate-600 text-xs font-black py-2 rounded-lg hover:bg-slate-100 transition">Cancel</button>
+                    </div>
+                    <button onclick="document.getElementById('inlineNewPin').value = Math.floor(1000 + Math.random() * 9000).toString()" class="text-[10px] text-indigo-500 font-bold hover:underline">Auto-Generate</button>
+                </div>
+            </div>
+        </div>
+
         <div id="sEditForm" class="hidden bg-emerald-50/50 border border-emerald-100 rounded-2xl p-5 space-y-4">
-          <h4 class="font-black text-slate-700 text-sm uppercase tracking-wider flex items-center gap-2"><i class="fa-solid fa-pen text-emerald-500"></i> Edit Student Info</h4>
+          <h4 class="font-black text-slate-700 text-sm uppercase tracking-wider flex items-center gap-2"><i class="fa-solid fa-pen text-emerald-500"></i> Edit Contact Info</h4>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Full Name</label><input type="text" id="editSName" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm"></div>
             <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Parent Phone</label><input type="tel" id="editSPhone" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm"></div>
-            <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Parent PIN</label><input type="text" id="editSPin" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-mono uppercase tracking-widest text-center" maxlength="6"></div>
           </div>
           <div class="flex gap-3 pt-1">
             <button id="saveStudentEditBtn" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3 rounded-xl transition text-sm shadow-md">Save Changes</button>
@@ -620,13 +734,26 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
 <div id="subjectPanel" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-end hidden opacity-0">
   <div id="subjectPanelInner" class="side-panel bg-[#f0fdf8] w-full max-w-2xl h-full shadow-2xl flex flex-col translate-x-full">
     <div class="h-1 bg-gradient-to-r from-teal-500 via-emerald-400 to-cyan-500 flex-shrink-0"></div>
-    <div class="px-7 py-5 border-b border-slate-200 bg-white flex justify-between items-center flex-shrink-0">
+    <div class="px-7 py-5 border-b border-slate-200 bg-white flex justify-between items-center flex-shrink-0 flex-wrap gap-3">
       <div><h3 id="spPanelTitle" class="font-black text-2xl text-slate-800">Subject</h3><p id="spPanelMeta" class="text-sm text-teal-600 font-bold mt-0.5">Subject details</p></div>
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 flex-wrap">
+        <button onclick="printSubjectReport()" class="no-print flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black px-4 py-2 rounded-xl text-sm transition border border-slate-200"><i class="fa-solid fa-print"></i> Print Report</button>
         <button id="spQuickGradeBtn" class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-2 rounded-xl text-sm transition shadow-md"><i class="fa-solid fa-plus"></i> Enter Grade</button>
         <button onclick="closeSubjectPanel()" class="text-slate-400 hover:text-red-500 h-9 w-9 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-xl"></i></button>
       </div>
     </div>
+    
+    <div class="px-7 py-3 bg-slate-50 border-b border-slate-200 flex gap-3 flex-wrap items-center shadow-sm z-10 flex-shrink-0">
+        <div class="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-2 py-1.5 flex-1 min-w-[140px]">
+            <i class="fa-solid fa-user text-slate-400 text-xs"></i>
+            <select id="spFilterStudent" onchange="renderSubjectPanelData()" class="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer w-full"><option value="">All Students</option></select>
+        </div>
+        <div class="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-2 py-1.5 flex-1 min-w-[140px]">
+            <i class="fa-solid fa-tag text-slate-400 text-xs"></i>
+            <select id="spFilterType" onchange="renderSubjectPanelData()" class="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer w-full"><option value="">All Types</option></select>
+        </div>
+    </div>
+
     <div class="flex-1 overflow-y-auto p-7 space-y-6" id="subjectPanelBody">
       <div class="flex justify-center py-16"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-teal-500"></i></div>
     </div>
@@ -701,6 +828,34 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
   </div>
 </div>
 
+<div id="printStudentModal" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center hidden opacity-0">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200" id="printStudentModalInner">
+    <div class="h-1 bg-gradient-to-r from-slate-600 to-slate-800"></div>
+    <div class="px-7 py-5 border-b border-slate-100 flex justify-between items-center">
+      <div class="flex items-center gap-3"><div class="w-9 h-9 bg-slate-100 text-slate-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-print"></i></div><h3 class="font-black text-xl text-slate-800">Print Report</h3></div>
+      <button onclick="closePrintStudentModal()" class="text-slate-400 hover:text-red-500 h-8 w-8 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+    </div>
+    <div class="p-7 space-y-4 bg-slate-50/50">
+      <div>
+        <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Print Mode</label>
+        <select id="psMode" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700">
+            <option value="summary">Summary (Report Card Style)</option>
+            <option value="detailed">Detailed (All Assignments)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Filter by Subject</label>
+        <select id="psSubject" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm">
+            <option value="all">All Subjects</option>
+        </select>
+      </div>
+      <button onclick="executeStudentPrint()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-black py-3.5 rounded-xl transition shadow-md text-base mt-2 flex items-center justify-center gap-2">
+        <i class="fa-solid fa-print"></i> Generate Print
+      </button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { db } from '../assets/js/firebase-init.js';
 import { doc,getDoc,updateDoc,collection,addDoc,getDocs,deleteDoc,query,where,writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
@@ -719,6 +874,7 @@ let currentEditData=null;
 let originalScore=null,originalMax=null;
 let currentSubjectName=null;
 let editingSubjectId=null;
+let cachedSubjectGrades = []; // for subject panel filtering
 
 const CLASSES={
   'Primary':['Infant 1','Infant 2','Standard 1','Standard 2','Standard 3','Standard 4','Standard 5','Standard 6'],
@@ -735,6 +891,7 @@ const DEFAULT_SUBJECTS=[
   {id:'ds7',name:'Physical Education',description:'',archived:false,archivedAt:null},
   {id:'ds8',name:'Health & Family Life',description:'',archived:false,archivedAt:null}
 ];
+const DEFAULT_GRADE_TYPES = ['Test','Quiz','Assignment','Homework','Project','Midterm Exam','Final Exam'];
 
 // ── HELPERS ────────────────────────────────────────────────────────────────
 function genId(){return'sub_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,5);}
@@ -748,6 +905,14 @@ function standingBadge(avg){
   if(avg>=70)return'<span class="badge s-track">On Track</span>';
   if(avg>=65)return'<span class="badge s-attn">Needs Attention</span>';
   return'<span class="badge s-risk">At Risk</span>';
+}
+function standingText(avg){
+  if(avg===null)return'none';
+  if(avg>=90)return'excelling';
+  if(avg>=80)return'good';
+  if(avg>=70)return'ontrack';
+  if(avg>=65)return'needsattention';
+  return'atrisk';
 }
 function showMsg(id,text,isError=false){
   const el=document.getElementById(id);if(!el)return;
@@ -781,6 +946,9 @@ function clearGradesCache(){allGradesCache=null;}
 function getActiveSubjects(){return(session.teacherData.subjects||[]).filter(s=>!s.archived);}
 function getArchivedSubjects(){return(session.teacherData.subjects||[]).filter(s=>s.archived);}
 function getClasses(){return session.teacherData.classes||[session.teacherData.className||''];}
+function getGradeTypes() { return session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
+
+const printDisclaimer = "<p style='font-size:10px;color:#64748b;margin-top:40px;text-align:center;border-top:1px solid #e2e8f0;padding-top:10px;'>Grades reflected in this document are based on assignments entered to date and are subject to teacher adjustments, bonus points, and final syllabus weighting. This document does not constitute an official report card or transcript.</p>";
 
 async function fetchPlanDetails(planId) {
     try {
@@ -800,12 +968,16 @@ window.updateLivePreview=function(){
     const color=pct>=90?'text-emerald-600':pct>=80?'text-blue-600':pct>=70?'text-teal-600':pct>=65?'text-amber-600':'text-red-600';
     const lbg=pct>=90?'bg-emerald-100 border-emerald-300 text-emerald-700':pct>=80?'bg-blue-100 border-blue-300 text-blue-700':pct>=70?'bg-teal-100 border-teal-300 text-teal-700':pct>=65?'bg-amber-100 border-amber-300 text-amber-700':'bg-red-100 border-red-300 text-red-700';
     const lbl=pct>=90?'Excelling':pct>=80?'Good Standing':pct>=70?'On Track':pct>=65?'Needs Attention':'At Risk';
-    document.getElementById('prev-pct').textContent=pct+'%';document.getElementById('prev-pct').className=`text-3xl font-black ${color}`;
-    document.getElementById('prev-letter').textContent=letterGrade(pct);document.getElementById('prev-letter').className=`text-lg font-black px-4 py-1.5 rounded-xl border text-center min-w-[48px] ${lbg}`;
+    document.getElementById('prev-pct').textContent=pct+'%';document.getElementById('prev-pct').className=`text-4xl font-black ${color}`;
+    document.getElementById('prev-letter').textContent=letterGrade(pct);document.getElementById('prev-letter').className=`text-2xl font-black px-5 py-2 rounded-xl border text-center min-w-[64px] ${lbg}`;
     document.getElementById('prev-bar').style.width=Math.min(pct,100)+'%';document.getElementById('prev-bar').style.background=fill;
-    document.getElementById('prev-label').textContent=lbl;document.getElementById('prev-label').className=`text-xs font-bold mt-1 ${color}`;
-    preview.classList.remove('hidden');
-  } else preview.classList.add('hidden');
+    document.getElementById('prev-label').textContent=lbl;document.getElementById('prev-label').className=`text-sm font-black mt-2 ${color}`;
+  } else {
+    document.getElementById('prev-pct').textContent='—';document.getElementById('prev-pct').className=`text-4xl font-black text-slate-300`;
+    document.getElementById('prev-letter').textContent='—';document.getElementById('prev-letter').className=`text-2xl font-black px-5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-400 text-center min-w-[64px]`;
+    document.getElementById('prev-bar').style.width='0%';
+    document.getElementById('prev-label').textContent='Enter score to preview';document.getElementById('prev-label').className=`text-sm font-black mt-2 text-slate-400`;
+  }
 };
 window.checkScoreChange=function(){
   const s=parseFloat(document.getElementById('ed-score')?.value),m=parseFloat(document.getElementById('ed-max')?.value);
@@ -817,7 +989,8 @@ window.switchTab=function(tabId){
   document.querySelectorAll('.view-section').forEach(el=>el.classList.add('hidden'));
   document.querySelectorAll('nav .nav-item').forEach(el=>{el.classList.remove('active');el.classList.add('text-slate-400');});
   document.getElementById(`view-${tabId}`).classList.remove('hidden');
-  const tab=document.getElementById(`tab-${tabId}`);tab.classList.add('active');tab.classList.remove('text-slate-400');
+  const tab=document.getElementById(`tab-${tabId}`);
+  if(tab) { tab.classList.add('active'); tab.classList.remove('text-slate-400'); }
   const titles={overview:'Class Overview',students:'My Roster','enter-grade':'Enter Grade',subjects:'Subjects',gradebook:'Gradebook',settings:'Settings'};
   const subs={overview:'Classroom dashboard',students:'Manage your class roster','enter-grade':'Log a new assignment',subjects:'Performance by subject',gradebook:'Complete grade record',settings:'Security & configuration'};
   document.getElementById('topbarTitle').textContent=titles[tabId]||tabId;
@@ -832,7 +1005,15 @@ window.switchTab=function(tabId){
   if(tabId==='settings')loadSettings();
   if(tabId==='subjects')loadSubjectsTab();
 };
-function filterStudents(){const term=document.getElementById('searchInput').value.toLowerCase();document.querySelectorAll('#studentsTableBody tr.trow').forEach(r=>{r.style.display=r.textContent.toLowerCase().includes(term)?'':'none';});}
+function filterStudents(){
+    const term=document.getElementById('searchInput').value.toLowerCase();
+    document.querySelectorAll('#studentsTableBody tr.trow').forEach(r=>{
+        // only filter visibly if it's not hidden by class/standing filters
+        if(r.dataset.hiddenByFilter !== "true") {
+            r.style.display=r.textContent.toLowerCase().includes(term)?'':'none';
+        }
+    });
+}
 
 // ── LOGIN ──────────────────────────────────────────────────────────────────
 document.getElementById('loginBtn').addEventListener('click',async()=>{
@@ -855,7 +1036,7 @@ document.getElementById('loginBtn').addEventListener('click',async()=>{
     if(!schoolSnap.exists()||schoolSnap.data().isVerified!==true){msgEl.textContent='School account pending approval.';msgEl.classList.remove('hidden');btn.disabled=false;btn.innerHTML=`<i class="fa-solid fa-arrow-right-to-bracket"></i> Access Portal`;return;}
     
     schoolType=schoolSnap.data().schoolType||'Primary';
-    schoolLimit = await fetchPlanDetails(schoolSnap.data().subscriptionPlan); // PHASE 1: Fetch limit
+    schoolLimit = await fetchPlanDetails(schoolSnap.data().subscriptionPlan); 
 
     session={schoolId:foundSchoolId,teacherId:tDoc.id,teacherData:tData};
     document.getElementById('loginScreen').style.display='none';
@@ -930,9 +1111,10 @@ async function bootPortal(){
   document.getElementById('sidebarSchoolId').textContent=session.schoolId;
   updateSidebarClasses();
 
-  await loadSemesters(); // Replaced logic below with central load function
-
+  await loadSemesters(); 
   populateSubjectDropdowns();
+  populateGradeTypeDropdowns();
+  
   document.getElementById('eg-date').valueAsDate=new Date();
   await loadStudents();
   updateOverviewStats();
@@ -941,6 +1123,11 @@ async function bootPortal(){
 function updateSidebarClasses(){
   const classes=getClasses().filter(Boolean);
   document.getElementById('displayTeacherClasses').innerHTML=classes.map(c=>`<span class="class-pill">${c}</span>`).join('');
+  const classFilter = document.getElementById('rf-class');
+  if(classFilter) {
+      classFilter.innerHTML = '<option value="">All Classes</option>' + classes.map(c=>`<option value="${c}">${c}</option>`).join('');
+      if(classes.length <= 1) classFilter.parentElement.style.display = 'none'; // hide if only 1 class
+  }
 }
 
 function populateSubjectDropdowns(){
@@ -949,7 +1136,17 @@ function populateSubjectDropdowns(){
   if(egSub){egSub.innerHTML='<option value="">— Select Subject —</option>'+active.map(s=>`<option>${s.name}</option>`).join('');}
 }
 
-// ── SEMESTER & LOCK STATUS (PHASE 3) ──────────────────────────────────────
+function populateGradeTypeDropdowns() {
+    const types = getGradeTypes();
+    const egType = document.getElementById('eg-type');
+    if(egType) egType.innerHTML = types.map(t=>`<option>${t}</option>`).join('');
+    const gbType = document.getElementById('gbFilterType');
+    if(gbType) gbType.innerHTML = '<option value="">All Types</option>' + types.map(t=>`<option>${t}</option>`).join('');
+    const spType = document.getElementById('spFilterType');
+    if(spType) spType.innerHTML = '<option value="">All Types</option>' + types.map(t=>`<option>${t}</option>`).join('');
+}
+
+// ── SEMESTER & LOCK STATUS ──────────────────────────────────────
 let rawSemesters = [];
 async function loadSemesters() {
     const semSnap=await getDocs(collection(db,'schools',session.schoolId,'semesters'));
@@ -984,17 +1181,23 @@ function checkLockStatus() {
     const gradeBtn = document.getElementById('saveGradeBtn');
     const formWrap = document.getElementById('enterGradeFormWrap');
     const lockedNotice = document.getElementById('lockedGradeNotice');
+    const spQGBtn = document.getElementById('spQuickGradeBtn');
+    const spQGBtn2 = document.getElementById('spQuickGradeBtn2');
 
     if(isSemesterLocked) {
         badge.classList.remove('hidden'); badge.classList.add('flex');
         gradeBtn.disabled = true; gradeBtn.classList.add('opacity-50', 'cursor-not-allowed');
         formWrap.classList.add('opacity-60', 'pointer-events-none');
         lockedNotice.classList.remove('hidden');
+        if(spQGBtn) spQGBtn.classList.add('hidden');
+        if(spQGBtn2) spQGBtn2.classList.add('hidden');
     } else {
         badge.classList.add('hidden'); badge.classList.remove('flex');
         gradeBtn.disabled = false; gradeBtn.classList.remove('opacity-50', 'cursor-not-allowed');
         formWrap.classList.remove('opacity-60', 'pointer-events-none');
         lockedNotice.classList.add('hidden');
+        if(spQGBtn) spQGBtn.classList.remove('hidden');
+        if(spQGBtn2) spQGBtn2.classList.remove('hidden');
     }
 }
 
@@ -1004,21 +1207,20 @@ async function loadStudents(){
   tbody.innerHTML=`<tr><td colspan="9" class="px-6 py-16 text-center text-slate-400 font-semibold"><i class="fa-solid fa-spinner fa-spin text-emerald-400 text-2xl mb-3 block"></i>Loading roster...</td></tr>`;
   const egSel=document.getElementById('eg-student');if(egSel)egSel.innerHTML='<option value="">— Select Student —</option>';
   
-  // Get all active students for the capacity check and pull list
   const allActSnap = await getDocs(query(collection(db,'schools',session.schoolId,'students'), where('archived','==',false)));
   const allActiveList = allActSnap.docs.map(d=>({id:d.id, ...d.data()}));
   
-  // Filter out the teacher's specific students and the unassigned ones
   allStudentsCache = allActiveList.filter(s => s.teacherId === session.teacherId);
   unassignedStudentsCache = allActiveList.filter(s => !s.teacherId || !s.className);
 
   studentMap={};allStudentsCache.forEach(s=>{studentMap[s.id]=s.name;});
   
-  if(!allStudentsCache.length){tbody.innerHTML=`<tr><td colspan="9" class="px-6 py-16 text-center text-slate-400 italic font-semibold">No students yet. Add your first student!</td></tr>`;document.getElementById('stat-students').textContent='0';return;}
+  if(!allStudentsCache.length){tbody.innerHTML=`<tr><td colspan="9" class="px-6 py-16 text-center text-slate-400 italic font-semibold">No students yet. Add your first student!</td></tr>`;document.getElementById('stat-students').textContent='0';document.getElementById('sb-students').textContent='0';return;}
   
   const semId=document.getElementById('activeSemester').value;
   const allG=semId?await getAllGrades(semId):[];
   document.getElementById('stat-students').textContent=allStudentsCache.length;
+  document.getElementById('sb-students').textContent=allStudentsCache.length;
   
   const gbSel=document.getElementById('gbFilterStudent');if(gbSel){gbSel.innerHTML='<option value="">All Students</option>';allStudentsCache.forEach(s=>{gbSel.innerHTML+=`<option value="${s.id}">${s.name}</option>`;});}
   if(egSel)allStudentsCache.forEach(s=>{egSel.innerHTML+=`<option value="${s.id}">${s.name}</option>`;});
@@ -1028,7 +1230,10 @@ async function loadStudents(){
     const subjectCount=new Set(sG.map(g=>g.subject)).size;
     const avg=sG.length?Math.round(sG.reduce((a,g)=>a+(g.max?g.score/g.max*100:0),0)/sG.length):null;
     const gc=avg!==null?`<span class="${gradeColorClass(avg)} font-black">${avg}%</span>`:'<span class="text-slate-400 font-semibold">—</span>';
-    return`<tr class="trow border-b border-slate-100">
+    
+    // Dataset attributes for filtering
+    const stdClass = standingText(avg);
+    return`<tr class="trow border-b border-slate-100" data-class="${s.className||''}" data-standing="${stdClass}">
       <td class="px-6 py-4 text-slate-400 font-bold text-sm">${i+1}</td>
       <td class="px-6 py-4"><div class="flex items-center gap-3"><div class="h-10 w-10 bg-gradient-to-br from-emerald-400 to-teal-500 text-white rounded-xl flex items-center justify-center font-black text-sm shadow-sm flex-shrink-0">${s.name.charAt(0).toUpperCase()}</div><span class="font-black text-slate-700">${s.name}</span></div></td>
       <td class="px-6 py-4 text-slate-500 font-semibold text-sm">${s.className||'—'}</td>
@@ -1037,21 +1242,48 @@ async function loadStudents(){
       <td class="px-6 py-4 text-center"><span class="bg-teal-50 text-teal-700 font-black text-sm px-3 py-1 rounded-lg border border-teal-200">${subjectCount}</span></td>
       <td class="px-6 py-4 text-center">${gc}</td>
       <td class="px-6 py-4">${standingBadge(avg)}</td>
-      <td class="px-6 py-4 text-right"><button onclick="openStudentPanel('${s.id}')" class="bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 font-black px-4 py-2 rounded-xl text-xs transition border border-emerald-200 hover:border-emerald-600">View</button></td>
+      <td class="px-6 py-4 text-right">
+        <div class="flex items-center justify-end gap-1">
+            <button onclick="quickGradeStudent('${s.id}')" class="h-8 w-8 bg-emerald-50 hover:bg-emerald-500 hover:text-white text-emerald-600 rounded-lg transition border border-emerald-200 hover:border-emerald-500 flex items-center justify-center" title="Enter Grade"><i class="fa-solid fa-plus text-xs"></i></button>
+            <button onclick="openStudentPanel('${s.id}')" class="bg-slate-50 hover:bg-slate-600 hover:text-white text-slate-700 font-black px-4 py-2 rounded-lg text-xs transition border border-slate-200 hover:border-slate-600">View</button>
+        </div>
+      </td>
     </tr>`;
   }).join('');
+  applyRosterFilters();
 }
 
-// ── ADD STUDENT (PHASE 2 & 1 Logic) ───────────────────────────────────────
+window.applyRosterFilters = function() {
+    const fClass = document.getElementById('rf-class')?.value || '';
+    const fStanding = document.getElementById('rf-standing')?.value || '';
+    
+    document.querySelectorAll('#studentsTableBody tr.trow').forEach(r => {
+        let show = true;
+        if(fClass && r.dataset.class !== fClass) show = false;
+        if(fStanding && r.dataset.standing !== fStanding) show = false;
+        
+        r.dataset.hiddenByFilter = !show;
+        r.style.display = show ? '' : 'none';
+    });
+    filterStudents(); // Re-apply text search on visible rows
+};
+
+window.quickGradeStudent = function(studentId) {
+    if(isSemesterLocked) return;
+    switchTab('enter-grade');
+    setTimeout(() => {
+        document.getElementById('eg-student').value = studentId;
+    }, 100);
+};
+
+// ── ADD STUDENT ───────────────────────────────────────
 window.openAddStudentModal=function(){
   ['sName','sParentPhone','sPin'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('addStudentMsg').classList.add('hidden');
   
-  // Reset select method
   document.getElementById('sAddMethod').value = 'new';
   toggleAddMethod();
 
-  // Populate Unassigned dropdown
   const exSel = document.getElementById('sExistingSelect');
   if(unassignedStudentsCache.length === 0) {
       exSel.innerHTML = '<option value="">No unassigned students available.</option>';
@@ -1092,7 +1324,6 @@ document.getElementById('saveStudentBtn').addEventListener('click',async()=>{
       if(method === 'new') {
           const name=document.getElementById('sName').value.trim();if(!name){showMsg('addStudentMsg','Student name is required.',true);btn.innerHTML='Save to Roster';btn.disabled=false;return;}
           
-          // CAPACITY CHECK (Phase 1)
           const allActSnap = await getDocs(query(collection(db,'schools',session.schoolId,'students'), where('archived','==',false)));
           if(allActSnap.size >= schoolLimit) {
               showMsg('addStudentMsg', `School capacity reached (${schoolLimit} max). Please contact Admin to upgrade.`, true);
@@ -1102,7 +1333,6 @@ document.getElementById('saveStudentBtn').addEventListener('click',async()=>{
 
           await addDoc(collection(db,'schools',session.schoolId,'students'),{name,parentPhone:document.getElementById('sParentPhone').value.trim(),pin:document.getElementById('sPin').value.trim()||Math.floor(1000+Math.random()*9000).toString(),teacherId:session.teacherId,className:assignedClass,archived:false,archivedAt:null,archiveReason:'',createdAt:new Date().toISOString()});
       } else {
-          // Existing Pull
           const sid = document.getElementById('sExistingSelect').value;
           if(!sid) { showMsg('addStudentMsg','Please select a student to pull.',true); btn.innerHTML='Save to Roster';btn.disabled=false; return; }
           await updateDoc(doc(db,'schools',session.schoolId,'students',sid),{ teacherId: session.teacherId, className: assignedClass });
@@ -1117,20 +1347,30 @@ window.openStudentPanel=async function(studentId){
   currentStudentId=studentId;const student=allStudentsCache.find(s=>s.id===studentId);
   document.getElementById('sPanelName').textContent=student?.name||'Student';
   document.getElementById('sPanelMeta').textContent=(student?.className||'')+(student?.parentPhone?' · '+student.parentPhone:'');
+  
+  // Reset PIN UI
+  togglePinResetUI(false);
+  document.getElementById('spinReadonly').textContent=student?.pin||'—';
+  
   document.getElementById('sPanelLoader').classList.remove('hidden');document.getElementById('sViewMode').classList.add('hidden');document.getElementById('sEditForm').classList.add('hidden');
   
-  const printBtn = document.getElementById('sPanelPrintBtn');
-  if(printBtn) printBtn.onclick = () => printStudentRecord(studentId);
-  
+  const qGBtn = document.getElementById('spQuickGradeBtn2');
+  if(qGBtn && !isSemesterLocked) qGBtn.onclick = () => { closeStudentPanel(); quickGradeStudent(studentId); };
+
   openOverlay('studentPanel','studentPanelInner',true);
-  document.getElementById('editSName').value=student?.name||'';document.getElementById('editSPhone').value=student?.parentPhone||'';document.getElementById('editSPin').value=student?.pin||'';
-  document.getElementById('sInfoGrid').innerHTML=[['Name',student?.name||'—'],['Class',student?.className||'—'],['Parent Phone',student?.parentPhone||'—'],['PIN',`<span class="font-mono font-black">${student?.pin||'—'}</span>`],['Added',student?.createdAt?new Date(student.createdAt).toLocaleDateString():'—'],['Status','<span class="badge badge-active">Active</span>']].map(([l,v])=>`<div class="bg-white border border-slate-200 rounded-xl p-3"><p class="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">${l}</p><p class="font-black text-slate-700 text-sm">${v}</p></div>`).join('');
+  document.getElementById('editSName').value=student?.name||'';document.getElementById('editSPhone').value=student?.parentPhone||'';
+  
+  document.getElementById('sInfoGrid').innerHTML=[['Name',student?.name||'—'],['Class',student?.className||'—'],['Parent Phone',student?.parentPhone||'—'],['Added',student?.createdAt?new Date(student.createdAt).toLocaleDateString():'—']].map(([l,v])=>`<div class="bg-white border border-slate-200 rounded-xl p-3"><p class="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">${l}</p><p class="font-black text-slate-700 text-sm">${v}</p></div>`).join('');
   const semId=document.getElementById('activeSemester').value;
   document.getElementById('sPanelSemName').textContent=document.getElementById('activeSemester').options[document.getElementById('activeSemester').selectedIndex]?.text||'';
   try{
     const gradesSnap=await getDocs(collection(db,'schools',session.schoolId,'students',studentId,'grades'));
-    const by={};gradesSnap.forEach(d=>{const g={id:d.id,...d.data()};const subj=g.subject||'Uncategorized';if(!by[subj])by[subj]=[];by[subj].push(g);});
+    const by={};gradesSnap.forEach(d=>{const g={id:d.id,...d.data()};const subj=g.subject||'Uncategorized';if(!by[subj])by[subj]=[];if(g.semesterId === semId) by[subj].push(g);});
     const container=document.getElementById('subjectAccordions');const noG=document.getElementById('noGradesMsg');
+    
+    // Remove empty subjects
+    for(let k in by) { if(by[k].length === 0) delete by[k]; }
+
     if(!Object.keys(by).length){container.innerHTML='';noG.classList.remove('hidden');}
     else{noG.classList.add('hidden');
       container.innerHTML=Object.entries(by).map(([subject,grades])=>{
@@ -1166,9 +1406,30 @@ window.toggleAccordion=function(h){const b=h.nextElementSibling;b.classList.togg
 let isStudentEditMode=false;
 window.toggleStudentEdit=function(show){isStudentEditMode=show!==undefined?show:!isStudentEditMode;document.getElementById('sEditForm').classList.toggle('hidden',!isStudentEditMode);document.getElementById('editStudentMsg').classList.add('hidden');};
 
+window.togglePinResetUI = function(show) {
+    document.getElementById('pinDisplayArea').classList.toggle('hidden', show);
+    document.getElementById('pinEditArea').classList.toggle('hidden', !show);
+    if(show) document.getElementById('inlineNewPin').value = '';
+};
+window.saveInlinePin = async function() {
+    const npin = document.getElementById('inlineNewPin').value.trim();
+    if(!npin || npin.length < 4) { alert("PIN must be 4-6 characters."); return; }
+    
+    const btn = document.getElementById('inlinePinSaveBtn');
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i>`; btn.disabled = true;
+    try {
+        await updateDoc(doc(db,'schools',session.schoolId,'students',currentStudentId),{pin: npin});
+        const idx=allStudentsCache.findIndex(s=>s.id===currentStudentId);if(idx!==-1) allStudentsCache[idx].pin = npin;
+        document.getElementById('spinReadonly').textContent = npin;
+        togglePinResetUI(false);
+        loadStudents(); // update background table
+    } catch(e) { console.error(e); alert("Error saving PIN"); }
+    btn.innerHTML = `Save`; btn.disabled = false;
+};
+
 document.getElementById('saveStudentEditBtn').addEventListener('click',async()=>{
   const btn=document.getElementById('saveStudentEditBtn');btn.innerHTML=`<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;btn.disabled=true;
-  try{const u={name:document.getElementById('editSName').value.trim(),parentPhone:document.getElementById('editSPhone').value.trim(),pin:document.getElementById('editSPin').value.trim()};
+  try{const u={name:document.getElementById('editSName').value.trim(),parentPhone:document.getElementById('editSPhone').value.trim()};
     await updateDoc(doc(db,'schools',session.schoolId,'students',currentStudentId),u);
     const idx=allStudentsCache.findIndex(s=>s.id===currentStudentId);if(idx!==-1)Object.assign(allStudentsCache[idx],u);
     studentMap[currentStudentId]=u.name;showMsg('editStudentMsg','Changes saved!',false);toggleStudentEdit(false);
@@ -1177,7 +1438,7 @@ document.getElementById('saveStudentEditBtn').addEventListener('click',async()=>
   btn.innerHTML='Save Changes';btn.disabled=false;
 });
 
-// ── PHASE 3: ARCHIVE WITH REASON ──────────────────────────────────────────
+// ── ARCHIVE WITH REASON ──────────────────────────────────────────
 window.archiveStudent = function() {
     const s = allStudentsCache.find(x => x.id === currentStudentId);
     document.getElementById('archiveStudentName').textContent = s ? s.name : 'this student';
@@ -1200,7 +1461,7 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
             archived: true,
             archivedAt: new Date().toISOString(),
             archiveReason: reason || 'Not specified',
-            teacherId: '', // Strip teacher so admin gets full control
+            teacherId: '', 
             className: ''
         });
         closeArchiveReasonModal();
@@ -1238,13 +1499,22 @@ document.getElementById('saveGradeBtn').addEventListener('click',async()=>{
   const studentId=document.getElementById('eg-student').value,title=document.getElementById('eg-title').value.trim();
   const score=parseFloat(document.getElementById('eg-score').value),max=parseFloat(document.getElementById('eg-max').value);
   const semId=document.getElementById('activeSemester').value;
-  if(!studentId||!title||isNaN(score)||isNaN(max)){alert('Please fill all required fields.');return;}
+  const subj=document.getElementById('eg-subject').value;
+  const type=document.getElementById('eg-type').value;
+  const gdate=document.getElementById('eg-date').value;
+  
+  if(!studentId||!title||!subj||!type||isNaN(score)||isNaN(max)){alert('Please fill all required fields.');return;}
   const btn=document.getElementById('saveGradeBtn');btn.innerHTML=`<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;btn.disabled=true;
   try{
-    await addDoc(collection(db,'schools',session.schoolId,'students',studentId,'grades'),{teacherId:session.teacherId,semesterId:semId,subject:document.getElementById('eg-subject').value,type:document.getElementById('eg-type').value,date:document.getElementById('eg-date').value,title,score,max,notes:document.getElementById('eg-notes').value.trim(),historyLogs:[],createdAt:new Date().toISOString()});
+    await addDoc(collection(db,'schools',session.schoolId,'students',studentId,'grades'),{teacherId:session.teacherId,semesterId:semId,subject:subj,type:type,date:gdate,title,score,max,notes:document.getElementById('eg-notes').value.trim(),historyLogs:[],createdAt:new Date().toISOString()});
+    
+    // Clear only specifics, keep student and subject for bulk entry
     document.getElementById('eg-title').value='';document.getElementById('eg-score').value='';document.getElementById('eg-notes').value='';
-    document.getElementById('eg-date').valueAsDate=new Date();document.getElementById('eg-preview').classList.add('hidden');
-    document.getElementById('gradeSavedBanner').classList.remove('hidden');clearGradesCache();updateOverviewStats();
+    document.getElementById('eg-date').valueAsDate=new Date();
+    updateLivePreview(); // will reset preview to blank
+    
+    document.getElementById('gradeSavedBanner').classList.remove('hidden');
+    clearGradesCache();updateOverviewStats();
   }catch(e){console.error(e);alert('Error saving grade.');}
   btn.innerHTML=`<i class="fa-solid fa-check-circle"></i> Save Grade to Gradebook`;btn.disabled=false;
 });
@@ -1279,8 +1549,7 @@ async function loadSubjectsTab(){
       <td class="px-6 py-4 text-center">${atRisk?`<span class="font-black text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-lg text-xs">${atRisk}</span>`:'<span class="text-slate-400 font-semibold">0</span>'}</td>
       <td class="px-6 py-4 text-slate-500 font-semibold text-xs">${lastGraded||'—'}</td>
       <td class="px-6 py-4 text-right"><div class="flex items-center justify-end gap-1">
-        <button onclick="openSubjectFormModal('${sub.id}')" class="h-8 w-8 bg-teal-50 hover:bg-teal-500 hover:text-white text-teal-600 rounded-lg transition border border-teal-200 hover:border-teal-500 flex items-center justify-center" title="Edit"><i class="fa-solid fa-pen text-xs"></i></button>
-        <button onclick="openSubjectPanel('${sub.name.replace(/'/g,'\\\'')}')" class="bg-teal-50 hover:bg-teal-600 hover:text-white text-teal-700 font-black px-3 py-1.5 rounded-lg text-xs transition border border-teal-200 hover:border-teal-600">View</button>
+        <button onclick="openSubjectPanel('${sub.name.replace(/'/g,'\\\'')}')" class="bg-teal-50 hover:bg-teal-600 hover:text-white text-teal-700 font-black px-4 py-2 rounded-lg text-xs transition border border-teal-200 hover:border-teal-600">View</button>
       </div></td>
     </tr>`;
   }).join('');
@@ -1359,6 +1628,11 @@ window.openSubjectPanel=async function(subjectName){
   currentSubjectName=subjectName;
   document.getElementById('spPanelTitle').textContent=subjectName;
   document.getElementById('subjectPanelBody').innerHTML='<div class="flex justify-center py-16"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-teal-500"></i></div>';
+  
+  // reset filters
+  document.getElementById('spFilterStudent').value = '';
+  document.getElementById('spFilterType').value = '';
+  
   openOverlay('subjectPanel','subjectPanelInner',true);
   
   const quickGradeBtn = document.getElementById('spQuickGradeBtn');
@@ -1370,40 +1644,122 @@ window.openSubjectPanel=async function(subjectName){
   }
 
   const semId=document.getElementById('activeSemester').value;
-  document.getElementById('spPanelMeta').textContent=`${document.getElementById('activeSemester').options[document.getElementById('activeSemester').selectedIndex]?.text||''} · ${allStudentsCache.length} students`;
+  document.getElementById('spPanelMeta').textContent=`${document.getElementById('activeSemester').options[document.getElementById('activeSemester').selectedIndex]?.text||''} · Loading...`;
+  
   const allGrades=await getAllGrades(semId);
-  const sg=allGrades.filter(g=>g.subject===subjectName);
-  const stuIds=[...new Set(sg.map(g=>g.studentId))];
-  const stuData=stuIds.map(sid=>{const sg2=sg.filter(g=>g.studentId===sid);const avg=sg2.reduce((a,g)=>a+(g.max?g.score/g.max*100:0),0)/sg2.length;return{sid,name:studentMap[sid]||'Unknown',avg:Math.round(avg),count:sg2.length};}).sort((a,b)=>a.avg-b.avg);
-  const dist={a:0,b:0,c:0,d:0,f:0};stuData.forEach(s=>{if(s.avg>=90)dist.a++;else if(s.avg>=80)dist.b++;else if(s.avg>=70)dist.c++;else if(s.avg>=65)dist.d++;else dist.f++;});
-  const total=stuData.length||1;
-  const classAvg=stuData.length?Math.round(stuData.reduce((a,s)=>a+s.avg,0)/stuData.length):null;
-  const atRiskStudents=stuData.filter(s=>s.avg<65);
-  document.getElementById('subjectPanelBody').innerHTML=`
-    <div class="grid grid-cols-3 gap-3">
-      <div class="bg-white border border-slate-200 rounded-2xl p-4 text-center shadow-sm"><p class="text-xs font-black text-slate-400 uppercase tracking-wider mb-1">Class Average</p><p class="text-3xl font-black ${classAvg!==null?gradeColorClass(classAvg):'text-slate-400'}">${classAvg!==null?classAvg+'%':'—'}</p></div>
-      <div class="bg-white border border-slate-200 rounded-2xl p-4 text-center shadow-sm"><p class="text-xs font-black text-slate-400 uppercase tracking-wider mb-1">Students Graded</p><p class="text-3xl font-black text-teal-600">${stuIds.length}</p></div>
-      <div class="bg-white border border-slate-200 rounded-2xl p-4 text-center shadow-sm"><p class="text-xs font-black text-slate-400 uppercase tracking-wider mb-1">At Risk</p><p class="text-3xl font-black ${atRiskStudents.length?'text-red-600':'text-emerald-600'}">${atRiskStudents.length}</p></div>
-    </div>
-    <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-      <h4 class="text-xs font-black text-slate-500 uppercase tracking-wider mb-3">Grade Distribution</h4>
-      <div class="dist-bar">${dist.a?`<div class="dist-seg bg-emerald-500" style="width:${dist.a/total*100}%">A:${dist.a}</div>`:''}${dist.b?`<div class="dist-seg bg-blue-500" style="width:${dist.b/total*100}%">B:${dist.b}</div>`:''}${dist.c?`<div class="dist-seg bg-teal-500" style="width:${dist.c/total*100}%">C:${dist.c}</div>`:''}${dist.d?`<div class="dist-seg bg-amber-500" style="width:${dist.d/total*100}%">D:${dist.d}</div>`:''}${dist.f?`<div class="dist-seg bg-red-500" style="width:${dist.f/total*100}%">F:${dist.f}</div>`:''}${!stuData.length?`<div class="dist-seg bg-slate-300" style="width:100%">No Data</div>`:''}</div>
-      <div class="flex gap-4 mt-3 flex-wrap">${[['A',dist.a,'bg-emerald-500'],['B',dist.b,'bg-blue-500'],['C',dist.c,'bg-teal-500'],['D',dist.d,'bg-amber-500'],['F',dist.f,'bg-red-500']].map(([l,n,c])=>`<div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-sm ${c}"></div><span class="text-xs font-black text-slate-600">${l}: ${n}</span></div>`).join('')}</div>
-    </div>
-    ${atRiskStudents.length?`<div class="bg-red-50 border border-red-200 rounded-2xl p-5"><h4 class="font-black text-red-700 text-sm uppercase tracking-wider mb-3 flex items-center gap-2"><i class="fa-solid fa-triangle-exclamation"></i> Needs Attention</h4><div class="space-y-2">${atRiskStudents.map(s=>`<div class="flex items-center justify-between bg-white border border-red-100 rounded-xl p-3"><span class="font-black text-slate-700 text-sm">${s.name}</span><span class="font-black text-red-600">${s.avg}%</span></div>`).join('')}</div></div>`:''}
-    <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-      <div class="px-5 py-4 border-b border-slate-100 bg-slate-50"><h4 class="font-black text-slate-700 text-sm uppercase tracking-wider">Student Breakdown</h4></div>
-      <div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200"><tr><th class="px-4 py-3 font-black text-left">Student</th><th class="px-4 py-3 font-black text-center">Average</th><th class="px-4 py-3 font-black text-center">Standing</th><th class="px-4 py-3 font-black text-center">Assignments</th></tr></thead>
-      <tbody>${stuData.length?stuData.reverse().map(s=>`<tr class="gb-row"><td class="px-4 py-3"><div class="flex items-center gap-2"><div class="h-8 w-8 bg-gradient-to-br from-emerald-400 to-teal-500 text-white rounded-lg flex items-center justify-center font-black text-xs flex-shrink-0">${s.name.charAt(0)}</div><span class="font-black text-slate-700 text-sm">${s.name}</span></div></td><td class="px-4 py-3 text-center"><span class="${gradeColorClass(s.avg)} font-black">${s.avg}% · ${letterGrade(s.avg)}</span></td><td class="px-4 py-3 text-center">${standingBadge(s.avg)}</td><td class="px-4 py-3 text-center text-slate-500 font-semibold text-sm">${s.count}</td></tr>`).join(''):'<tr><td colspan="4" class="px-4 py-8 text-center text-slate-400 italic">No students graded yet.</td></tr>'}</tbody>
-      </table></div>
-    </div>
-    <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-      <div class="px-5 py-4 border-b border-slate-100 bg-slate-50"><h4 class="font-black text-slate-700 text-sm uppercase tracking-wider">All Assignments</h4></div>
-      <div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200"><tr><th class="px-4 py-3 font-black text-left">Title</th><th class="px-4 py-3 font-black text-left">Type</th><th class="px-4 py-3 font-black text-left">Student</th><th class="px-4 py-3 font-black text-center">Score</th></tr></thead>
-      <tbody>${sg.length?sg.sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(g=>{const pct=g.max?Math.round(g.score/g.max*100):null;return`<tr class="gb-row"><td class="px-4 py-3"><p class="font-bold text-slate-700 text-sm">${g.title||'—'}</p><p class="text-xs text-slate-400">${g.date||''}</p></td><td class="px-4 py-3"><span class="text-[10px] font-black uppercase bg-slate-100 text-slate-500 border border-slate-200 px-2 py-1 rounded-md">${g.type||'—'}</span></td><td class="px-4 py-3 text-sm font-bold text-slate-700">${studentMap[g.studentId]||'—'}</td><td class="px-4 py-3 text-center"><span class="${gradeColorClass(pct||0)} font-black text-sm">${pct!==null?pct+'%':'—'}</span></td></tr>`;}).join(''):'<tr><td colspan="4" class="px-4 py-8 text-center text-slate-400 italic">No assignments yet.</td></tr>'}</tbody>
-      </table></div>
-    </div>`;
+  cachedSubjectGrades = allGrades.filter(g=>g.subject===subjectName);
+  
+  // Populate Student Filter for this subject
+  const spStuFilter = document.getElementById('spFilterStudent');
+  const stuIdsInSubj = [...new Set(cachedSubjectGrades.map(g=>g.studentId))];
+  spStuFilter.innerHTML = '<option value="">All Students</option>' + stuIdsInSubj.map(sid => `<option value="${sid}">${studentMap[sid]||'Unknown'}</option>`).join('');
+
+  renderSubjectPanelData();
 };
+
+window.renderSubjectPanelData = function() {
+    const fStudent = document.getElementById('spFilterStudent').value;
+    const fType = document.getElementById('spFilterType').value;
+    
+    let sg = cachedSubjectGrades;
+    if(fStudent) sg = sg.filter(g => g.studentId === fStudent);
+    if(fType) sg = sg.filter(g => g.type === fType);
+
+    const stuIds=[...new Set(sg.map(g=>g.studentId))];
+    const stuData=stuIds.map(sid=>{const sg2=sg.filter(g=>g.studentId===sid);const avg=sg2.reduce((a,g)=>a+(g.max?g.score/g.max*100:0),0)/sg2.length;return{sid,name:studentMap[sid]||'Unknown',avg:Math.round(avg),count:sg2.length};}).sort((a,b)=>a.avg-b.avg);
+    const dist={a:0,b:0,c:0,d:0,f:0};stuData.forEach(s=>{if(s.avg>=90)dist.a++;else if(s.avg>=80)dist.b++;else if(s.avg>=70)dist.c++;else if(s.avg>=65)dist.d++;else dist.f++;});
+    const total=stuData.length||1;
+    const classAvg=stuData.length?Math.round(stuData.reduce((a,s)=>a+s.avg,0)/stuData.length):null;
+    const atRiskStudents=stuData.filter(s=>s.avg<65);
+    
+    document.getElementById('spPanelMeta').textContent=`${document.getElementById('activeSemester').options[document.getElementById('activeSemester').selectedIndex]?.text||''} · ${stuIds.length} students`;
+
+    document.getElementById('subjectPanelBody').innerHTML=`
+      <div class="grid grid-cols-3 gap-3">
+        <div class="bg-white border border-slate-200 rounded-2xl p-4 text-center shadow-sm"><p class="text-xs font-black text-slate-400 uppercase tracking-wider mb-1">Avg</p><p class="text-3xl font-black ${classAvg!==null?gradeColorClass(classAvg):'text-slate-400'}">${classAvg!==null?classAvg+'%':'—'}</p></div>
+        <div class="bg-white border border-slate-200 rounded-2xl p-4 text-center shadow-sm"><p class="text-xs font-black text-slate-400 uppercase tracking-wider mb-1">Students</p><p class="text-3xl font-black text-teal-600">${stuIds.length}</p></div>
+        <div class="bg-white border border-slate-200 rounded-2xl p-4 text-center shadow-sm"><p class="text-xs font-black text-slate-400 uppercase tracking-wider mb-1">At Risk</p><p class="text-3xl font-black ${atRiskStudents.length?'text-red-600':'text-emerald-600'}">${atRiskStudents.length}</p></div>
+      </div>
+      <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+        <h4 class="text-xs font-black text-slate-500 uppercase tracking-wider mb-3">Grade Distribution</h4>
+        <div class="dist-bar">${dist.a?`<div class="dist-seg bg-emerald-500" style="width:${dist.a/total*100}%">A:${dist.a}</div>`:''}${dist.b?`<div class="dist-seg bg-blue-500" style="width:${dist.b/total*100}%">B:${dist.b}</div>`:''}${dist.c?`<div class="dist-seg bg-teal-500" style="width:${dist.c/total*100}%">C:${dist.c}</div>`:''}${dist.d?`<div class="dist-seg bg-amber-500" style="width:${dist.d/total*100}%">D:${dist.d}</div>`:''}${dist.f?`<div class="dist-seg bg-red-500" style="width:${dist.f/total*100}%">F:${dist.f}</div>`:''}${!stuData.length?`<div class="dist-seg bg-slate-300" style="width:100%">No Data</div>`:''}</div>
+        <div class="flex gap-4 mt-3 flex-wrap">${[['A',dist.a,'bg-emerald-500'],['B',dist.b,'bg-blue-500'],['C',dist.c,'bg-teal-500'],['D',dist.d,'bg-amber-500'],['F',dist.f,'bg-red-500']].map(([l,n,c])=>`<div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-sm ${c}"></div><span class="text-xs font-black text-slate-600">${l}: ${n}</span></div>`).join('')}</div>
+      </div>
+      ${atRiskStudents.length?`<div class="bg-red-50 border border-red-200 rounded-2xl p-5"><h4 class="font-black text-red-700 text-sm uppercase tracking-wider mb-3 flex items-center gap-2"><i class="fa-solid fa-triangle-exclamation"></i> Needs Attention</h4><div class="space-y-2">${atRiskStudents.map(s=>`<div class="flex items-center justify-between bg-white border border-red-100 rounded-xl p-3"><span class="font-black text-slate-700 text-sm">${s.name}</span><span class="font-black text-red-600">${s.avg}%</span></div>`).join('')}</div></div>`:''}
+      <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+        <div class="px-5 py-4 border-b border-slate-100 bg-slate-50"><h4 class="font-black text-slate-700 text-sm uppercase tracking-wider">Student Breakdown</h4></div>
+        <div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200"><tr><th class="px-4 py-3 font-black text-left">Student</th><th class="px-4 py-3 font-black text-center">Average</th><th class="px-4 py-3 font-black text-center">Standing</th><th class="px-4 py-3 font-black text-center">Assignments</th></tr></thead>
+        <tbody>${stuData.length?stuData.reverse().map(s=>`<tr class="gb-row"><td class="px-4 py-3"><div class="flex items-center gap-2"><div class="h-8 w-8 bg-gradient-to-br from-emerald-400 to-teal-500 text-white rounded-lg flex items-center justify-center font-black text-xs flex-shrink-0">${s.name.charAt(0)}</div><span class="font-black text-slate-700 text-sm">${s.name}</span></div></td><td class="px-4 py-3 text-center"><span class="${gradeColorClass(s.avg)} font-black">${s.avg}% · ${letterGrade(s.avg)}</span></td><td class="px-4 py-3 text-center">${standingBadge(s.avg)}</td><td class="px-4 py-3 text-center text-slate-500 font-semibold text-sm">${s.count}</td></tr>`).join(''):'<tr><td colspan="4" class="px-4 py-8 text-center text-slate-400 italic">No students match filter.</td></tr>'}</tbody>
+        </table></div>
+      </div>
+      <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+        <div class="px-5 py-4 border-b border-slate-100 bg-slate-50"><h4 class="font-black text-slate-700 text-sm uppercase tracking-wider">All Assignments</h4></div>
+        <div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200"><tr><th class="px-4 py-3 font-black text-left">Title</th><th class="px-4 py-3 font-black text-left">Type</th><th class="px-4 py-3 font-black text-left">Student</th><th class="px-4 py-3 font-black text-center">Score</th></tr></thead>
+        <tbody>${sg.length?sg.sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(g=>{const pct=g.max?Math.round(g.score/g.max*100):null;return`<tr class="gb-row cursor-pointer" onclick='openAssignmentModal(${JSON.stringify(g).replace(/'/g,"&apos;")})'><td class="px-4 py-3"><p class="font-bold text-slate-700 text-sm hover:text-teal-600">${g.title||'—'}</p><p class="text-xs text-slate-400">${g.date||''}</p></td><td class="px-4 py-3"><span class="text-[10px] font-black uppercase bg-slate-100 text-slate-500 border border-slate-200 px-2 py-1 rounded-md">${g.type||'—'}</span></td><td class="px-4 py-3 text-sm font-bold text-slate-700">${studentMap[g.studentId]||'—'}</td><td class="px-4 py-3 text-center"><span class="${gradeColorClass(pct||0)} font-black text-sm">${pct!==null?pct+'%':'—'}</span></td></tr>`;}).join(''):'<tr><td colspan="4" class="px-4 py-8 text-center text-slate-400 italic">No assignments match filter.</td></tr>'}</tbody>
+        </table></div>
+      </div>`;
+}
+
+window.printSubjectReport = function() {
+    const semName = document.getElementById('activeSemester').options[document.getElementById('activeSemester').selectedIndex]?.text||'';
+    const fStudent = document.getElementById('spFilterStudent').options[document.getElementById('spFilterStudent').selectedIndex].text;
+    const fType = document.getElementById('spFilterType').options[document.getElementById('spFilterType').selectedIndex].text;
+    
+    const sg = cachedSubjectGrades.filter(g => {
+        if(document.getElementById('spFilterStudent').value && g.studentId !== document.getElementById('spFilterStudent').value) return false;
+        if(document.getElementById('spFilterType').value && g.type !== document.getElementById('spFilterType').value) return false;
+        return true;
+    }).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+
+    const stuIds=[...new Set(sg.map(g=>g.studentId))];
+    const classAvgNum = sg.length ? Math.round(sg.reduce((acc, g) => acc + (g.max ? (g.score/g.max)*100 : 0), 0) / sg.length) : 0;
+
+    let html = `<html><head><title>${currentSubjectName} Report</title>
+    <style>
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #1e293b; line-height: 1.5; font-size: 13px; }
+        .header { text-align: center; border-bottom: 2px solid #cbd5e1; padding-bottom: 20px; margin-bottom: 30px; }
+        .header h1 { margin: 0 0 5px 0; font-size: 24px; color: #0f172a; text-transform: uppercase; letter-spacing: 1px; }
+        .header h2 { margin: 0; font-size: 16px; color: #64748b; font-weight: normal; }
+        .info-grid { background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 30px; display: flex; justify-content: space-between;}
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        th, td { border: 1px solid #e2e8f0; padding: 8px 12px; text-align: left; }
+        th { background: #f1f5f9; color: #475569; font-weight: bold; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+        .text-center { text-align: center; }
+    </style></head><body>
+
+    <div class="header">
+        <h1>${session.teacherData.name} - ConnectUs</h1>
+        <h2>Subject Performance Report: <strong>${currentSubjectName}</strong></h2>
+    </div>
+
+    <div class="info-grid">
+        <div><strong>Period:</strong> ${semName}</div>
+        <div><strong>Student Filter:</strong> ${fStudent}</div>
+        <div><strong>Type Filter:</strong> ${fType}</div>
+        <div><strong>Overall Avg:</strong> ${classAvgNum}%</div>
+    </div>
+    
+    <table>
+        <thead><tr><th>Date</th><th>Assignment</th><th>Type</th><th>Student</th><th class="text-center">Score</th><th class="text-center">%</th></tr></thead>
+        <tbody>`;
+    
+    if(sg.length === 0) {
+        html += `<tr><td colspan="6" class="text-center" style="padding: 20px; font-style:italic;">No records match the current filters.</td></tr>`;
+    } else {
+        sg.forEach(g => {
+            const pct = g.max ? Math.round(g.score/g.max*100) : null;
+            html += `<tr><td>${g.date||'—'}</td><td>${g.title}</td><td>${g.type}</td><td>${studentMap[g.studentId]||'Unknown'}</td><td class="text-center">${g.score}/${g.max}</td><td class="text-center">${pct!==null?pct+'%':'—'}</td></tr>`;
+        });
+    }
+
+    html += `</tbody></table>`;
+    html += printDisclaimer;
+    html += `</body></html>`;
+    
+    const w = window.open('','_blank'); w.document.write(html); w.document.close();
+    setTimeout(() => w.print(), 500);
+};
+
 window.closeSubjectPanel=function(){closeOverlay('subjectPanel','subjectPanelInner',true);};
 
 // ── GRADEBOOK ──────────────────────────────────────────────────────────────
@@ -1481,29 +1837,55 @@ window.deleteGrade=async function(studentId,gradeId){
 
 // ── OVERVIEW STATS ─────────────────────────────────────────────────────────
 async function updateOverviewStats(){
-  const semId=document.getElementById('activeSemester').value;if(!semId||!allStudentsCache.length)return;
+  const semId=document.getElementById('activeSemester').value;
+  const semName=document.getElementById('activeSemester').options[document.getElementById('activeSemester').selectedIndex]?.text||'—';
+  document.getElementById('sb-period').textContent = semName;
+
+  if(!semId||!allStudentsCache.length) {
+      document.getElementById('sb-risk').textContent = '0';
+      return;
+  }
   const allG=await getAllGrades(semId);
   document.getElementById('stat-grades').textContent=allG.length;
   const stuG={};allG.forEach(g=>{if(!stuG[g.studentId])stuG[g.studentId]={total:0,count:0};stuG[g.studentId].total+=(g.max?g.score/g.max*100:0);stuG[g.studentId].count++;});
   let risk=0;Object.values(stuG).forEach(sg=>{if(sg.count>0&&sg.total/sg.count<65)risk++;});
   document.getElementById('stat-risk').textContent=risk;
+  document.getElementById('sb-risk').textContent=risk;
   if(risk>0){document.getElementById('atRiskBanner').classList.remove('hidden');document.getElementById('atRiskMsg').textContent=`${risk} student${risk>1?'s are':' is'} at risk (below 65%) this period.`;}
   else document.getElementById('atRiskBanner').classList.add('hidden');
 }
 
 // ── PRINTING ─────────────────────────────────────────────────────────
-window.printStudentRecord = async function(studentId) {
+window.openPrintStudentModal = function() {
+    // populate subject filter
+    const psSubj = document.getElementById('psSubject');
+    const activeSubs = getActiveSubjects();
+    psSubj.innerHTML = '<option value="all">All Subjects</option>' + activeSubs.map(s=>`<option value="${s.name}">${s.name}</option>`).join('');
+    
+    openOverlay('printStudentModal', 'printStudentModalInner');
+};
+window.closePrintStudentModal = function() {
+    closeOverlay('printStudentModal', 'printStudentModalInner');
+};
+
+window.executeStudentPrint = async function() {
+    const mode = document.getElementById('psMode').value;
+    const subjFilter = document.getElementById('psSubject').value;
+    const studentId = currentStudentId;
+    
     const sDoc = await getDoc(doc(db,'schools',session.schoolId,'students',studentId));
     if(!sDoc.exists()) { alert("Student not found."); return; }
     const s = sDoc.data();
     
     const gradesSnap = await getDocs(collection(db,'schools',session.schoolId,'students',studentId,'grades'));
-    const grades = [];
+    let grades = [];
     gradesSnap.forEach(d => grades.push(d.data()));
 
     const bySem = {};
     grades.forEach(g => {
-        const sem = allSemesters.find(sm => sm.id === g.semesterId)?.name || 'Unknown Period';
+        if(subjFilter !== 'all' && g.subject !== subjFilter) return;
+        
+        const sem = rawSemesters.find(sm => sm.id === g.semesterId)?.name || 'Unknown Period';
         const sub = g.subject || 'Uncategorized';
         if(!bySem[sem]) bySem[sem] = {};
         if(!bySem[sem][sub]) bySem[sem][sub] = [];
@@ -1532,7 +1914,7 @@ window.printStudentRecord = async function(studentId) {
 
     <div class="header">
         <h1>ConnectUs Official Record</h1>
-        <h2>STUDENT TRANSCRIPT</h2>
+        <h2>STUDENT ${mode === 'summary' ? 'REPORT CARD' : 'DETAILED TRANSCRIPT'}</h2>
     </div>
 
     <div class="info-grid">
@@ -1543,39 +1925,70 @@ window.printStudentRecord = async function(studentId) {
     </div>`;
 
     if(Object.keys(bySem).length === 0) {
-        html += `<p style="text-align:center; color:#64748b; font-style:italic; padding: 40px;">No academic grades recorded for this student.</p>`;
+        html += `<p style="text-align:center; color:#64748b; font-style:italic; padding: 40px;">No academic grades recorded for this student matching filters.</p>`;
     } else {
         for(let sem in bySem) {
-            html += `<div class="sem-block"><h3 class="sem-title">${sem}</h3><table>
-                <thead><tr><th>Subject</th><th class="text-center">Assignments</th><th class="text-center">Average (%)</th><th class="text-center">Letter Grade</th></tr></thead><tbody>`;
+            html += `<div class="sem-block"><h3 class="sem-title">${sem}</h3><table>`;
             
-            let semTotalPct = 0; let semSubjCount = 0;
-            for(let sub in bySem[sem]) {
-                const sGrades = bySem[sem][sub];
-                const avg = Math.round(sGrades.reduce((acc, g) => acc + (g.max ? (g.score/g.max)*100 : 0), 0) / sGrades.length);
-                semTotalPct += avg; semSubjCount++;
-                html += `<tr><td>${sub}</td><td class="text-center">${sGrades.length}</td><td class="text-center">${avg}%</td><td class="text-center">${letterGrade(avg)}</td></tr>`;
+            if(mode === 'summary') {
+                html += `<thead><tr><th>Subject</th><th class="text-center">Assignments</th><th class="text-center">Average (%)</th><th class="text-center">Letter Grade</th></tr></thead><tbody>`;
+                let semTotalPct = 0; let semSubjCount = 0;
+                for(let sub in bySem[sem]) {
+                    const sGrades = bySem[sem][sub];
+                    const avg = Math.round(sGrades.reduce((acc, g) => acc + (g.max ? (g.score/g.max)*100 : 0), 0) / sGrades.length);
+                    semTotalPct += avg; semSubjCount++;
+                    html += `<tr><td>${sub}</td><td class="text-center">${sGrades.length}</td><td class="text-center">${avg}%</td><td class="text-center">${letterGrade(avg)}</td></tr>`;
+                }
+                const semAvg = Math.round(semTotalPct / semSubjCount);
+                html += `<tr class="avg-row"><td colspan="2" class="text-right">PERIOD AVERAGE:</td><td class="text-center">${semAvg}%</td><td class="text-center">${letterGrade(semAvg)}</td></tr>`;
+                html += `</tbody></table></div>`;
+            } else {
+                html += `<thead><tr><th>Subject</th><th>Assignment</th><th>Type</th><th class="text-center">Score</th><th class="text-center">%</th></tr></thead><tbody>`;
+                for(let sub in bySem[sem]) {
+                    const sGrades = bySem[sem][sub].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+                    sGrades.forEach(g => {
+                        const pct = g.max ? Math.round(g.score/g.max*100) : null;
+                        html += `<tr><td>${sub}</td><td>${g.title}<br><span style="font-size:10px;color:#94a3b8">${g.date||''}</span></td><td>${g.type}</td><td class="text-center">${g.score}/${g.max}</td><td class="text-center">${pct!==null?pct+'%':'—'}</td></tr>`;
+                    });
+                }
+                html += `</tbody></table></div>`;
             }
-            const semAvg = Math.round(semTotalPct / semSubjCount);
-            html += `<tr class="avg-row"><td colspan="2" class="text-right">PERIOD AVERAGE:</td><td class="text-center">${semAvg}%</td><td class="text-center">${letterGrade(semAvg)}</td></tr>`;
-            html += `</tbody></table></div>`;
         }
     }
-    html += `<div class="footer">Printed on ${new Date().toLocaleDateString()} via ConnectUs Platform</div></body></html>`;
+    
+    html += printDisclaimer;
+    html += `</body></html>`;
     const w = window.open('','_blank'); w.document.write(html); w.document.close();
+    closePrintStudentModal();
     setTimeout(() => w.print(), 500);
 };
 
 window.exportRosterCSV=function(){downloadCSV([['#','Name','Class','Parent Phone','Parent PIN'],...allStudentsCache.map((s,i)=>[i+1,s.name,s.className||'',s.parentPhone||'',s.pin])],`${session.schoolId}_roster.csv`);};
-window.printRoster=function(){const w=window.open('','_blank');w.document.write(`<html><head><title>Roster</title><style>body{font-family:sans-serif;padding:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #e2e8f0;padding:8px 12px;font-size:13px;text-align:left}th{background:#064e3b;color:white;font-weight:700}</style></head><body><h2>${session.teacherData.name} — Class Roster</h2><p style="color:#64748b;font-size:12px;margin-bottom:16px">Printed ${new Date().toLocaleDateString()}</p><table><thead><tr><th>#</th><th>Name</th><th>Class</th><th>Parent Phone</th><th>Parent PIN</th></tr></thead><tbody>${allStudentsCache.map((s,i)=>`<tr><td>${i+1}</td><td>${s.name}</td><td>${s.className||'—'}</td><td>${s.parentPhone||'—'}</td><td>${s.pin}</td></tr>`).join('')}</tbody></table></body></html>`);w.document.close();w.print();};
+window.printRoster=function(){
+    const w=window.open('','_blank');
+    w.document.write(`<html><head><title>Roster</title><style>body{font-family:sans-serif;padding:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #e2e8f0;padding:8px 12px;font-size:13px;text-align:left}th{background:#064e3b;color:white;font-weight:700}</style></head><body><h2>${session.teacherData.name} — Class Roster</h2><p style="color:#64748b;font-size:12px;margin-bottom:16px">Printed ${new Date().toLocaleDateString()}</p><table><thead><tr><th>#</th><th>Name</th><th>Class</th><th>Parent Phone</th><th>Parent PIN</th></tr></thead><tbody>${allStudentsCache.map((s,i)=>`<tr><td>${i+1}</td><td>${s.name}</td><td>${s.className||'—'}</td><td>${s.parentPhone||'—'}</td><td>${s.pin}</td></tr>`).join('')}</tbody></table>${printDisclaimer}</body></html>`);
+    w.document.close();
+    setTimeout(() => w.print(), 500);
+};
+
 window.exportGradebookCSV=function(){const fs=document.getElementById('gbFilterStudent')?.value||'',fsub=document.getElementById('gbFilterSubject')?.value||'',ftype=document.getElementById('gbFilterType')?.value||'';let rows=allGradesCache?.grades||[];if(fs)rows=rows.filter(g=>g.studentId===fs);if(fsub)rows=rows.filter(g=>g.subject===fsub);if(ftype)rows=rows.filter(g=>g.type===ftype);downloadCSV([['Student','Subject','Assignment','Type','Date','Score','Max','%','Letter','Notes'],...rows.map(g=>{const p=g.max?Math.round(g.score/g.max*100):null;return[g.studentName,g.subject||'',g.title||'',g.type||'',g.date||'',g.score,g.max||'',p!==null?p+'%':'',p!==null?letterGrade(p):'',g.notes||''];})],`${session.schoolId}_gradebook.csv`);};
-window.printGradebook=function(){const fs=document.getElementById('gbFilterStudent')?.value||'',fsub=document.getElementById('gbFilterSubject')?.value||'',ftype=document.getElementById('gbFilterType')?.value||'';let rows=allGradesCache?.grades||[];if(fs)rows=rows.filter(g=>g.studentId===fs);if(fsub)rows=rows.filter(g=>g.subject===fsub);if(ftype)rows=rows.filter(g=>g.type===ftype);const w=window.open('','_blank');w.document.write(`<html><head><title>Gradebook</title><style>body{font-family:sans-serif;padding:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #e2e8f0;padding:6px 10px;font-size:12px;text-align:left}th{background:#064e3b;color:white;font-weight:700}.hi{color:#15803d}.mid{color:#92400e}.lo{color:#991b1b}</style></head><body><h2>${session.teacherData.name} — Gradebook (${document.getElementById('activeSemester').options[document.getElementById('activeSemester').selectedIndex]?.text||''})</h2><p style="color:#64748b;font-size:12px;margin-bottom:16px">Printed ${new Date().toLocaleDateString()} · ${rows.length} records</p><table><thead><tr><th>Student</th><th>Subject</th><th>Assignment</th><th>Type</th><th>Date</th><th>Score</th><th>%</th><th>Grade</th></tr></thead><tbody>${rows.map(g=>{const p=g.max?Math.round(g.score/g.max*100):null;const cls=p>=75?'hi':p>=65?'mid':'lo';return`<tr><td>${g.studentName}</td><td>${g.subject||'—'}</td><td>${g.title||'—'}</td><td>${g.type||'—'}</td><td>${g.date||'—'}</td><td>${g.score}/${g.max||'?'}</td><td class="${cls}">${p!==null?p+'%':'—'}</td><td class="${cls}">${p!==null?letterGrade(p):'—'}</td></tr>`;}).join('')}</tbody></table></body></html>`);w.document.close();w.print();};
+window.printGradebook=function(){
+    const fs=document.getElementById('gbFilterStudent')?.value||'',fsub=document.getElementById('gbFilterSubject')?.value||'',ftype=document.getElementById('gbFilterType')?.value||'';
+    let rows=allGradesCache?.grades||[];
+    if(fs)rows=rows.filter(g=>g.studentId===fs);if(fsub)rows=rows.filter(g=>g.subject===fsub);if(ftype)rows=rows.filter(g=>g.type===ftype);
+    const w=window.open('','_blank');
+    w.document.write(`<html><head><title>Gradebook</title><style>body{font-family:sans-serif;padding:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #e2e8f0;padding:6px 10px;font-size:12px;text-align:left}th{background:#064e3b;color:white;font-weight:700}.hi{color:#15803d}.mid{color:#92400e}.lo{color:#991b1b}</style></head><body><h2>${session.teacherData.name} — Gradebook (${document.getElementById('activeSemester').options[document.getElementById('activeSemester').selectedIndex]?.text||''})</h2><p style="color:#64748b;font-size:12px;margin-bottom:16px">Printed ${new Date().toLocaleDateString()} · ${rows.length} records</p><table><thead><tr><th>Student</th><th>Subject</th><th>Assignment</th><th>Type</th><th>Date</th><th>Score</th><th>%</th><th>Grade</th></tr></thead><tbody>${rows.map(g=>{const p=g.max?Math.round(g.score/g.max*100):null;const cls=p>=75?'hi':p>=65?'mid':'lo';return`<tr><td>${g.studentName}</td><td>${g.subject||'—'}</td><td>${g.title||'—'}</td><td>${g.type||'—'}</td><td>${g.date||'—'}</td><td>${g.score}/${g.max||'?'}</td><td class="${cls}">${p!==null?p+'%':'—'}</td><td class="${cls}">${p!==null?letterGrade(p):'—'}</td></tr>`;}).join('')}</tbody></table>${printDisclaimer}</body></html>`);
+    w.document.close();
+    setTimeout(() => w.print(), 500);
+};
 
 // ── SETTINGS ───────────────────────────────────────────────────────────────
 function loadSettings(){
   document.getElementById('profileName').value=session.teacherData.name||'';
   document.getElementById('profilePhone').value=session.teacherData.phone||'';
-  // My Classes section
+  toggleSecurityEdit(false);
+  toggleProfileEdit(false);
+  
   const classes=getClasses().filter(Boolean);
   document.getElementById('currentClassesDisplay').textContent=classes.join(', ')||'Not set';
   const classList=CLASSES[schoolType]||CLASSES['Primary'];
@@ -1584,8 +1997,33 @@ function loadSettings(){
       <input type="checkbox" id="scb-${c.replace(/\s/g,'_')}" value="${c}" ${classes.includes(c)?'checked':''}>
       <label for="scb-${c.replace(/\s/g,'_')}" onclick="event.stopPropagation()">${c}</label>
     </div>`).join('');
-  renderSubjectsInSettings();loadArchivedStudents();
+  
+  renderGradeTypesList();
+  renderSubjectsInSettings();
+  loadArchivedStudents();
 }
+
+window.toggleSecurityEdit = function(isEditing) {
+    ['currentTeacherCode','newTeacherCode','confirmTeacherCode'].forEach(id => {
+        document.getElementById(id).disabled = !isEditing;
+        if(!isEditing) document.getElementById(id).value = ''; // clear on lock
+    });
+    document.getElementById('securityEditBtn').classList.toggle('hidden', isEditing);
+    document.getElementById('securityActionBtns').classList.toggle('hidden', !isEditing);
+    document.getElementById('settingsSecurityMsg').classList.add('hidden');
+}
+
+window.toggleProfileEdit = function(isEditing) {
+    ['profileName','profilePhone'].forEach(id => document.getElementById(id).disabled = !isEditing);
+    if(!isEditing) {
+        document.getElementById('profileName').value = session.teacherData.name || '';
+        document.getElementById('profilePhone').value = session.teacherData.phone || '';
+    }
+    document.getElementById('profileEditBtn').classList.toggle('hidden', isEditing);
+    document.getElementById('profileActionBtns').classList.toggle('hidden', !isEditing);
+    document.getElementById('settingsProfileMsg').classList.add('hidden');
+}
+
 window.toggleSettingsCb=function(safeId,cls){
   const cb=document.getElementById('scb-'+safeId);const wrap=document.getElementById('swrap-'+safeId);
   cb.checked=!cb.checked;wrap.classList.toggle('selected',cb.checked);
@@ -1593,37 +2031,93 @@ window.toggleSettingsCb=function(safeId,cls){
 document.getElementById('saveClassesBtn').addEventListener('click',async()=>{
   const selected=[...document.querySelectorAll('#settingsClassGrid input[type=checkbox]:checked')].map(c=>c.value);
   if(!selected.length){showMsg('settingsClassMsg','Select at least one class.',true);return;}
-  await updateDoc(doc(db,'schools',session.schoolId,'teachers',session.teacherId),{classes:selected,className:selected[0]});
-  session.teacherData.classes=selected;session.teacherData.className=selected[0];
-  document.getElementById('currentClassesDisplay').textContent=selected.join(', ');
-  updateSidebarClasses();showMsg('settingsClassMsg','Classes updated!',false);
+  
+  const btn=document.getElementById('saveClassesBtn');btn.innerHTML=`<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;btn.disabled=true;
+  try {
+      await updateDoc(doc(db,'schools',session.schoolId,'teachers',session.teacherId),{classes:selected,className:selected[0]});
+      session.teacherData.classes=selected;session.teacherData.className=selected[0];
+      document.getElementById('currentClassesDisplay').textContent=selected.join(', ');
+      updateSidebarClasses();
+      showMsg('settingsClassMsg','Classes updated!',false);
+  } catch(e) { console.error(e); }
+  btn.innerHTML='Update My Classes';btn.disabled=false;
 });
+
+function renderGradeTypesList() {
+    const types = getGradeTypes();
+    const list = document.getElementById('gradeTypesList');
+    list.innerHTML = types.map(t => {
+        const isDefault = DEFAULT_GRADE_TYPES.includes(t);
+        return `<div class="flex items-center justify-between bg-white border border-slate-200 rounded-lg p-2 mb-2">
+            <span class="font-bold text-slate-700 text-sm">${t}</span>
+            ${isDefault ? `<span class="text-[9px] uppercase tracking-wider text-slate-400 font-black px-2 bg-slate-100 rounded">Default</span>` : 
+            `<button onclick="deleteGradeType('${t}')" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-trash-can"></i></button>`}
+        </div>`;
+    }).join('');
+}
+
+window.addGradeType = async function() {
+    const input = document.getElementById('newGradeTypeInput');
+    const nt = input.value.trim();
+    if(!nt) return;
+    
+    let types = getGradeTypes();
+    if(types.map(t=>t.toLowerCase()).includes(nt.toLowerCase())) {
+        showMsg('gradeTypeMsg', 'Type already exists.', true);
+        return;
+    }
+    
+    types.push(nt);
+    try {
+        await updateDoc(doc(db,'schools',session.schoolId,'teachers',session.teacherId), { customGradeTypes: types });
+        session.teacherData.customGradeTypes = types;
+        input.value = '';
+        renderGradeTypesList();
+        populateGradeTypeDropdowns();
+        showMsg('gradeTypeMsg', 'Type added successfully!', false);
+    } catch(e) { console.error(e); showMsg('gradeTypeMsg', 'Error adding type.', true); }
+}
+
+window.deleteGradeType = async function(type) {
+    if(!confirm(`Delete grade type "${type}"? Existing grades using this type won't be affected.`)) return;
+    let types = getGradeTypes().filter(t => t !== type);
+    try {
+        await updateDoc(doc(db,'schools',session.schoolId,'teachers',session.teacherId), { customGradeTypes: types });
+        session.teacherData.customGradeTypes = types;
+        renderGradeTypesList();
+        populateGradeTypeDropdowns();
+    } catch(e) { console.error(e); }
+}
+
 
 function renderSubjectsInSettings(){
   const active=getActiveSubjects();const archived=getArchivedSubjects();
   document.getElementById('archivedSubjectsCount').textContent=archived.length;
   document.getElementById('activeSubjectsList').innerHTML=active.length?active.map(s=>`
-    <div class="subject-card">
-      <div class="flex-1 min-w-0">
-        <p class="font-black text-slate-700">${s.name}</p>
-        ${s.description?`<p class="text-xs text-slate-400 font-semibold mt-0.5">${s.description}</p>`:''}
+    <div class="subject-card flex-col">
+      <div class="w-full flex justify-between items-start">
+          <div class="flex-1 min-w-0">
+            <p class="font-black text-slate-700">${s.name}</p>
+          </div>
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <button onclick="openSubjectFormModal('${s.id}')" class="h-7 w-7 bg-white border border-teal-200 text-teal-600 hover:bg-teal-500 hover:text-white rounded flex items-center justify-center transition" title="Edit"><i class="fa-solid fa-pen text-[10px]"></i></button>
+            <button onclick="archiveSubject('${s.id}')" class="h-7 w-7 bg-white border border-amber-200 text-amber-600 hover:bg-amber-500 hover:text-white rounded flex items-center justify-center transition" title="Archive"><i class="fa-solid fa-box-archive text-[10px]"></i></button>
+          </div>
       </div>
-      <div class="flex items-center gap-2 ml-3 flex-shrink-0">
-        <button onclick="openSubjectFormModal('${s.id}')" class="h-8 w-8 bg-white border border-teal-200 text-teal-600 hover:bg-teal-500 hover:text-white rounded-lg transition flex items-center justify-center" title="Edit"><i class="fa-solid fa-pen text-xs"></i></button>
-        <button onclick="archiveSubject('${s.id}')" class="h-8 w-8 bg-white border border-amber-200 text-amber-600 hover:bg-amber-500 hover:text-white rounded-lg transition flex items-center justify-center" title="Archive"><i class="fa-solid fa-box-archive text-xs"></i></button>
-      </div>
-    </div>`).join(''):'<p class="text-sm text-slate-400 italic">No active subjects. Add one above.</p>';
+      ${s.description?`<p class="text-xs text-slate-400 font-semibold mt-1 truncate w-full" title="${s.description}">${s.description}</p>`:''}
+    </div>`).join(''):'<p class="text-sm text-slate-400 italic">No active subjects.</p>';
+    
   document.getElementById('archivedSubjectsList').innerHTML=archived.length?archived.map(s=>`
-    <div class="subject-card subject-card-archived">
-      <div class="flex-1 min-w-0">
+    <div class="subject-card subject-card-archived flex-col">
+      <div class="flex-1 min-w-0 mb-2">
         <p class="font-black text-slate-500 line-through">${s.name}</p>
-        <p class="text-xs text-slate-400 font-semibold mt-0.5">Archived ${s.archivedAt?new Date(s.archivedAt).toLocaleDateString():''}</p>
+        <p class="text-[10px] text-slate-400 font-bold mt-0.5">Archived ${s.archivedAt?new Date(s.archivedAt).toLocaleDateString():''}</p>
       </div>
-      <div class="flex items-center gap-2 ml-3 flex-shrink-0">
-        <button onclick="restoreSubject('${s.id}')" class="text-xs font-black text-green-700 hover:bg-green-600 hover:text-white border border-green-300 px-3 py-1.5 rounded-lg transition">Restore</button>
-        <button onclick="permanentDeleteSubject('${s.id}')" class="text-xs font-black text-red-600 hover:bg-red-600 hover:text-white border border-red-300 px-3 py-1.5 rounded-lg transition">Delete</button>
+      <div class="flex items-center gap-2 w-full">
+        <button onclick="restoreSubject('${s.id}')" class="flex-1 text-xs font-black text-green-700 hover:bg-green-600 hover:text-white border border-green-300 py-1.5 rounded-lg transition text-center">Restore</button>
+        <button onclick="permanentDeleteSubject('${s.id}')" class="flex-1 text-xs font-black text-red-600 hover:bg-red-600 hover:text-white border border-red-300 py-1.5 rounded-lg transition text-center">Delete</button>
       </div>
-    </div>`).join(''):'<p class="text-sm text-slate-400 italic text-center py-3">No archived subjects.</p>';
+    </div>`).join(''):'<p class="text-sm text-slate-400 italic py-2">No archived subjects.</p>';
 }
 
 window.toggleArchivedSubjects=function(){
@@ -1637,13 +2131,31 @@ document.getElementById('updateCodeBtn').addEventListener('click',async()=>{
   if(cur!==session.teacherData.loginCode){showMsg(mid,'Current login code is incorrect.',true);return;}
   if(nw!==cf){showMsg(mid,'New codes do not match.',true);return;}
   if(nw.length<5){showMsg(mid,'Minimum 5 characters required.',true);return;}
-  await updateDoc(doc(db,'schools',session.schoolId,'teachers',session.teacherId),{loginCode:nw});
-  session.teacherData.loginCode=nw;['currentTeacherCode','newTeacherCode','confirmTeacherCode'].forEach(id=>document.getElementById(id).value='');showMsg(mid,'Login code updated!',false);
+  
+  const btn = document.getElementById('updateCodeBtn');
+  btn.innerHTML=`<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;btn.disabled=true;
+  try {
+      await updateDoc(doc(db,'schools',session.schoolId,'teachers',session.teacherId),{loginCode:nw});
+      session.teacherData.loginCode=nw;
+      toggleSecurityEdit(false);
+      showMsg(mid,'Login code updated!',false);
+  } catch(e) { showMsg(mid,'Error saving code.',true); }
+  btn.innerHTML='Save Code';btn.disabled=false;
 });
+
 document.getElementById('saveProfileBtn').addEventListener('click',async()=>{
   const u={name:document.getElementById('profileName').value.trim(),phone:document.getElementById('profilePhone').value.trim()};
-  await updateDoc(doc(db,'schools',session.schoolId,'teachers',session.teacherId),u);Object.assign(session.teacherData,u);
-  document.getElementById('displayTeacherName').textContent=u.name;showMsg('settingsProfileMsg','Profile saved!',false);
+  
+  const btn = document.getElementById('saveProfileBtn');
+  btn.innerHTML=`<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;btn.disabled=true;
+  try {
+      await updateDoc(doc(db,'schools',session.schoolId,'teachers',session.teacherId),u);
+      Object.assign(session.teacherData,u);
+      document.getElementById('displayTeacherName').textContent=u.name;
+      toggleProfileEdit(false);
+      showMsg('settingsProfileMsg','Profile saved!',false);
+  } catch(e) { showMsg('settingsProfileMsg','Error saving profile.',true); }
+  btn.innerHTML='Save Profile';btn.disabled=false;
 });
 
 async function loadArchivedStudents(){
