@@ -30,11 +30,11 @@
             <div class="space-y-5">
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">School ID</label>
-                    <input type="text" id="loginSchoolId" placeholder="e.g. belize-high" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 transition">
+                    <input type="text" id="loginSchoolId" placeholder="e.g. LA1234" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 transition">
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Admin Code</label>
-                    <input type="password" id="loginAdminCode" placeholder="Default: ADMIN2024" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 transition">
+                    <input type="password" id="loginAdminCode" placeholder="Default or Temp Code" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 transition">
                 </div>
                 
                 <button id="loginBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 px-4 rounded-xl transition mt-2 shadow-lg shadow-blue-600/30 text-lg flex justify-center items-center gap-2">
@@ -45,6 +45,30 @@
 
             <div class="mt-8 pt-6 text-center text-xs text-slate-400">
                 <p>&copy; 2026 ConnectUs. All rights reserved.</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="forceResetModal" class="absolute inset-0 bg-slate-900/90 backdrop-blur-md z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 text-center m-4 transform scale-95 transition-transform duration-300" id="forceResetModalInner">
+            <div class="text-amber-500 text-5xl mb-4"><i class="fa-solid fa-shield-halved"></i></div>
+            <h3 class="font-extrabold text-2xl text-slate-800 mb-2">Security Update Required</h3>
+            <p class="text-slate-500 text-sm mb-6">You are using a default or temporary PIN. For your school's security, you must update your admin code before accessing the dashboard.</p>
+            
+            <div class="space-y-4 text-left">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">New Admin Code</label>
+                    <input type="password" id="newForceCode" placeholder="Min. 5 characters" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:bg-white transition">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Confirm New Code</label>
+                    <input type="password" id="confirmForceCode" placeholder="Type it again" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:bg-white transition">
+                </div>
+                
+                <button id="saveForceCodeBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition mt-4 shadow-md text-base flex justify-center items-center gap-2">
+                    Save & Continue <i class="fa-solid fa-arrow-right"></i>
+                </button>
+                <p id="forceResetMsg" class="text-sm font-bold text-center text-red-600 hidden mt-2 bg-red-50 p-2 rounded-lg"></p>
             </div>
         </div>
     </div>
@@ -113,7 +137,7 @@
                                 <h3 class="font-bold text-xl text-slate-800">Manage Teaching Staff</h3>
                                 <p class="text-sm text-slate-500 mt-1">Add staff members and generate secure login access codes.</p>
                             </div>
-                            <button onclick="document.getElementById('addTeacherModal').classList.remove('hidden')" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-md shadow-blue-600/20 transition flex items-center gap-2">
+                            <button onclick="openModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-md shadow-blue-600/20 transition flex items-center gap-2">
                                 <i class="fa-solid fa-plus"></i> Add Teacher
                             </button>
                         </div>
@@ -243,12 +267,26 @@
             setTimeout(() => modal.classList.add('hidden'), 200);
         }
         
-        // Override the original inline onclick for the button
-        document.querySelector('[onclick="document.getElementById(\'addTeacherModal\').classList.remove(\'hidden\')"]').onclick = openModal;
-
         function generateCode() {
             const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
             return Array.from({length: 6}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+        }
+
+        // --- CORE DASHBOARD LAUNCHER ---
+        function launchDashboard(data) {
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('forceResetModal').classList.add('hidden');
+            document.getElementById('dashboardApp').classList.remove('hidden');
+            
+            document.getElementById('displaySchoolName').innerText = data.schoolName;
+            if(data.logoUrl) {
+                document.getElementById('schoolLogo').src = data.logoUrl;
+                document.getElementById('schoolLogo').classList.remove('hidden');
+                document.getElementById('schoolLogoFallback').classList.add('hidden');
+            }
+            
+            loadOverviewStats();
+            loadSemesters(); 
         }
 
         // --- LOGIN LOGIC ---
@@ -268,6 +306,7 @@
             btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Authenticating...`;
 
             try {
+                // Correctly referencing the school by the document ID provided by the user
                 const schoolRef = doc(db, "schools", schoolId);
                 const schoolSnap = await getDoc(schoolRef);
 
@@ -276,7 +315,7 @@
 
                     // SECURITY CHECK: Ensure account is paid/verified
                     if (data.isVerified !== true) {
-                        msgEl.innerText = "School account is pending approval or payment. Please contact ConnectUs.";
+                        msgEl.innerText = "School account is pending approval or setup. Please contact ConnectUs.";
                         msgEl.classList.remove('hidden');
                         btn.disabled = false;
                         btn.innerHTML = `Secure Login <i class="fa-solid fa-arrow-right-to-bracket"></i>`;
@@ -288,18 +327,20 @@
                     if (adminCodeInput === correctCode) {
                         currentSchoolId = schoolId;
                         schoolData = data;
-                        document.getElementById('loginScreen').classList.add('hidden');
-                        document.getElementById('dashboardApp').classList.remove('hidden');
-                        
-                        document.getElementById('displaySchoolName').innerText = data.schoolName;
-                        if(data.logoUrl) {
-                            document.getElementById('schoolLogo').src = data.logoUrl;
-                            document.getElementById('schoolLogo').classList.remove('hidden');
-                            document.getElementById('schoolLogoFallback').classList.add('hidden');
+
+                        // FORCE PIN RESET CHECK
+                        if (data.requiresPinReset === true) {
+                            const modal = document.getElementById('forceResetModal');
+                            const inner = document.getElementById('forceResetModalInner');
+                            modal.classList.remove('hidden');
+                            setTimeout(() => {
+                                modal.classList.remove('opacity-0');
+                                inner.classList.remove('scale-95');
+                            }, 10);
+                        } else {
+                            // Launch normally
+                            launchDashboard(data);
                         }
-                        
-                        loadOverviewStats();
-                        loadSemesters(); 
                     } else {
                         msgEl.innerText = "Incorrect Admin Code.";
                         msgEl.classList.remove('hidden');
@@ -316,6 +357,62 @@
             
             btn.disabled = false;
             btn.innerHTML = `Secure Login <i class="fa-solid fa-arrow-right-to-bracket"></i>`;
+        });
+
+        // --- FORCE RESET SAVE BUTTON LOGIC ---
+        document.getElementById('saveForceCodeBtn').addEventListener('click', async () => {
+            const newCode = document.getElementById('newForceCode').value.trim();
+            const confirmCode = document.getElementById('confirmForceCode').value.trim();
+            const msgEl = document.getElementById('forceResetMsg');
+            const btn = document.getElementById('saveForceCodeBtn');
+
+            if (!newCode || !confirmCode) {
+                msgEl.innerText = "Please fill out both fields.";
+                msgEl.classList.remove('hidden');
+                return;
+            }
+            if (newCode !== confirmCode) {
+                msgEl.innerText = "Codes do not match.";
+                msgEl.classList.remove('hidden');
+                return;
+            }
+            if (newCode.length < 5) {
+                msgEl.innerText = "Code must be at least 5 characters.";
+                msgEl.classList.remove('hidden');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Updating...`;
+
+            try {
+                // Update Firestore
+                await updateDoc(doc(db, "schools", currentSchoolId), { 
+                    adminCode: newCode,
+                    requiresPinReset: false 
+                });
+                
+                // Animate Modal Exit
+                const modal = document.getElementById('forceResetModal');
+                const inner = document.getElementById('forceResetModalInner');
+                modal.classList.add('opacity-0');
+                inner.classList.add('scale-95');
+                
+                setTimeout(() => {
+                    modal.classList.add('hidden');
+                    // Launch Dashboard
+                    schoolData.adminCode = newCode; 
+                    schoolData.requiresPinReset = false;
+                    launchDashboard(schoolData);
+                }, 300);
+
+            } catch (error) {
+                console.error("Error updating PIN:", error);
+                msgEl.innerText = "Error updating code. Please try again.";
+                msgEl.classList.remove('hidden');
+                btn.disabled = false;
+                btn.innerHTML = `Save & Continue <i class="fa-solid fa-arrow-right"></i>`;
+            }
         });
 
         document.getElementById('logoutBtn').addEventListener('click', () => {
