@@ -369,19 +369,31 @@ window.toggleAccordion = function(h) {
 
 // ── LOGIN ──────────────────────────────────────────────────────────────────
 document.getElementById('loginBtn').addEventListener('click', async () => {
-    // 1. Strict sanitization
-    const schoolId = document.getElementById('loginSchoolId').value.trim().toLowerCase();
-    const pin = document.getElementById('loginPin').value.trim().toUpperCase(); // Allow uppercase if they used letters
+    // 1. Get raw input
+    const rawSchoolId = document.getElementById('loginSchoolId').value.trim();
+    const pin = document.getElementById('loginPin').value.trim().toUpperCase(); 
     const msgEl = document.getElementById('loginMsg');
     const btn = document.getElementById('loginBtn');
 
-    if (!schoolId || !pin) { msgEl.innerText = "Please enter both fields."; msgEl.classList.remove('hidden'); return; }
+    if (!rawSchoolId || !pin) { msgEl.innerText = "Please enter both fields."; msgEl.classList.remove('hidden'); return; }
     msgEl.classList.add('hidden');
     btn.disabled = true; btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Verifying...`;
 
     try {
-        const schoolSnap = await getDoc(doc(db, "schools", schoolId));
-        if (!schoolSnap.exists()) {
+        let schoolSnap = null;
+        let actualSchoolId = null;
+
+        // 2. Smart loop: Check Uppercase, Lowercase, and exact input
+        for (const id of [rawSchoolId.toUpperCase(), rawSchoolId.toLowerCase(), rawSchoolId]) {
+            const tempSnap = await getDoc(doc(db, "schools", id));
+            if (tempSnap.exists()) {
+                schoolSnap = tempSnap;
+                actualSchoolId = id; // Store the exact matching case
+                break;
+            }
+        }
+
+        if (!schoolSnap) {
             msgEl.innerText = "School ID not found."; msgEl.classList.remove('hidden'); resetLoginBtn(); return;
         }
         if (schoolSnap.data().isVerified !== true) {
@@ -390,7 +402,8 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         
         activeSemesterId = schoolSnap.data().activeSemesterId || '';
 
-        const q = query(collection(db, "schools", schoolId, "students"), where("pin", "==", pin));
+        // Query the students collection using the verified, correctly cased School ID
+        const q = query(collection(db, "schools", actualSchoolId, "students"), where("pin", "==", pin));
         const snap = await getDocs(q);
 
         if (!snap.empty) {
@@ -403,7 +416,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
                 msgEl.classList.remove('hidden'); resetLoginBtn(); return;
             }
 
-            session = { schoolId, studentId: sDoc.id, studentData: sData };
+            session = { schoolId: actualSchoolId, studentId: sDoc.id, studentData: sData };
             document.getElementById('loginScreen').classList.add('hidden');
             document.getElementById('dashboardApp').classList.remove('hidden');
             
