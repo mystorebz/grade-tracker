@@ -338,7 +338,6 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
 
     try {
         // ── Step 1: Locate the school document ─────────────────────────────
-        console.log('[FamilyPortal] Step 1 — looking up school:', rawSchoolId);
         let schoolSnap = null;
         let actualSchoolId = null;
 
@@ -351,7 +350,6 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         }
 
         if (!schoolSnap) {
-            console.warn('[FamilyPortal] School not found.');
             msgEl.innerText = "School ID not found.";
             msgEl.classList.remove('hidden');
             resetLoginBtn(); return;
@@ -363,12 +361,10 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         }
 
         activeSemesterId = schoolSnap.data().activeSemesterId || '';
-        console.log('[FamilyPortal] Step 1 OK — school:', actualSchoolId, '| active semester:', activeSemesterId);
 
         // ── Step 2: Find student by PIN ────────────────────────────────────
         // Firestore is type-strict: try both string and numeric forms of the
         // PIN so a type mismatch in the database never silently blocks login.
-        console.log('[FamilyPortal] Step 2 — querying student by PIN...');
         let snap = null;
 
         // Try string PIN first (how the teacher portal always saves them)
@@ -380,7 +376,6 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
 
         // If no result, try numeric PIN (guards against manual Firestore edits)
         if (snap.empty && !isNaN(Number(pin))) {
-            console.warn('[FamilyPortal] No match for string PIN — retrying with numeric PIN...');
             const qNum = query(
                 collection(db, 'schools', actualSchoolId, 'students'),
                 where('pin', '==', Number(pin))
@@ -388,7 +383,6 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
             snap = await withTimeout(getDocs(qNum), 'getDocs students by numeric PIN');
         }
 
-        console.log('[FamilyPortal] Step 2 OK —', snap.size, 'student(s) matched.');
 
         if (!snap.empty) {
             const sDoc  = snap.docs[0];
@@ -401,7 +395,6 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
             }
 
             // ── Step 3: Show dashboard ─────────────────────────────────────
-            console.log('[FamilyPortal] Step 3 — showing dashboard for:', sData.name);
             session = { schoolId: actualSchoolId, studentId: sDoc.id, studentData: sData };
 
             document.getElementById('loginScreen').style.display = 'none'; // inline style beats #loginScreen{display:flex} ID rule
@@ -416,19 +409,15 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
                 sData.className ? `Class: ${sData.className}` : 'Unassigned Class';
 
             // ── Step 4: Load all portal data ───────────────────────────────
-            console.log('[FamilyPortal] Step 4 — booting portal...');
             await bootPortal();
-            console.log('[FamilyPortal] Boot complete.');
 
         } else {
-            console.warn('[FamilyPortal] No student matched that PIN.');
             msgEl.innerText = "Invalid School ID or PIN.";
             msgEl.classList.remove('hidden');
             resetLoginBtn();
         }
 
     } catch (err) {
-        console.error('[FamilyPortal] Login failed:', err.message);
         msgEl.innerText = err.message.startsWith('TIMEOUT')
             ? "Connection timed out. Check your internet and try again."
             : "Connection error. Please try again.";
