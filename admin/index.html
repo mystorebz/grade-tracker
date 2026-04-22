@@ -399,10 +399,19 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
               <div id="archiveStudentsList" class="space-y-2 hidden"></div>
             </div>
           </div>
+
           <div class="danger-zone p-6">
             <h4 class="font-black text-red-700 flex items-center gap-2 mb-2"><i class="fa-solid fa-triangle-exclamation"></i> Danger Zone</h4>
             <p class="text-xs text-red-600 font-semibold mb-2">Permanent actions cannot be undone.</p>
             <p class="text-xs text-slate-500 font-semibold italic">Archive a record first, then use the Delete button in Archive Management above.</p>
+            
+            <div class="mt-4 pt-4 border-t border-red-200">
+                <h5 class="font-black text-red-700 text-sm mb-2">End of Academic Year Reset</h5>
+                <p class="text-xs text-red-600 font-semibold mb-3">Removes all active students from their current teachers and classes, placing them in the "Unassigned" pool for the next academic year. Grades are preserved.</p>
+                <button onclick="endOfYearReset()" class="bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 hover:border-red-600 font-black py-2 px-4 rounded-xl text-xs transition shadow-sm">
+                    <i class="fa-solid fa-rotate-right mr-1"></i> Run End-of-Year Reset
+                </button>
+            </div>
           </div>
         </div>
       </div>
@@ -553,9 +562,34 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
   </div>
 </div>
 
+<div id="archiveReasonModal" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center hidden opacity-0">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200" id="archiveReasonModalInner">
+    <div class="h-1 bg-gradient-to-r from-red-500 to-rose-600"></div>
+    <div class="px-7 py-5 border-b border-slate-100 flex justify-between items-center">
+      <div class="flex items-center gap-3"><div class="w-9 h-9 bg-red-100 text-red-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-box-archive"></i></div><h3 class="font-black text-xl text-slate-800">Archive Student</h3></div>
+      <button onclick="closeArchiveReasonModal()" class="text-slate-400 hover:text-red-500 h-8 w-8 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+    </div>
+    <div class="p-7 space-y-4 bg-slate-50/50">
+      <p class="text-sm text-slate-600 font-semibold leading-relaxed">Please select a reason for archiving <span id="archiveStudentName" class="font-black"></span>. This will remove them from all active rosters.</p>
+      <div>
+        <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Reason</label>
+        <select id="archiveReasonSelect" class="form-input w-full p-3 bg-white text-sm" onchange="document.getElementById('archiveReasonOther').classList.toggle('hidden', this.value !== 'Other')">
+          <option value="Transferred to another school">Transferred to another school</option>
+          <option value="Graduated">Graduated</option>
+          <option value="Expelled">Expelled</option>
+          <option value="Dropped Out">Dropped Out</option>
+          <option value="Other">Other</option>
+        </select>
+        <input type="text" id="archiveReasonOther" placeholder="Specify reason..." class="form-input w-full p-3 bg-white text-sm mt-2 hidden">
+      </div>
+      <button id="confirmArchiveBtn" class="w-full bg-red-600 hover:bg-red-700 text-white font-black py-3.5 rounded-xl transition shadow-md text-base mt-2">Confirm & Archive</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { db } from '../assets/js/firebase-init.js';
-import { doc,getDoc,updateDoc,collection,addDoc,getDocs,setDoc,deleteDoc,query,where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { doc,getDoc,updateDoc,collection,addDoc,getDocs,setDoc,deleteDoc,query,where,writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let currentSchoolId=null,schoolData=null,currentTeacherId=null,currentStudentId=null,currentEditSemId=null;
@@ -839,13 +873,13 @@ async function loadOverviewStats(){
   }
 }
 
-// ── GRADING PERIODS (SEMESTERS) - PRE-PHASE 3 UPDATES ────────────────────
+// ── GRADING PERIODS (SEMESTERS) - PHASE 3 UPDATES ────────────────────────
 async function loadSemesters(){
   const sRef=collection(db,'schools',currentSchoolId,'semesters');let snap=await getDocs(sRef);
   
   // Backwards compatibility/migration if empty
   if(snap.empty){
-    const defaultSems=[{id:'sem1',name:'Semester 1',startDate:'',endDate:'',order:1,archived:false},{id:'sem2',name:'Midterm',startDate:'',endDate:'',order:2,archived:false},{id:'sem3',name:'Semester 2',startDate:'',endDate:'',order:3,archived:false},{id:'sem4',name:'Semester 3',startDate:'',endDate:'',order:4,archived:false}];
+    const defaultSems=[{id:'sem1',name:'Semester 1',startDate:'',endDate:'',order:1,archived:false,isLocked:false},{id:'sem2',name:'Midterm',startDate:'',endDate:'',order:2,archived:false,isLocked:false},{id:'sem3',name:'Semester 2',startDate:'',endDate:'',order:3,archived:false,isLocked:false},{id:'sem4',name:'Semester 3',startDate:'',endDate:'',order:4,archived:false,isLocked:false}];
     await Promise.all(defaultSems.map(s=>setDoc(doc(db,'schools',currentSchoolId,'semesters',s.id),s)));
     snap=await getDocs(sRef);
   }
@@ -853,31 +887,36 @@ async function loadSemesters(){
   allSemesters=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.order-b.order);
   const activeId=schoolData.activeSemesterId||allSemesters[0]?.id;
 
-  // Filter unarchived for dropdowns (and specifically keep the active one visible even if somehow archived)
+  // Filter unarchived for dropdowns
   const dropdownSems = allSemesters.filter(s => !s.archived || s.id === activeId);
 
   const sel=document.getElementById('activePeriodSelect');
   if(sel)sel.innerHTML=dropdownSems.map(s=>`<option class="text-slate-800" value="${s.id}"${s.id===activeId?' selected':''}>${s.name}</option>`).join('');
 
   const gSel=document.getElementById('globalPeriodSelect');
-  // For global read-only gradebook lookups, we want to allow admins to select archived ones too!
   if(gSel)gSel.innerHTML=allSemesters.map(s=>`<option value="${s.id}"${s.id===activeId?' selected':''}>${s.name} ${s.archived ? '(Archived)' : ''}</option>`).join('');
 
-  // Splitting into Active and Archived Lists for the Settings Tab
   const activeListEl = document.getElementById('semestersList');
   const archivedListEl = document.getElementById('archivedSemestersList');
   
   const activePeriods = allSemesters.filter(s => !s.archived);
   const archivedPeriods = allSemesters.filter(s => s.archived);
 
+  // PHASE 3: Added Lock/Unlock UI
   if(activeListEl) activeListEl.innerHTML=activePeriods.map(s=>`
     <div class="flex items-center justify-between bg-white p-4 border rounded-2xl shadow-sm transition group hover:shadow-md ${s.id===activeId?'border-blue-300 bg-blue-50/40':'border-slate-200'}">
       <div>
-        <div class="flex items-center gap-3"><i class="fa-solid fa-grip-lines text-slate-300"></i><span class="font-black text-slate-700">${s.name}</span>${s.id===activeId?'<span class="badge badge-active ml-2">Active</span>':''}</div>
+        <div class="flex items-center gap-3">
+          <i class="fa-solid fa-grip-lines text-slate-300"></i>
+          <span class="font-black text-slate-700">${s.name}</span>
+          ${s.id===activeId?'<span class="badge badge-active ml-2">Active</span>':''}
+          ${s.isLocked?'<span class="bg-rose-100 text-rose-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ml-1"><i class="fa-solid fa-lock mr-1"></i>Locked</span>':''}
+        </div>
         ${(s.startDate || s.endDate) ? `<p class="text-[10px] font-bold text-slate-400 mt-1 ml-6 uppercase tracking-wider">${s.startDate||'???'} TO ${s.endDate||'???'}</p>` : ''}
       </div>
       <div class="flex items-center gap-2">
         ${s.id!==activeId?`<button onclick="setActivePeriod('${s.id}')" class="text-xs font-black text-blue-600 hover:bg-blue-600 hover:text-white border border-blue-300 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100">Set Active</button>`:''}
+        <button onclick="toggleLockSem('${s.id}', ${!!s.isLocked})" class="text-slate-400 hover:text-indigo-600 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-indigo-50" title="${s.isLocked ? 'Unlock Semester' : 'Lock Semester'}"><i class="fa-solid ${s.isLocked ? 'fa-lock text-rose-500' : 'fa-lock-open'}"></i></button>
         <button onclick="openEditSemModal('${s.id}')" class="text-slate-400 hover:text-amber-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-amber-50" title="Edit"><i class="fa-solid fa-pen"></i></button>
         <button onclick="archiveSem('${s.id}')" class="text-slate-400 hover:text-red-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-red-50" title="Archive"><i class="fa-solid fa-box-archive"></i></button>
       </div>
@@ -906,20 +945,28 @@ document.getElementById('globalPeriodSelect').addEventListener('change',(e)=>{
 });
 window.setActivePeriod=async function(id){await updateDoc(doc(db,'schools',currentSchoolId),{activeSemesterId:id});schoolData.activeSemesterId=id;loadSemesters();};
 
-// Add New Semester
+// PHASE 3: Semester Lock/Unlock Logic
+window.toggleLockSem = async function(id, currentLockStatus) {
+    const newStatus = !currentLockStatus;
+    const action = newStatus ? "LOCK" : "UNLOCK";
+    if(!confirm(`Are you sure you want to ${action} this grading period? \n\n${newStatus ? "Teachers will NOT be able to enter or edit grades for this period." : "Teachers will regain the ability to edit grades."}`)) return;
+    
+    await updateDoc(doc(db,'schools',currentSchoolId,'semesters',id), { isLocked: newStatus });
+    loadSemesters();
+};
+
 document.getElementById('addSemBtn').addEventListener('click',async()=>{
     const n=document.getElementById('newSemName').value.trim();
     const start=document.getElementById('newSemStart').value;
     const end=document.getElementById('newSemEnd').value;
     if(!n) return;
     const btn = document.getElementById('addSemBtn'); btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-    await addDoc(collection(db,'schools',currentSchoolId,'semesters'),{name:n, startDate:start, endDate:end, order:Date.now(), archived: false});
+    await addDoc(collection(db,'schools',currentSchoolId,'semesters'),{name:n, startDate:start, endDate:end, order:Date.now(), archived: false, isLocked: false});
     document.getElementById('newSemName').value=''; document.getElementById('newSemStart').value=''; document.getElementById('newSemEnd').value='';
     btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-plus"></i> Add Period';
     loadSemesters();
 });
 
-// Edit Semester Modal
 window.openEditSemModal = function(id) {
     currentEditSemId = id;
     const sem = allSemesters.find(s => s.id === id);
@@ -941,7 +988,6 @@ document.getElementById('saveSemEditBtn').addEventListener('click', async () => 
     btn.disabled = false; btn.innerHTML = 'Save Changes';
 });
 
-// Archive / Restore Semesters
 window.archiveSem = async function(id) {
     if(id === schoolData.activeSemesterId) {
         alert("This period is currently set as ACTIVE. You must set a different active period before archiving this one.");
@@ -981,7 +1027,6 @@ async function loadTeachers(){
   }).join('');
 }
 
-// ── TEACHER PANEL ─────────────────────────────────────────────────────────
 window.openAddTeacherModal=function(){['tName','tEmail','tPhone','tCode'].forEach(id=>document.getElementById(id).value='');openOverlay('addTeacherModal','addTeacherModalInner');};
 window.closeAddTeacherModal=function(){closeOverlay('addTeacherModal','addTeacherModalInner');};
 function generateTeacherCode(n){const w=n.trim().split(/\s+/);const f=w[0]?.charAt(0).toUpperCase()||'T';const l=w.length>1?w[w.length-1].charAt(0).toUpperCase():(w[0]?.charAt(1).toUpperCase()||'X');return`${f}${l}${Math.floor(1000+Math.random()*9000)}`;}
@@ -1130,7 +1175,7 @@ window.openClassPanel=function(classData){
 };
 window.closeClassPanel=function(){closeOverlay('classPanel','classPanelInner',true);};
 
-// ── PHASE 2: STUDENTS ─────────────────────────────────────────────────────
+// ── STUDENTS ─────────────────────────────────────────────────────────────
 async function loadStudents(){
   const tbody=document.getElementById('studentsTableBody');
   tbody.innerHTML=`<tr><td colspan="5" class="px-6 py-16 text-center text-slate-400 font-semibold"><i class="fa-solid fa-spinner fa-spin text-emerald-400 text-2xl mb-3 block"></i>Loading students...</td></tr>`;
@@ -1182,6 +1227,7 @@ async function loadStudents(){
       <td class="px-6 py-4 text-slate-600 font-semibold">${s.parentPhone||'—'}</td>
       <td class="px-6 py-4 text-right">
         <div class="flex items-center justify-end gap-2">
+            <button onclick="openArchiveReasonModal('${s.id}')" class="bg-amber-50 hover:bg-amber-500 hover:text-white text-amber-600 font-black px-3 py-1.5 rounded-lg text-xs transition border border-amber-200">Archive</button>
             <button onclick="openReassignModal('${s.id}')" class="bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 font-black px-3 py-1.5 rounded-lg text-xs transition border border-blue-200">Reassign</button>
             <button onclick="openStudentPanel('${s.id}')" class="bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 font-black px-3 py-1.5 rounded-lg text-xs transition border border-emerald-200 hover:border-emerald-600">Records</button>
         </div>
@@ -1190,7 +1236,44 @@ async function loadStudents(){
   }).join('');
 }
 
-// ── PHASE 2: REASSIGN MODAL LOGIC ─────────────────────────────────────────
+// ── PHASE 3: ARCHIVE REASON LOGIC ─────────────────────────────────────────
+window.openArchiveReasonModal = function(id) {
+    currentStudentId = id;
+    const s = allStudentsCache.find(x => x.id === id);
+    document.getElementById('archiveStudentName').textContent = s ? s.name : 'this student';
+    document.getElementById('archiveReasonSelect').value = 'Transferred to another school';
+    document.getElementById('archiveReasonOther').value = '';
+    document.getElementById('archiveReasonOther').classList.add('hidden');
+    openOverlay('archiveReasonModal', 'archiveReasonModalInner');
+};
+window.closeArchiveReasonModal = function() {
+    closeOverlay('archiveReasonModal', 'archiveReasonModalInner');
+};
+document.getElementById('confirmArchiveBtn').addEventListener('click', async () => {
+    const sel = document.getElementById('archiveReasonSelect').value;
+    const reason = sel === 'Other' ? document.getElementById('archiveReasonOther').value.trim() : sel;
+    const btn = document.getElementById('confirmArchiveBtn');
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Archiving...';
+    btn.disabled = true;
+    try {
+        await updateDoc(doc(db,'schools',currentSchoolId,'students',currentStudentId), {
+            archived: true,
+            archivedAt: new Date().toISOString(),
+            archiveReason: reason || 'Not specified',
+            teacherId: '', // Unassign them on archive so they don't clutter next year if restored
+            className: ''
+        });
+        closeArchiveReasonModal();
+        closeStudentPanel(); // Close panel if open
+        loadStudents();
+        loadOverviewStats();
+    } catch(e) { 
+        alert("Error archiving student."); 
+    }
+    btn.innerHTML = 'Confirm & Archive';
+    btn.disabled = false;
+});
+
 window.openReassignModal = function(id) {
     currentStudentId = id;
     const s = allStudentsCache.find(x => x.id === id);
@@ -1236,11 +1319,10 @@ document.getElementById('saveReassignBtn').addEventListener('click', async () =>
 
 // ── STUDENT RECORDS PANEL ─────────────────────────────────────────────────
 window.openStudentPanel=async function(studentId){
-  currentStudentId = studentId; // Store for printing
+  currentStudentId = studentId; 
   const student=allStudentsCache.find(s=>s.id===studentId)||(await getDoc(doc(db,'schools',currentSchoolId,'students',studentId))).data();
   document.getElementById('sPanelName').textContent=student?.name||'Student';document.getElementById('sPanelClass').textContent=student?.className||'—';
   
-  // Wire up the print button
   const printBtn = document.getElementById('sPanelPrintBtn');
   if(printBtn) printBtn.onclick = () => printStudentRecord(studentId);
 
@@ -1302,6 +1384,41 @@ document.getElementById('saveProfileBtn').addEventListener('click',async()=>{
   const u={schoolName:document.getElementById('profileSchoolName').value.trim(),district:document.getElementById('profileDistrict').value,schoolType:document.getElementById('profileSchoolType').value,phone:document.getElementById('profilePhone').value.trim(),schoolAddress:document.getElementById('profileAddress').value.trim()};
   await updateDoc(doc(db,'schools',currentSchoolId),u);Object.assign(schoolData,u);document.getElementById('displaySchoolName').textContent=u.schoolName;showMsg('settingsProfileMsg','Profile saved!',false);
 });
+
+// PHASE 3: END OF ACADEMIC YEAR RESET
+window.endOfYearReset = async function() {
+    const confirm1 = confirm("WARNING: This will unassign ALL active students from their current teachers and classes. This should only be run at the very end of the school year. Are you sure you want to proceed?");
+    if(!confirm1) return;
+    const confirm2 = prompt('Type "RESET" to confirm this action:');
+    if(confirm2 !== "RESET") {
+        alert("Reset canceled.");
+        return;
+    }
+
+    try {
+        // Query only active students
+        const q = query(collection(db, 'schools', currentSchoolId, 'students'), where('archived', '==', false));
+        const snap = await getDocs(q);
+        if(snap.empty) { alert("No active students found."); return; }
+
+        const batch = writeBatch(db);
+        let batchCount = 0;
+        snap.forEach(d => {
+            batch.update(d.ref, { teacherId: '', className: '' });
+            batchCount++;
+        });
+        
+        if(batchCount > 0) await batch.commit();
+
+        alert(`Successfully reset ${batchCount} students to the Unassigned pool for the new academic year.`);
+        loadStudents();
+        loadTeachers();
+    } catch(e) {
+        console.error(e);
+        alert("Error during reset. Please try again or contact support.");
+    }
+};
+
 window.switchArchiveTab=function(tab){document.getElementById('archiveTeachersList').classList.toggle('hidden',tab!=='teachers');document.getElementById('archiveStudentsList').classList.toggle('hidden',tab!=='students');document.getElementById('archiveTabTeachers').classList.toggle('active',tab==='teachers');document.getElementById('archiveTabStudents').classList.toggle('active',tab==='students');};
 
 async function loadArchivedRecords(){
@@ -1319,9 +1436,14 @@ async function loadArchivedRecords(){
   
   const sSnap=await getDocs(collection(db,'schools',currentSchoolId,'students'));
   const aS=sSnap.docs.filter(d=>d.data().archived);
+  
+  // PHASE 3: Displaying the archive reason
   document.getElementById('archiveStudentsList').innerHTML=aS.length?aS.map(d=>{const s=d.data();return`
     <div class="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl p-4">
-      <div><p class="font-black text-slate-700">${s.name||'Unnamed'}</p><p class="text-xs text-slate-400 font-semibold">${s.className||''} — Archived ${s.archivedAt?new Date(s.archivedAt).toLocaleDateString():''}</p></div>
+      <div>
+        <p class="font-black text-slate-700">${s.name||'Unnamed'}</p>
+        <p class="text-xs text-slate-400 font-semibold">${s.className||''} — Archived ${s.archivedAt?new Date(s.archivedAt).toLocaleDateString():''} ${s.archiveReason ? `<br><span class="text-amber-700">Reason: ${s.archiveReason}</span>` : ''}</p>
+      </div>
       <div class="flex gap-2">
         <button onclick="printStudentRecord('${d.id}')" class="text-xs font-black text-slate-700 hover:bg-slate-200 border border-slate-300 bg-white px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-print"></i></button>
         <button onclick="restoreStudent('${d.id}')" class="text-xs font-black text-green-700 hover:bg-green-600 hover:text-white border border-green-300 px-3 py-1.5 rounded-lg transition">Restore</button>
@@ -1332,7 +1454,7 @@ async function loadArchivedRecords(){
 
 window.restoreTeacher=async function(id){await updateDoc(doc(db,'schools',currentSchoolId,'teachers',id),{archived:false,archivedAt:null});loadArchivedRecords();loadOverviewStats();};
 window.permanentDeleteTeacher=async function(id){if(!confirm('Permanently delete? Cannot be undone.'))return;await deleteDoc(doc(db,'schools',currentSchoolId,'teachers',id));loadArchivedRecords();};
-window.restoreStudent=async function(id){await updateDoc(doc(db,'schools',currentSchoolId,'students',id),{archived:false,archivedAt:null});loadArchivedRecords();loadOverviewStats();};
+window.restoreStudent=async function(id){await updateDoc(doc(db,'schools',currentSchoolId,'students',id),{archived:false,archivedAt:null,archiveReason:''});loadArchivedRecords();loadOverviewStats();};
 window.permanentDeleteStudent=async function(id){if(!confirm('Permanently delete student and all grades? Cannot be undone.'))return;await deleteDoc(doc(db,'schools',currentSchoolId,'students',id));loadArchivedRecords();};
 </script>
 </body>
