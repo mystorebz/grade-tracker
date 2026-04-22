@@ -64,7 +64,7 @@
         .portal-card {
             background:#fff; border-radius:20px; border:2px solid transparent;
             transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);
-            cursor:pointer; text-decoration:none; display:block; position:relative; overflow:hidden;
+            cursor:pointer; text-decoration:none; display:block; position: relative; overflow:hidden;
         }
         .portal-card:hover { transform:translateY(-8px) scale(1.02); box-shadow:0 20px 60px rgba(30,58,138,0.15); }
         .portal-card-admin:hover   { border-color:#f97316; }
@@ -124,7 +124,6 @@
 </head>
 <body class="min-h-screen flex flex-col text-slate-800 antialiased">
 
-    <!-- ════════════════════ NAVBAR ════════════════════ -->
     <nav class="navbar" id="navbar">
         <div class="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
             <div class="flex items-center gap-3">
@@ -141,7 +140,6 @@
         </div>
     </nav>
 
-    <!-- ════════════════════ HERO ════════════════════ -->
     <header class="hero-section flex flex-col items-center justify-center text-center pt-28 pb-16 px-4">
         <div class="blob blob-1"></div>
         <div class="blob blob-2"></div>
@@ -192,7 +190,6 @@
         </svg>
     </div>
 
-    <!-- ════════════════════ GET STARTED ════════════════════ -->
     <section id="get-started" class="py-16 px-4 bg-[#f8faff]">
         <div class="max-w-5xl mx-auto">
             <div class="text-center mb-10">
@@ -230,7 +227,6 @@
         </div>
     </section>
 
-    <!-- ════════════════════ FEATURES ════════════════════ -->
     <section id="features" class="py-20 px-4 bg-gradient-to-b from-[#f8faff] to-white">
         <div class="max-w-5xl mx-auto">
             <div class="text-center mb-14">
@@ -273,7 +269,6 @@
         </div>
     </section>
 
-    <!-- ════════════════════ TESTIMONIALS ════════════════════ -->
     <section id="testimonials" class="py-20 px-4 bg-gradient-to-b from-white to-blue-50">
         <div class="max-w-4xl mx-auto">
             <div class="text-center mb-12">
@@ -311,7 +306,6 @@
         </div>
     </section>
 
-    <!-- ════════════════════ REGISTRATION FORM ════════════════════ -->
     <section id="register" class="py-20 px-4 bg-blue-50">
         <div class="max-w-xl mx-auto">
             <div class="text-center mb-8">
@@ -323,13 +317,10 @@
             </div>
 
             <div class="bg-white rounded-3xl shadow-xl border border-blue-100 p-8 relative overflow-hidden">
-                <!-- Accent bar -->
                 <div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-600 rounded-t-3xl"></div>
 
-                <!-- ── FORM ── -->
                 <div id="registrationFormContainer" class="space-y-4 mt-3">
 
-                    <!-- Section: School Information -->
                     <p class="form-section no-border">
                         <i class="fa-solid fa-school"></i> School Information
                     </p>
@@ -368,7 +359,6 @@
                         <input type="text" id="schoolAddress" placeholder="e.g. 12 Albert Street, Belize City" class="form-input">
                     </div>
 
-                    <!-- Section: Contact Information -->
                     <p class="form-section">
                         <i class="fa-solid fa-address-card"></i> Contact Information
                     </p>
@@ -389,7 +379,6 @@
                         <input type="email" id="adminEmail" placeholder="principal@school.edu.bz" class="form-input">
                     </div>
 
-                    <!-- Section: School Size -->
                     <p class="form-section">
                         <i class="fa-solid fa-users"></i> School Size
                     </p>
@@ -412,7 +401,6 @@
                     <p id="regMessage" class="text-sm text-center font-bold hidden mt-2"></p>
                 </div>
 
-                <!-- ── SUCCESS SCREEN ── -->
                 <div id="successScreen" class="hidden text-center py-8">
                     <div class="text-7xl mb-4">🎉</div>
                     <h2 class="text-2xl font-black text-slate-800 mb-2">Request Received!</h2>
@@ -420,7 +408,6 @@
                         Thank you for your interest in ConnectUs. Our team will prepare a custom quote.
                     </p>
 
-                    <!-- School ID card — shown on success -->
                     <div class="bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-5 mb-5 text-left shadow-lg shadow-blue-300">
                         <p class="text-blue-200 text-xs font-black uppercase tracking-widest mb-1">Your School Reference ID</p>
                         <p id="generatedSchoolId" class="text-white text-3xl font-black tracking-[0.25em] font-mono mb-2"></p>
@@ -441,7 +428,6 @@
         </div>
     </section>
 
-    <!-- ════════════════════ FOOTER ════════════════════ -->
     <footer class="py-10 px-4 text-center">
         <div class="max-w-4xl mx-auto">
             <div class="flex items-center justify-center gap-3 mb-5">
@@ -484,12 +470,12 @@
             const contactName   = document.getElementById('contactName').value.trim();
             const phone         = document.getElementById('phone').value.trim();
             const adminEmail    = document.getElementById('adminEmail').value.trim();
-            const studentsCount = document.getElementById('studentsCount').value.trim();
-            const teachersCount = document.getElementById('teachersCount').value.trim();
+            const studentsCountVal = document.getElementById('studentsCount').value.trim();
+            const teachersCountVal = document.getElementById('teachersCount').value.trim();
 
             // Validation
             if (!schoolName || !schoolType || !district || !schoolAddress ||
-                !contactName || !phone || !adminEmail || !studentsCount || !teachersCount) {
+                !contactName || !phone || !adminEmail || !studentsCountVal || !teachersCountVal) {
                 msgEl.textContent = "Please fill in all required fields (*).";
                 msgEl.className = "text-sm text-center font-bold mt-2 text-red-600 block";
                 return;
@@ -506,6 +492,22 @@
             btn.classList.add("opacity-75", "cursor-not-allowed");
             msgEl.textContent = "Saving your details...";
             msgEl.className = "text-sm text-center font-bold mt-2 text-blue-600 block";
+
+            // Parse the numbers
+            const studentsCount = parseInt(studentsCountVal);
+            const teachersCount = parseInt(teachersCountVal);
+
+            // Auto-assign plan based on the raw number entered by the user
+            // These IDs map EXACTLY to your Firebase 'subscriptionPlans' collection IDs
+            let assignedPlan = "starter"; // Default (up to 50)
+            
+            if (studentsCount > 500) {
+                assignedPlan = "enterprise";
+            } else if (studentsCount > 150) {
+                assignedPlan = "pro";
+            } else if (studentsCount > 50) {
+                assignedPlan = "growth";
+            }
 
             // Generate School ID  e.g. "Valley High School" → "VH4823"
             const words = schoolName.split(/\s+/);
@@ -530,9 +532,10 @@
                     phone,
                     adminEmail,
 
-                    // ── Size (used for quote pricing) ─────────────────────────
-                    studentsCount: parseInt(studentsCount),
-                    teachersCount: parseInt(teachersCount),
+                    // ── Size & Subscription ───────────────────────────────────
+                    studentsCount,       // Stores the raw number they typed
+                    teachersCount,
+                    subscriptionPlan: assignedPlan, // Automatically assigned plan ID
 
                     // ── Branding (admin sets this later in Settings) ──────────
                     logoUrl: "",
