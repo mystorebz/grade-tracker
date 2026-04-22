@@ -11,16 +11,27 @@
     <link rel="icon" type="image/png" sizes="16x16" href="assets/images/favicon-16x16.png">
     
     <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-15px); }
+            100% { transform: translateY(0px); }
+        }
+        .animate-float {
+            animation: float 4s ease-in-out infinite;
+        }
+    </style>
 </head>
 <body class="bg-slate-50 min-h-screen flex flex-col font-sans antialiased text-slate-800">
 
-    <header class="relative bg-gradient-to-b from-blue-100 to-slate-50 pt-20 pb-16 px-4 min-h-[450px] flex flex-col items-center justify-center">
+    <header class="relative bg-gradient-to-b from-blue-100 to-slate-50 pt-20 pb-16 px-4 min-h-[450px] flex flex-col items-center justify-center overflow-hidden">
         
-        <div class="md:absolute md:left-0 lg:left-8 md:top-1/2 md:-translate-y-1/2 w-full max-w-[400px] md:max-w-[700px] lg:max-w-[900px] mb-8 md:mb-0 z-0 flex justify-center md:justify-start pointer-events-none">
-            <img src="assets/images/logo.png" alt="ConnectUs Belize Education Platform Logo" class="w-full h-auto drop-shadow-xl">
+        <div class="md:absolute md:-left-4 lg:left-0 md:top-1/2 md:-translate-y-1/2 w-full max-w-[250px] md:max-w-[350px] lg:max-w-[450px] mb-8 md:mb-0 z-0 flex justify-center md:justify-start pointer-events-none">
+            <img src="assets/images/logo.png" alt="ConnectUs Belize Education Platform Logo" class="w-full h-auto drop-shadow-xl animate-float">
         </div>
 
-        <div class="relative z-10 max-w-3xl mx-auto text-center">
+        <div class="relative z-10 max-w-3xl mx-auto text-center bg-white/40 md:bg-transparent p-6 rounded-2xl md:p-0 backdrop-blur-sm md:backdrop-blur-none">
             <h1 class="text-5xl font-extrabold text-blue-900 tracking-tight mb-4">ConnectUs</h1>
             <p class="text-xl text-slate-600 leading-relaxed font-medium">
                 Modernizing how parents, teachers, and students engage.
@@ -166,7 +177,8 @@
 
     <footer class="bg-slate-900 text-slate-400 py-8 text-center text-sm flex flex-col items-center justify-center">
         <p class="mb-4">&copy; 2026 ConnectUs. All rights reserved. Connecting Education.</p>
-        <div class="flex items-center justify-center gap-3">
+        
+        <div class="flex items-center justify-center gap-1">
             <span class="font-medium text-slate-300">Powered by Kismet Code Digital</span>
             <img src="assets/images/blogo.png" alt="Kismet Code Digital Logo" class="h-8 w-auto">
         </div>
