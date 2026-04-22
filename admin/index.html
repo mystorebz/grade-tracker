@@ -90,6 +90,9 @@
                 <button onclick="switchTab('teachers')" id="tab-teachers" class="w-full flex items-center gap-4 px-5 py-3.5 rounded-xl text-left hover:bg-slate-800 hover:text-white transition font-medium">
                     <i class="fa-solid fa-chalkboard-user w-5 text-lg"></i> Teachers
                 </button>
+                <button onclick="switchTab('students')" id="tab-students" class="w-full flex items-center gap-4 px-5 py-3.5 rounded-xl text-left hover:bg-slate-800 hover:text-white transition font-medium">
+                    <i class="fa-solid fa-users w-5 text-lg"></i> Students
+                </button>
                 <button onclick="switchTab('semesters')" id="tab-semesters" class="w-full flex items-center gap-4 px-5 py-3.5 rounded-xl text-left hover:bg-slate-800 hover:text-white transition font-medium">
                     <i class="fa-solid fa-calendar-days w-5 text-lg"></i> Grading Periods
                 </button>
@@ -111,7 +114,7 @@
                 <img src="../assets/images/logo.png" alt="ConnectUs" class="h-8 opacity-20 grayscale">
             </header>
 
-            <div class="flex-1 overflow-y-auto p-10">
+            <div class="flex-1 overflow-y-auto p-10 relative">
                 
                 <div id="view-overview" class="view-section">
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
@@ -159,6 +162,31 @@
                     </div>
                 </div>
 
+                <div id="view-students" class="view-section hidden">
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-white">
+                            <div>
+                                <h3 class="font-bold text-xl text-slate-800">School Directory</h3>
+                                <p class="text-sm text-slate-500 mt-1">View all enrolled students and access their academic records.</p>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-slate-50 text-slate-500 uppercase text-xs tracking-wider border-b border-slate-200">
+                                    <tr>
+                                        <th class="px-8 py-5 font-bold">Student Name</th>
+                                        <th class="px-8 py-5 font-bold">Class / Grade</th>
+                                        <th class="px-8 py-5 font-bold text-right">Records</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="studentsTableBody" class="divide-y divide-slate-100">
+                                    <tr><td colspan="3" class="px-8 py-10 text-center text-slate-500 italic">Loading students...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <div id="view-semesters" class="view-section hidden">
                     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden max-w-3xl">
                         <div class="p-8 border-b border-slate-100">
@@ -197,6 +225,29 @@
         </main>
     </div>
 
+    <div id="studentRecordModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-end hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-slate-50 w-full max-w-2xl h-full shadow-2xl flex flex-col transform translate-x-full transition-transform duration-300" id="studentRecordModalInner">
+            
+            <div class="px-8 py-6 border-b border-slate-200 bg-white flex justify-between items-center shadow-sm z-10">
+                <div>
+                    <h3 id="recordStudentName" class="font-extrabold text-2xl text-slate-800">Student Name</h3>
+                    <p id="recordStudentClass" class="text-sm text-blue-600 font-bold tracking-wide mt-1">Class/Grade</p>
+                </div>
+                <button onclick="closeStudentRecord()" class="text-slate-400 hover:text-red-500 hover:bg-red-50 h-10 w-10 rounded-full flex items-center justify-center transition text-xl"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto p-8" id="recordContentArea">
+                <div id="recordLoader" class="flex flex-col items-center justify-center py-20 text-slate-400">
+                    <i class="fa-solid fa-circle-notch fa-spin text-4xl mb-4 text-blue-500"></i>
+                    <p class="font-medium">Fetching academic records...</p>
+                </div>
+                
+                <div id="gradesAccordionContainer" class="space-y-4 hidden">
+                    </div>
+            </div>
+        </div>
+    </div>
+
     <div id="addTeacherModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0 transition-opacity duration-300" style="transition: opacity 0.2s;">
         <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden transform scale-95 transition-transform duration-300 m-4" id="addTeacherModalInner">
             <div class="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-white">
@@ -206,11 +257,11 @@
             <div class="p-8 space-y-5 bg-slate-50/50">
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Teacher's Full Name</label>
-                    <input type="text" id="tName" placeholder="e.g. Mrs. Jane Doe" class="w-full p-3.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition shadow-sm">
+                    <input type="text" id="tName" placeholder="e.g. Leah Dira Torres" class="w-full p-3.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition shadow-sm">
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Login Code <span class="text-slate-400 normal-case font-normal">(Leave blank to auto-generate)</span></label>
-                    <input type="text" id="tCode" placeholder="e.g. JANE2026" class="w-full p-3.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition shadow-sm uppercase font-mono">
+                    <input type="text" id="tCode" placeholder="e.g. LT1234" class="w-full p-3.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition shadow-sm uppercase font-mono">
                 </div>
                 <button id="saveTeacherBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition mt-4 shadow-md text-base">
                     Create Teacher Account
@@ -242,10 +293,11 @@
             activeTab.classList.add('bg-blue-600', 'text-white', 'shadow-lg', 'shadow-blue-900/20');
             activeTab.classList.remove('text-slate-300');
             
-            const titles = { 'overview': 'School Overview', 'teachers': 'Manage Staff', 'semesters': 'Grading Periods', 'settings': 'System Settings' };
+            const titles = { 'overview': 'School Overview', 'teachers': 'Manage Staff', 'students': 'School Directory', 'semesters': 'Grading Periods', 'settings': 'System Settings' };
             document.getElementById('topbarTitle').innerText = titles[tabId];
             
             if(tabId === 'teachers') loadTeachers();
+            if(tabId === 'students') loadAdminStudents();
             if(tabId === 'semesters') loadSemesters();
         };
 
@@ -267,9 +319,18 @@
             setTimeout(() => modal.classList.add('hidden'), 200);
         }
         
-        function generateCode() {
-            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-            return Array.from({length: 6}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+        // --- SMART TEACHER CODE GENERATOR ---
+        function generateTeacherCode(fullName) {
+            const words = fullName.trim().split(/\s+/);
+            let firstInitial = words[0] ? words[0].charAt(0).toUpperCase() : 'T';
+            let lastInitial = 'X';
+            if (words.length > 1) {
+                lastInitial = words[words.length - 1].charAt(0).toUpperCase();
+            } else if (words[0].length > 1) {
+                lastInitial = words[0].charAt(1).toUpperCase();
+            }
+            const randomDigits = Math.floor(1000 + Math.random() * 9000);
+            return `${firstInitial}${lastInitial}${randomDigits}`;
         }
 
         // --- CORE DASHBOARD LAUNCHER ---
@@ -289,14 +350,14 @@
             loadSemesters(); 
         }
 
-        // --- LOGIN LOGIC ---
+        // --- BULLETPROOF LOGIN LOGIC ---
         document.getElementById('loginBtn').addEventListener('click', async () => {
-            const schoolId = document.getElementById('loginSchoolId').value.trim().toLowerCase();
+            const rawSchoolId = document.getElementById('loginSchoolId').value.trim();
             const adminCodeInput = document.getElementById('loginAdminCode').value.trim();
             const msgEl = document.getElementById('loginMsg');
             const btn = document.getElementById('loginBtn');
 
-            if (!schoolId || !adminCodeInput) {
+            if (!rawSchoolId || !adminCodeInput) {
                 msgEl.innerText = "Please enter both fields.";
                 msgEl.classList.remove('hidden');
                 return;
@@ -306,14 +367,23 @@
             btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Authenticating...`;
 
             try {
-                // Correctly referencing the school by the document ID provided by the user
-                const schoolRef = doc(db, "schools", schoolId);
-                const schoolSnap = await getDoc(schoolRef);
+                // SMART FALLBACK: Try UPPERCASE first (JA7036), then LOWERCASE (belize-high), then exactly as typed.
+                let schoolRef = doc(db, "schools", rawSchoolId.toUpperCase());
+                let schoolSnap = await getDoc(schoolRef);
+
+                if (!schoolSnap.exists()) {
+                    schoolRef = doc(db, "schools", rawSchoolId.toLowerCase());
+                    schoolSnap = await getDoc(schoolRef);
+                }
+
+                if (!schoolSnap.exists()) {
+                    schoolRef = doc(db, "schools", rawSchoolId);
+                    schoolSnap = await getDoc(schoolRef);
+                }
 
                 if (schoolSnap.exists()) {
                     const data = schoolSnap.data();
 
-                    // SECURITY CHECK: Ensure account is paid/verified
                     if (data.isVerified !== true) {
                         msgEl.innerText = "School account is pending approval or setup. Please contact ConnectUs.";
                         msgEl.classList.remove('hidden');
@@ -325,10 +395,9 @@
                     const correctCode = data.adminCode || "ADMIN2024"; 
 
                     if (adminCodeInput === correctCode) {
-                        currentSchoolId = schoolId;
+                        currentSchoolId = schoolSnap.id; // Use the exact found ID
                         schoolData = data;
 
-                        // FORCE PIN RESET CHECK
                         if (data.requiresPinReset === true) {
                             const modal = document.getElementById('forceResetModal');
                             const inner = document.getElementById('forceResetModalInner');
@@ -338,7 +407,6 @@
                                 inner.classList.remove('scale-95');
                             }, 10);
                         } else {
-                            // Launch normally
                             launchDashboard(data);
                         }
                     } else {
@@ -386,13 +454,11 @@
             btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Updating...`;
 
             try {
-                // Update Firestore
                 await updateDoc(doc(db, "schools", currentSchoolId), { 
                     adminCode: newCode,
                     requiresPinReset: false 
                 });
                 
-                // Animate Modal Exit
                 const modal = document.getElementById('forceResetModal');
                 const inner = document.getElementById('forceResetModalInner');
                 modal.classList.add('opacity-0');
@@ -400,7 +466,6 @@
                 
                 setTimeout(() => {
                     modal.classList.add('hidden');
-                    // Launch Dashboard
                     schoolData.adminCode = newCode; 
                     schoolData.requiresPinReset = false;
                     launchDashboard(schoolData);
@@ -434,6 +499,121 @@
             document.getElementById('stat-students').innerText = sSnap.size;
         }
 
+        // --- STUDENTS & GRADES VIEWER ---
+        async function loadAdminStudents() {
+            const tbody = document.getElementById('studentsTableBody');
+            tbody.innerHTML = '<tr><td colspan="3" class="px-8 py-10 text-center text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Loading students...</td></tr>';
+            
+            const q = collection(db, "schools", currentSchoolId, "students");
+            const querySnapshot = await getDocs(q);
+            
+            if(querySnapshot.empty) {
+                tbody.innerHTML = '<tr><td colspan="3" class="px-8 py-12 text-center text-slate-500 italic">No students found.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = '';
+            querySnapshot.forEach((doc) => {
+                const s = doc.data();
+                const sName = s.name || s.studentName || "Unnamed Student";
+                const sClass = s.className || s.grade || "Unassigned";
+                
+                // Pass safe strings to the onclick handler
+                const safeName = sName.replace(/'/g, "\\'");
+                const safeClass = sClass.replace(/'/g, "\\'");
+
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-50 transition border-b border-slate-50">
+                        <td class="px-8 py-5 font-bold text-slate-700 flex items-center gap-4">
+                            <div class="h-10 w-10 bg-green-100 text-green-700 rounded-full flex items-center justify-center font-extrabold text-sm border border-green-200">${sName.charAt(0)}</div>
+                            ${sName}
+                        </td>
+                        <td class="px-8 py-5 text-slate-600">${sClass}</td>
+                        <td class="px-8 py-5 text-right">
+                            <button onclick="openStudentRecord('${doc.id}', '${safeName}', '${safeClass}')" class="bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 font-bold px-4 py-2 rounded-lg text-xs transition shadow-sm border border-slate-200 hover:border-blue-600">
+                                View Record
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        // Grade viewing logic
+        window.openStudentRecord = async function(studentId, studentName, studentClass) {
+            const modal = document.getElementById('studentRecordModal');
+            const inner = document.getElementById('studentRecordModalInner');
+            
+            document.getElementById('recordStudentName').innerText = studentName;
+            document.getElementById('recordStudentClass').innerText = studentClass;
+            
+            document.getElementById('recordLoader').classList.remove('hidden');
+            document.getElementById('gradesAccordionContainer').classList.add('hidden');
+            
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                inner.classList.remove('translate-x-full');
+            }, 10);
+
+            // Fetch grades from student's subcollection
+            try {
+                const gradesRef = collection(db, "schools", currentSchoolId, "students", studentId, "grades");
+                const gradesSnap = await getDocs(gradesRef);
+                const container = document.getElementById('gradesAccordionContainer');
+                
+                if (gradesSnap.empty) {
+                    container.innerHTML = `
+                        <div class="text-center py-10 bg-white rounded-2xl border border-slate-200">
+                            <div class="text-slate-300 text-5xl mb-3"><i class="fa-solid fa-folder-open"></i></div>
+                            <h4 class="text-slate-500 font-medium">No grades recorded yet.</h4>
+                        </div>`;
+                } else {
+                    // Group grades visually by Subject or Semester
+                    let recordsHtml = '';
+                    gradesSnap.forEach((doc) => {
+                        const g = doc.data();
+                        recordsHtml += `
+                            <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition">
+                                <div class="px-6 py-4 flex justify-between items-center cursor-pointer bg-slate-50 hover:bg-slate-100" onclick="this.nextElementSibling.classList.toggle('hidden')">
+                                    <div>
+                                        <h4 class="font-bold text-slate-800">${g.assignmentName || g.subject || 'Assessment'}</h4>
+                                        <p class="text-xs text-slate-500 font-medium mt-1">${g.semester || 'Current Term'} &bull; ${g.date || 'No Date'}</p>
+                                    </div>
+                                    <div class="flex items-center gap-4">
+                                        <span class="text-lg font-black ${g.score < 60 ? 'text-red-500' : 'text-green-600'}">${g.score || g.grade || 'N/A'}</span>
+                                        <i class="fa-solid fa-chevron-down text-slate-400"></i>
+                                    </div>
+                                </div>
+                                <div class="px-6 py-5 border-t border-slate-100 hidden bg-white">
+                                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Teacher Comments</p>
+                                    <p class="text-sm text-slate-700 italic border-l-4 border-blue-200 pl-3 py-1">${g.comments || 'No comments provided by teacher.'}</p>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    container.innerHTML = recordsHtml;
+                }
+
+                document.getElementById('recordLoader').classList.add('hidden');
+                container.classList.remove('hidden');
+
+            } catch(e) {
+                console.error("Error fetching grades", e);
+                document.getElementById('recordLoader').innerHTML = `<p class="text-red-500 font-bold"><i class="fa-solid fa-triangle-exclamation"></i> Error loading records.</p>`;
+            }
+        };
+
+        window.closeStudentRecord = function() {
+            const modal = document.getElementById('studentRecordModal');
+            const inner = document.getElementById('studentRecordModalInner');
+            inner.classList.add('translate-x-full');
+            modal.classList.add('opacity-0');
+            setTimeout(() => modal.classList.add('hidden'), 300);
+        };
+
+
+        // --- TEACHERS LOGIC ---
         async function loadTeachers() {
             const tBody = document.getElementById('teachersTableBody');
             tBody.innerHTML = '<tr><td colspan="4" class="px-8 py-10 text-center text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Loading staff...</td></tr>';
@@ -471,7 +651,7 @@
             const codeInput = document.getElementById('tCode').value.trim().toUpperCase();
             if(!name) return alert("Name is required!");
 
-            const finalCode = codeInput || generateCode();
+            const finalCode = codeInput || generateTeacherCode(name);
             const btn = document.getElementById('saveTeacherBtn');
             btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
 
@@ -481,6 +661,7 @@
                     loginCode: finalCode,
                     className: "",
                     archived: false,
+                    requiresPinReset: true, 
                     createdAt: new Date().toISOString()
                 });
                 
