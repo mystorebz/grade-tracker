@@ -246,7 +246,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
             </div>
             <div class="flex items-center gap-2 flex-wrap">
               <button onclick="exportTeachersCSV()" class="no-print flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-4 py-2 rounded-xl text-sm transition border border-slate-200"><i class="fa-solid fa-download"></i> CSV</button>
-              <button onclick="printTeachers()" class="no-print flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-4 py-2 rounded-xl text-sm transition border border-slate-200"><i class="fa-solid fa-print"></i> Print</button>
+              <button onclick="printTeachers()" class="no-print flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-4 py-2 rounded-xl text-sm transition border border-slate-200"><i class="fa-solid fa-print"></i> Print List</button>
               <button onclick="openAddTeacherModal()" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-black px-5 py-2.5 rounded-xl text-sm shadow-md shadow-blue-500/25 transition"><i class="fa-solid fa-plus"></i> Add Teacher</button>
             </div>
           </div>
@@ -292,7 +292,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
             </div>
             <div class="flex items-center gap-2">
               <button onclick="exportStudentsCSV()" class="no-print flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-4 py-2 rounded-xl text-sm transition border border-slate-200"><i class="fa-solid fa-download"></i> CSV</button>
-              <button onclick="printStudents()" class="no-print flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-4 py-2 rounded-xl text-sm transition border border-slate-200"><i class="fa-solid fa-print"></i> Print</button>
+              <button onclick="printStudents()" class="no-print flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-4 py-2 rounded-xl text-sm transition border border-slate-200"><i class="fa-solid fa-print"></i> Print List</button>
             </div>
           </div>
           
@@ -315,15 +315,37 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
       </div>
 
       <div id="view-semesters" class="view-section hidden">
-        <div class="max-w-2xl">
+        <div class="max-w-4xl">
           <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div class="p-6 border-b border-slate-100 bg-gradient-to-r from-white to-amber-50/40 flex items-center gap-3">
               <div class="w-10 h-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-calendar-days"></i></div>
-              <div><h3 class="font-black text-xl text-slate-800">Grading Periods</h3><p class="text-sm text-slate-400 font-semibold">Set the active period — updates instantly for all users</p></div>
+              <div><h3 class="font-black text-xl text-slate-800">Grading Periods (Semesters)</h3><p class="text-sm text-slate-400 font-semibold">Manage active and historical grading periods</p></div>
             </div>
             <div class="p-6">
-              <div class="flex gap-3 mb-6"><input type="text" id="newSemName" placeholder="e.g. Semester 1, Midterm, Term 3…" class="form-input flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"><button id="addSemBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-xl font-black text-sm shadow-md transition">+ Add</button></div>
-              <div id="semestersList" class="space-y-3"></div>
+              
+              <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6">
+                <h4 class="text-xs font-black text-slate-500 uppercase tracking-wider mb-3">Add New Period</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div class="sm:col-span-2">
+                    <input type="text" id="newSemName" placeholder="Name (e.g. Semester 1, Midterm)" class="form-input w-full p-2.5 bg-white text-sm">
+                  </div>
+                  <div>
+                    <input type="date" id="newSemStart" title="Start Date" class="form-input w-full p-2.5 bg-white text-sm text-slate-600">
+                  </div>
+                  <div>
+                    <input type="date" id="newSemEnd" title="End Date" class="form-input w-full p-2.5 bg-white text-sm text-slate-600">
+                  </div>
+                </div>
+                <button id="addSemBtn" class="mt-3 w-full bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-black text-sm shadow-md transition flex items-center justify-center gap-2"><i class="fa-solid fa-plus"></i> Add Period</button>
+              </div>
+
+              <h4 class="text-xs font-black text-blue-600 uppercase tracking-wider mb-3">Active Periods</h4>
+              <div id="semestersList" class="space-y-3 mb-8"></div>
+
+              <h4 class="text-xs font-black text-amber-600 uppercase tracking-wider mb-3 pt-6 border-t border-slate-100">Archived Periods</h4>
+              <p class="text-xs text-slate-500 font-semibold italic mb-3">Archived periods are hidden from teachers' daily views but remain accessible for historical reporting.</p>
+              <div id="archivedSemestersList" class="space-y-3"></div>
+
             </div>
           </div>
         </div>
@@ -448,6 +470,22 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
   </div>
 </div>
 
+<div id="editSemModal" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200" id="editSemModalInner">
+    <div class="h-1 bg-gradient-to-r from-amber-500 to-orange-400"></div>
+    <div class="px-7 py-5 border-b border-slate-100 flex justify-between items-center">
+      <div class="flex items-center gap-3"><div class="w-9 h-9 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-pen"></i></div><h3 class="font-black text-xl text-slate-800">Edit Period</h3></div>
+      <button onclick="closeEditSemModal()" class="text-slate-400 hover:text-red-500 h-8 w-8 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+    </div>
+    <div class="p-7 space-y-4 bg-slate-50/50">
+      <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Period Name *</label><input type="text" id="editSemName" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm"></div>
+      <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Start Date</label><input type="date" id="editSemStart" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-600"></div>
+      <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">End Date</label><input type="date" id="editSemEnd" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-600"></div>
+      <button id="saveSemEditBtn" class="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black py-3.5 rounded-xl transition shadow-md text-base mt-2">Save Changes</button>
+    </div>
+  </div>
+</div>
+
 <div id="classPanel" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-end hidden opacity-0">
   <div id="classPanelInner" class="side-panel bg-[#f0f4ff] w-full max-w-2xl h-full shadow-2xl flex flex-col translate-x-full">
     <div class="h-1 bg-gradient-to-r from-indigo-500 via-blue-400 to-cyan-500 flex-shrink-0"></div>
@@ -466,7 +504,10 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
     <div class="h-1 bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-500 flex-shrink-0"></div>
     <div class="px-7 py-5 border-b border-slate-200 bg-white flex justify-between items-center flex-shrink-0">
       <div><h3 id="sPanelName" class="font-black text-2xl text-slate-800">Student Name</h3><p id="sPanelClass" class="text-sm text-emerald-600 font-bold mt-0.5">Class / Grade</p></div>
-      <button onclick="closeStudentPanel()" class="text-slate-400 hover:text-red-500 h-9 w-9 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+      <div class="flex items-center gap-2">
+        <button id="sPanelPrintBtn" class="no-print flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black px-4 py-2 rounded-xl text-sm transition border border-slate-200"><i class="fa-solid fa-print"></i> Print Record</button>
+        <button onclick="closeStudentPanel()" class="text-slate-400 hover:text-red-500 h-9 w-9 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
     </div>
     <div class="flex-1 overflow-y-auto p-6">
       <div id="sPanelLoader" class="flex flex-col items-center justify-center py-20 text-slate-400"><i class="fa-solid fa-circle-notch fa-spin text-4xl mb-3 text-emerald-500"></i><p class="font-semibold text-sm">Loading academic records...</p></div>
@@ -517,7 +558,7 @@ import { db } from '../assets/js/firebase-init.js';
 import { doc,getDoc,updateDoc,collection,addDoc,getDocs,setDoc,deleteDoc,query,where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // ── STATE ──────────────────────────────────────────────────────────────────
-let currentSchoolId=null,schoolData=null,currentTeacherId=null,currentStudentId=null;
+let currentSchoolId=null,schoolData=null,currentTeacherId=null,currentStudentId=null,currentEditSemId=null;
 let allTeachersCache=[],allStudentsCache=[];
 let allSemesters=[];
 
@@ -550,6 +591,125 @@ function showMsg(id,text,isError=false){const el=document.getElementById(id);el.
 function openOverlay(oid,iid,slide=false){const o=document.getElementById(oid),i=document.getElementById(iid);o.classList.remove('hidden');requestAnimationFrame(()=>{o.classList.remove('opacity-0');if(slide)i.classList.remove('translate-x-full');else i.classList.remove('scale-95');});}
 function closeOverlay(oid,iid,slide=false){const o=document.getElementById(oid),i=document.getElementById(iid);o.classList.add('opacity-0');if(slide)i.classList.add('translate-x-full');else i.classList.add('scale-95');setTimeout(()=>o.classList.add('hidden'),300);}
 function downloadCSV(rows,fn){const csv=rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([csv],{type:'text/csv'})),download:fn});document.body.appendChild(a);a.click();a.remove();}
+
+// ── PRINTING (Professional Records) ─────────────────────────────────────────
+window.printStudentRecord = async function(studentId) {
+    const sDoc = await getDoc(doc(db,'schools',currentSchoolId,'students',studentId));
+    if(!sDoc.exists()) { alert("Student not found."); return; }
+    const s = sDoc.data();
+    
+    // Fetch all grades
+    const gradesSnap = await getDocs(collection(db,'schools',currentSchoolId,'students',studentId,'grades'));
+    const grades = [];
+    gradesSnap.forEach(d => grades.push(d.data()));
+
+    // Organize by semester -> subject
+    const bySem = {};
+    grades.forEach(g => {
+        const sem = allSemesters.find(sm => sm.id === g.semesterId)?.name || 'Unknown Period';
+        const sub = g.subject || 'Uncategorized';
+        if(!bySem[sem]) bySem[sem] = {};
+        if(!bySem[sem][sub]) bySem[sem][sub] = [];
+        bySem[sem][sub].push(g);
+    });
+
+    let html = `<html><head><title>Student Record - ${s.name}</title>
+    <style>
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #1e293b; line-height: 1.5; }
+        .header { text-align: center; border-bottom: 2px solid #cbd5e1; padding-bottom: 20px; margin-bottom: 30px; }
+        .header h1 { margin: 0 0 5px 0; font-size: 24px; color: #0f172a; text-transform: uppercase; letter-spacing: 1px; }
+        .header h2 { margin: 0; font-size: 16px; color: #64748b; font-weight: normal; letter-spacing: 2px; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 40px; background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; }
+        .info-item label { display: block; font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: bold; letter-spacing: 1px; }
+        .info-item span { font-size: 14px; font-weight: bold; color: #0f172a; }
+        .sem-block { margin-bottom: 40px; page-break-inside: avoid; }
+        .sem-title { font-size: 16px; font-weight: bold; background: #334155; color: white; padding: 8px 15px; margin: 0 0 15px 0; border-radius: 4px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 13px; }
+        th, td { border: 1px solid #e2e8f0; padding: 10px 15px; text-align: left; }
+        th { background: #f1f5f9; color: #475569; font-weight: bold; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .avg-row { background: #f8fafc; font-weight: bold; }
+        .footer { margin-top: 50px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 15px; }
+    </style></head><body>
+
+    <div class="header">
+        <h1>${schoolData.schoolName}</h1>
+        <h2>OFFICIAL STUDENT RECORD</h2>
+    </div>
+
+    <div class="info-grid">
+        <div class="info-item"><label>Student Name</label><span>${s.name}</span></div>
+        <div class="info-item"><label>Current Status</label><span>${s.archived ? 'Archived / Transferred' : 'Active'}</span></div>
+        <div class="info-item"><label>Last Known Class</label><span>${s.className || 'Unassigned'}</span></div>
+        <div class="info-item"><label>Parent Phone</label><span>${s.parentPhone || 'N/A'}</span></div>
+    </div>`;
+
+    if(Object.keys(bySem).length === 0) {
+        html += `<p style="text-align:center; color:#64748b; font-style:italic; padding: 40px;">No academic grades recorded for this student.</p>`;
+    } else {
+        // Iterate over semesters
+        for(let sem in bySem) {
+            html += `<div class="sem-block"><h3 class="sem-title">${sem}</h3><table>
+                <thead><tr><th>Subject</th><th class="text-center">Assignments</th><th class="text-center">Average (%)</th><th class="text-center">Letter Grade</th></tr></thead><tbody>`;
+            
+            let semTotalPct = 0; let semSubjCount = 0;
+            for(let sub in bySem[sem]) {
+                const sGrades = bySem[sem][sub];
+                const avg = Math.round(sGrades.reduce((acc, g) => acc + (g.max ? (g.score/g.max)*100 : 0), 0) / sGrades.length);
+                semTotalPct += avg; semSubjCount++;
+                html += `<tr><td>${sub}</td><td class="text-center">${sGrades.length}</td><td class="text-center">${avg}%</td><td class="text-center">${letterGrade(avg)}</td></tr>`;
+            }
+            const semAvg = Math.round(semTotalPct / semSubjCount);
+            html += `<tr class="avg-row"><td colspan="2" class="text-right">PERIOD AVERAGE:</td><td class="text-center">${semAvg}%</td><td class="text-center">${letterGrade(semAvg)}</td></tr>`;
+            html += `</tbody></table></div>`;
+        }
+    }
+
+    html += `<div class="footer">Printed on ${new Date().toLocaleDateString()} via ConnectUs Platform<br>Record generated by Admin: ${currentSchoolId}</div></body></html>`;
+    
+    const w = window.open('','_blank'); w.document.write(html); w.document.close();
+    setTimeout(() => w.print(), 500);
+};
+
+window.printTeacherRecord = async function(teacherId) {
+    const tDoc = await getDoc(doc(db,'schools',currentSchoolId,'teachers',teacherId));
+    if(!tDoc.exists()) { alert("Teacher not found."); return; }
+    const t = tDoc.data();
+    const classes = getTeacherClasses(t).join(', ') || 'None assigned';
+    const subjects = getSubjectNames(t.subjects).join(', ') || 'None assigned';
+    
+    let html = `<html><head><title>Teacher Record - ${t.name}</title>
+    <style>
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #1e293b; line-height: 1.6; }
+        .header { text-align: center; border-bottom: 2px solid #cbd5e1; padding-bottom: 20px; margin-bottom: 30px; }
+        .header h1 { margin: 0 0 5px 0; font-size: 24px; color: #0f172a; text-transform: uppercase; letter-spacing: 1px; }
+        .header h2 { margin: 0; font-size: 16px; color: #64748b; font-weight: normal; letter-spacing: 2px; }
+        .info-box { background: #f8fafc; border: 1px solid #e2e8f0; padding: 30px; border-radius: 8px; margin-bottom: 20px; }
+        .info-row { display: flex; border-bottom: 1px solid #e2e8f0; padding: 12px 0; }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { width: 150px; font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: bold; letter-spacing: 1px; }
+        .info-val { flex: 1; font-size: 15px; font-weight: bold; color: #0f172a; }
+        .footer { margin-top: 50px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 15px; }
+    </style></head><body>
+    <div class="header">
+        <h1>${schoolData.schoolName}</h1>
+        <h2>TEACHER EMPLOYMENT RECORD</h2>
+    </div>
+    <div class="info-box">
+        <div class="info-row"><div class="info-label">Full Name</div><div class="info-val">${t.name}</div></div>
+        <div class="info-row"><div class="info-label">Email Address</div><div class="info-val">${t.email || 'N/A'}</div></div>
+        <div class="info-row"><div class="info-label">Phone Number</div><div class="info-val">${t.phone || 'N/A'}</div></div>
+        <div class="info-row"><div class="info-label">Status</div><div class="info-val">${t.archived ? 'Archived (Inactive)' : 'Active'}</div></div>
+        <div class="info-row"><div class="info-label">Record Created</div><div class="info-val">${t.createdAt ? new Date(t.createdAt).toLocaleDateString() : 'N/A'}</div></div>
+        <div class="info-row"><div class="info-label">Assigned Classes</div><div class="info-val">${classes}</div></div>
+        <div class="info-row"><div class="info-label">Teaching Subjects</div><div class="info-val">${subjects}</div></div>
+    </div>
+    <div class="footer">Printed on ${new Date().toLocaleDateString()} via ConnectUs Platform</div></body></html>`;
+    
+    const w = window.open('','_blank'); w.document.write(html); w.document.close();
+    setTimeout(() => w.print(), 500);
+};
 
 // ── CSV / PRINT ────────────────────────────────────────────────────────────
 window.exportTeachersCSV=function(){downloadCSV([['Name','Email','Phone','Classes','Subjects','Login Code','Status'],...allTeachersCache.map(t=>[t.name,t.email||'',t.phone||'',getTeacherClasses(t).join('; '),getSubjectNames(t.subjects).join('; '),t.loginCode,t.archived?'Archived':'Active'])],`${currentSchoolId}_teachers.csv`);};
@@ -679,31 +839,60 @@ async function loadOverviewStats(){
   }
 }
 
-// ── SEMESTERS ─────────────────────────────────────────────────────────────
-const defaultSems=[{id:'sem1',name:'Semester 1',order:1},{id:'sem2',name:'Midterm',order:2},{id:'sem3',name:'Semester 2',order:3},{id:'sem4',name:'Semester 3',order:4}];
+// ── GRADING PERIODS (SEMESTERS) - PRE-PHASE 3 UPDATES ────────────────────
 async function loadSemesters(){
   const sRef=collection(db,'schools',currentSchoolId,'semesters');let snap=await getDocs(sRef);
-  if(snap.empty){await Promise.all(defaultSems.map(s=>setDoc(doc(db,'schools',currentSchoolId,'semesters',s.id),s)));snap=await getDocs(sRef);}
+  
+  // Backwards compatibility/migration if empty
+  if(snap.empty){
+    const defaultSems=[{id:'sem1',name:'Semester 1',startDate:'',endDate:'',order:1,archived:false},{id:'sem2',name:'Midterm',startDate:'',endDate:'',order:2,archived:false},{id:'sem3',name:'Semester 2',startDate:'',endDate:'',order:3,archived:false},{id:'sem4',name:'Semester 3',startDate:'',endDate:'',order:4,archived:false}];
+    await Promise.all(defaultSems.map(s=>setDoc(doc(db,'schools',currentSchoolId,'semesters',s.id),s)));
+    snap=await getDocs(sRef);
+  }
+  
   allSemesters=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.order-b.order);
   const activeId=schoolData.activeSemesterId||allSemesters[0]?.id;
 
-  // Overview period selector
+  // Filter unarchived for dropdowns (and specifically keep the active one visible even if somehow archived)
+  const dropdownSems = allSemesters.filter(s => !s.archived || s.id === activeId);
+
   const sel=document.getElementById('activePeriodSelect');
-  if(sel)sel.innerHTML=allSemesters.map(s=>`<option class="text-slate-800" value="${s.id}"${s.id===activeId?' selected':''}>${s.name}</option>`).join('');
+  if(sel)sel.innerHTML=dropdownSems.map(s=>`<option class="text-slate-800" value="${s.id}"${s.id===activeId?' selected':''}>${s.name}</option>`).join('');
 
-  // Global period selector (topbar, used by Classes tab)
   const gSel=document.getElementById('globalPeriodSelect');
-  if(gSel)gSel.innerHTML=allSemesters.map(s=>`<option value="${s.id}"${s.id===activeId?' selected':''}>${s.name}</option>`).join('');
+  // For global read-only gradebook lookups, we want to allow admins to select archived ones too!
+  if(gSel)gSel.innerHTML=allSemesters.map(s=>`<option value="${s.id}"${s.id===activeId?' selected':''}>${s.name} ${s.archived ? '(Archived)' : ''}</option>`).join('');
 
-  const listEl=document.getElementById('semestersList');
-  if(listEl)listEl.innerHTML=allSemesters.map(s=>`
+  // Splitting into Active and Archived Lists for the Settings Tab
+  const activeListEl = document.getElementById('semestersList');
+  const archivedListEl = document.getElementById('archivedSemestersList');
+  
+  const activePeriods = allSemesters.filter(s => !s.archived);
+  const archivedPeriods = allSemesters.filter(s => s.archived);
+
+  if(activeListEl) activeListEl.innerHTML=activePeriods.map(s=>`
     <div class="flex items-center justify-between bg-white p-4 border rounded-2xl shadow-sm transition group hover:shadow-md ${s.id===activeId?'border-blue-300 bg-blue-50/40':'border-slate-200'}">
-      <div class="flex items-center gap-3"><i class="fa-solid fa-grip-lines text-slate-300"></i><span class="font-black text-slate-700">${s.name}</span>${s.id===activeId?'<span class="badge badge-active ml-2">Active</span>':''}</div>
+      <div>
+        <div class="flex items-center gap-3"><i class="fa-solid fa-grip-lines text-slate-300"></i><span class="font-black text-slate-700">${s.name}</span>${s.id===activeId?'<span class="badge badge-active ml-2">Active</span>':''}</div>
+        ${(s.startDate || s.endDate) ? `<p class="text-[10px] font-bold text-slate-400 mt-1 ml-6 uppercase tracking-wider">${s.startDate||'???'} TO ${s.endDate||'???'}</p>` : ''}
+      </div>
       <div class="flex items-center gap-2">
         ${s.id!==activeId?`<button onclick="setActivePeriod('${s.id}')" class="text-xs font-black text-blue-600 hover:bg-blue-600 hover:text-white border border-blue-300 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100">Set Active</button>`:''}
-        <button onclick="deleteSem('${s.id}')" class="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-red-50"><i class="fa-solid fa-trash-can"></i></button>
+        <button onclick="openEditSemModal('${s.id}')" class="text-slate-400 hover:text-amber-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-amber-50" title="Edit"><i class="fa-solid fa-pen"></i></button>
+        <button onclick="archiveSem('${s.id}')" class="text-slate-400 hover:text-red-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-red-50" title="Archive"><i class="fa-solid fa-box-archive"></i></button>
       </div>
     </div>`).join('');
+
+  if(archivedListEl) archivedListEl.innerHTML=archivedPeriods.length ? archivedPeriods.map(s=>`
+    <div class="flex items-center justify-between bg-slate-50 p-4 border border-slate-200 rounded-2xl shadow-sm">
+      <div>
+        <div class="flex items-center gap-3"><i class="fa-solid fa-box-archive text-slate-300"></i><span class="font-black text-slate-500 line-through">${s.name}</span></div>
+        ${(s.startDate || s.endDate) ? `<p class="text-[10px] font-bold text-slate-400 mt-1 ml-6 uppercase tracking-wider">${s.startDate||'???'} TO ${s.endDate||'???'}</p>` : ''}
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="restoreSem('${s.id}')" class="text-xs font-black text-green-700 hover:bg-green-600 hover:text-white border border-green-300 px-3 py-1.5 rounded-lg transition">Restore</button>
+      </div>
+    </div>`).join('') : '<p class="text-sm text-slate-400 italic font-semibold">No archived periods.</p>';
 }
 
 document.getElementById('activePeriodSelect').addEventListener('change',async(e)=>{
@@ -716,8 +905,56 @@ document.getElementById('globalPeriodSelect').addEventListener('change',(e)=>{
   if(!document.getElementById('view-classes').classList.contains('hidden'))loadClasses();
 });
 window.setActivePeriod=async function(id){await updateDoc(doc(db,'schools',currentSchoolId),{activeSemesterId:id});schoolData.activeSemesterId=id;loadSemesters();};
-document.getElementById('addSemBtn').addEventListener('click',async()=>{const n=document.getElementById('newSemName').value.trim();if(!n)return;await addDoc(collection(db,'schools',currentSchoolId,'semesters'),{name:n,order:Date.now()});document.getElementById('newSemName').value='';loadSemesters();});
-window.deleteSem=async function(id){if(!confirm('Delete this grading period?'))return;await deleteDoc(doc(db,'schools',currentSchoolId,'semesters',id));loadSemesters();};
+
+// Add New Semester
+document.getElementById('addSemBtn').addEventListener('click',async()=>{
+    const n=document.getElementById('newSemName').value.trim();
+    const start=document.getElementById('newSemStart').value;
+    const end=document.getElementById('newSemEnd').value;
+    if(!n) return;
+    const btn = document.getElementById('addSemBtn'); btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    await addDoc(collection(db,'schools',currentSchoolId,'semesters'),{name:n, startDate:start, endDate:end, order:Date.now(), archived: false});
+    document.getElementById('newSemName').value=''; document.getElementById('newSemStart').value=''; document.getElementById('newSemEnd').value='';
+    btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-plus"></i> Add Period';
+    loadSemesters();
+});
+
+// Edit Semester Modal
+window.openEditSemModal = function(id) {
+    currentEditSemId = id;
+    const sem = allSemesters.find(s => s.id === id);
+    if(!sem) return;
+    document.getElementById('editSemName').value = sem.name || '';
+    document.getElementById('editSemStart').value = sem.startDate || '';
+    document.getElementById('editSemEnd').value = sem.endDate || '';
+    openOverlay('editSemModal', 'editSemModalInner');
+};
+window.closeEditSemModal = function() { closeOverlay('editSemModal', 'editSemModalInner'); };
+document.getElementById('saveSemEditBtn').addEventListener('click', async () => {
+    const name = document.getElementById('editSemName').value.trim();
+    const startDate = document.getElementById('editSemStart').value;
+    const endDate = document.getElementById('editSemEnd').value;
+    if(!name) return;
+    const btn = document.getElementById('saveSemEditBtn'); btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+    await updateDoc(doc(db,'schools',currentSchoolId,'semesters',currentEditSemId),{ name, startDate, endDate });
+    closeEditSemModal(); loadSemesters();
+    btn.disabled = false; btn.innerHTML = 'Save Changes';
+});
+
+// Archive / Restore Semesters
+window.archiveSem = async function(id) {
+    if(id === schoolData.activeSemesterId) {
+        alert("This period is currently set as ACTIVE. You must set a different active period before archiving this one.");
+        return;
+    }
+    if(!confirm("Archive this grading period? It will be removed from teachers' daily views but remain stored for historical reporting.")) return;
+    await updateDoc(doc(db,'schools',currentSchoolId,'semesters',id), { archived: true });
+    loadSemesters();
+};
+window.restoreSem = async function(id) {
+    await updateDoc(doc(db,'schools',currentSchoolId,'semesters',id), { archived: false });
+    loadSemesters();
+};
 
 // ── TEACHERS ──────────────────────────────────────────────────────────────
 async function loadTeachers(){
@@ -909,7 +1146,6 @@ async function loadStudents(){
   
   allStudentsCache=sSnap.docs.filter(d=>!d.data().archived).map(d=>({id:d.id,...d.data(),teacherName:tm[d.data().teacherId]||'—'}));
   
-  // Setup directory filters dynamically
   const tf = document.getElementById('filterStudentTeacher');
   if(tf && tf.options.length <= 1) {
       tf.innerHTML = '<option value="">All Teachers</option>' + allTeachersCache.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
@@ -920,7 +1156,6 @@ async function loadStudents(){
       cf.innerHTML = '<option value="">All Classes</option><option value="unassigned">Unassigned Only</option>' + classList.map(c=>`<option value="${c}">${c}</option>`).join('');
   }
 
-  // Apply filters
   let filtered = allStudentsCache;
   const filterT = tf?.value;
   const filterC = cf?.value;
@@ -1001,8 +1236,14 @@ document.getElementById('saveReassignBtn').addEventListener('click', async () =>
 
 // ── STUDENT RECORDS PANEL ─────────────────────────────────────────────────
 window.openStudentPanel=async function(studentId){
+  currentStudentId = studentId; // Store for printing
   const student=allStudentsCache.find(s=>s.id===studentId)||(await getDoc(doc(db,'schools',currentSchoolId,'students',studentId))).data();
   document.getElementById('sPanelName').textContent=student?.name||'Student';document.getElementById('sPanelClass').textContent=student?.className||'—';
+  
+  // Wire up the print button
+  const printBtn = document.getElementById('sPanelPrintBtn');
+  if(printBtn) printBtn.onclick = () => printStudentRecord(studentId);
+
   document.getElementById('sPanelLoader').classList.remove('hidden');document.getElementById('subjectAccordions').classList.add('hidden');document.getElementById('subjectAccordions').innerHTML='';
   openOverlay('studentPanel','studentPanelInner',true);
   try{
@@ -1062,14 +1303,33 @@ document.getElementById('saveProfileBtn').addEventListener('click',async()=>{
   await updateDoc(doc(db,'schools',currentSchoolId),u);Object.assign(schoolData,u);document.getElementById('displaySchoolName').textContent=u.schoolName;showMsg('settingsProfileMsg','Profile saved!',false);
 });
 window.switchArchiveTab=function(tab){document.getElementById('archiveTeachersList').classList.toggle('hidden',tab!=='teachers');document.getElementById('archiveStudentsList').classList.toggle('hidden',tab!=='students');document.getElementById('archiveTabTeachers').classList.toggle('active',tab==='teachers');document.getElementById('archiveTabStudents').classList.toggle('active',tab==='students');};
+
 async function loadArchivedRecords(){
   const tSnap=await getDocs(collection(db,'schools',currentSchoolId,'teachers'));
   const aT=tSnap.docs.filter(d=>d.data().archived);
-  document.getElementById('archiveTeachersList').innerHTML=aT.length?aT.map(d=>{const t=d.data();return`<div class="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl p-4"><div><p class="font-black text-slate-700">${t.name}</p><p class="text-xs text-slate-400 font-semibold">Archived ${t.archivedAt?new Date(t.archivedAt).toLocaleDateString():''}</p></div><div class="flex gap-2"><button onclick="restoreTeacher('${d.id}')" class="text-xs font-black text-green-700 hover:bg-green-600 hover:text-white border border-green-300 px-3 py-1.5 rounded-lg transition">Restore</button><button onclick="permanentDeleteTeacher('${d.id}')" class="text-xs font-black text-red-600 hover:bg-red-600 hover:text-white border border-red-300 px-3 py-1.5 rounded-lg transition">Delete</button></div></div>`;}).join(''):'<p class="text-sm text-slate-400 italic font-semibold text-center py-4">No archived teachers.</p>';
+  document.getElementById('archiveTeachersList').innerHTML=aT.length?aT.map(d=>{const t=d.data();return`
+    <div class="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl p-4">
+      <div><p class="font-black text-slate-700">${t.name}</p><p class="text-xs text-slate-400 font-semibold">Archived ${t.archivedAt?new Date(t.archivedAt).toLocaleDateString():''}</p></div>
+      <div class="flex gap-2">
+        <button onclick="printTeacherRecord('${d.id}')" class="text-xs font-black text-slate-700 hover:bg-slate-200 border border-slate-300 bg-white px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-print"></i></button>
+        <button onclick="restoreTeacher('${d.id}')" class="text-xs font-black text-green-700 hover:bg-green-600 hover:text-white border border-green-300 px-3 py-1.5 rounded-lg transition">Restore</button>
+        <button onclick="permanentDeleteTeacher('${d.id}')" class="text-xs font-black text-red-600 hover:bg-red-600 hover:text-white border border-red-300 px-3 py-1.5 rounded-lg transition">Delete</button>
+      </div>
+    </div>`;}).join(''):'<p class="text-sm text-slate-400 italic font-semibold text-center py-4">No archived teachers.</p>';
+  
   const sSnap=await getDocs(collection(db,'schools',currentSchoolId,'students'));
   const aS=sSnap.docs.filter(d=>d.data().archived);
-  document.getElementById('archiveStudentsList').innerHTML=aS.length?aS.map(d=>{const s=d.data();return`<div class="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl p-4"><div><p class="font-black text-slate-700">${s.name||'Unnamed'}</p><p class="text-xs text-slate-400 font-semibold">${s.className||''} — Archived ${s.archivedAt?new Date(s.archivedAt).toLocaleDateString():''}</p></div><div class="flex gap-2"><button onclick="restoreStudent('${d.id}')" class="text-xs font-black text-green-700 hover:bg-green-600 hover:text-white border border-green-300 px-3 py-1.5 rounded-lg transition">Restore</button><button onclick="permanentDeleteStudent('${d.id}')" class="text-xs font-black text-red-600 hover:bg-red-600 hover:text-white border border-red-300 px-3 py-1.5 rounded-lg transition">Delete</button></div></div>`;}).join(''):'<p class="text-sm text-slate-400 italic font-semibold text-center py-4">No archived students.</p>';
+  document.getElementById('archiveStudentsList').innerHTML=aS.length?aS.map(d=>{const s=d.data();return`
+    <div class="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl p-4">
+      <div><p class="font-black text-slate-700">${s.name||'Unnamed'}</p><p class="text-xs text-slate-400 font-semibold">${s.className||''} — Archived ${s.archivedAt?new Date(s.archivedAt).toLocaleDateString():''}</p></div>
+      <div class="flex gap-2">
+        <button onclick="printStudentRecord('${d.id}')" class="text-xs font-black text-slate-700 hover:bg-slate-200 border border-slate-300 bg-white px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-print"></i></button>
+        <button onclick="restoreStudent('${d.id}')" class="text-xs font-black text-green-700 hover:bg-green-600 hover:text-white border border-green-300 px-3 py-1.5 rounded-lg transition">Restore</button>
+        <button onclick="permanentDeleteStudent('${d.id}')" class="text-xs font-black text-red-600 hover:bg-red-600 hover:text-white border border-red-300 px-3 py-1.5 rounded-lg transition">Delete</button>
+      </div>
+    </div>`;}).join(''):'<p class="text-sm text-slate-400 italic font-semibold text-center py-4">No archived students.</p>';
 }
+
 window.restoreTeacher=async function(id){await updateDoc(doc(db,'schools',currentSchoolId,'teachers',id),{archived:false,archivedAt:null});loadArchivedRecords();loadOverviewStats();};
 window.permanentDeleteTeacher=async function(id){if(!confirm('Permanently delete? Cannot be undone.'))return;await deleteDoc(doc(db,'schools',currentSchoolId,'teachers',id));loadArchivedRecords();};
 window.restoreStudent=async function(id){await updateDoc(doc(db,'schools',currentSchoolId,'students',id),{archived:false,archivedAt:null});loadArchivedRecords();loadOverviewStats();};
