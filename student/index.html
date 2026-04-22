@@ -1,405 +1,694 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Family Portal | ConnectUs</title>
-    
-    <link rel="icon" type="image/x-icon" href="../assets/images/favicon.ico">
-    <link rel="icon" type="image/png" sizes="32x32" href="../assets/images/favicon-32x32.png">
-    
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="../assets/css/global.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Family Portal | ConnectUs</title>
+<link rel="icon" type="image/x-icon" href="../assets/images/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="../assets/images/favicon-32x32.png">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="../assets/css/global.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
+*{font-family:'Nunito',sans-serif;}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
+
+/* ── LOGIN ── */
+#loginScreen{background:linear-gradient(135deg,#1e1b4b 0%,#312e81 40%,#3730a3 70%,#312e81 100%);position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1rem;overflow-y:auto;}
+#loginScreen::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,0.05) 1px,transparent 1px);background-size:32px 32px;pointer-events:none;}
+.orb{position:absolute;border-radius:50%;pointer-events:none;}
+@keyframes orbFloat{0%{transform:translateY(0) scale(1)}50%{transform:translateY(-35px) scale(1.08)}100%{transform:translateY(0) scale(1)}}
+.orb-1{width:380px;height:380px;background:radial-gradient(circle,rgba(99,102,241,0.22),transparent 70%);top:-120px;left:-120px;animation:orbFloat 14s ease-in-out infinite;}
+.orb-2{width:280px;height:280px;background:radial-gradient(circle,rgba(139,92,246,0.18),transparent 70%);top:20%;right:0;animation:orbFloat 18s ease-in-out infinite reverse;}
+.orb-3{width:200px;height:200px;background:radial-gradient(circle,rgba(79,70,229,0.15),transparent 70%);bottom:10%;left:5%;animation:orbFloat 12s ease-in-out infinite 2s;}
+@keyframes cardUp{from{opacity:0;transform:translateY(36px) scale(0.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+.login-card{animation:cardUp 0.65s cubic-bezier(0.34,1.2,0.64,1) 0.25s both;}
+.back-btn{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);color:#c7d2fe;font-size:0.8rem;font-weight:700;padding:8px 16px;border-radius:999px;transition:all 0.2s;text-decoration:none;backdrop-filter:blur(6px);}
+.back-btn:hover{background:rgba(255,255,255,0.16);color:#fff;}
+.login-input{width:100%;padding:0.9rem 1.1rem;background:#f5f3ff;border:2px solid #ddd6fe;border-radius:14px;font-size:0.9rem;font-family:'Nunito',sans-serif;outline:none;transition:all 0.2s;color:#1e293b;font-weight:600;}
+.login-input:focus{border-color:#6366f1;background:#fff;box-shadow:0 0 0 4px rgba(99,102,241,0.14);}
+
+/* ── SIDEBAR ── */
+#sidebar{background:linear-gradient(180deg,#1e1b4b 0%,#312e81 50%,#3730a3 100%);border-right:1px solid rgba(255,255,255,0.04);}
+.nav-item{transition:all 0.18s ease;border-radius:12px;position:relative;}
+.nav-item:hover{background:rgba(255,255,255,0.07);color:#fff;}
+.nav-item.active{background:linear-gradient(135deg,#6366f1,#4338ca);color:#fff;box-shadow:0 4px 20px rgba(99,102,241,0.5),inset 0 1px 0 rgba(255,255,255,0.15);}
+.nav-item.active::before{content:'';position:absolute;left:-16px;top:50%;transform:translateY(-50%);width:3px;height:70%;background:#a5b4fc;border-radius:0 4px 4px 0;}
+
+/* ── DASHBOARD ── */
+.stat-card{position:relative;overflow:hidden;transition:transform 0.22s,box-shadow 0.22s;}
+.stat-card:hover{transform:translateY(-5px);box-shadow:0 18px 45px rgba(0,0,0,0.15);}
+@keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.view-section:not(.hidden){animation:fadeIn 0.28s ease;}
+.gb-row{border-bottom:1px solid #f1f5f9;transition:background 0.12s;}
+.gb-row:hover{background:#f5f3ff!important;}
+.gb-row:nth-child(even){background:#f8fafc;}
+
+/* ── BADGES & COLORS ── */
+.badge{font-size:0.65rem;font-weight:800;padding:3px 10px;border-radius:999px;letter-spacing:0.05em;text-transform:uppercase;}
+.s-exc{background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;}
+.s-good{background:#dbeafe;color:#1d4ed8;border:1px solid #bfdbfe;}
+.s-track{background:#ccfbf1;color:#0f766e;border:1px solid #99f6e4;}
+.s-attn{background:#fef3c7;color:#92400e;border:1px solid #fde68a;}
+.s-risk{background:#fee2e2;color:#991b1b;border:1px solid #fecaca;}
+.s-none{background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;}
+.g-a{color:#15803d;font-weight:800;}.g-b{color:#1d4ed8;font-weight:800;}.g-c{color:#0f766e;font-weight:800;}.g-d{color:#92400e;font-weight:800;}.g-f{color:#991b1b;font-weight:800;}
+
+/* ── NEW NOTIFICATION BADGE ── */
+@keyframes pulseGlow { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+.new-badge { background: #ef4444; color: white; font-size: 0.55rem; font-weight: 900; padding: 2px 6px; border-radius: 6px; letter-spacing: 0.05em; animation: pulseGlow 2s infinite; text-transform: uppercase; margin-left: 8px; vertical-align: middle; }
+
+/* ── ACCORDIONS ── */
+.subject-body{overflow:hidden;transition:max-height 0.35s ease;max-height:0;}
+.subject-body.open{max-height:4000px;}
+.overlay{transition:opacity 0.25s;}
+
+@media print{
+  #sidebar,.topbar,.no-print,button{display:none!important;}
+  #dashboardMain{height:auto!important;overflow:visible!important;}
+  body{background:white!important;overflow:visible!important;}
+}
+</style>
 </head>
-<body class="bg-slate-50 text-slate-800 font-sans h-screen flex flex-col overflow-hidden selection:bg-indigo-200">
+<body style="position:relative;display:flex;width:100%;height:100%;">
 
-    <div id="loginScreen" class="absolute inset-0 z-50 bg-gradient-to-br from-indigo-950 via-indigo-900 to-purple-900 flex flex-col items-center justify-center p-4">
+<div id="loginScreen">
+  <div class="orb orb-1"></div><div class="orb orb-2"></div><div class="orb orb-3"></div>
+  <div class="relative z-10 mb-5">
+    <a href="../index.html" class="back-btn"><i class="fa-solid fa-arrow-left text-xs"></i> Back to Main Site</a>
+  </div>
+  <div class="login-card relative z-10 bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden">
+    <div class="h-2 bg-gradient-to-r from-indigo-600 via-purple-500 to-indigo-500"></div>
+    <div class="pt-8 pb-6 px-10 text-center border-b border-slate-100">
+      <img src="../assets/images/logo.png" alt="ConnectUs" class="h-20 w-auto mx-auto mb-3">
+      <h1 class="text-2xl font-black text-slate-800 tracking-tight">Family Portal</h1>
+      <p class="text-slate-500 text-sm mt-1 font-semibold">Track academic progress in real time</p>
+    </div>
+    <div class="p-8 space-y-5">
+      <div>
+        <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2"><i class="fa-solid fa-school mr-1.5 text-indigo-400"></i>School ID</label>
+        <input type="text" id="loginSchoolId" placeholder="e.g. LA1234" class="login-input">
+      </div>
+      <div>
+        <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2"><i class="fa-solid fa-key mr-1.5 text-indigo-400"></i>Student PIN</label>
+        <input type="password" id="loginPin" placeholder="4-6 digit PIN" class="login-input text-center text-xl tracking-[0.4em] font-mono" maxlength="6">
+      </div>
+      <button id="loginBtn" class="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-black py-4 rounded-2xl transition shadow-lg shadow-indigo-500/30 text-base flex justify-center items-center gap-2">
+        View Progress <i class="fa-solid fa-arrow-right-to-bracket"></i>
+      </button>
+      <p id="loginMsg" class="text-sm text-center font-bold hidden text-red-600 bg-red-50 p-3 rounded-xl border border-red-100"></p>
+    </div>
+    <div class="px-8 pb-7 text-center"><p class="text-xs text-slate-400 font-semibold">© 2026 ConnectUs</p></div>
+  </div>
+</div>
+
+<div id="dashboardApp" style="display:none;position:fixed;inset:0;width:100%;height:100%;flex-direction:row;" class="hidden">
+
+  <aside id="sidebar" class="text-slate-300 flex flex-col shadow-2xl z-20 flex-shrink-0" style="width:272px">
+    <div class="p-5 border-b border-white/5">
+      <div class="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col items-center text-center">
+        <div id="studentAvatar" class="h-14 w-14 bg-indigo-600 border border-indigo-400/50 rounded-xl flex items-center justify-center text-2xl font-black text-white mb-3 shadow-inner">S</div>
+        <h2 id="displayStudentName" class="font-black text-white text-base leading-tight">Student Name</h2>
+        <p id="displayStudentClass" class="text-xs text-indigo-300 font-bold mt-1">—</p>
+      </div>
+    </div>
+    <nav class="flex-1 p-4 space-y-1 overflow-y-auto mt-1">
+      <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-3 mb-2">Main Menu</p>
+      <button onclick="switchTab('overview')"  id="tab-overview"  class="nav-item active w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm"><i class="fa-solid fa-house w-5 text-base opacity-90"></i> Dashboard</button>
+      <button onclick="switchTab('gradebook')" id="tab-gradebook" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-book-open w-5 text-base opacity-70"></i> Current Grades</button>
+      <button onclick="switchTab('history')"   id="tab-history"   class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-clock-rotate-left w-5 text-base opacity-70"></i> Academic History</button>
+    </nav>
+    <div class="p-4 border-t border-white/5 space-y-3">
+      <div class="rounded-xl p-3 text-center" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.2)">
+        <p class="text-[10px] text-indigo-400 font-black uppercase tracking-widest">School</p>
+        <p id="displaySchoolName" class="text-white font-black text-sm mt-0.5 truncate px-2">Loading...</p>
+      </div>
+      <button id="logoutBtn" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 text-slate-300 hover:bg-rose-500 hover:text-white transition font-black text-sm border border-white/10 hover:border-rose-500">
+        <i class="fa-solid fa-power-off"></i> Log Out
+      </button>
+    </div>
+  </aside>
+
+  <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden bg-[#f5f3ff]">
+    <header class="topbar h-16 bg-white border-b border-slate-200 flex items-center px-8 z-10 justify-between flex-shrink-0 shadow-sm">
+      <div>
+        <h1 id="topbarTitle" class="text-xl font-black text-slate-800 leading-none">Dashboard</h1>
+        <p id="topbarSub" class="text-xs text-slate-400 font-semibold mt-0.5">Recent activity and overview</p>
+      </div>
+      <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2">
+          <i class="fa-solid fa-calendar-days text-indigo-500 text-sm"></i>
+          <span class="text-xs font-black text-indigo-700 uppercase tracking-wider">Current Period:</span>
+          <span id="activeSemesterDisplay" class="text-sm font-black text-indigo-800">Loading...</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="flex-1 overflow-y-auto p-7">
+
+      <div id="view-overview" class="view-section max-w-5xl mx-auto">
         
-        <div class="mb-6 text-center max-w-md">
-            <a href="../index.html" class="text-indigo-200 text-sm hover:text-white hover:underline transition mb-4 inline-block">&larr; Back to Main Site</a>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
+          <div class="stat-card bg-gradient-to-br from-indigo-600 to-indigo-800 p-6 rounded-3xl shadow-lg shadow-indigo-500/20 text-white border border-indigo-500/30 flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-2">
+                <div class="bg-white/20 h-12 w-12 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-graduation-cap"></i></div>
+                <span class="text-indigo-200 text-[10px] font-black uppercase tracking-wider bg-black/10 px-3 py-1 rounded-full border border-white/10 shadow-inner">Current Avg</span>
+            </div>
+            <div>
+                <h3 class="text-5xl font-black mt-2 flex items-baseline gap-2">
+                    <span id="dashAvg">--</span><span class="text-2xl text-indigo-300 font-bold">%</span>
+                </h3>
+            </div>
+          </div>
+
+          <div class="stat-card bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-check-double"></i></div>
+                <div><h3 class="font-black text-slate-700">Assignments</h3><p class="text-xs text-slate-400 font-bold uppercase tracking-wider">This Period</p></div>
+            </div>
+            <h3 id="dashTotalGrades" class="text-4xl font-black text-slate-800">0</h3>
+          </div>
+
+          <div class="stat-card bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-bell"></i></div>
+                <div><h3 class="font-black text-slate-700">Recent Updates</h3><p class="text-xs text-slate-400 font-bold uppercase tracking-wider">Last 7 Days</p></div>
+            </div>
+            <h3 id="dashRecentCount" class="text-4xl font-black text-slate-800">0</h3>
+          </div>
         </div>
 
-        <div class="bg-white p-10 rounded-3xl shadow-2xl border border-slate-100 max-w-md w-full relative">
-            <div class="flex flex-col items-center mb-8 border-b border-slate-100 pb-6">
-                <img src="../assets/images/logo.png" alt="ConnectUs Logo" class="h-24 w-auto mb-4 drop-shadow-md">
-                <h1 class="text-2xl font-extrabold text-slate-800 tracking-tight">Family Portal</h1>
-                <p class="text-slate-500 text-sm mt-1 text-center">Enter your School ID and Student PIN</p>
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center gap-3">
+                <div class="w-8 h-8 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center text-sm"><i class="fa-solid fa-bolt"></i></div>
+                <h3 class="font-black text-slate-800 text-lg">Recent Activity Feed</h3>
+            </div>
+            <div class="p-6">
+                <div id="recentActivityList" class="space-y-4">
+                    <div class="text-center py-8 text-slate-400 font-semibold"><i class="fa-solid fa-spinner fa-spin text-2xl mb-3 block"></i>Loading activity...</div>
+                </div>
+            </div>
+        </div>
+      </div>
+
+      <div id="view-gradebook" class="view-section hidden max-w-5xl mx-auto">
+        <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5 mb-6 flex gap-4 shadow-sm">
+            <div class="text-amber-500 text-xl"><i class="fa-solid fa-circle-info"></i></div>
+            <div>
+                <h4 class="font-black text-amber-800 text-sm">Please Note</h4>
+                <p class="text-sm text-amber-700/80 mt-1 font-semibold leading-relaxed">Averages shown here are calculated exactly from logged assignments. Teachers may apply final syllabus weightings or manual adjustments on the official report card.</p>
+            </div>
+        </div>
+
+        <div id="noCurrentGradesMsg" class="hidden text-center py-16 bg-white rounded-3xl border border-slate-200 shadow-sm">
+            <div class="text-6xl mb-4 text-slate-200"><i class="fa-solid fa-folder-open"></i></div>
+            <h3 class="text-xl font-black text-slate-700">No Grades Yet</h3>
+            <p class="text-slate-500 mt-2 font-semibold">Your teacher hasn't published any grades for the current period.</p>
+        </div>
+
+        <div id="currentSubjectsContainer" class="space-y-4"></div>
+      </div>
+
+      <div id="view-history" class="view-section hidden max-w-5xl mx-auto">
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mb-6">
+          <div class="p-6 border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/80">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-slate-800 text-white rounded-xl flex items-center justify-center text-lg shadow-sm"><i class="fa-solid fa-clock-rotate-left"></i></div>
+                <div><h3 class="font-black text-xl text-slate-800">Academic History</h3><p class="text-sm text-slate-400 font-semibold">Review past semesters and classes</p></div>
+            </div>
+          </div>
+          <div class="p-4 bg-slate-50 border-b border-slate-100 flex items-center gap-3">
+              <label class="text-xs font-black text-slate-500 uppercase tracking-wider ml-2">Select Past Period:</label>
+              <select id="historySemesterSelect" onchange="loadHistoricalGrades()" class="form-input w-64 p-2.5 bg-white text-sm font-bold text-indigo-700"></select>
+          </div>
+          <div class="p-6">
+              
+              <div id="historyInfoCard" class="hidden mb-6 bg-indigo-50 border border-indigo-100 rounded-2xl p-5 flex items-center gap-4">
+                  <div class="h-12 w-12 bg-indigo-200 text-indigo-700 rounded-xl flex items-center justify-center font-black text-xl shadow-sm"><i class="fa-solid fa-chalkboard-user"></i></div>
+                  <div>
+                      <p class="text-[10px] font-black text-indigo-500 uppercase tracking-wider mb-1">Teacher on Record</p>
+                      <p id="historyTeacherName" class="font-black text-slate-800 text-lg">Loading...</p>
+                  </div>
+              </div>
+
+              <div id="historySubjectsContainer" class="space-y-4"></div>
+              
+              <div id="noHistoryGradesMsg" class="hidden text-center py-12">
+                  <div class="text-4xl mb-3 text-slate-300"><i class="fa-solid fa-box-archive"></i></div>
+                  <p class="text-slate-500 font-semibold">No grades found for this past period.</p>
+              </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<div id="assignmentModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300 p-4">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[90vh] transform scale-95 transition-transform duration-300" id="assignmentModalInner">
+        <div class="h-1.5 bg-gradient-to-r from-indigo-500 to-purple-500"></div>
+        <div class="px-8 py-6 border-b border-indigo-100 flex justify-between items-center bg-indigo-50/50">
+            <h3 class="font-extrabold text-lg text-indigo-900 flex items-center gap-2"><i class="fa-solid fa-clipboard-list text-indigo-600"></i> Details</h3>
+            <button onclick="closeAssignmentModal()" class="text-slate-400 hover:text-indigo-700 bg-white hover:bg-indigo-100 rounded-full h-8 w-8 flex items-center justify-center shadow-sm border border-slate-200 transition"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        
+        <div class="p-8 overflow-y-auto flex-1 bg-white">
+            <h2 id="modalTitle" class="text-2xl font-extrabold text-slate-800 mb-1 leading-tight">Title</h2>
+            <p id="modalMeta" class="text-sm text-slate-500 mb-6 font-bold">Date • Type</p>
+            
+            <div class="flex gap-4 mb-8">
+                <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex-1 text-center shadow-sm">
+                    <span class="block text-[10px] uppercase font-black text-slate-400 tracking-wider mb-1">Score</span>
+                    <span id="modalScore" class="font-black text-2xl text-slate-700">0/100</span>
+                </div>
+                <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex-1 text-center shadow-sm">
+                    <span class="block text-[10px] uppercase font-black text-slate-400 tracking-wider mb-1">Percentage</span>
+                    <span id="modalPercentage" class="font-black text-3xl">0%</span>
+                </div>
             </div>
 
-            <div class="space-y-5">
-                <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">School ID</label>
-                    <input type="text" id="loginSchoolId" placeholder="e.g. belize-high" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100 transition">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Student PIN</label>
-                    <input type="password" id="loginPin" placeholder="Enter PIN" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-center text-xl tracking-[0.5em] font-mono outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100 transition">
-                </div>
-                
-                <button id="loginBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 px-4 rounded-xl transition mt-2 shadow-lg shadow-indigo-600/30 text-lg flex justify-center items-center gap-2">
-                    View Progress <i class="fa-solid fa-arrow-right-to-bracket"></i>
-                </button>
-                <p id="loginMsg" class="text-sm text-center font-bold hidden text-red-600 mt-4 bg-red-50 p-2 rounded-lg"></p>
+            <div class="mb-6">
+                <h4 class="text-xs font-black text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2"><i class="fa-solid fa-comment-dots text-indigo-500"></i> Teacher Notes</h4>
+                <div id="modalNotes" class="bg-indigo-50 border-l-4 border-indigo-500 p-5 rounded-r-2xl text-sm text-indigo-900 whitespace-pre-wrap leading-relaxed shadow-sm font-semibold"></div>
             </div>
 
-            <div class="mt-8 pt-6 text-center text-xs text-slate-400">
-                <p>&copy; 2026 ConnectUs. All rights reserved.</p>
+            <div id="historySection" class="hidden">
+                <h4 class="text-xs font-black text-amber-600 uppercase tracking-wider mb-3 flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left"></i> Edit History</h4>
+                <div id="modalHistory" class="space-y-2"></div>
+                <p class="text-[10px] text-amber-700 mt-2 font-bold">This grade was modified by the teacher after its initial entry.</p>
             </div>
         </div>
     </div>
+</div>
 
-    <div id="dashboardApp" class="hidden w-full h-full flex flex-col bg-slate-50">
+<script type="module">
+import { db } from '../assets/js/firebase-init.js';
+import { collection, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+// ── STATE ──────────────────────────────────────────────────────────────────
+let session = { schoolId: null, studentId: null, studentData: null };
+let allGrades = [];
+let allSemesters = [];
+let activeSemesterId = null;
+let teachersMap = {}; // Maps teacherId to Name
+
+// ── HELPERS ────────────────────────────────────────────────────────────────
+function letterGrade(p){return p>=90?'A':p>=80?'B':p>=70?'C':p>=65?'D':'F';}
+function getGradeStyle(percentage) {
+    if(percentage >= 90) return { cls: 'text-emerald-700 bg-emerald-50 border-emerald-200', ltr: 'A' };
+    if(percentage >= 80) return { cls: 'text-blue-700 bg-blue-50 border-blue-200', ltr: 'B' };
+    if(percentage >= 70) return { cls: 'text-teal-700 bg-teal-50 border-teal-200', ltr: 'C' };
+    if(percentage >= 65) return { cls: 'text-amber-700 bg-amber-50 border-amber-200', ltr: 'D' };
+    return { cls: 'text-red-700 bg-red-50 border-red-200', ltr: 'F' };
+}
+function gradeColorText(p) {
+    if(p >= 90) return 'text-emerald-600';
+    if(p >= 80) return 'text-blue-600';
+    if(p >= 70) return 'text-teal-600';
+    if(p >= 65) return 'text-amber-600';
+    return 'text-red-600';
+}
+function isNew(dateString, createdAtString) {
+    // Check if grade was created/entered within last 5 days
+    const d = createdAtString ? new Date(createdAtString) : new Date(dateString);
+    if(isNaN(d)) return false;
+    const diffTime = Math.abs(new Date() - d);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+    return diffDays <= 5;
+}
+function timeAgo(dateString) {
+    const d = new Date(dateString);
+    if(isNaN(d)) return dateString;
+    const seconds = Math.floor((new Date() - d) / 1000);
+    let interval = seconds / 86400;
+    if (interval > 7) return d.toLocaleDateString();
+    if (interval >= 1) return Math.floor(interval) + " days ago";
+    interval = seconds / 3600;
+    if (interval >= 1) return Math.floor(interval) + " hrs ago";
+    interval = seconds / 60;
+    if (interval >= 1) return Math.floor(interval) + " mins ago";
+    return "Just now";
+}
+
+// ── TAB SWITCHING ──────────────────────────────────────────────────────────
+window.switchTab = function(tabId) {
+    document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('nav .nav-item').forEach(el => { el.classList.remove('active'); el.classList.add('text-slate-400'); });
+    document.getElementById(`view-${tabId}`).classList.remove('hidden');
+    const tab = document.getElementById(`tab-${tabId}`);
+    tab.classList.add('active'); tab.classList.remove('text-slate-400');
+    
+    const titles = { overview: 'Dashboard', gradebook: 'Current Grades', history: 'Academic History' };
+    const subs = { overview: 'Recent activity and overview', gradebook: 'Detailed grades for the active period', history: 'Review past semesters and classes' };
+    document.getElementById('topbarTitle').textContent = titles[tabId];
+    document.getElementById('topbarSub').textContent = subs[tabId];
+
+    if(tabId === 'history' && allSemesters.length > 0) {
+        // Default history to the first archived/past semester, or just the active one if none
+        const pastSems = allSemesters.filter(s => s.id !== activeSemesterId);
+        if(pastSems.length > 0) {
+            document.getElementById('historySemesterSelect').value = pastSems[0].id;
+        } else {
+            document.getElementById('historySemesterSelect').value = activeSemesterId;
+        }
+        loadHistoricalGrades();
+    }
+};
+
+window.toggleAccordion = function(h) {
+    const b = h.nextElementSibling;
+    b.classList.toggle('open');
+    h.querySelector('.fa-chevron-down').style.transform = b.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0deg)';
+};
+
+// ── LOGIN ──────────────────────────────────────────────────────────────────
+document.getElementById('loginBtn').addEventListener('click', async () => {
+    // 1. Strict sanitization
+    const schoolId = document.getElementById('loginSchoolId').value.trim().toLowerCase();
+    const pin = document.getElementById('loginPin').value.trim().toUpperCase(); // Allow uppercase if they used letters
+    const msgEl = document.getElementById('loginMsg');
+    const btn = document.getElementById('loginBtn');
+
+    if (!schoolId || !pin) { msgEl.innerText = "Please enter both fields."; msgEl.classList.remove('hidden'); return; }
+    msgEl.classList.add('hidden');
+    btn.disabled = true; btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Verifying...`;
+
+    try {
+        const schoolSnap = await getDoc(doc(db, "schools", schoolId));
+        if (!schoolSnap.exists()) {
+            msgEl.innerText = "School ID not found."; msgEl.classList.remove('hidden'); resetLoginBtn(); return;
+        }
+        if (schoolSnap.data().isVerified !== true) {
+            msgEl.innerText = "School account pending verification."; msgEl.classList.remove('hidden'); resetLoginBtn(); return;
+        }
         
-        <nav class="bg-indigo-900 text-white shadow-xl z-20 flex-shrink-0 relative border-b border-indigo-800">
-            <div class="max-w-5xl mx-auto px-4 md:px-8 py-4 flex justify-between items-center">
+        activeSemesterId = schoolSnap.data().activeSemesterId || '';
+
+        const q = query(collection(db, "schools", schoolId, "students"), where("pin", "==", pin));
+        const snap = await getDocs(q);
+
+        if (!snap.empty) {
+            const sDoc = snap.docs[0];
+            const sData = sDoc.data();
+
+            // 1b. Archive Block
+            if(sData.archived) {
+                msgEl.innerText = "This student record has been archived. Please contact the school administration.";
+                msgEl.classList.remove('hidden'); resetLoginBtn(); return;
+            }
+
+            session = { schoolId, studentId: sDoc.id, studentData: sData };
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('dashboardApp').classList.remove('hidden');
+            
+            document.getElementById('displaySchoolName').innerText = schoolSnap.data().schoolName;
+            document.getElementById('displayStudentName').innerText = sData.name;
+            document.getElementById('topStudentName').innerText = sData.name;
+            document.getElementById('studentAvatar').innerText = sData.name.charAt(0).toUpperCase();
+
+            // Current Class / Status
+            const clsStatus = sData.className ? `Class: ${sData.className}` : 'Unassigned Class';
+            document.getElementById('displayStudentClass').innerText = clsStatus;
+
+            await bootPortal();
+        } else {
+            msgEl.innerText = "Invalid School ID or PIN."; msgEl.classList.remove('hidden'); resetLoginBtn();
+        }
+    } catch (error) {
+        console.error(error); msgEl.innerText = "Connection error. Please try again."; msgEl.classList.remove('hidden'); resetLoginBtn();
+    }
+});
+
+function resetLoginBtn() {
+    const btn = document.getElementById('loginBtn');
+    btn.disabled = false; btn.innerHTML = `View Progress <i class="fa-solid fa-arrow-right-to-bracket"></i>`;
+}
+
+// ── BOOT PORTAL & DATA FETCHING ───────────────────────────────────────────
+async function bootPortal() {
+    // Fetch Semesters
+    const semSnap = await getDocs(collection(db, "schools", session.schoolId, "semesters"));
+    allSemesters = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.order||0) - (b.order||0));
+    
+    // Set Topbar Period Display
+    const activeSemObj = allSemesters.find(s => s.id === activeSemesterId);
+    document.getElementById('activeSemesterDisplay').textContent = activeSemObj ? activeSemObj.name : 'Unknown';
+
+    // Populate History Dropdown
+    const histSel = document.getElementById('historySemesterSelect');
+    histSel.innerHTML = allSemesters.map(s => `<option value="${s.id}">${s.name} ${s.id===activeSemesterId?'(Current)':''}</option>`).join('');
+
+    // Fetch Teachers (for mapping names)
+    const tSnap = await getDocs(collection(db, "schools", session.schoolId, "teachers"));
+    tSnap.forEach(d => { teachersMap[d.id] = d.data().name; });
+
+    // Fetch ALL Grades for this student
+    const gSnap = await getDocs(collection(db, "schools", session.schoolId, "students", session.studentId, "grades"));
+    allGrades = gSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    renderDashboard();
+    renderCurrentGradebook();
+}
+
+// ── DASHBOARD RENDERING ───────────────────────────────────────────────────
+function renderDashboard() {
+    const currentGrades = allGrades.filter(g => g.semesterId === activeSemesterId);
+    
+    // 1. Calculate Average
+    if(currentGrades.length > 0) {
+        const total = currentGrades.reduce((acc, g) => acc + (g.max ? (g.score/g.max)*100 : 0), 0);
+        const avg = Math.round(total / currentGrades.length);
+        document.getElementById('dashAvg').textContent = avg;
+    } else {
+        document.getElementById('dashAvg').textContent = '--';
+    }
+
+    // 2. Total Assignments
+    document.getElementById('dashTotalGrades').textContent = currentGrades.length;
+
+    // 3. Recent Updates (Last 7 days, from any semester but usually current)
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    const recentGrades = allGrades.filter(g => {
+        const d = g.createdAt ? new Date(g.createdAt) : new Date(g.date);
+        return d >= sevenDaysAgo;
+    }).sort((a,b) => {
+        const da = a.createdAt ? new Date(a.createdAt) : new Date(a.date);
+        const db = b.createdAt ? new Date(b.createdAt) : new Date(b.date);
+        return db - da; // newest first
+    });
+
+    document.getElementById('dashRecentCount').textContent = recentGrades.length;
+
+    const actList = document.getElementById('recentActivityList');
+    if(recentGrades.length === 0) {
+        actList.innerHTML = `<div class="text-center py-6 text-slate-400 font-semibold"><i class="fa-solid fa-mug-hot text-2xl mb-2 block text-slate-300"></i>No new grades posted in the last 7 days.</div>`;
+    } else {
+        // Show max 5 on dashboard
+        actList.innerHTML = recentGrades.slice(0,5).map(g => {
+            const tName = teachersMap[g.teacherId] || 'Teacher';
+            const pct = g.max ? Math.round((g.score/g.max)*100) : 0;
+            const timeStr = g.createdAt ? timeAgo(g.createdAt) : g.date;
+            const badge = isNew(g.date, g.createdAt) ? `<span class="new-badge">New</span>` : '';
+            
+            return `
+            <div class="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-md transition cursor-pointer" onclick="viewGradeDetails('${g.id}')">
                 <div class="flex items-center gap-4">
-                    <div class="bg-white/10 p-3 rounded-xl text-2xl backdrop-blur-sm border border-white/10"><i class="fa-solid fa-graduation-cap text-indigo-200"></i></div>
+                    <div class="h-10 w-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center text-lg shadow-sm font-black">${g.subject ? g.subject.charAt(0) : '*'}</div>
                     <div>
-                        <h1 id="topStudentName" class="font-extrabold text-xl leading-tight tracking-wide">Student Name</h1>
-                        <p id="topTeacherInfo" class="text-xs text-indigo-300 font-medium tracking-wider mt-0.5 uppercase">Loading Info...</p>
+                        <p class="font-black text-slate-800">${g.title} ${badge}</p>
+                        <p class="text-xs text-slate-500 font-bold mt-0.5">${tName} • ${g.subject} • ${timeStr}</p>
                     </div>
                 </div>
-                <button id="logoutBtn" class="text-indigo-200 hover:text-white text-sm font-bold bg-white/10 hover:bg-white/20 border border-white/10 px-5 py-2.5 rounded-xl transition flex items-center gap-2 shadow-sm">
-                    <i class="fa-solid fa-power-off hidden sm:inline"></i> Log Out
-                </button>
-            </div>
-        </nav>
+                <div class="text-right">
+                    <span class="font-black text-lg ${gradeColorText(pct)}">${g.score}/${g.max}</span>
+                </div>
+            </div>`;
+        }).join('');
+    }
+}
 
-        <main class="flex-1 overflow-y-auto p-4 md:p-8">
-            <div class="max-w-5xl mx-auto">
-                
-                <div class="bg-amber-50/80 border border-amber-200 p-5 rounded-2xl mb-8 flex gap-4 shadow-sm backdrop-blur-sm">
-                    <div class="text-amber-500 text-xl"><i class="fa-solid fa-circle-info"></i></div>
+// ── CURRENT GRADEBOOK RENDERING ───────────────────────────────────────────
+function renderSubjectAccordions(gradesArray, containerId, noMsgId) {
+    const container = document.getElementById(containerId);
+    const noMsg = document.getElementById(noMsgId);
+    
+    if(gradesArray.length === 0) {
+        container.innerHTML = '';
+        noMsg.classList.remove('hidden');
+        return;
+    }
+    
+    noMsg.classList.add('hidden');
+    
+    const bySub = {};
+    gradesArray.forEach(g => {
+        const sub = g.subject || 'Uncategorized';
+        if(!bySub[sub]) bySub[sub] = [];
+        bySub[sub].push(g);
+    });
+
+    container.innerHTML = Object.entries(bySub).map(([subject, gList]) => {
+        const avg = gList.reduce((acc, g) => acc + (g.max ? (g.score/g.max)*100 : 0), 0) / gList.length;
+        const style = getGradeStyle(Math.round(avg));
+        
+        const rows = gList.sort((a,b) => (b.date||'').localeCompare(a.date||'')).map(g => {
+            const pct = g.max ? Math.round((g.score/g.max)*100) : null;
+            const pColor = pct !== null ? gradeColorText(pct) : 'text-slate-500';
+            const badge = isNew(g.date, g.createdAt) ? `<span class="new-badge">New</span>` : '';
+            const hasNotes = g.notes || (g.historyLogs && g.historyLogs.length > 0);
+
+            return `
+            <div class="bg-white border border-slate-200 rounded-xl p-3 sm:p-4 flex items-center justify-between hover:shadow-md transition cursor-pointer mb-2 last:mb-0" onclick="viewGradeDetails('${g.id}')">
+                <div class="flex-1 min-w-0">
+                    <p class="font-black text-slate-800 text-sm sm:text-base truncate">${g.title} ${badge}</p>
+                    <p class="text-xs text-slate-400 font-bold mt-1 uppercase tracking-wider">${g.type} • ${g.date}</p>
+                </div>
+                <div class="flex items-center gap-3 sm:gap-5 flex-shrink-0 ml-2">
+                    <div class="text-right">
+                        <span class="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">Score</span>
+                        <span class="font-black text-sm sm:text-base ${pColor}">${g.score}/${g.max||'?'}</span>
+                    </div>
+                    <div class="hidden sm:block text-right">
+                        <span class="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">Pct</span>
+                        <span class="font-black text-sm sm:text-base ${pColor}">${pct!==null?pct+'%':'—'}</span>
+                    </div>
+                    ${hasNotes ? '<i class="fa-solid fa-comment-dots text-indigo-400 text-lg drop-shadow-sm ml-1"></i>' : '<i class="fa-solid fa-chevron-right text-slate-300 ml-1"></i>'}
+                </div>
+            </div>`;
+        }).join('');
+
+        return `
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden transition-shadow hover:shadow-md">
+            <div class="p-5 sm:p-6 border-b border-slate-100 flex justify-between items-center cursor-pointer bg-slate-50/50 hover:bg-slate-100/50 transition" onclick="toggleAccordion(this)">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-xl flex items-center justify-center font-black text-lg shadow-sm">${subject.charAt(0)}</div>
                     <div>
-                        <h4 class="font-bold text-amber-800 text-sm tracking-wide">Please Note</h4>
-                        <p class="text-sm text-amber-700/80 mt-1 leading-relaxed">Averages shown here are estimates calculated from logged grades only. Teachers may apply bonus points or adjustments not reflected here. Always confirm final grades with your teacher.</p>
+                        <h3 class="text-lg sm:text-xl font-extrabold text-slate-800">${subject}</h3>
+                        <p class="text-xs text-slate-500 font-bold mt-1 uppercase tracking-wider">${gList.length} Assignment${gList.length !== 1 ? 's' : ''}</p>
                     </div>
                 </div>
-
-                <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-8 gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                    <h2 class="text-xl font-extrabold text-slate-800 flex items-center gap-2">
-                        <i class="fa-solid fa-chart-line text-indigo-600"></i> Academic Progress
-                    </h2>
-                    <div class="flex items-center gap-3 bg-slate-50 py-2 px-4 rounded-xl border border-slate-200">
-                        <i class="fa-solid fa-calendar-days text-slate-400"></i>
-                        <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Period:</label>
-                        <select id="activeSemester" class="bg-transparent text-sm font-bold text-indigo-700 outline-none cursor-pointer">
-                            <option value="">Loading...</option>
-                        </select>
+                <div class="flex items-center gap-4">
+                    <div class="text-right hidden sm:block">
+                        <span class="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">Average</span>
+                        <span class="px-3 py-1.5 rounded-xl font-black text-sm border shadow-sm ${style.cls}">${Math.round(avg)}% • ${style.ltr}</span>
                     </div>
-                </div>
-
-                <div id="gradesContainer" class="space-y-6">
-                    <div class="text-center py-10 text-slate-500 italic"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Loading progress...</div>
-                </div>
-
-            </div>
-        </main>
-    </div>
-
-    <div id="notesModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300 p-4" style="transition: opacity 0.3s;">
-        <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[90vh] transform scale-95 transition-transform duration-300" id="notesModalInner">
-            
-            <div class="px-8 py-6 border-b border-indigo-100 flex justify-between items-center bg-indigo-50/50">
-                <h3 class="font-extrabold text-lg text-indigo-900 flex items-center gap-2"><i class="fa-solid fa-clipboard-list text-indigo-600"></i> Assignment Details</h3>
-                <button onclick="closeNotesModal()" class="text-slate-400 hover:text-indigo-700 bg-white hover:bg-indigo-100 rounded-full h-8 w-8 flex items-center justify-center shadow-sm border border-slate-200 transition"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-            
-            <div class="p-8 overflow-y-auto flex-1 bg-white">
-                <h2 id="modalTitle" class="text-2xl font-extrabold text-slate-800 mb-1 leading-tight">Title</h2>
-                <p id="modalMeta" class="text-sm text-slate-500 mb-6 font-medium">Date • Type</p>
-                
-                <div class="flex gap-4 mb-8">
-                    <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex-1 text-center shadow-sm">
-                        <span class="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">Raw Score</span>
-                        <span id="modalScore" class="font-bold text-xl text-slate-700">0/100</span>
-                    </div>
-                    <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex-1 text-center shadow-sm">
-                        <span class="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">Percentage</span>
-                        <span id="modalPercentage" class="font-black text-2xl">0%</span>
-                    </div>
-                </div>
-
-                <div class="mb-8">
-                    <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2"><i class="fa-solid fa-comment-dots text-indigo-500"></i> Teacher Notes</h4>
-                    <div id="modalNotes" class="bg-indigo-50 border-l-4 border-indigo-500 p-5 rounded-r-2xl text-sm text-indigo-900 whitespace-pre-wrap leading-relaxed shadow-sm font-medium">
-                        No notes provided.
-                    </div>
-                </div>
-
-                <div id="historySection" class="hidden">
-                    <h4 class="text-xs font-bold text-amber-600 uppercase tracking-wider mb-3 flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left"></i> Grade History Log</h4>
-                    <div id="modalHistory" class="space-y-3">
-                        </div>
+                    <div class="sm:hidden px-3 py-1 rounded-xl font-black text-sm border shadow-sm ${style.cls}">${Math.round(avg)}%</div>
+                    <i class="fa-solid fa-chevron-down text-slate-400 transition-transform duration-200 text-lg"></i>
                 </div>
             </div>
-        </div>
-    </div>
+            <div class="subject-body">
+                <div class="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 shadow-inner">
+                    ${rows}
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
 
-    <script type="module">
-        import { db } from '../assets/js/firebase-init.js';
-        import { collection, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+function renderCurrentGradebook() {
+    const currentGrades = allGrades.filter(g => g.semesterId === activeSemesterId);
+    renderSubjectAccordions(currentGrades, 'currentSubjectsContainer', 'noCurrentGradesMsg');
+}
 
-        let session = { schoolId: null, studentId: null, studentData: null, teacherData: null };
-        let currentGradesData = []; 
+// ── ACADEMIC HISTORY RENDERING ────────────────────────────────────────────
+window.loadHistoricalGrades = function() {
+    const semId = document.getElementById('historySemesterSelect').value;
+    if(!semId) return;
 
-        // --- LOGIN LOGIC ---
-        document.getElementById('loginBtn').addEventListener('click', async () => {
-            const schoolId = document.getElementById('loginSchoolId').value.trim().toLowerCase();
-            const pin = document.getElementById('loginPin').value.trim();
-            const msgEl = document.getElementById('loginMsg');
-            const btn = document.getElementById('loginBtn');
-
-            if (!schoolId || !pin) { msgEl.innerText = "Please enter both fields."; msgEl.classList.remove('hidden'); return; }
-            msgEl.classList.add('hidden');
-            btn.disabled = true;
-            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Verifying...`;
-
-            try {
-                const q = query(collection(db, "schools", schoolId, "students"), where("pin", "==", pin));
-                const snap = await getDocs(q);
-
-                if (!snap.empty) {
-                    const sDoc = snap.docs[0];
-                    const sData = sDoc.data();
-
-                    if(sData.archived) {
-                        msgEl.innerText = "This record is archived. Contact school.";
-                        msgEl.classList.remove('hidden');
-                        resetLoginBtn(); return;
-                    }
-
-                    let tName = "Unknown Teacher", tClass = "";
-                    if(sData.teacherId) {
-                        const tSnap = await getDoc(doc(db, "schools", schoolId, "teachers", sData.teacherId));
-                        if(tSnap.exists()) {
-                            tName = tSnap.data().name;
-                            tClass = tSnap.data().className || "Unassigned Class";
-                        }
-                    }
-
-                    session = { schoolId, studentId: sDoc.id, studentData: sData, teacherData: { name: tName, className: tClass } };
-                    
-                    document.getElementById('loginScreen').classList.add('hidden');
-                    document.getElementById('dashboardApp').classList.remove('hidden');
-                    
-                    document.getElementById('topStudentName').innerText = sData.name;
-                    document.getElementById('topTeacherInfo').innerText = `${tClass} • ${tName}`;
-
-                    loadSemesters();
-                } else {
-                    msgEl.innerText = "Invalid School ID or PIN.";
-                    msgEl.classList.remove('hidden');
-                    resetLoginBtn();
-                }
-            } catch (error) {
-                console.error(error);
-                msgEl.innerText = "Connection error. Please try again.";
-                msgEl.classList.remove('hidden');
-                resetLoginBtn();
-            }
-        });
-
-        function resetLoginBtn() {
-            const btn = document.getElementById('loginBtn');
-            btn.disabled = false;
-            btn.innerHTML = `View Progress <i class="fa-solid fa-arrow-right-to-bracket"></i>`;
-        }
-
-        // --- LOAD SEMESTERS ---
-        async function loadSemesters() {
-            const semRef = collection(db, "schools", session.schoolId, "semesters");
-            const semSnap = await getDocs(semRef);
-            const semSelect = document.getElementById('activeSemester');
-            
-            let sems = [];
-            semSnap.forEach(d => sems.push({ id: d.id, ...d.data() }));
-            sems.sort((a,b) => a.order - b.order);
-
-            semSelect.innerHTML = '';
-            if(sems.length === 0) {
-                semSelect.innerHTML = '<option value="">No periods found</option>';
-            } else {
-                sems.forEach(s => { semSelect.innerHTML += `<option value="${s.id}">${s.name}</option>`; });
-                loadGrades(); 
+    const histGrades = allGrades.filter(g => g.semesterId === semId);
+    
+    // Attempt to figure out who the primary teacher was for this semester
+    // We look at the most frequent teacherId in the grades for this period
+    const tCount = {};
+    let topTeacherId = null; let topCount = 0;
+    histGrades.forEach(g => {
+        if(g.teacherId) {
+            tCount[g.teacherId] = (tCount[g.teacherId] || 0) + 1;
+            if(tCount[g.teacherId] > topCount) {
+                topCount = tCount[g.teacherId];
+                topTeacherId = g.teacherId;
             }
         }
+    });
 
-        // --- LOAD GRADES ---
-        document.getElementById('activeSemester').addEventListener('change', loadGrades);
+    const tCard = document.getElementById('historyInfoCard');
+    if(topTeacherId && teachersMap[topTeacherId]) {
+        document.getElementById('historyTeacherName').textContent = teachersMap[topTeacherId];
+        tCard.classList.remove('hidden');
+    } else {
+        tCard.classList.add('hidden');
+    }
 
-        function getGradeStyle(percentage) {
-            if(percentage >= 90) return { cls: 'text-green-700 bg-green-100 border-green-200', ltr: 'A' };
-            if(percentage >= 80) return { cls: 'text-blue-700 bg-blue-100 border-blue-200', ltr: 'B' };
-            if(percentage >= 70) return { cls: 'text-teal-700 bg-teal-100 border-teal-200', ltr: 'C' };
-            if(percentage >= 65) return { cls: 'text-amber-700 bg-amber-100 border-amber-200', ltr: 'D' };
-            return { cls: 'text-red-700 bg-red-100 border-red-200', ltr: 'F' };
-        }
+    renderSubjectAccordions(histGrades, 'historySubjectsContainer', 'noHistoryGradesMsg');
+}
 
-        async function loadGrades() {
-            const semId = document.getElementById('activeSemester').value;
-            const container = document.getElementById('gradesContainer');
-            if(!semId) return;
+// ── MODALS ─────────────────────────────────────────────────────────────────
+window.viewGradeDetails = function(gradeId) {
+    const g = allGrades.find(x => x.id === gradeId);
+    if(!g) return;
 
-            container.innerHTML = '<div class="text-center py-12"><i class="fa-solid fa-spinner fa-spin text-3xl text-indigo-600 mb-4"></i><p class="text-slate-500 font-medium">Loading your academic progress...</p></div>';
+    const p = g.max ? Math.round((g.score / g.max) * 100) : 0;
+    const style = getGradeStyle(p);
 
-            const q = query(collection(db, "schools", session.schoolId, "grades"), 
-                where("studentId", "==", session.studentId), 
-                where("semesterId", "==", semId));
-            const snap = await getDocs(q);
+    document.getElementById('modalTitle').innerText = g.title;
+    document.getElementById('modalMeta').innerText = `${g.date} • ${g.subject} • ${g.type}`;
+    document.getElementById('modalScore').innerText = `${g.score} / ${g.max}`;
+    
+    const pEl = document.getElementById('modalPercentage');
+    pEl.innerText = `${p}%`;
+    pEl.className = `font-black text-3xl ${gradeColorText(p)}`;
 
-            currentGradesData = [];
-            let subjectsMap = {};
+    const notesEl = document.getElementById('modalNotes');
+    if(g.notes) {
+        notesEl.innerText = g.notes;
+        notesEl.className = "bg-indigo-50 border-l-4 border-indigo-500 p-5 rounded-r-2xl text-sm text-indigo-900 whitespace-pre-wrap leading-relaxed shadow-sm font-bold";
+    } else {
+        notesEl.innerText = "No specific notes provided by teacher.";
+        notesEl.className = "bg-slate-50 border-l-4 border-slate-300 p-5 rounded-r-2xl text-sm text-slate-500 italic whitespace-pre-wrap leading-relaxed";
+    }
 
-            if(snap.empty) {
-                container.innerHTML = `
-                    <div class="bg-white p-12 rounded-3xl border border-slate-200 text-center shadow-sm">
-                        <div class="text-6xl mb-4 text-slate-200"><i class="fa-solid fa-folder-open"></i></div>
-                        <h3 class="text-xl font-bold text-slate-700">No Grades Yet</h3>
-                        <p class="text-slate-500 mt-2">Your teacher hasn't published any grades for this period.</p>
-                    </div>`;
-                return;
-            }
+    const histSec = document.getElementById('historySection');
+    const histEl = document.getElementById('modalHistory');
+    if(g.historyLogs && g.historyLogs.length > 0) {
+        histSec.classList.remove('hidden');
+        histEl.innerHTML = g.historyLogs.map(log => 
+            `<div class="bg-amber-50/50 border border-amber-200 p-3 text-[11px] text-amber-800 rounded-xl shadow-sm font-bold leading-relaxed">
+                <i class="fa-solid fa-clock-rotate-left mr-1"></i>
+                ${typeof log === 'object' ? `[${log.changedAt}] Changed from ${log.oldScore} to ${log.newScore}. Reason: ${log.reason}` : log}
+            </div>`
+        ).join('');
+    } else {
+        histSec.classList.add('hidden');
+    }
 
-            snap.forEach(d => {
-                const g = { id: d.id, ...d.data() };
-                currentGradesData.push(g);
-                if(!subjectsMap[g.subject]) subjectsMap[g.subject] = [];
-                subjectsMap[g.subject].push(g);
-            });
+    const modal = document.getElementById('assignmentModal');
+    const inner = document.getElementById('assignmentModalInner');
+    modal.classList.remove('hidden');
+    setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        inner.classList.remove('scale-95');
+    }, 10);
+}
 
-            container.innerHTML = '';
+window.closeAssignmentModal = function() {
+    const modal = document.getElementById('assignmentModal');
+    const inner = document.getElementById('assignmentModalInner');
+    modal.classList.add('opacity-0');
+    inner.classList.add('scale-95');
+    setTimeout(() => modal.classList.add('hidden'), 300);
+}
 
-            for(let subName in subjectsMap) {
-                const grades = subjectsMap[subName];
-                grades.sort((a,b) => new Date(b.date) - new Date(a.date)); 
-
-                let totalP = 0;
-                grades.forEach(g => { totalP += (g.score / g.max) * 100; });
-                const avgP = Math.round(totalP / grades.length);
-                const avgStyle = getGradeStyle(avgP);
-                const isRisk = avgP < 65;
-
-                const rows = grades.map(g => {
-                    const p = Math.round((g.score / g.max) * 100);
-                    const pStyle = getGradeStyle(p);
-                    const hasNotes = g.notes || (g.historyLogs && g.historyLogs.length > 0);
-                    
-                    return `
-                    <tr class="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition cursor-pointer" onclick="viewGradeDetails('${g.id}')">
-                        <td class="py-4 px-5">
-                            <span class="bg-white border border-slate-200 text-slate-600 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider shadow-sm mr-3 hidden sm:inline-block">${g.type}</span>
-                            <span class="font-bold text-slate-700">${g.title}</span>
-                            <div class="text-[11px] text-slate-400 mt-1 sm:hidden">${g.type} • ${g.date}</div>
-                        </td>
-                        <td class="py-4 px-5 text-center whitespace-nowrap hidden sm:table-cell">
-                            <span class="text-slate-500 text-sm">${g.date}</span>
-                        </td>
-                        <td class="py-4 px-5 text-right whitespace-nowrap">
-                            <span class="text-slate-500 text-sm mr-3 hidden sm:inline-block font-medium">${g.score}/${g.max}</span>
-                            <span class="font-black px-3 py-1.5 rounded-lg text-sm border shadow-sm ${pStyle.cls}">${p}%</span>
-                        </td>
-                        <td class="py-4 px-3 text-right">
-                            ${hasNotes ? '<i class="fa-solid fa-comment-dots text-indigo-500 text-lg mr-2 drop-shadow-sm"></i>' : '<i class="fa-solid fa-chevron-right text-slate-300 mr-2"></i>'}
-                        </td>
-                    </tr>`;
-                }).join('');
-
-                container.innerHTML += `
-                <div class="bg-white rounded-3xl shadow-sm border ${isRisk ? 'border-red-200' : 'border-slate-200'} overflow-hidden mb-6 transition-shadow hover:shadow-md">
-                    <div class="${isRisk ? 'bg-red-50/50' : 'bg-slate-50/50'} p-6 border-b ${isRisk ? 'border-red-100' : 'border-slate-100'} flex justify-between items-center cursor-pointer hover:bg-slate-100/50 transition" onclick="toggleAccordion('acc-${subName.replace(/\s/g, '')}')">
-                        <div>
-                            <h3 class="text-xl font-extrabold text-slate-800">${subName}</h3>
-                            <p class="text-xs text-slate-500 font-medium mt-1">${grades.length} Grade${grades.length !== 1 ? 's' : ''} Logged</p>
-                        </div>
-                        <div class="flex items-center gap-5">
-                            <div class="text-right">
-                                <span class="block text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-wider">Est. Average</span>
-                                <span class="px-3.5 py-1.5 rounded-xl font-black text-sm border shadow-sm ${avgStyle.cls}">${avgP}% • ${avgStyle.ltr}</span>
-                            </div>
-                            <i class="fa-solid fa-chevron-down text-slate-400 transition-transform duration-200 text-lg" id="icon-acc-${subName.replace(/\s/g, '')}"></i>
-                        </div>
-                    </div>
-                    <div id="acc-${subName.replace(/\s/g, '')}" class="hidden">
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-left">
-                                <tbody>${rows}</tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>`;
-            }
-        }
-
-        // --- UI HELPERS & MODALS ---
-        window.toggleAccordion = function(id) {
-            const el = document.getElementById(id);
-            const icon = document.getElementById('icon-' + id);
-            if(el.classList.contains('hidden')) {
-                el.classList.remove('hidden');
-                icon.style.transform = 'rotate(180deg)';
-            } else {
-                el.classList.add('hidden');
-                icon.style.transform = 'rotate(0deg)';
-            }
-        }
-
-        window.viewGradeDetails = function(gradeId) {
-            const g = currentGradesData.find(x => x.id === gradeId);
-            if(!g) return;
-
-            const p = Math.round((g.score / g.max) * 100);
-            const pStyle = getGradeStyle(p);
-
-            document.getElementById('modalTitle').innerText = g.title;
-            document.getElementById('modalMeta').innerText = `${g.date} • ${g.subject} • ${g.type}`;
-            document.getElementById('modalScore').innerText = `${g.score} / ${g.max}`;
-            
-            const pEl = document.getElementById('modalPercentage');
-            pEl.innerText = `${p}%`;
-            pEl.className = `font-black text-2xl ${pStyle.cls.split(' ')[0]}`; // Apply text color only
-
-            const notesEl = document.getElementById('modalNotes');
-            if(g.notes) {
-                notesEl.innerText = g.notes;
-                notesEl.className = "bg-indigo-50 border-l-4 border-indigo-500 p-5 rounded-r-2xl text-sm text-indigo-900 whitespace-pre-wrap leading-relaxed shadow-sm font-medium";
-            } else {
-                notesEl.innerText = "No specific notes provided by teacher.";
-                notesEl.className = "bg-slate-50 border-l-4 border-slate-300 p-5 rounded-r-2xl text-sm text-slate-500 italic whitespace-pre-wrap leading-relaxed";
-            }
-
-            const histSec = document.getElementById('historySection');
-            const histEl = document.getElementById('modalHistory');
-            if(g.historyLogs && g.historyLogs.length > 0) {
-                histSec.classList.remove('hidden');
-                histEl.innerHTML = g.historyLogs.map(log => 
-                    `<div class="bg-amber-50/50 border border-amber-200 p-3 text-xs text-amber-800 rounded-xl shadow-sm font-medium leading-relaxed">${log}</div>`
-                ).join('');
-            } else {
-                histSec.classList.add('hidden');
-            }
-
-            const modal = document.getElementById('notesModal');
-            const inner = document.getElementById('notesModalInner');
-            modal.classList.remove('hidden');
-            setTimeout(() => {
-                modal.classList.remove('opacity-0');
-                inner.classList.remove('scale-95');
-            }, 10);
-        }
-
-        window.closeNotesModal = function() {
-            const modal = document.getElementById('notesModal');
-            const inner = document.getElementById('notesModalInner');
-            modal.classList.add('opacity-0');
-            inner.classList.add('scale-95');
-            setTimeout(() => modal.classList.add('hidden'), 300);
-        }
-
-        document.getElementById('logoutBtn').addEventListener('click', () => {
-            location.reload();
-        });
-    </script>
+document.getElementById('logoutBtn').addEventListener('click', () => {
+    location.reload();
+});
+</script>
 </body>
 </html>
