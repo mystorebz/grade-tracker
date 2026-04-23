@@ -1,7 +1,7 @@
 import { db } from '../../assets/js/firebase-init.js';
 import { doc, getDocs, updateDoc, collection } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
-import { injectAdminLayout } from '../../assets/js/layout-admins.js';
+import { injectAdminLayout } from '../../assets/js/layout-admin.js';
 
 // ── 1. AUTHENTICATION & LAYOUT INJECTION ──────────────────────────────────
 // Protect page and get session data. Redirects to login if invalid.
