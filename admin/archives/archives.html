@@ -1,1 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Archive Management | ConnectUs Admin</title>
+    
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/admin.css">
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="text-slate-800 flex h-screen overflow-hidden bg-[#eef2ff]">
 
+    <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
+
+    <main class="flex-1 flex flex-col h-full overflow-hidden">
+        
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <div class="flex-1 overflow-y-auto p-7">
+            <div class="max-w-5xl mx-auto">
+                
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden min-h-[60vh]">
+                    <div class="p-6 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-amber-50/40">
+                        <div class="w-12 h-12 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-box-archive"></i></div>
+                        <div>
+                            <h3 class="font-black text-xl text-slate-800">Archive Management</h3>
+                            <p class="text-sm text-slate-400 font-semibold">Restore or permanently delete archived records</p>
+                        </div>
+                    </div>
+                    
+                    <div class="p-6">
+                        <div class="flex border-b border-slate-200 mb-6 gap-2">
+                            <button class="stab active" id="archiveTabTeachers" onclick="window.switchArchiveTab('teachers')">
+                                <i class="fa-solid fa-chalkboard-user mr-1.5"></i>Archived Teachers
+                            </button>
+                            <button class="stab" id="archiveTabStudents" onclick="window.switchArchiveTab('students')">
+                                <i class="fa-solid fa-user-graduate mr-1.5"></i>Archived Students
+                            </button>
+                        </div>
+                        
+                        <div id="archiveTeachersList" class="space-y-3">
+                            <div class="flex justify-center py-12"><i class="fa-solid fa-spinner fa-spin text-2xl text-amber-400"></i></div>
+                        </div>
+                        
+                        <div id="archiveStudentsList" class="space-y-3 hidden">
+                            <div class="flex justify-center py-12"><i class="fa-solid fa-spinner fa-spin text-2xl text-amber-400"></i></div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <script type="module" src="archives.js"></script>
+</body>
+</html>
