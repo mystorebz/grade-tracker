@@ -1,1 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings | Teacher Portal | ConnectUs</title>
+    
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/teachers.css">
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="flex w-full h-screen overflow-hidden bg-[#f0fdf8]">
 
+    <div id="layout-sidebar-container" class="flex-shrink-0 h-full z-20"></div>
+
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
+        
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <div class="flex-1 overflow-y-auto p-7 view-section">
+            
+            <div class="space-y-6">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+                        <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-white to-emerald-50/30">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-lock"></i></div>
+                                <div>
+                                    <h3 class="font-black text-slate-800">Security</h3>
+                                    <p class="text-xs text-slate-400 font-semibold">Change your login code</p>
+                                </div>
+                            </div>
+                            <button id="securityEditBtn" onclick="toggleSecurityEdit(true)" class="text-xs font-black text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-pen mr-1"></i> Edit</button>
+                        </div>
+                        <div class="p-6 space-y-4 flex-1">
+                            <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Current Login Code</label><input type="password" id="currentTeacherCode" disabled placeholder="••••••••" class="form-input w-full p-3 border border-slate-200 rounded-xl text-sm"></div>
+                            <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">New Login Code</label><input type="password" id="newTeacherCode" disabled placeholder="••••••••" class="form-input w-full p-3 border border-slate-200 rounded-xl text-sm"></div>
+                            <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Confirm New Code</label><input type="password" id="confirmTeacherCode" disabled placeholder="••••••••" class="form-input w-full p-3 border border-slate-200 rounded-xl text-sm"></div>
+                            
+                            <div id="securityActionBtns" class="hidden flex gap-2 pt-2">
+                                <button id="updateCodeBtn" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-black text-sm shadow-md transition">Save Code</button>
+                                <button onclick="toggleSecurityEdit(false)" class="px-5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-black py-3 rounded-xl transition text-sm">Cancel</button>
+                            </div>
+                            <p id="settingsSecurityMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+                        <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-white to-teal-50/30">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-teal-100 text-teal-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-user"></i></div>
+                                <div>
+                                    <h3 class="font-black text-slate-800">My Profile</h3>
+                                    <p class="text-xs text-slate-400 font-semibold">Update your contact info</p>
+                                </div>
+                            </div>
+                            <button id="profileEditBtn" onclick="toggleProfileEdit(true)" class="text-xs font-black text-teal-600 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-pen mr-1"></i> Edit</button>
+                        </div>
+                        <div class="p-6 space-y-4 flex-1">
+                            <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Full Name</label><input type="text" id="profileName" disabled class="form-input w-full p-3 border border-slate-200 rounded-xl text-sm font-bold text-slate-700"></div>
+                            <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Phone Number</label><input type="tel" id="profilePhone" disabled placeholder="e.g. 555-1234" class="form-input w-full p-3 border border-slate-200 rounded-xl text-sm font-bold text-slate-700"></div>
+                            
+                            <div id="profileActionBtns" class="hidden flex gap-2 pt-4">
+                                <button id="saveProfileBtn" class="flex-1 bg-teal-600 hover:bg-teal-700 text-white py-3 rounded-xl font-black text-sm shadow-md transition">Save Profile</button>
+                                <button onclick="toggleProfileEdit(false)" class="px-5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-black py-3 rounded-xl transition text-sm">Cancel</button>
+                            </div>
+                            <p id="settingsProfileMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+                        <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-blue-50/30">
+                            <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-chalkboard"></i></div>
+                            <div>
+                                <h3 class="font-black text-slate-800">My Class(es)</h3>
+                                <p class="text-xs text-slate-400 font-semibold">Update the class(es) you teach</p>
+                            </div>
+                        </div>
+                        <div class="p-6 flex-1 flex flex-col">
+                            <p class="text-xs text-slate-500 font-semibold mb-3">Current: <span id="currentClassesDisplay" class="text-blue-700 font-black"></span></p>
+                            <div id="settingsClassGrid" class="cls-cb-wrap max-h-52 overflow-y-auto mb-4 flex-1"></div>
+                            <button id="saveClassesBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-black text-sm shadow-md transition w-full">Update My Classes</button>
+                            <p id="settingsClassMsg" class="text-sm hidden font-bold p-3 rounded-xl mt-3"></p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+                        <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-white to-indigo-50/30">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-tags"></i></div>
+                                <div>
+                                    <h3 class="font-black text-slate-800">Grade Types</h3>
+                                    <p class="text-xs text-slate-400 font-semibold">Manage assignment categories</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="p-6 flex-1 flex flex-col space-y-4">
+                            <div class="flex gap-2">
+                                <input type="text" id="newGradeTypeInput" placeholder="e.g. Lab Report" class="form-input flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                                <button onclick="addGradeType()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-black text-sm shadow-md transition"><i class="fa-solid fa-plus"></i></button>
+                            </div>
+                            <p id="gradeTypeMsg" class="text-sm hidden font-bold p-2 rounded-xl"></p>
+                            <div class="flex-1 overflow-y-auto max-h-48 border border-slate-100 rounded-xl bg-slate-50 p-2" id="gradeTypesList"></div>
+                            <p class="text-[10px] text-slate-400 font-semibold italic text-center">Built-in defaults cannot be deleted.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-white to-teal-50/30">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-teal-100 text-teal-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-layer-group"></i></div>
+                            <div>
+                                <h3 class="font-black text-slate-800">Manage Subjects</h3>
+                                <p class="text-xs text-slate-400 font-semibold">Add, rename or archive your teaching subjects — archived subjects appear in <a href="../archives/archives.html" class="text-teal-600 hover:underline font-black">Archives</a></p>
+                            </div>
+                        </div>
+                        <button onclick="openSubjectFormModal()" class="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-black px-4 py-2 rounded-xl text-xs transition shadow-md"><i class="fa-solid fa-plus"></i> Add Subject</button>
+                    </div>
+                    <div class="p-6">
+                        <div id="activeSubjectsList" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+                        <p id="subjectsMsg" class="text-sm hidden font-bold p-3 rounded-xl mt-3"></p>
+                    </div>
+                </div>
+                
+            </div>
+        </div>
+    </main>
+
+    <div id="subjectFormModal" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200" id="subjectFormModalInner">
+            <div class="h-1 bg-gradient-to-r from-teal-500 to-cyan-400"></div>
+            <div class="px-7 py-5 border-b border-slate-100 flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 bg-teal-100 text-teal-600 rounded-xl flex items-center justify-center"><i id="subjectFormIcon" class="fa-solid fa-layer-group"></i></div>
+                    <h3 id="subjectFormTitle" class="font-black text-xl text-slate-800">Add Subject</h3>
+                </div>
+                <button onclick="closeSubjectFormModal()" class="text-slate-400 hover:text-red-500 h-8 w-8 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="p-7 space-y-4 bg-slate-50/50">
+                <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Subject Name *</label><input type="text" id="subjectFormName" placeholder="e.g. Physical Education" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm"></div>
+                <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Description <span class="normal-case font-semibold text-slate-400">(optional)</span></label><textarea id="subjectFormDesc" placeholder="e.g. Primary math curriculum" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm h-20 resize-none"></textarea></div>
+                <button id="saveSubjectFormBtn" class="w-full bg-gradient-to-r from-teal-600 to-teal-700 text-white font-black py-3.5 rounded-xl transition shadow-md text-base">Save Subject</button>
+                <p id="subjectFormMsg" class="text-sm hidden font-bold p-3 rounded-xl text-center"></p>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="settings.js"></script>
+</body>
+</html>
