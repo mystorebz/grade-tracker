@@ -1,7 +1,6 @@
 /* ==========================================================================
    CONNECTUS - LANDING PAGE SPECIFIC CSS
    ========================================================================== */
-
 body { background: #f8faff; }
 
 /* ── Navbar ── */
@@ -10,21 +9,55 @@ body { background: #f8faff; }
 
 /* ── Hero Section & Blobs ── */
 .hero-section { min-height: 100vh; background: linear-gradient(160deg, #e0eaff 0%, #c7d7fc 30%, #f0f5ff 70%, #ffffff 100%); position: relative; overflow: hidden; }
+.blob { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.35; pointer-events: none; }
 .blob-1 { width: 600px; height: 600px; background: radial-gradient(circle, #93c5fd, #3b82f6); top: -180px; left: -180px; }
 .blob-2 { width: 400px; height: 400px; background: radial-gradient(circle, #bfdbfe, #60a5fa); bottom: -120px; right: -100px; }
 .blob-3 { width: 250px; height: 250px; background: radial-gradient(circle, #a5f3fc, #38bdf8); top: 40%; right: 10%; opacity: 0.2; }
 
-/* Fade-in Delays */
+/* ── Animations ── */
+@keyframes float {
+    0%   { transform: translateY(0px) rotate(0deg); }
+    33%  { transform: translateY(-18px) rotate(1deg); }
+    66%  { transform: translateY(-8px) rotate(-1deg); }
+    100% { transform: translateY(0px) rotate(0deg); }
+}
+.animate-float { animation: float 5s ease-in-out infinite; }
+
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(32px); } to { opacity: 1; transform: translateY(0); } }
+.fade-up { animation: fadeInUp 0.7s ease forwards; }
+
+@keyframes shimmer {
+    0%   { box-shadow: 0 0 0 0 rgba(59,130,246,0); }
+    50%  { box-shadow: 0 0 60px 20px rgba(59,130,246,0.18); }
+    100% { box-shadow: 0 0 0 0 rgba(59,130,246,0); }
+}
+.logo-glow { animation: shimmer 4s ease-in-out infinite; border-radius: 9999px; }
+
+@keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(8px); } }
+.scroll-bounce { animation: bounce 1.8s ease-in-out infinite; }
+
+/* ── Fade-in Delays ── */
 .fade-up-1 { animation-delay: 0.10s; opacity: 0; }
 .fade-up-2 { animation-delay: 0.25s; opacity: 0; }
 .fade-up-3 { animation-delay: 0.40s; opacity: 0; }
 .fade-up-4 { animation-delay: 0.55s; opacity: 0; }
+
+/* ── Portal Cards ── */
+.portal-card { background: #fff; border-radius: 20px; border: 2px solid transparent; transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1); cursor: pointer; text-decoration: none; display: block; position: relative; overflow: hidden; }
+.portal-card:hover { transform: translateY(-8px) scale(1.02); box-shadow: 0 20px 60px rgba(30,58,138,0.15); }
+.portal-card-admin:hover   { border-color: #f97316; }
+.portal-card-teacher:hover { border-color: #3b82f6; }
+.portal-card-family:hover  { border-color: #22c55e; }
+.portal-icon { width: 68px; height: 68px; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 2rem; margin: 0 auto 1rem; transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1); }
+.portal-card:hover .portal-icon { transform: scale(1.15) rotate(-3deg); }
 
 /* ── Feature Cards ── */
 .feature-card { background: rgba(255,255,255,0.7); backdrop-filter: blur(8px); border: 1px solid rgba(59,130,246,0.15); border-radius: 20px; transition: transform 0.3s, box-shadow 0.3s; }
 .feature-card:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(30,58,138,0.10); }
 
 /* ── Registration Form Elements ── */
+.form-input { width: 100%; padding: 0.75rem 1rem; background: #f8faff; border: 1.5px solid #e0eaff; border-radius: 10px; font-size: 0.9rem; font-family: 'Nunito', sans-serif; outline: none; transition: all 0.2s; color: #1e293b; }
+.form-input:focus { border-color: #3b82f6; background: #fff; box-shadow: 0 0 0 4px rgba(59,130,246,0.10); }
 .form-label { display: block; font-size: 0.72rem; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.35rem; }
 .form-section { display: flex; align-items: center; gap: 8px; font-size: 0.68rem; font-weight: 900; color: #2563eb; text-transform: uppercase; letter-spacing: 0.12em; padding-top: 0.75rem; margin-top: 0.25rem; border-top: 1.5px solid #e0eaff; }
 .form-section.no-border { border-top: none; padding-top: 0; margin-top: 0; }
