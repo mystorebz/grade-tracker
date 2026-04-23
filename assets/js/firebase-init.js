@@ -4,12 +4,12 @@ import { getFirestore } from "https://www.gstatic.com/firebasejs/10.7.1/firebase
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-    apiKey: "AIzaSyDTIREBdTGkVc1cWJRrG9q7YN_fv0XMr5w",
-    authDomain: "school-grade-tracker.firebaseapp.com",
-    projectId: "school-grade-tracker",
-    storageBucket: "school-grade-tracker.firebasestorage.app",
-    messagingSenderId: "326406075140",
-    appId: "1:326406075140:web:cff69a1ea0c20a66b21651"
+  apiKey: "AIzaSyDTIREbDTGkVc1cWJRrG9q7YN_fv0XMr5w",
+  authDomain: "school-grade-tracker.firebaseapp.com",
+  projectId: "school-grade-tracker",
+  storageBucket: "school-grade-tracker.firebasestorage.app",
+  messagingSenderId: "326406075140",
+  appId: "1:326406075140:web:cff69a1ea0c20a66b21651"
 };
 
 // Initialize Firebase
