@@ -60,6 +60,15 @@ export function standingBadge(avg) {
     return '<span class="badge s-risk">At Risk</span>';
 }
 
+export function standingText(avg) {
+    if (avg === null) return 'none';
+    if (avg >= 90) return 'excelling';
+    if (avg >= 80) return 'good';
+    if (avg >= 70) return 'ontrack';
+    if (avg >= 65) return 'needsattention';
+    return 'atrisk';
+}
+
 // ── DATA EXPORT ─────────────────────────────────────────────────
 
 export function downloadCSV(rows, fn) {
