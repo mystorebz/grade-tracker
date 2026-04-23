@@ -68,7 +68,7 @@ async function loadSemesters() {
     }
 }
 
-// ── 5. FETCH & RENDER DASHBOARD DATA ────────────────────────────────────────
+// ── 5. FETCH & RENDER DASHBOARD DATA ───────────────────────────────────────
 async function fetchMetrics() {
     try {
         const semSel = document.getElementById('activeSemester');
