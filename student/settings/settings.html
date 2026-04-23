@@ -1,1 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings | Family Portal</title>
+    
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/student.css">
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="flex h-screen overflow-hidden bg-[#f5f3ff]">
 
+    <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
+
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
+        
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <div class="flex-1 overflow-y-auto p-7">
+            <div class="max-w-2xl mx-auto space-y-6">
+                
+                <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="p-6 border-b border-slate-100 bg-gradient-to-r from-white to-indigo-50/40 flex items-center gap-3">
+                        <div class="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-address-book"></i></div>
+                        <div>
+                            <h3 class="font-black text-xl text-slate-800">Contact Information</h3>
+                            <p class="text-sm text-slate-400 font-semibold">Update parent or guardian details</p>
+                        </div>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <div>
+                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Parent / Guardian Phone</label>
+                            <input type="tel" id="parentPhone" placeholder="e.g. 600-0000" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none font-bold text-slate-700">
+                        </div>
+                        <button id="saveProfileBtn" class="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white px-6 py-3 rounded-xl font-black text-sm shadow-md transition flex items-center gap-2">
+                            <i class="fa-solid fa-floppy-disk"></i> Save Details
+                        </button>
+                        <p id="profileMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="p-6 border-b border-slate-100 bg-gradient-to-r from-white to-rose-50/40 flex items-center gap-3">
+                        <div class="w-12 h-12 bg-rose-100 text-rose-600 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-shield-halved"></i></div>
+                        <div>
+                            <h3 class="font-black text-xl text-slate-800">Security</h3>
+                            <p class="text-sm text-slate-400 font-semibold">Update student login PIN</p>
+                        </div>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <div>
+                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Current PIN</label>
+                            <input type="password" id="currentPin" placeholder="Enter current PIN" maxlength="6" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none font-mono tracking-widest">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">New PIN</label>
+                            <input type="password" id="newPin" placeholder="4-6 digit PIN" maxlength="6" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none font-mono tracking-widest">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Confirm New PIN</label>
+                            <input type="password" id="confirmNewPin" placeholder="Type it again" maxlength="6" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none font-mono tracking-widest">
+                        </div>
+                        <button id="updatePinBtn" class="bg-rose-600 hover:bg-rose-700 text-white px-6 py-3 rounded-xl font-black text-sm shadow-md transition flex items-center gap-2">
+                            <i class="fa-solid fa-lock"></i> Update Security PIN
+                        </button>
+                        <p id="securityMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <script type="module" src="settings.js"></script>
+</body>
+</html>
