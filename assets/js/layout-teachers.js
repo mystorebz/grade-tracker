@@ -33,6 +33,7 @@ export function injectTeacherLayout(activePageId, pageTitle, pageSub, showSearch
           <p class="nav-section-label">Records</p>
           <a href="../archives/archives.html" id="nav-archives" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 text-left font-bold text-sm text-slate-400 mb-0.5"><i class="fa-solid fa-box-archive w-4 text-sm opacity-65"></i> Archives</a>
           <p class="nav-section-label">System</p>
+          <a href="../reports/reports.html" id="nav-reports" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 text-left font-bold text-sm text-slate-400 mb-0.5"><i class="fa-solid fa-chart-column w-4 text-sm opacity-65"></i> Reports</a>
           <a href="../settings/settings.html" id="nav-settings" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 text-left font-bold text-sm text-slate-400 mb-0.5"><i class="fa-solid fa-gear w-4 text-sm opacity-65"></i> Settings</a>
         </nav>
         <div class="p-4 border-t border-white/5 space-y-3">
