@@ -8,71 +8,119 @@
     <link rel="icon" type="image/x-icon" href="../assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="../assets/images/favicon-32x32.png">
     
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="../assets/css/global.css">
-    <link rel="stylesheet" href="../assets/css/admin.css">
-    
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/css/admin-login.css">
 </head>
-<body id="loginScreen" class="min-h-screen flex flex-col items-center justify-center p-4 overflow-y-auto">
-    
-    <div class="orb orb-1"></div><div class="orb orb-2"></div><div class="orb orb-3"></div>
-    <div class="orb orb-4"></div><div class="orb orb-5"></div>
+<body>
 
-    <div class="relative z-10 mb-5 w-full max-w-md">
-        <a href="../index.html" class="back-btn"><i class="fa-solid fa-arrow-left text-xs"></i> Back to Main Site</a>
-    </div>
+    <!-- ── SPLIT LAYOUT ── -->
+    <div class="login-layout">
 
-    <div class="login-card relative z-10 bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden">
-        <div class="h-2 bg-gradient-to-r from-blue-600 via-cyan-400 to-blue-500"></div>
-        <div class="pt-8 pb-6 px-10 text-center border-b border-slate-100">
-            <div class="logo-bob inline-block mb-3">
-                <div class="logo-glow inline-block">
-                    <img src="../assets/images/logo.png" alt="ConnectUs" class="h-24 w-auto mx-auto">
+        <!-- LEFT PANEL -->
+        <div class="login-left">
+            <div class="login-left-inner">
+                <a href="../index.html" class="back-link">
+                    <i class="fa-solid fa-arrow-left"></i> Back to site
+                </a>
+                <div class="brand-block">
+                    <img src="../assets/images/logo.png" alt="ConnectUs" class="brand-logo">
+                    <div class="brand-name">ConnectUs</div>
+                </div>
+                <div class="portal-label">Admin Portal</div>
+                <p class="portal-desc">
+                    Complete oversight of your school — teachers, students, grading periods, and performance data. All in one place.
+                </p>
+                <div class="feature-list">
+                    <div class="feature-item">
+                        <i class="fa-solid fa-check"></i>
+                        <span>Manage teaching staff & access codes</span>
+                    </div>
+                    <div class="feature-item">
+                        <i class="fa-solid fa-check"></i>
+                        <span>Configure grading periods & lock semesters</span>
+                    </div>
+                    <div class="feature-item">
+                        <i class="fa-solid fa-check"></i>
+                        <span>School-wide performance analytics</span>
+                    </div>
+                    <div class="feature-item">
+                        <i class="fa-solid fa-check"></i>
+                        <span>Secure, isolated cloud database</span>
+                    </div>
+                </div>
+                <div class="left-footer">
+                    © 2026 ConnectUs · Powered by Kismet Code Digital
                 </div>
             </div>
-            <h1 class="text-2xl font-black text-slate-800 tracking-tight">Admin Portal</h1>
-            <p class="text-slate-500 text-sm mt-1 font-semibold">Your school's command center</p>
-            <div class="flex items-center justify-center gap-2 mt-4 flex-wrap">
-                <span class="bg-blue-50 text-blue-600 text-[11px] font-black px-3 py-1 rounded-full border border-blue-100"><i class="fa-solid fa-shield-halved mr-1"></i>Secure</span>
-                <span class="bg-cyan-50 text-cyan-600 text-[11px] font-black px-3 py-1 rounded-full border border-cyan-100"><i class="fa-solid fa-cloud mr-1"></i>Cloud-Based</span>
-            </div>
         </div>
 
-        <div class="p-8 space-y-5">
-            <div>
-                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2"><i class="fa-solid fa-school mr-1.5 text-blue-400"></i>School ID</label>
-                <input type="text" id="loginSchoolId" placeholder="e.g. LA1234" class="login-input">
+        <!-- RIGHT PANEL -->
+        <div class="login-right">
+            <div class="login-form-wrap" id="loginScreen">
+
+                <div class="form-header">
+                    <h2 class="form-title">Welcome back</h2>
+                    <p class="form-subtitle">Sign in to your Admin Portal</p>
+                </div>
+
+                <div class="form-body">
+                    <div class="field-group">
+                        <label class="field-label">School ID</label>
+                        <div class="field-wrap">
+                            <i class="fa-solid fa-school field-icon"></i>
+                            <input type="text" id="loginSchoolId" placeholder="e.g. LA1234" class="field-input" autocomplete="off">
+                        </div>
+                    </div>
+
+                    <div class="field-group">
+                        <label class="field-label">Admin Code</label>
+                        <div class="field-wrap">
+                            <i class="fa-solid fa-lock field-icon"></i>
+                            <input type="password" id="loginAdminCode" placeholder="Your secure admin code" class="field-input">
+                        </div>
+                    </div>
+
+                    <button id="loginBtn" class="login-btn">
+                        <span>Sign In</span>
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+
+                    <p id="loginMsg" class="login-error hidden"></p>
+                </div>
+
+                <div class="form-footer">
+                    <p>Need access? <a href="../index.html#register">Request a quote</a></p>
+                </div>
             </div>
-            <div>
-                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2"><i class="fa-solid fa-lock mr-1.5 text-blue-400"></i>Admin Code</label>
-                <input type="password" id="loginAdminCode" placeholder="Your admin code" class="login-input">
-            </div>
-            <button id="loginBtn" class="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-black py-4 rounded-2xl transition shadow-lg shadow-blue-500/30 text-base flex justify-center items-center gap-2">
-                <i class="fa-solid fa-arrow-right-to-bracket"></i> Secure Login
-            </button>
-            <p id="loginMsg" class="text-sm text-center font-bold hidden p-3 rounded-xl bg-red-50 text-red-600 border border-red-100"></p>
-        </div>
-        
-        <div class="px-8 pb-7 text-center">
-            <p class="text-xs text-slate-400 font-semibold">© 2026 ConnectUs · Powered by Kismet Code Digital</p>
         </div>
     </div>
 
-    <div id="forceResetModal" class="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
-        <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden" id="forceResetModalInner">
-            <div class="h-1.5 bg-gradient-to-r from-amber-400 to-orange-500"></div>
-            <div class="p-8 text-center">
-                <div class="w-16 h-16 bg-amber-100 rounded-2xl flex items-center justify-center text-amber-500 text-3xl mx-auto mb-4"><i class="fa-solid fa-shield-halved"></i></div>
-                <h3 class="font-black text-2xl text-slate-800 mb-2">Security Update Required</h3>
-                <p class="text-slate-500 text-sm mb-6 font-semibold">You're using a default code. Set a new admin code to continue.</p>
-                <div class="space-y-4 text-left">
-                    <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">New Admin Code</label><input type="password" id="newForceCode" placeholder="Min. 5 characters" class="form-input w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm"></div>
-                    <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Confirm New Code</label><input type="password" id="confirmForceCode" placeholder="Type it again" class="form-input w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm"></div>
-                    <button id="saveForceCodeBtn" class="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white font-black py-3.5 rounded-xl transition shadow-md text-base flex justify-center items-center gap-2">Save & Continue <i class="fa-solid fa-arrow-right"></i></button>
-                    <p id="forceResetMsg" class="text-sm font-bold text-center hidden p-2.5 rounded-xl border bg-red-50 text-red-600 border-red-100"></p>
+    <!-- ── FORCE RESET MODAL ── -->
+    <div id="forceResetModal" class="modal-overlay hidden">
+        <div class="modal-box" id="forceResetModalInner">
+            <div class="modal-accent"></div>
+            <div class="modal-body">
+                <div class="modal-icon">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+                <h3 class="modal-title">Security Update Required</h3>
+                <p class="modal-desc">You are using a default access code. Please set a new admin code before continuing.</p>
+                <div class="modal-fields">
+                    <div class="field-group">
+                        <label class="field-label">New Admin Code</label>
+                        <input type="password" id="newForceCode" placeholder="Minimum 5 characters" class="field-input">
+                    </div>
+                    <div class="field-group">
+                        <label class="field-label">Confirm New Code</label>
+                        <input type="password" id="confirmForceCode" placeholder="Type it again" class="field-input">
+                    </div>
+                    <button id="saveForceCodeBtn" class="login-btn">
+                        <span>Save & Continue</span>
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+                    <p id="forceResetMsg" class="login-error hidden"></p>
                 </div>
             </div>
         </div>
