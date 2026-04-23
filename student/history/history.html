@@ -1,1 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Academic History | Family Portal</title>
+    
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/student.css">
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="flex h-screen overflow-hidden bg-[#f5f3ff]">
 
+    <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
+
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
+        
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <div class="flex-1 overflow-y-auto p-7">
+            <div class="max-w-5xl mx-auto">
+                
+                <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mb-6">
+                    <div class="p-6 border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/80">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-slate-800 text-white rounded-xl flex items-center justify-center text-lg shadow-sm"><i class="fa-solid fa-clock-rotate-left"></i></div>
+                            <div>
+                                <h3 class="font-black text-xl text-slate-800">Academic History</h3>
+                                <p class="text-sm text-slate-400 font-semibold">Review past semesters and classes</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="p-4 bg-slate-50 border-b border-slate-100 flex items-center gap-3">
+                        <label class="text-xs font-black text-slate-500 uppercase tracking-wider ml-2">Select Past Period:</label>
+                        <select id="historySemesterSelect" class="form-input w-64 p-2.5 bg-white text-sm font-bold text-indigo-700 rounded-xl outline-none border border-slate-200">
+                            <option value="">Loading periods...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="p-6">
+                        <div id="historyInfoCard" class="hidden mb-6 bg-indigo-50 border border-indigo-100 rounded-2xl p-5 flex items-center gap-4">
+                            <div class="h-12 w-12 bg-indigo-200 text-indigo-700 rounded-xl flex items-center justify-center font-black text-xl shadow-sm"><i class="fa-solid fa-chalkboard-user"></i></div>
+                            <div>
+                                <p class="text-[10px] font-black text-indigo-500 uppercase tracking-wider mb-1">Teacher on Record</p>
+                                <p id="historyTeacherName" class="font-black text-slate-800 text-lg">Loading...</p>
+                            </div>
+                        </div>
+                        
+                        <div id="historySubjectsContainer" class="space-y-4">
+                            <div class="text-center py-12 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-3xl text-indigo-400"></i></div>
+                        </div>
+                        
+                        <div id="noHistoryGradesMsg" class="hidden text-center py-12">
+                            <div class="text-4xl mb-3 text-slate-300"><i class="fa-solid fa-box-archive"></i></div>
+                            <p class="text-slate-500 font-semibold">No grades found for this past period.</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <div id="assignmentModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300 p-4">
+        <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[90vh] transform scale-95 transition-transform duration-300" id="assignmentModalInner">
+            <div class="h-1.5 bg-gradient-to-r from-indigo-500 to-purple-500"></div>
+            <div class="px-8 py-6 border-b border-indigo-100 flex justify-between items-center bg-indigo-50/50">
+                <h3 class="font-extrabold text-lg text-indigo-900 flex items-center gap-2"><i class="fa-solid fa-clipboard-list text-indigo-600"></i> Details</h3>
+                <button onclick="window.closeAssignmentModal()" class="text-slate-400 hover:text-indigo-700 bg-white hover:bg-indigo-100 rounded-full h-8 w-8 flex items-center justify-center shadow-sm border border-slate-200 transition"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-8 overflow-y-auto flex-1 bg-white">
+                <h2 id="modalTitle" class="text-2xl font-extrabold text-slate-800 mb-1 leading-tight">Title</h2>
+                <p id="modalMeta" class="text-sm text-slate-500 mb-6 font-bold">Date • Type</p>
+                
+                <div class="flex gap-4 mb-8">
+                    <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex-1 text-center shadow-sm">
+                        <span class="block text-[10px] uppercase font-black text-slate-400 tracking-wider mb-1">Score</span>
+                        <span id="modalScore" class="font-black text-2xl text-slate-700">0/100</span>
+                    </div>
+                    <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex-1 text-center shadow-sm">
+                        <span class="block text-[10px] uppercase font-black text-slate-400 tracking-wider mb-1">Percentage</span>
+                        <span id="modalPercentage" class="font-black text-3xl">0%</span>
+                    </div>
+                </div>
+                
+                <div class="mb-6">
+                    <h4 class="text-xs font-black text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2"><i class="fa-solid fa-comment-dots text-indigo-500"></i> Teacher Notes</h4>
+                    <div id="modalNotes" class="bg-indigo-50 border-l-4 border-indigo-500 p-5 rounded-r-2xl text-sm text-indigo-900 whitespace-pre-wrap leading-relaxed shadow-sm font-semibold"></div>
+                </div>
+                
+                <div id="historySection" class="hidden">
+                    <h4 class="text-xs font-black text-amber-600 uppercase tracking-wider mb-3 flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left"></i> Edit History</h4>
+                    <div id="modalHistory" class="space-y-2"></div>
+                    <p class="text-[10px] text-amber-700 mt-2 font-bold">This grade was modified by the teacher after its initial entry.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="history.js"></script>
+</body>
+</html>
