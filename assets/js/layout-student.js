@@ -66,6 +66,6 @@ export function injectStudentLayout(activePageId, pageTitle, pageSub) {
 
     // 5. Attach the Logout Button functionality
     document.getElementById('logoutBtn').addEventListener('click', () => {
-        logout('../../student/index.html'); // Redirect to Student Login
+        logout('../../student/login.html'); // Redirect to Student Login
     });
 }
