@@ -85,6 +85,6 @@ export function injectTeacherLayout(activePageId, pageTitle, pageSub, showSearch
 
     // 5. Attach the Logout Button functionality
     document.getElementById('logoutBtn').addEventListener('click', () => {
-        logout('../../teacher/index.html'); // Redirect to Teacher Login
+        logout('../../teacher/login.html'); // Redirect to Teacher Login
     });
 }
