@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ConnectUs | Modern Educational Connections</title>
+    
     <link rel="stylesheet" href="assets/css/global.css">
+    <link rel="stylesheet" href="assets/css/landing.css">
     
     <link rel="icon" type="image/x-icon" href="assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="assets/images/favicon-32x32.png">
@@ -15,112 +17,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
-
-    <style>
-        * { font-family: 'Nunito', sans-serif; }
-        body { background: #f8faff; }
-
-        .navbar {
-            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-            background: rgba(255,255,255,0.92);
-            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            border-bottom: 1px solid rgba(59,130,246,0.12);
-            transition: box-shadow 0.3s;
-        }
-        .navbar.scrolled { box-shadow: 0 4px 24px rgba(30,58,138,0.10); }
-
-        .hero-section {
-            min-height: 100vh;
-            background: linear-gradient(160deg, #e0eaff 0%, #c7d7fc 30%, #f0f5ff 70%, #ffffff 100%);
-            position: relative; overflow: hidden;
-        }
-        .blob { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.35; pointer-events: none; }
-        .blob-1 { width:600px;height:600px; background:radial-gradient(circle,#93c5fd,#3b82f6); top:-180px;left:-180px; }
-        .blob-2 { width:400px;height:400px; background:radial-gradient(circle,#bfdbfe,#60a5fa); bottom:-120px;right:-100px; }
-        .blob-3 { width:250px;height:250px; background:radial-gradient(circle,#a5f3fc,#38bdf8); top:40%;right:10%;opacity:0.2; }
-
-        @keyframes float {
-            0%   { transform: translateY(0px) rotate(0deg); }
-            33%  { transform: translateY(-18px) rotate(1deg); }
-            66%  { transform: translateY(-8px) rotate(-1deg); }
-            100% { transform: translateY(0px) rotate(0deg); }
-        }
-        .animate-float { animation: float 5s ease-in-out infinite; }
-
-        @keyframes fadeInUp { from{opacity:0;transform:translateY(32px)} to{opacity:1;transform:translateY(0)} }
-        .fade-up   { animation: fadeInUp 0.7s ease forwards; }
-        .fade-up-1 { animation-delay:0.10s; opacity:0; }
-        .fade-up-2 { animation-delay:0.25s; opacity:0; }
-        .fade-up-3 { animation-delay:0.40s; opacity:0; }
-        .fade-up-4 { animation-delay:0.55s; opacity:0; }
-
-        @keyframes shimmer {
-            0%  { box-shadow:0 0 0 0 rgba(59,130,246,0); }
-            50% { box-shadow:0 0 60px 20px rgba(59,130,246,0.18); }
-            100%{ box-shadow:0 0 0 0 rgba(59,130,246,0); }
-        }
-        .logo-glow { animation: shimmer 4s ease-in-out infinite; border-radius:9999px; }
-
-        .portal-card {
-            background:#fff; border-radius:20px; border:2px solid transparent;
-            transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);
-            cursor:pointer; text-decoration:none; display:block; position: relative; overflow:hidden;
-        }
-        .portal-card:hover { transform:translateY(-8px) scale(1.02); box-shadow:0 20px 60px rgba(30,58,138,0.15); }
-        .portal-card-admin:hover   { border-color:#f97316; }
-        .portal-card-teacher:hover { border-color:#3b82f6; }
-        .portal-card-family:hover  { border-color:#22c55e; }
-        .portal-icon {
-            width:68px;height:68px;border-radius:18px;display:flex;align-items:center;
-            justify-content:center;font-size:2rem;margin:0 auto 1rem;
-            transition:transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
-        }
-        .portal-card:hover .portal-icon { transform:scale(1.15) rotate(-3deg); }
-
-        .feature-card {
-            background:rgba(255,255,255,0.7); backdrop-filter:blur(8px);
-            border:1px solid rgba(59,130,246,0.15); border-radius:20px;
-            transition:transform 0.3s, box-shadow 0.3s;
-        }
-        .feature-card:hover { transform:translateY(-4px); box-shadow:0 12px 40px rgba(30,58,138,0.10); }
-
-        /* ── Registration Form ── */
-        .form-input {
-            width:100%; padding:0.75rem 1rem;
-            background:#f8faff; border:1.5px solid #e0eaff; border-radius:10px;
-            font-size:0.9rem; font-family:'Nunito',sans-serif;
-            outline:none; transition:all 0.2s; color:#1e293b;
-        }
-        .form-input:focus { border-color:#3b82f6; background:#fff; box-shadow:0 0 0 4px rgba(59,130,246,0.10); }
-        .form-label { display:block; font-size:0.72rem; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.35rem; }
-
-        .form-section {
-            display:flex; align-items:center; gap:8px;
-            font-size:0.68rem; font-weight:900; color:#2563eb;
-            text-transform:uppercase; letter-spacing:0.12em;
-            padding-top:0.75rem; margin-top:0.25rem;
-            border-top:1.5px solid #e0eaff;
-        }
-        .form-section.no-border { border-top:none; padding-top:0; margin-top:0; }
-
-        /* Testimonials */
-        .testimonial-card { background:#fff; border-radius:20px; border:1px solid #e0eaff; position:relative; }
-        .testimonial-card::before {
-            content:'"'; position:absolute; top:-10px; left:20px;
-            font-size:5rem; color:#dbeafe; font-family:Georgia,serif; line-height:1;
-        }
-
-        footer { background:linear-gradient(180deg,#0f1f5c 0%,#0a1440 100%); }
-        .footer-logo-wrap {
-            background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12);
-            border-radius:12px; padding:6px 14px; display:inline-flex; align-items:center; gap:10px; transition:background 0.2s;
-        }
-        .footer-logo-wrap:hover { background:rgba(255,255,255,0.14); }
-
-        @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(8px)} }
-        .scroll-bounce { animation:bounce 1.8s ease-in-out infinite; }
-        .wave-divider svg { display:block; }
-    </style>
 </head>
 <body class="min-h-screen flex flex-col text-slate-800 antialiased">
 
@@ -145,20 +41,20 @@
         <div class="blob blob-2"></div>
         <div class="blob blob-3"></div>
 
-        <div class="relative z-10 mb-6 fade-up fade-up-1">
+        <div class="relative z-10 mb-6 view-section fade-up-1">
             <div class="logo-glow inline-block">
                 <img src="assets/images/logo.png" alt="ConnectUs Belize Education Platform Logo"
                      class="animate-float w-48 md:w-64 lg:w-72 h-auto drop-shadow-2xl mx-auto">
             </div>
         </div>
 
-        <div class="relative z-10 fade-up fade-up-2 mb-5">
+        <div class="relative z-10 view-section fade-up-2 mb-5">
             <span class="inline-flex items-center gap-2 bg-blue-100 text-blue-700 text-xs font-bold px-4 py-1.5 rounded-full border border-blue-200 shadow-sm">
                 🇧🇿 &nbsp; Built for Future&nbsp; · &nbsp;Now Enrolling Schools
             </span>
         </div>
 
-        <div class="relative z-10 fade-up fade-up-3 max-w-3xl">
+        <div class="relative z-10 view-section fade-up-3 max-w-3xl">
             <h1 class="text-5xl md:text-6xl lg:text-7xl font-black text-blue-900 leading-tight mb-5 tracking-tight">
                 Education,<br>
                 <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">Connected.</span>
@@ -168,7 +64,7 @@
             </p>
         </div>
 
-        <div class="relative z-10 fade-up fade-up-4 mt-8 flex flex-col sm:flex-row gap-4 justify-center">
+        <div class="relative z-10 view-section fade-up-4 mt-8 flex flex-col sm:flex-row gap-4 justify-center">
             <a href="#register" class="bg-blue-600 hover:bg-blue-700 text-white font-black py-4 px-8 rounded-2xl transition shadow-xl shadow-blue-300 text-lg">
                 Request a Quote →
             </a>
@@ -198,7 +94,7 @@
                 <p class="text-slate-500 font-semibold mt-2 text-base">Choose your role to log in or access your dashboard.</p>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <a href="admin/home" class="portal-card portal-card-admin p-7 shadow-sm border-slate-100">
+                <a href="admin/index.html" class="portal-card portal-card-admin p-7 shadow-sm border-slate-100">
                     <div class="portal-icon bg-orange-50">🔑</div>
                     <h3 class="font-black text-orange-700 text-xl text-center mb-2">School Admin</h3>
                     <p class="text-sm text-slate-500 text-center font-semibold leading-relaxed">Manage teachers, configure grading periods, and oversee your school's data.</p>
@@ -206,7 +102,7 @@
                         <span class="inline-block bg-orange-50 text-orange-600 text-xs font-black px-4 py-2 rounded-full border border-orange-200">Admin Login →</span>
                     </div>
                 </a>
-                <a href="teacher/home" class="portal-card portal-card-teacher p-7 shadow-sm border-slate-100">
+                <a href="teacher/index.html" class="portal-card portal-card-teacher p-7 shadow-sm border-slate-100">
                     <div class="absolute top-4 right-4 bg-blue-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide">Most Used</div>
                     <div class="portal-icon bg-blue-50">🎓</div>
                     <h3 class="font-black text-blue-700 text-xl text-center mb-2">Teacher Portal</h3>
@@ -215,7 +111,7 @@
                         <span class="inline-block bg-blue-50 text-blue-600 text-xs font-black px-4 py-2 rounded-full border border-blue-200">Teacher Login →</span>
                     </div>
                 </a>
-                <a href="student/home" class="portal-card portal-card-family p-7 shadow-sm border-slate-100">
+                <a href="student/index.html" class="portal-card portal-card-family p-7 shadow-sm border-slate-100">
                     <div class="portal-icon bg-green-50">👪</div>
                     <h3 class="font-black text-green-700 text-xl text-center mb-2">Student & Parent</h3>
                     <p class="text-sm text-slate-500 text-center font-semibold leading-relaxed">View grades, assignment notes, and progress reports — anytime, from any device.</p>
@@ -450,124 +346,7 @@
         </div>
     </footer>
 
-    <script>
-        const nav = document.getElementById('navbar');
-        window.addEventListener('scroll', () => nav.classList.toggle('scrolled', window.scrollY > 20));
-    </script>
-
-    <script type="module">
-        import { db } from './assets/js/firebase-init.js';
-        import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
-        document.getElementById('registerBtn').addEventListener('click', async () => {
-            const msgEl = document.getElementById('regMessage');
-
-            // Collect all fields
-            const schoolName    = document.getElementById('schoolName').value.trim();
-            const schoolType    = document.getElementById('schoolType').value;
-            const district      = document.getElementById('district').value;
-            const schoolAddress = document.getElementById('schoolAddress').value.trim();
-            const contactName   = document.getElementById('contactName').value.trim();
-            const phone         = document.getElementById('phone').value.trim();
-            const adminEmail    = document.getElementById('adminEmail').value.trim();
-            const studentsCountVal = document.getElementById('studentsCount').value.trim();
-            const teachersCountVal = document.getElementById('teachersCount').value.trim();
-
-            // Validation
-            if (!schoolName || !schoolType || !district || !schoolAddress ||
-                !contactName || !phone || !adminEmail || !studentsCountVal || !teachersCountVal) {
-                msgEl.textContent = "Please fill in all required fields (*).";
-                msgEl.className = "text-sm text-center font-bold mt-2 text-red-600 block";
-                return;
-            }
-            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
-                msgEl.textContent = "Please enter a valid email address.";
-                msgEl.className = "text-sm text-center font-bold mt-2 text-red-600 block";
-                return;
-            }
-
-            const btn = document.getElementById('registerBtn');
-            btn.disabled = true;
-            btn.textContent = "Submitting Request...";
-            btn.classList.add("opacity-75", "cursor-not-allowed");
-            msgEl.textContent = "Saving your details...";
-            msgEl.className = "text-sm text-center font-bold mt-2 text-blue-600 block";
-
-            // Parse the numbers
-            const studentsCount = parseInt(studentsCountVal);
-            const teachersCount = parseInt(teachersCountVal);
-
-            // Auto-assign plan based on the raw number entered by the user
-            // These IDs map EXACTLY to your Firebase 'subscriptionPlans' collection IDs
-            let assignedPlan = "starter"; // Default (up to 50)
-            
-            if (studentsCount > 500) {
-                assignedPlan = "enterprise";
-            } else if (studentsCount > 150) {
-                assignedPlan = "pro";
-            } else if (studentsCount > 50) {
-                assignedPlan = "growth";
-            }
-
-            // Generate School ID  e.g. "Valley High School" → "VH4823"
-            const words = schoolName.split(/\s+/);
-            const initials = words.length === 1
-                ? words[0].substring(0, 2).toUpperCase()
-                : (words[0][0] + words[1][0]).toUpperCase();
-            const randomDigits = Math.floor(1000 + Math.random() * 9000);
-            const schoolId = `${initials}${randomDigits}`;
-
-            try {
-                await setDoc(doc(db, "schools", schoolId), {
-
-                    // ── Identity ──────────────────────────────────────────────
-                    schoolId,                                    // stored for easy reference
-                    schoolName,
-                    schoolType,          // "Primary" | "Secondary" | "Junior College"
-                    district,            // One of Belize's 6 districts
-                    schoolAddress,
-
-                    // ── Contact ───────────────────────────────────────────────
-                    contactName,         // Principal / admin name
-                    phone,
-                    adminEmail,
-
-                    // ── Size & Subscription ───────────────────────────────────
-                    studentsCount,       // Stores the raw number they typed
-                    teachersCount,
-                    subscriptionPlan: assignedPlan, // Automatically assigned plan ID
-
-                    // ── Branding (admin sets this later in Settings) ──────────
-                    logoUrl: "",
-
-                    // ── Account Status ────────────────────────────────────────
-                    isVerified:       false,     // SuperAdmin sets true after payment is confirmed
-                    adminCode:        "ADMIN2024",
-                    requiresPinReset: true,      // Forces code change on first login
-
-                    // ── Platform State (admin configures after login) ─────────
-                    activeSemesterId: "",        // Set by admin once grading periods are created
-
-                    // ── Timestamps ────────────────────────────────────────────
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString(),
-                });
-
-                // Show success with the School ID prominently displayed
-                document.getElementById('generatedSchoolId').textContent = schoolId;
-                document.getElementById('registrationFormContainer').classList.add('hidden');
-                document.getElementById('successScreen').classList.remove('hidden');
-
-            } catch (error) {
-                console.error("Registration error:", error);
-                msgEl.textContent = "Error saving your request. Please try again.";
-                msgEl.className = "text-sm text-center font-bold mt-2 text-red-600 block";
-                btn.disabled = false;
-                btn.textContent = "Request Quote & Setup →";
-                btn.classList.remove("opacity-75", "cursor-not-allowed");
-            }
-        });
-    </script>
+    <script type="module" src="assets/js/landing.js"></script>
 
 </body>
 </html>
