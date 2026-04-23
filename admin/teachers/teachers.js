@@ -1,7 +1,7 @@
 import { db } from '../../assets/js/firebase-init.js';
 import { collection, doc, getDoc, getDocs, addDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
-import { injectAdminLayout } from '../../assets/js/layout-admins.js';
+import { injectAdminLayout } from '../../assets/js/layout-admin.js';
 import { openOverlay, closeOverlay, showMsg } from '../../assets/js/utils.js';
 
 // ── 1. INIT & AUTH ────────────────────────────────────────────────────────
