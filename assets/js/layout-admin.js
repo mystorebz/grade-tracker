@@ -75,6 +75,6 @@ export function injectAdminLayout(activePageId, pageTitle, pageSub, showSearch =
 
     // 5. Attach the Logout Button functionality
     document.getElementById('logoutBtn').addEventListener('click', () => {
-        logout('../../admin/index.html'); // Redirect to Admin Login
+        logout('../../admin/login.html'); // Redirect to Admin Login
     });
 }
