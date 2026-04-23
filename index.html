@@ -50,7 +50,7 @@
 
         <div class="relative z-10 view-section fade-up-2 mb-5">
             <span class="inline-flex items-center gap-2 bg-blue-100 text-blue-700 text-xs font-bold px-4 py-1.5 rounded-full border border-blue-200 shadow-sm">
-                🇧🇿 &nbsp; Built for Future&nbsp; · &nbsp;Now Enrolling Schools
+                🌎 &nbsp; Built for Schools Everywhere&nbsp; · &nbsp;Now Enrolling
             </span>
         </div>
 
@@ -60,7 +60,7 @@
                 <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">Connected.</span>
             </h1>
             <p class="text-lg md:text-xl text-slate-600 font-semibold leading-relaxed max-w-2xl mx-auto">
-                The modern platform for Belizean schools — giving parents, teachers, and students instant, shared access to academic progress. We are building a complete digital history of student achievement to keep everyone informed and encourage continuous growth.
+                The modern platform for schools — giving parents, teachers, and students instant, shared access to academic progress. We are building a complete digital history of student achievement to keep everyone informed and encourage continuous growth.
             </p>
         </div>
 
@@ -127,7 +127,7 @@
         <div class="max-w-5xl mx-auto">
             <div class="text-center mb-14">
                 <span class="text-xs font-black text-blue-500 uppercase tracking-widest">Why ConnectUs</span>
-                <h2 class="text-3xl md:text-4xl font-black text-blue-900 mt-2">Built for Belizean Schools</h2>
+                <h2 class="text-3xl md:text-4xl font-black text-blue-900 mt-2">Built for Modern Schools</h2>
                 <p class="text-slate-500 font-semibold mt-3 max-w-xl mx-auto text-base">Everything a modern school needs — without the international price tag or the complexity.</p>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -175,13 +175,13 @@
                 <div class="testimonial-card p-7 shadow-sm">
                     <div class="flex text-yellow-400 text-lg mb-5">★★★★★</div>
                     <p class="text-slate-600 font-semibold leading-relaxed mb-5 text-sm">
-                        "Finally, a system that understands what we need here in Belize. It has completely transformed how our teachers communicate with parents. The transparency is amazing."
+                        "Finally, a system that understands what we need. It has completely transformed how our teachers communicate with parents. The transparency is amazing."
                     </p>
                     <div class="flex items-center gap-3">
                         <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-black text-sm">HP</div>
                         <div>
                             <p class="font-black text-slate-800 text-sm">High School Principal</p>
-                            <p class="text-xs text-slate-400 font-semibold">Belize City</p>
+                            <p class="text-xs text-slate-400 font-semibold">Belize City, Belize</p>
                         </div>
                     </div>
                 </div>
@@ -194,7 +194,7 @@
                         <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-black text-sm">ST</div>
                         <div>
                             <p class="font-black text-slate-800 text-sm">Standard 6 Teacher</p>
-                            <p class="text-xs text-slate-400 font-semibold">San Ignacio</p>
+                            <p class="text-xs text-slate-400 font-semibold">San Ignacio, Belize</p>
                         </div>
                     </div>
                 </div>
@@ -202,22 +202,65 @@
         </div>
     </section>
 
+    <!-- ── QUOTE REQUEST FORM ── -->
     <section id="register" class="py-20 px-4 bg-blue-50">
-        <div class="max-w-xl mx-auto">
+        <div class="max-w-2xl mx-auto">
             <div class="text-center mb-8">
-                <span class="text-xs font-black text-blue-500 uppercase tracking-widest">Enroll Your School</span>
+                <span class="text-xs font-black text-blue-500 uppercase tracking-widest">Get a Quote</span>
                 <h2 class="text-3xl md:text-4xl font-black text-blue-900 mt-2">Bring ConnectUs to Your School</h2>
                 <p class="text-slate-500 font-semibold mt-3 text-sm max-w-sm mx-auto">
-                    Flexible pricing based on your school's size. Fill out the details below and we'll reach out with a custom quote.
+                    Fill out the form below and our team will reach out with a custom quote within 24–48 hours.
                 </p>
             </div>
 
             <div class="bg-white rounded-3xl shadow-xl border border-blue-100 p-8 relative overflow-hidden">
                 <div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-600 rounded-t-3xl"></div>
 
-                <div id="registrationFormContainer" class="space-y-4 mt-3">
+                <div id="registrationFormContainer" class="space-y-5 mt-3">
 
+                    <!-- Contact Information -->
                     <p class="form-section no-border">
+                        <i class="fa-solid fa-address-card"></i> Your Contact Information
+                    </p>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="form-label">First Name *</label>
+                            <input type="text" id="firstName" placeholder="e.g. Maria" class="form-input">
+                        </div>
+                        <div>
+                            <label class="form-label">Last Name *</label>
+                            <input type="text" id="lastName" placeholder="e.g. Torres" class="form-input">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="form-label">Job Title / Role *</label>
+                        <select id="jobTitle" class="form-input">
+                            <option value="">Select your role</option>
+                            <option value="Principal">Principal</option>
+                            <option value="Vice Principal">Vice Principal</option>
+                            <option value="IT Director">IT Director</option>
+                            <option value="District Administrator">District Administrator</option>
+                            <option value="School Administrator">School Administrator</option>
+                            <option value="Teacher">Teacher</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="form-label">Work Email *</label>
+                            <input type="email" id="workEmail" placeholder="you@school.edu" class="form-input">
+                        </div>
+                        <div>
+                            <label class="form-label">Phone Number *</label>
+                            <input type="tel" id="phone" placeholder="e.g. +501 600-0000" class="form-input">
+                        </div>
+                    </div>
+
+                    <!-- School Information -->
+                    <p class="form-section">
                         <i class="fa-solid fa-school"></i> School Information
                     </p>
 
@@ -231,50 +274,47 @@
                             <label class="form-label">School Type *</label>
                             <select id="schoolType" class="form-input">
                                 <option value="">Select Type</option>
-                                <option value="Primary">Primary</option>
-                                <option value="High School">High School</option>
+                                <option value="Primary / Elementary">Primary / Elementary</option>
+                                <option value="Middle School">Middle School</option>
+                                <option value="High School / Secondary">High School / Secondary</option>
                                 <option value="Junior College">Junior College</option>
+                                <option value="University / College">University / College</option>
+                                <option value="Vocational / Technical">Vocational / Technical</option>
+                                <option value="Other">Other</option>
                             </select>
                         </div>
                         <div>
-                            <label class="form-label">District *</label>
-                            <select id="district" class="form-input">
-                                <option value="">Select District</option>
+                            <label class="form-label">Country *</label>
+                            <select id="country" class="form-input">
+                                <option value="">Select Country</option>
                                 <option value="Belize">Belize</option>
-                                <option value="Cayo">Cayo</option>
-                                <option value="Corozal">Corozal</option>
-                                <option value="Orange Walk">Orange Walk</option>
-                                <option value="Stann Creek">Stann Creek</option>
-                                <option value="Toledo">Toledo</option>
+                                <option value="Guatemala">Guatemala</option>
+                                <option value="Honduras">Honduras</option>
+                                <option value="Mexico">Mexico</option>
+                                <option value="Jamaica">Jamaica</option>
+                                <option value="Trinidad and Tobago">Trinidad and Tobago</option>
+                                <option value="Barbados">Barbados</option>
+                                <option value="Guyana">Guyana</option>
+                                <option value="United States">United States</option>
+                                <option value="United Kingdom">United Kingdom</option>
+                                <option value="Canada">Canada</option>
+                                <option value="Other">Other</option>
                             </select>
                         </div>
                     </div>
-
-                    <div>
-                        <label class="form-label">School Address *</label>
-                        <input type="text" id="schoolAddress" placeholder="e.g. 12 Albert Street, Belize City" class="form-input">
-                    </div>
-
-                    <p class="form-section">
-                        <i class="fa-solid fa-address-card"></i> Contact Information
-                    </p>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                            <label class="form-label">Principal / Contact Name *</label>
-                            <input type="text" id="contactName" placeholder="Full Name" class="form-input">
+                            <label class="form-label">City *</label>
+                            <input type="text" id="city" placeholder="e.g. Belize City" class="form-input">
                         </div>
                         <div>
-                            <label class="form-label">Phone Number *</label>
-                            <input type="tel" id="phone" placeholder="e.g. 600-0000" class="form-input">
+                            <label class="form-label">State / Province / District</label>
+                            <input type="text" id="stateProvince" placeholder="e.g. Cayo District" class="form-input">
                         </div>
                     </div>
 
-                    <div>
-                        <label class="form-label">Admin Email *</label>
-                        <input type="email" id="adminEmail" placeholder="principal@school.edu.bz" class="form-input">
-                    </div>
-
+                    <!-- School Size -->
                     <p class="form-section">
                         <i class="fa-solid fa-users"></i> School Size
                     </p>
@@ -290,31 +330,51 @@
                         </div>
                     </div>
 
+                    <!-- Additional Info -->
+                    <p class="form-section">
+                        <i class="fa-solid fa-circle-info"></i> Additional Information
+                    </p>
+
+                    <div>
+                        <label class="form-label">How did you hear about us?</label>
+                        <select id="hearAboutUs" class="form-input">
+                            <option value="">Select an option</option>
+                            <option value="Google Search">Google Search</option>
+                            <option value="Social Media">Social Media</option>
+                            <option value="Word of Mouth">Word of Mouth</option>
+                            <option value="Referral from another school">Referral from another school</option>
+                            <option value="Conference or Event">Conference or Event</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="form-label">Tell us more <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
+                        <textarea id="message" placeholder="Any specific needs, questions, or goals you'd like us to know about..." class="form-input h-24 resize-none"></textarea>
+                    </div>
+
                     <button id="registerBtn"
                         class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-black py-4 px-4 rounded-2xl transition shadow-lg shadow-blue-200 text-base mt-2">
-                        Request Quote &amp; Setup →
+                        Request a Quote →
                     </button>
                     <p id="regMessage" class="text-sm text-center font-bold hidden mt-2"></p>
                 </div>
 
+                <!-- Success Screen -->
                 <div id="successScreen" class="hidden text-center py-8">
                     <div class="text-7xl mb-4">🎉</div>
                     <h2 class="text-2xl font-black text-slate-800 mb-2">Request Received!</h2>
                     <p class="text-slate-500 font-semibold mb-5 text-sm leading-relaxed">
-                        Thank you for your interest in ConnectUs. Our team will prepare a custom quote.
+                        Thank you for your interest in ConnectUs. We've sent a confirmation to your email and our team will be in touch within <strong class="text-slate-700">24–48 hours</strong> with a custom quote.
                     </p>
-
-                    <div class="bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-5 mb-5 text-left shadow-lg shadow-blue-300">
-                        <p class="text-blue-200 text-xs font-black uppercase tracking-widest mb-1">Your School Reference ID</p>
-                        <p id="generatedSchoolId" class="text-white text-3xl font-black tracking-[0.25em] font-mono mb-2"></p>
-                        <p class="text-blue-200 text-xs font-semibold">
-                            📌 Save this ID — you'll need it to log in to your Admin Portal once your account is approved.
-                        </p>
+                    <div class="bg-blue-50 border border-blue-100 rounded-2xl p-5 mb-6 text-left">
+                        <p class="text-xs font-black text-blue-500 uppercase tracking-widest mb-2">What happens next?</p>
+                        <ul class="space-y-2 text-sm text-slate-600 font-semibold">
+                            <li class="flex items-start gap-2"><i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i> Check your email for a confirmation from info@connectusonline.org</li>
+                            <li class="flex items-start gap-2"><i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i> Our team will review your details and prepare a custom quote</li>
+                            <li class="flex items-start gap-2"><i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i> Once confirmed, we'll send you an onboarding link to set up your school</li>
+                        </ul>
                     </div>
-
-                    <p class="text-slate-500 font-semibold mb-6 text-sm">
-                        <strong class="text-slate-700">Check your email shortly</strong> for pricing details and your activation instructions.
-                    </p>
                     <button onclick="location.reload()"
                         class="text-blue-600 font-black hover:underline text-sm bg-blue-50 py-2.5 px-6 rounded-full border border-blue-100 transition hover:bg-blue-100">
                         ← Back to Home
