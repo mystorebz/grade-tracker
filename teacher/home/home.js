@@ -32,14 +32,24 @@ async function init() {
     await fetchMetrics();
 }
 
-// ── 4. LOAD SEMESTERS ───────────────────────────────────────────────────────
+// ── 4. LOAD SEMESTERS (WITH CACHING FOR SPEED) ──────────────────────────────
 async function loadSemesters() {
     try {
-        const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
+        let rawSemesters = [];
+        const cachedSemesters = sessionStorage.getItem('connectUs_semesters');
+
+        // Check if we already have it saved in the browser memory
+        if (cachedSemesters) {
+            rawSemesters = JSON.parse(cachedSemesters);
+        } else {
+            // Otherwise, fetch from Firebase and save for next time
+            const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
+            rawSemesters = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
+            sessionStorage.setItem('connectUs_semesters', JSON.stringify(rawSemesters));
+        }
+
         const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
         const activeId = schoolSnap.data()?.activeSemesterId || '';
-
-        const rawSemesters = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
 
         const semSel = document.getElementById('activeSemester');
         if (semSel) {
