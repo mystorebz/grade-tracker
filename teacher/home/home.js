@@ -1,7 +1,7 @@
 import { db } from '../../assets/js/firebase-init.js';
 import { collection, query, where, getDocs, getDoc, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
-import { injectTeacherLayout } from '../../assets/js/layout-teacher.js';
+import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { gradeColorClass } from '../../assets/js/utils.js';
 
 // ── 1. AUTHENTICATION & LAYOUT ──────────────────────────────────────────────
