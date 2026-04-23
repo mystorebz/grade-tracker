@@ -43,7 +43,7 @@
 
         <div class="relative z-10 mb-6 view-section fade-up-1">
             <div class="logo-glow inline-block">
-                <img src="assets/images/logo.png" alt="ConnectUs Belize Education Platform Logo"
+                <img src="assets/images/logo.png" alt="ConnectUs Education Platform Logo"
                      class="animate-float w-48 md:w-64 lg:w-72 h-auto drop-shadow-2xl mx-auto">
             </div>
         </div>
@@ -218,7 +218,7 @@
 
                 <div id="registrationFormContainer" class="space-y-5 mt-3">
 
-                    <!-- Contact Information -->
+                    <!-- ── Contact Information ── -->
                     <p class="form-section no-border">
                         <i class="fa-solid fa-address-card"></i> Your Contact Information
                     </p>
@@ -259,7 +259,7 @@
                         </div>
                     </div>
 
-                    <!-- School Information -->
+                    <!-- ── School Information ── -->
                     <p class="form-section">
                         <i class="fa-solid fa-school"></i> School Information
                     </p>
@@ -314,7 +314,7 @@
                         </div>
                     </div>
 
-                    <!-- School Size -->
+                    <!-- ── School Size ── -->
                     <p class="form-section">
                         <i class="fa-solid fa-users"></i> School Size
                     </p>
@@ -330,7 +330,40 @@
                         </div>
                     </div>
 
-                    <!-- Additional Info -->
+                    <!-- ── Contract Term ── -->
+                    <p class="form-section">
+                        <i class="fa-solid fa-file-contract"></i> Preferred Contract Term
+                    </p>
+
+                    <div>
+                        <label class="form-label">Contract Term *</label>
+                        <select id="contractTerm" class="form-input">
+                            <option value="">Select preferred term</option>
+                            <option value="Monthly">Monthly — rolling, cancel anytime</option>
+                            <option value="Annual">Annual Contract — 1 year</option>
+                            <option value="Multi-Year">Multi-Year Contract — 2 or 3 years</option>
+                        </select>
+                    </div>
+
+                    <!-- Monthly follow-up — hidden by default -->
+                    <div id="contractMonthsWrap" class="hidden">
+                        <label class="form-label">How many months are you looking to start with? *</label>
+                        <input type="number" id="contractMonths" placeholder="e.g. 3" min="1" max="11" class="form-input">
+                        <p class="text-xs text-slate-400 font-semibold mt-1.5">This is just an estimate — not a binding commitment.</p>
+                    </div>
+
+                    <!-- Multi-year follow-up — hidden by default -->
+                    <div id="contractYearsWrap" class="hidden">
+                        <label class="form-label">How many years? *</label>
+                        <select id="contractYears" class="form-input">
+                            <option value="">Select number of years</option>
+                            <option value="2">2 Years</option>
+                            <option value="3">3 Years</option>
+                        </select>
+                        <p class="text-xs text-slate-400 font-semibold mt-1.5">Multi-year contracts may qualify for a discounted rate — we will include this in your quote.</p>
+                    </div>
+
+                    <!-- ── Additional Info ── -->
                     <p class="form-section">
                         <i class="fa-solid fa-circle-info"></i> Additional Information
                     </p>
@@ -360,7 +393,7 @@
                     <p id="regMessage" class="text-sm text-center font-bold hidden mt-2"></p>
                 </div>
 
-                <!-- Success Screen -->
+                <!-- ── Success Screen ── -->
                 <div id="successScreen" class="hidden text-center py-8">
                     <div class="text-7xl mb-4">🎉</div>
                     <h2 class="text-2xl font-black text-slate-800 mb-2">Request Received!</h2>
@@ -368,11 +401,24 @@
                         Thank you for your interest in ConnectUs. We've sent a confirmation to your email and our team will be in touch within <strong class="text-slate-700">24–48 hours</strong> with a custom quote.
                     </p>
                     <div class="bg-blue-50 border border-blue-100 rounded-2xl p-5 mb-6 text-left">
-                        <p class="text-xs font-black text-blue-500 uppercase tracking-widest mb-2">What happens next?</p>
-                        <ul class="space-y-2 text-sm text-slate-600 font-semibold">
-                            <li class="flex items-start gap-2"><i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i> Check your email for a confirmation from info@connectusonline.org</li>
-                            <li class="flex items-start gap-2"><i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i> Our team will review your details and prepare a custom quote</li>
-                            <li class="flex items-start gap-2"><i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i> Once confirmed, we'll send you an onboarding link to set up your school</li>
+                        <p class="text-xs font-black text-blue-500 uppercase tracking-widest mb-3">What happens next?</p>
+                        <ul class="space-y-2.5 text-sm text-slate-600 font-semibold">
+                            <li class="flex items-start gap-2.5">
+                                <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i>
+                                Check your email for a confirmation from info@connectusonline.org
+                            </li>
+                            <li class="flex items-start gap-2.5">
+                                <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i>
+                                Our team will review your details and prepare a custom quote
+                            </li>
+                            <li class="flex items-start gap-2.5">
+                                <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i>
+                                We will send you an invoice or payment link based on your preferred term
+                            </li>
+                            <li class="flex items-start gap-2.5">
+                                <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i>
+                                Once confirmed and paid, we will send your onboarding link to set up your school
+                            </li>
                         </ul>
                     </div>
                     <button onclick="location.reload()"
