@@ -1,1 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grading Periods | ConnectUs Admin</title>
+    
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/admin.css">
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="text-slate-800 flex h-screen overflow-hidden bg-[#eef2ff]">
 
+    <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
+
+    <main class="flex-1 flex flex-col h-full overflow-hidden">
+        
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <div class="flex-1 overflow-y-auto p-7">
+            
+            <div class="max-w-4xl">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="p-6 border-b border-slate-100 bg-gradient-to-r from-white to-amber-50/40 flex items-center gap-3">
+                        <div class="w-10 h-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-calendar-days"></i></div>
+                        <div>
+                            <h3 class="font-black text-xl text-slate-800">Grading Periods (Semesters)</h3>
+                            <p class="text-sm text-slate-400 font-semibold">Manage active and historical grading periods</p>
+                        </div>
+                    </div>
+                    
+                    <div class="p-6">
+                        
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6">
+                            <h4 class="text-xs font-black text-slate-500 uppercase tracking-wider mb-3">Add New Period</h4>
+                            <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                                <div class="sm:col-span-2">
+                                    <input type="text" id="newSemName" placeholder="Name (e.g. Semester 1, Midterm)" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none">
+                                </div>
+                                <div>
+                                    <input type="date" id="newSemStart" title="Start Date" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 outline-none">
+                                </div>
+                                <div>
+                                    <input type="date" id="newSemEnd" title="End Date" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 outline-none">
+                                </div>
+                            </div>
+                            <button id="addSemBtn" class="mt-3 w-full bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-black text-sm shadow-md transition flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-plus"></i> Add Period
+                            </button>
+                        </div>
+
+                        <h4 class="text-xs font-black text-blue-600 uppercase tracking-wider mb-3">Active Periods</h4>
+                        <div id="semestersList" class="space-y-3 mb-8">
+                            <div class="flex justify-center py-8"><i class="fa-solid fa-spinner fa-spin text-2xl text-blue-400"></i></div>
+                        </div>
+
+                        <h4 class="text-xs font-black text-amber-600 uppercase tracking-wider mb-3 pt-6 border-t border-slate-100">Archived Periods</h4>
+                        <p class="text-xs text-slate-500 font-semibold italic mb-3">Archived periods are hidden from teachers' daily views but remain accessible for historical reporting.</p>
+                        <div id="archivedSemestersList" class="space-y-3">
+                            <p class="text-sm text-slate-400 italic font-semibold">Loading archives...</p>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <div id="editSemModal" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200" id="editSemModalInner">
+            <div class="h-1 bg-gradient-to-r from-amber-500 to-orange-400"></div>
+            <div class="px-7 py-5 border-b border-slate-100 flex justify-between items-center">
+                <div class="flex items-center gap-3"><div class="w-9 h-9 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-pen"></i></div><h3 class="font-black text-xl text-slate-800">Edit Period</h3></div>
+                <button onclick="window.closeEditSemModal()" class="text-slate-400 hover:text-red-500 h-8 w-8 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="p-7 space-y-4 bg-slate-50/50">
+                <div>
+                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Period Name *</label>
+                    <input type="text" id="editSemName" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Start Date</label>
+                    <input type="date" id="editSemStart" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">End Date</label>
+                    <input type="date" id="editSemEnd" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 outline-none">
+                </div>
+                <button id="saveSemEditBtn" class="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black py-3.5 rounded-xl transition shadow-md text-base mt-2">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="grading_periods.js"></script>
+</body>
+</html>
