@@ -1,1 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings & System | ConnectUs Admin</title>
+    
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/admin.css">
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="text-slate-800 flex h-screen overflow-hidden bg-[#eef2ff]">
 
+    <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
+
+    <main class="flex-1 flex flex-col h-full overflow-hidden">
+        
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <div class="flex-1 overflow-y-auto p-7">
+            <div class="max-w-2xl space-y-5">
+                
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-blue-50/40">
+                        <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-lock"></i></div>
+                        <div><h3 class="font-black text-slate-800">Security</h3><p class="text-xs text-slate-400 font-semibold">Update admin code — current code required</p></div>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <div>
+                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Current Admin Code</label>
+                            <input type="password" id="currentAdminCode" placeholder="Enter your current code" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">New Admin Code</label>
+                            <input type="password" id="newAdminCodeSettings" placeholder="Min. 5 characters" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Confirm New Code</label>
+                            <input type="password" id="confirmAdminCodeSettings" placeholder="Type it again" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
+                        </div>
+                        <button id="updateCodeBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-black text-sm shadow-md transition">Update Security Code</button>
+                        <p id="settingsSecurityMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-green-50/40">
+                        <div class="w-10 h-10 bg-green-100 text-green-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-school"></i></div>
+                        <div><h3 class="font-black text-slate-800">School Profile</h3><p class="text-xs text-slate-400 font-semibold">Update your school's information</p></div>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">School Name</label>
+                                <input type="text" id="profileSchoolName" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">District</label>
+                                <select id="profileDistrict" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
+                                    <option value="">Select District</option>
+                                    <option value="Belize">Belize</option>
+                                    <option value="Cayo">Cayo</option>
+                                    <option value="Corozal">Corozal</option>
+                                    <option value="Orange Walk">Orange Walk</option>
+                                    <option value="Stann Creek">Stann Creek</option>
+                                    <option value="Toledo">Toledo</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">School Type</label>
+                                <select id="profileSchoolType" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
+                                    <option value="">Select Type</option>
+                                    <option value="Primary">Primary</option>
+                                    <option value="High School">High School</option>
+                                    <option value="Junior College">Junior College</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Contact Phone</label>
+                                <input type="tel" id="profilePhone" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Address</label>
+                            <input type="text" id="profileAddress" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
+                        </div>
+                        <button id="saveProfileBtn" class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl font-black text-sm shadow-md transition">Save Profile</button>
+                        <p id="settingsProfileMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-amber-50/40">
+                        <div class="w-10 h-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-box-archive"></i></div>
+                        <div><h3 class="font-black text-slate-800">Archive Management</h3><p class="text-xs text-slate-400 font-semibold">Restore or permanently delete archived records</p></div>
+                    </div>
+                    <div class="p-6">
+                        <div class="flex border-b border-slate-200 mb-5">
+                            <button class="stab active" id="archiveTabTeachers" onclick="window.switchArchiveTab('teachers')"><i class="fa-solid fa-chalkboard-user mr-1.5"></i>Archived Teachers</button>
+                            <button class="stab" id="archiveTabStudents" onclick="window.switchArchiveTab('students')"><i class="fa-solid fa-user-graduate mr-1.5"></i>Archived Students</button>
+                        </div>
+                        <div id="archiveTeachersList" class="space-y-2">
+                            <p class="text-sm text-slate-400 italic font-semibold text-center py-4"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading...</p>
+                        </div>
+                        <div id="archiveStudentsList" class="space-y-2 hidden">
+                            <p class="text-sm text-slate-400 italic font-semibold text-center py-4"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="danger-zone p-6">
+                    <h4 class="font-black text-red-700 flex items-center gap-2 mb-2"><i class="fa-solid fa-triangle-exclamation"></i> Danger Zone</h4>
+                    <p class="text-xs text-red-600 font-semibold mb-2">Permanent actions cannot be undone.</p>
+                    <p class="text-xs text-slate-500 font-semibold italic">Archive a record first, then use the Delete button in Archive Management above.</p>
+                    
+                    <div class="mt-4 pt-4 border-t border-red-200">
+                        <h5 class="font-black text-red-700 text-sm mb-2">End of Academic Year Reset</h5>
+                        <p class="text-xs text-red-600 font-semibold mb-3">Removes all active students from their current teachers and classes, placing them in the "Unassigned" pool for the next academic year. Grades are preserved.</p>
+                        <button onclick="window.endOfYearReset()" class="bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 hover:border-red-600 font-black py-2 px-4 rounded-xl text-xs transition shadow-sm">
+                            <i class="fa-solid fa-rotate-right mr-1"></i> Run End-of-Year Reset
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <script type="module" src="settings.js"></script>
+</body>
+</html>
