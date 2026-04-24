@@ -33,8 +33,9 @@
                     
                     <div class="p-6">
                         
-                        <div class="flex flex-col md:flex-row gap-6 mb-6 pb-6 border-b border-[#f0f4f8]">
-                            <div class="w-full md:w-1/3">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6 pb-6 border-b border-[#f0f4f8]">
+                            
+                            <div>
                                 <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-2 flex items-center gap-1.5"><i class="fa-solid fa-users-viewfinder text-[#2563eb]"></i> Target Scope</label>
                                 <select id="rb-scope" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb] cursor-pointer">
                                     <option value="class">Whole Class Overview</option>
@@ -42,12 +43,32 @@
                                 </select>
                             </div>
                             
-                            <div id="studentFilterWrap" class="w-full md:w-1/3 hidden transition-all duration-300">
-                                <label class="block text-[10px] font-bold text-[#0ea871] uppercase tracking-widest mb-2 flex items-center gap-1.5"><i class="fa-solid fa-crosshairs text-[#0ea871]"></i> Select Student</label>
+                            <div id="studentFilterWrap" class="hidden transition-all duration-300">
+                                <label class="block text-[10px] font-bold text-[#0ea871] uppercase tracking-widest mb-2 flex items-center gap-1.5"><i class="fa-solid fa-user-graduate text-[#0ea871]"></i> Select Student</label>
                                 <select id="rb-student" class="form-input w-full p-2.5 bg-[#edfaf4] border border-[#c6f0db] rounded text-[13px] font-bold text-[#08754d] outline-none focus:border-[#0ea871] cursor-pointer">
                                     <option value="">— Select a Student —</option>
                                 </select>
                             </div>
+
+                            <div id="classFilterWrap" class="transition-all duration-300">
+                                <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-2 flex items-center gap-1.5"><i class="fa-solid fa-chalkboard text-[#2563eb]"></i> Filter by Class</label>
+                                <select id="rb-class" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb] cursor-pointer">
+                                    <option value="">All Classes</option>
+                                </select>
+                            </div>
+
+                            <div id="standingFilterWrap" class="transition-all duration-300">
+                                <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-2 flex items-center gap-1.5"><i class="fa-solid fa-chart-line text-[#2563eb]"></i> Academic Standing</label>
+                                <select id="rb-standing" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb] cursor-pointer">
+                                    <option value="">All Standings</option>
+                                    <option value="excelling">Excelling (90-100)</option>
+                                    <option value="good">Good Standing (80-89)</option>
+                                    <option value="ontrack">On Track (70-79)</option>
+                                    <option value="needsattention">Needs Attention (65-69)</option>
+                                    <option value="atrisk">At Risk (&lt;65)</option>
+                                </select>
+                            </div>
+
                         </div>
 
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
