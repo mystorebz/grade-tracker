@@ -1,11 +1,11 @@
 /* ==========================================================================
-   CONNECTUS - TEACHER PORTAL CSS (MINIMAL FUTURISTIC TECH EDITION)
+   CONNECTUS - TEACHER PORTAL CSS (SHARP MINIMAL TECH EDITION)
    Used across: login, home, roster, grade_form, subjects,
                 gradebook, archives, settings, reports
    ========================================================================== */
 
-html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
-* { font-family: 'Nunito', sans-serif; border-radius: 0 !important; /* Force sharp edges everywhere */ }
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; color: #0f172a; background: #f8fafc; }
+* { font-family: 'Inter', sans-serif; border-radius: 0 !important; }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #f8fafc; border-left: 1px solid #e2e8f0; }
@@ -14,64 +14,33 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 
 /* ── LOGIN WRAPPER ── */
 #loginScreen { 
-    background: #ffffff; /* Clean white background */
+    background: #ffffff; 
     position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1rem; overflow-y: auto; 
 }
 
-/* Remove old vibrant grid */
-#loginScreen::before { 
-    display: none; 
-}
-
-/* Subtle Side Graphic (Futuristic Spiral Feel) 
-   Places an abstract line pattern on the far left side 
-*/
 #loginScreen::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 35%; /* Adjust width of the side graphic */
-    height: 100%;
-    pointer-events: none;
-    z-index: 1; /* Below the card */
-    opacity: 0.15; /* Subtly faded */
-
-    /* A combination of repeating lines to simulate a tech spiral effect 
-       without needing an image file. 
-    */
+    content: ''; position: absolute; top: 0; left: 0; width: 35%; height: 100%; pointer-events: none; z-index: 1; opacity: 0.15; 
     background-image: 
         repeating-radial-gradient(circle at -20% 50%, #10b981 0, #10b981 1px, transparent 1px, transparent 30px),
         linear-gradient(to right, #10b981 1px, transparent 1px);
     background-size: 100% 100%, 40px 100%;
-    
-    /* Fades the pattern out towards the right */
     mask-image: linear-gradient(to right, black 50%, transparent 100%);
 }
 
 @keyframes cardUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
 
-/* ── THE LOGIN CARD (Tech style, but light on white) ── */
 .login-card { 
     animation: cardUp 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s both; 
-    background: rgba(255, 255, 255, 0.98) !important; /* Slight opacity for background graphic bleed */
+    background: rgba(255, 255, 255, 0.98) !important; 
     border: 1px solid #10b981;
-    /* Cleaner shadow for white background, with slight inner glow */
     box-shadow: 0 15px 50px rgba(0,0,0,0.05), inset 0 0 10px rgba(16, 185, 129, 0.04) !important;
     backdrop-filter: blur(10px);
-    
-    /* Sci-fi angled corners maintained */
     clip-path: polygon(20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%, 0 20px);
 }
 
-/* Text inside card needs refinement for white background */
-.login-card h1 { color: #1e293b !important; }
+.login-card h1 { color: #1e293b !important; font-weight: 900; letter-spacing: -0.5px; }
 .login-card p { color: #64748b !important; }
-
-/* The top gradient bar from original HTML (maintain theme colors) */
-.login-card .h-2 {
-    background: linear-gradient(90deg, #10b981, #2dd4bf, #059669);
-}
+.login-card .h-2 { background: linear-gradient(90deg, #10b981, #2dd4bf, #059669); }
 
 .back-btn { 
     display: inline-flex; align-items: center; gap: 6px; 
@@ -86,51 +55,85 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
     width: 100%; padding: 0.9rem 1.1rem; 
     background: #ffffff !important; 
     border: 1px solid #e2e8f0; 
-    font-size: 0.9rem; font-family: 'Nunito', monospace; outline: none; transition: all 0.2s; 
+    font-size: 0.9rem; outline: none; transition: all 0.2s; 
     color: #0f172a !important; font-weight: 600; 
 }
-.login-input:focus { 
-    border-color: #10b981; 
-    /* The "Inset pop" focus style */
-    box-shadow: inset 4px 0 0 0 #10b981, 0 0 10px rgba(16, 185, 129, 0.06); 
-}
+.login-input:focus { border-color: #10b981; box-shadow: inset 4px 0 0 0 #10b981, 0 0 10px rgba(16, 185, 129, 0.06); }
 
 /* ── FORM INPUTS (shared) ── */
-.form-input { transition: border-color 0.2s, box-shadow 0.2s; background: #ffffff; border: 1px solid #cbd5e1; }
+.form-input { transition: border-color 0.2s, box-shadow 0.2s; background: #ffffff; border: 1px solid #cbd5e1; color: #0f172a; }
 .form-input:focus:not(:disabled) { border-color: #10b981; box-shadow: inset 3px 0 0 0 #10b981; outline: none; }
 .form-input:disabled { background-color: #f1f5f9; color: #64748b; cursor: not-allowed; border-color: #e2e8f0; }
 
-/* ── STAT CARDS ── */
+/* ── SIDEBAR (High Contrast Fix) ── */
+#sidebar { 
+    background: #ffffff !important; 
+    border-right: 1px solid #e2e8f0 !important; 
+    box-shadow: 2px 0 10px rgba(0,0,0,0.02);
+}
+
+/* Force readable text in sidebar headers and profile blocks */
+#sidebar h2, #sidebar h3, #sidebar p, #sidebar span { color: #1e293b !important; }
+
+.nav-section-label { 
+    font-size: 10px; font-weight: 800; color: #64748b !important; 
+    text-transform: uppercase; letter-spacing: 0.15em; 
+    padding: 0 12px; margin-top: 24px; margin-bottom: 8px; 
+    border-bottom: 1px solid #f1f5f9; padding-bottom: 6px; 
+}
+
+.nav-item { 
+    color: #475569 !important; font-weight: 600; 
+    transition: all 0.15s ease; position: relative; 
+    border: 1px solid transparent; margin-bottom: 4px;
+}
+.nav-item:hover { background: #f8fafc !important; color: #0f172a !important; border-color: #e2e8f0; }
+.nav-item.active { 
+    background: rgba(16, 185, 129, 0.05) !important; 
+    color: #059669 !important; font-weight: 700;
+    border: 1px solid #10b981 !important; 
+}
+.nav-item.active::before { 
+    content: ''; position: absolute; left: 0; top: 0; 
+    width: 4px; height: 100%; background: #10b981; 
+}
+
+/* ── DASHBOARD ELEMENTS ── */
+/* Stat Cards */
 .stat-card { 
     transition: transform 0.18s, box-shadow 0.18s; 
-    border: 1px solid #e2e8f0; 
-    background: #ffffff;
+    border: 1px solid #e2e8f0 !important; 
+    background: #ffffff !important;
     clip-path: polygon(15px 0, 100% 0, 100% calc(100% - 15px), calc(100% - 15px) 100%, 0 100%, 0 15px);
 }
-.stat-card:hover { transform: translateY(-2px); border-color: #10b981; box-shadow: 0 10px 25px rgba(0,0,0,0.03); }
+.stat-card:hover { transform: translateY(-2px); border-color: #10b981 !important; box-shadow: 0 10px 25px rgba(0,0,0,0.03); }
+.stat-card * { color: #0f172a; } /* Force dark text inside cards */
+.stat-card .text-slate-500 { color: #64748b !important; } /* Restore subtitle color */
 
-/* ── BADGES ── */
-.badge { font-size: 0.65rem; font-weight: 800; padding: 4px 10px; letter-spacing: 0.08em; text-transform: uppercase; border: 1px solid transparent; }
+/* Badges */
+.badge { font-size: 0.7rem; font-weight: 800; padding: 4px 10px; letter-spacing: 0.05em; text-transform: uppercase; border: 1px solid transparent; }
 .badge-active { background: #dcfce7; color: #16a34a; border-color: #bbf7d0; }
 .badge-archived { background: #fee2e2; color: #dc2626; border-color: #fecaca; }
 
-/* ── QUICK ACTION BUTTONS ── */
-.qa-btn { display: flex; align-items: center; gap: 10px; padding: 12px 16px; font-weight: 800; font-size: 0.83rem; transition: all 0.18s; border: 1px solid #cbd5e1; background: #ffffff; text-decoration: none; text-transform: uppercase; letter-spacing: 1px; color: #1e293b; }
-.qa-btn:hover { background: #10b981; color: #fff; border-color: #10b981; box-shadow: 4px 4px 0 rgba(16, 185, 129, 0.2); transform: translate(-2px, -2px); }
-.qa-icon { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; background: #f8fafc; border: 1px solid #e2e8f0; color: #10b981; }
+/* Quick Action Buttons */
+.qa-btn { 
+    display: flex; align-items: center; gap: 10px; padding: 12px 16px; 
+    font-weight: 800; font-size: 0.85rem; transition: all 0.18s; 
+    border: 1px solid #cbd5e1 !important; background: #ffffff !important; 
+    text-decoration: none; text-transform: uppercase; letter-spacing: 0.5px; color: #1e293b !important; 
+}
+.qa-btn:hover { background: #10b981 !important; color: #fff !important; border-color: #10b981 !important; box-shadow: 4px 4px 0 rgba(16, 185, 129, 0.2); transform: translate(-2px, -2px); }
+.qa-icon { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; background: #f8fafc; border: 1px solid #e2e8f0; color: #10b981; transition: all 0.2s; }
 .qa-btn:hover .qa-icon { color: #fff; border-color: transparent; background: transparent; }
 
-/* ── CLASS CHECKBOXES ── */
-.cls-cb-wrap { display: flex; flex-direction: column; gap: 7px; text-align: left; }
-.cls-cb-item { display: flex; align-items: center; gap: 10px; padding: 11px 13px; border: 1px solid #e2e8f0; cursor: pointer; transition: all 0.13s; background: #fff; }
-.cls-cb-item:hover { border-color: #10b981; background: #f0fdf4; box-shadow: inset 2px 0 0 #10b981; }
-.cls-cb-item.selected { border-color: #10b981; background: rgba(16, 185, 129, 0.03); box-shadow: inset 4px 0 0 #10b981; }
-.cls-cb-item input[type=checkbox] { accent-color: #10b981; }
+/* Recent Activity Rows */
+.gb-row, .trow { border-bottom: 1px solid #e2e8f0; transition: background 0.1s; background: #ffffff; }
+.gb-row:hover, .trow:hover { background: #f8fafc !important; }
 
-/* ── SUBJECT CARDS ── */
+/* Subject Cards */
 .subject-card { display: flex; align-items: flex-start; justify-content: space-between; background: #fff; border: 1px solid #e2e8f0; padding: 12px 14px; transition: all 0.13s; border-left: 4px solid #10b981; }
 .subject-card:hover { transform: translateX(4px); box-shadow: -4px 4px 0 rgba(16, 185, 129, 0.05); }
 .subject-card-archived { border-left-color: #ef4444; }
 
-/* ── TOPBAR ── */
-.topbar { background: #fff; border-bottom: 1px solid #e2e8f0; box-shadow: 0 1px 4px rgba(0,0,0,0.02); }
+/* Topbar */
+.topbar { background: #fff !important; border-bottom: 1px solid #e2e8f0 !important; box-shadow: 0 1px 4px rgba(0,0,0,0.02); }
