@@ -59,37 +59,47 @@
                             
                             <div class="lg:col-span-3 space-y-5">
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                                    <div>
+                                    
+                                    <div class="relative">
                                         <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Student *</label>
-                                        <select id="eg-student" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm">
-                                            <option value="">— Select Student —</option>
-                                        </select>
+                                        <input type="text" id="eg-student-search" autocomplete="off" placeholder="Type to search student..." class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm pr-10 focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none">
+                                        <input type="hidden" id="eg-student"> <div class="absolute right-3 top-9 text-slate-400 pointer-events-none"><i class="fa-solid fa-search"></i></div>
+                                        <ul id="eg-student-list" class="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto hidden"></ul>
                                     </div>
-                                    <div>
+
+                                    <div class="relative">
                                         <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Subject *</label>
-                                        <select id="eg-subject" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm">
-                                            <option value="">— Select Subject —</option>
-                                        </select>
+                                        <input type="text" id="eg-subject-search" autocomplete="off" placeholder="Type to search subject..." class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm pr-10 focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none">
+                                        <input type="hidden" id="eg-subject">
+                                        <div class="absolute right-3 top-9 text-slate-400 pointer-events-none"><i class="fa-solid fa-chevron-down"></i></div>
+                                        <ul id="eg-subject-list" class="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto hidden"></ul>
                                     </div>
-                                    <div>
+
+                                    <div class="relative">
                                         <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5 flex justify-between items-center">
                                             <span>Grade Type *</span>
                                             <a href="../settings/settings.html" class="text-[9px] text-blue-600 hover:underline normal-case font-bold">+ Manage Types</a>
                                         </label>
-                                        <select id="eg-type" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"></select>
+                                        <input type="text" id="eg-type-search" autocomplete="off" placeholder="Type grade type..." class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm pr-10 focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none">
+                                        <input type="hidden" id="eg-type">
+                                        <div class="absolute right-3 top-9 text-slate-400 pointer-events-none"><i class="fa-solid fa-chevron-down"></i></div>
+                                        <ul id="eg-type-list" class="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto hidden"></ul>
                                     </div>
+
                                     <div>
                                         <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Date</label>
-                                        <input type="date" id="eg-date" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-600">
+                                        <input type="date" id="eg-date" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-600 focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none">
                                     </div>
                                 </div>
+                                
                                 <div>
                                     <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Assignment Title *</label>
-                                    <input type="text" id="eg-title" placeholder="e.g. Chapter 4 Math Quiz" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                                    <input type="text" id="eg-title" placeholder="e.g. Chapter 4 Math Quiz" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none">
                                 </div>
+                                
                                 <div>
                                     <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Teacher Notes <span class="text-[10px] font-semibold normal-case text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded ml-1">Visible to Parents</span></label>
-                                    <textarea id="eg-notes" placeholder="Optional feedback for the student and parent..." class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm h-24 resize-none"></textarea>
+                                    <textarea id="eg-notes" placeholder="Optional feedback for the student and parent..." class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm h-24 resize-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none"></textarea>
                                 </div>
                             </div>
                             
@@ -98,11 +108,11 @@
                                     <div class="grid grid-cols-2 gap-5">
                                         <div>
                                             <label class="block text-xs font-black text-emerald-800 uppercase tracking-wider mb-1.5 text-center">Score</label>
-                                            <input type="number" id="eg-score" placeholder="85" class="form-input w-full p-4 bg-white border-2 border-emerald-200 rounded-2xl text-4xl font-black text-emerald-700 text-center shadow-sm">
+                                            <input type="number" id="eg-score" placeholder="85" class="form-input w-full p-4 bg-white border-2 border-emerald-200 rounded-2xl text-4xl font-black text-emerald-700 text-center shadow-sm focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 transition-all outline-none">
                                         </div>
                                         <div>
                                             <label class="block text-xs font-black text-slate-600 uppercase tracking-wider mb-1.5 text-center">Out of (Max)</label>
-                                            <input type="number" id="eg-max" value="100" class="form-input w-full p-4 bg-white border-2 border-slate-200 rounded-2xl text-4xl font-bold text-slate-600 text-center shadow-sm">
+                                            <input type="number" id="eg-max" value="100" class="form-input w-full p-4 bg-white border-2 border-slate-200 rounded-2xl text-4xl font-bold text-slate-600 text-center shadow-sm focus:ring-4 focus:ring-slate-100 focus:border-slate-400 transition-all outline-none">
                                         </div>
                                     </div>
                                     <div id="eg-preview" class="bg-white border-2 border-emerald-200 rounded-2xl p-5 shadow-sm">
