@@ -1,5 +1,5 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { collection, query, where, getDocs, getDoc, doc, updateDoc, addDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, query, where, getDocs, getDoc, doc, updateDoc, addDoc, setDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { openOverlay, closeOverlay, showMsg, gradeColorClass, standingBadge, standingText, gradeFill, letterGrade, downloadCSV } from '../../assets/js/utils.js';
@@ -27,13 +27,12 @@ function getClasses()        { return session.teacherData.classes || [session.te
 function getActiveSubjects() { return (session.teacherData.subjects || []).filter(s => !s.archived); }
 function getGradeTypes()     { return session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
 
+// ── CHANGED: cleaned charset, no ambiguous chars ──────────────────────────────
 function generateStudentId() {
-    const year = new Date().getFullYear().toString().slice(-2);
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const year  = new Date().getFullYear().toString().slice(-2);
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let rand = '';
-    for(let i = 0; i < 5; i++) {
-        rand += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
+    for (let i = 0; i < 5; i++) rand += chars.charAt(Math.floor(Math.random() * chars.length));
     return `S${year}-${rand}`;
 }
 
@@ -102,15 +101,15 @@ async function loadSemesters() {
             activeId = schoolSnap.data()?.activeSemesterId || '';
         } catch(e) {}
 
-        const semSel = document.getElementById('activeSemester');
+        const semSel   = document.getElementById('activeSemester');
         const sbPeriod = document.getElementById('sb-period');
 
         if (semSel) {
             semSel.innerHTML = '';
             rawSemesters.forEach(s => {
-                const opt        = document.createElement('option');
-                opt.value        = s.id;
-                opt.textContent  = s.name;
+                const opt       = document.createElement('option');
+                opt.value       = s.id;
+                opt.textContent = s.name;
                 if (s.id === activeId) opt.selected = true;
                 semSel.appendChild(opt);
             });
@@ -160,7 +159,7 @@ function checkLockStatus() {
     updatePeriodLabel();
 }
 
-// ── 6. LOAD STUDENTS ──────────────────────────────────────────────────────────
+// ── 6. LOAD STUDENTS — GLOBAL QUERY ──────────────────────────────────────────
 async function loadStudents() {
     const tbody = document.getElementById('studentsTableBody');
     tbody.innerHTML = `<tr><td colspan="9"><div class="table-loader">
@@ -168,11 +167,13 @@ async function loadStudents() {
     </div></td></tr>`;
 
     try {
-        const allActSnap  = await getDocs(query(
-            collection(db, 'schools', session.schoolId, 'students'),
-            where('archived', '==', false)
+        // ── CHANGED: query global /students for active students at this school ──
+        const allActSnap = await getDocs(query(
+            collection(db, 'students'),
+            where('currentSchoolId', '==', session.schoolId),
+            where('enrollmentStatus', '==', 'Active')
         ));
-        const allActive   = allActSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const allActive = allActSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
         allStudentsCache        = allActive.filter(s => s.teacherId === session.teacherId);
         unassignedStudentsCache = allActive.filter(s => !s.teacherId || !s.className);
@@ -190,12 +191,11 @@ async function loadStudents() {
             tbody.innerHTML = `<tr><td colspan="9">
                 <div class="table-loader">
                     <i class="fa-solid fa-user-plus" style="color:#c5d0db;"></i>
-                    <p>No students yet — add your first student to get started.</p>
+                    <p>No students yet — enroll your first student to get started.</p>
                 </div>
             </td></tr>`;
             const sbRisk0 = document.getElementById('sb-risk');
             if (sbRisk0) { sbRisk0.textContent = '0'; sbRisk0.classList.remove('is-risk'); }
-            
             localStorage.setItem('connectus_sidebar_stats', JSON.stringify({ students: 0, risk: 0 }));
             return;
         }
@@ -214,7 +214,7 @@ async function loadStudents() {
 
             if (avg !== null && avg < 65) riskCount++;
 
-            const avgDisplay  = avg !== null
+            const avgDisplay = avg !== null
                 ? `<span class="grade-num ${gradeNumClass(avg)}">${avg}%</span>`
                 : `<span style="color:#9ab0c6;font-family:'DM Mono',monospace;">—</span>`;
 
@@ -228,7 +228,10 @@ async function loadStudents() {
                 <td>
                     <div class="student-cell">
                         <div class="student-initial">${s.name.charAt(0).toUpperCase()}</div>
-                        <span class="student-name">${escHtml(s.name)}</span>
+                        <div>
+                            <span class="student-name">${escHtml(s.name)}</span>
+                            <p style="font-size:10px;font-family:'DM Mono',monospace;color:#9ab0c6;margin:1px 0 0;letter-spacing:0.05em;">${s.id}</p>
+                        </div>
                     </div>
                 </td>
                 <td style="font-size:12.5px;font-weight:500;color:#374f6b;">${escHtml(s.className || '—')}</td>
@@ -272,16 +275,15 @@ async function loadStudents() {
                 <p style="color:#dc2626;">Error loading roster. Please refresh the page.</p>
             </div>
         </td></tr>`;
-        
         const sbStudentsErr = document.getElementById('sb-students');
-        if (sbStudentsErr) sbStudentsErr.textContent = allStudentsCache.length || '0';
+        if (sbStudentsErr) sbStudentsErr.textContent = '0';
         const sbRiskErr = document.getElementById('sb-risk');
         if (sbRiskErr) { sbRiskErr.textContent = '0'; sbRiskErr.classList.remove('is-risk'); }
-
-        localStorage.setItem('connectus_sidebar_stats', JSON.stringify({ students: allStudentsCache.length || 0, risk: 0 }));
+        localStorage.setItem('connectus_sidebar_stats', JSON.stringify({ students: 0, risk: 0 }));
     }
 }
 
+// ── UNCHANGED: grades still written to siloed path by grade_form.js ───────────
 async function fetchAllStudentGrades(semId) {
     const all = [];
     await Promise.all(allStudentsCache.map(async s => {
@@ -298,7 +300,6 @@ async function fetchAllStudentGrades(semId) {
 }
 
 // ── 7. STANDING LABEL HELPERS ─────────────────────────────────────────────────
-
 function standingLabelHtml(avg) {
     if (avg === null) return `<span class="standing-label sl-none">No Data</span>`;
     if (avg >= 90)    return `<span class="standing-label sl-excelling"><i class="fa-solid fa-circle-check" style="font-size:9px;"></i>Excelling</span>`;
@@ -346,105 +347,200 @@ window.quickGradeStudent = function (studentId) {
     window.location.assign('../grade_form/grade_form.html');
 };
 
-// ── 9. ADD STUDENT MODAL ──────────────────────────────────────────────────────
+// ── 9. ENROLL / CLAIM STUDENT — SEARCH-FIRST FLOW ────────────────────────────
 window.openAddStudentModal = function () {
-    ['sName', 'sParentPhone', 'sPin', 'sParentName', 'sDob'].forEach(id => { document.getElementById(id).value = ''; });
+    // Reset search area
+    const searchQ = document.getElementById('sSearchQuery');
+    const searchR = document.getElementById('sSearchResults');
+    if (searchQ) searchQ.value = '';
+    if (searchR) { searchR.innerHTML = ''; searchR.classList.add('hidden'); }
+
+    // Reset create form fields
+    ['sName', 'sParentPhone', 'sParentName', 'sDob'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
     document.getElementById('addStudentMsg').classList.add('hidden');
-    document.getElementById('sAddMethod').value = 'new';
-    toggleAddMethod();
 
-    const exSel = document.getElementById('sExistingSelect');
-    if (!unassignedStudentsCache.length) {
-        exSel.innerHTML  = '<option value="">No unassigned students available.</option>';
-        exSel.disabled   = true;
-    } else {
-        exSel.disabled   = false;
-        exSel.innerHTML  = '<option value="">— Select student —</option>' +
-            unassignedStudentsCache.map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`).join('');
-    }
-
+    // Populate class dropdown
     const classes = getClasses().filter(Boolean);
     const sel     = document.getElementById('sClass');
-    let optionsHtml = '<option value="">— Select a Class —</option>';
-    optionsHtml += classes.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
-    sel.innerHTML = optionsHtml;
+    sel.innerHTML = '<option value="">— Select a Class —</option>' +
+        classes.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
 
     openOverlay('addStudentModal', 'addStudentModalInner');
 };
 
 window.closeAddStudentModal = function () { closeOverlay('addStudentModal', 'addStudentModalInner'); };
 
-window.toggleAddMethod = function () {
-    const val = document.getElementById('sAddMethod').value;
-    const newF = document.getElementById('sNewStudentFields');
-    const exF  = document.getElementById('sExistingStudentFields');
-    newF.style.display = val === 'new'  ? 'flex' : 'none';
-    exF.style.display  = val !== 'new'  ? 'flex' : 'none';
-    newF.classList.toggle('hidden', val !== 'new');
-    exF.classList.toggle('hidden',  val === 'new');
-};
+// ── Stub: no longer used but kept to avoid errors from any cached calls ───────
+window.toggleAddMethod = function () {};
 
-document.getElementById('saveStudentBtn').addEventListener('click', async () => {
-    const method        = document.getElementById('sAddMethod').value;
-    const assignedClass = document.getElementById('sClass').value;
+// ── SEARCH NATIONAL REGISTRY ──────────────────────────────────────────────────
+window.searchStudentRegistry = async function () {
+    const searchTerm = (document.getElementById('sSearchQuery')?.value || '').trim();
+    if (!searchTerm) { alert('Enter a name or Global ID to search.'); return; }
 
-    const btn = document.getElementById('saveStudentBtn');
-    btn.textContent = 'Saving…';
+    const resultsDiv = document.getElementById('sSearchResults');
+    resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#9ab0c6;font-size:12px;">
+        <i class="fa-solid fa-spinner fa-spin" style="margin-right:6px;"></i>Searching National Registry…
+    </div>`;
+    resultsDiv.classList.remove('hidden');
+
+    const btn = document.getElementById('sSearchBtn');
+    btn.textContent = '…';
     btn.disabled    = true;
 
-    if (!assignedClass) {
-        showMsg('addStudentMsg', 'You must assign the student to a class.', true);
-        btn.textContent = 'Save to Roster'; 
-        btn.disabled = false; 
+    try {
+        let students = [];
+        const idPattern = /^S\d{2}-[A-Z0-9]{5}$/i;
+
+        if (idPattern.test(searchTerm.replace(/\s/g, ''))) {
+            // ── Exact ID lookup ────────────────────────────────────────────
+            const snap = await getDoc(doc(db, 'students', searchTerm.toUpperCase()));
+            if (snap.exists()) students = [{ id: snap.id, ...snap.data() }];
+        } else {
+            // ── Name prefix search across global registry ──────────────────
+            const snap = await getDocs(query(
+                collection(db, 'students'),
+                where('name', '>=', searchTerm),
+                where('name', '<=', searchTerm + '\uf8ff')
+            ));
+            students = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        }
+
+        if (!students.length) {
+            resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#9ab0c6;font-size:12px;">
+                No students found. Fill in the form below to create a new identity.
+            </div>`;
+            btn.textContent = 'Search';
+            btn.disabled    = false;
+            return;
+        }
+
+        resultsDiv.innerHTML = students.map(s => {
+            const alreadyHere  = s.currentSchoolId === session.schoolId && s.teacherId === session.teacherId;
+            const atThisSchool = s.currentSchoolId === session.schoolId;
+            const statusLabel  = alreadyHere  ? 'Already in your roster'
+                               : atThisSchool ? 'At this school — unassigned'
+                               : s.currentSchoolId ? 'At another school'
+                               : 'Not currently enrolled';
+            const statusColor  = alreadyHere  ? '#9ab0c6' : atThisSchool ? '#0ea871' : '#374f6b';
+            const canClaim     = !alreadyHere;
+
+            return `<div style="padding:12px 16px;border-bottom:1px solid #f0f4f8;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                <div style="flex:1;min-width:0;">
+                    <p style="font-weight:700;color:#0d1f35;font-size:13px;margin:0 0 1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                        ${escHtml(s.name)}
+                    </p>
+                    <p style="font-size:10.5px;font-family:'DM Mono',monospace;color:#9ab0c6;margin:0 0 2px;">${s.id}</p>
+                    <p style="font-size:10.5px;color:${statusColor};font-weight:600;margin:0;">
+                        ${s.dob ? 'DOB: ' + s.dob + ' · ' : ''}${statusLabel}
+                    </p>
+                </div>
+                ${canClaim ? `
+                <button onclick="window.claimSearchedStudent('${s.id}')"
+                        style="padding:6px 14px;background:#0ea871;border:none;border-radius:3px;
+                               color:#fff;font-size:11.5px;font-weight:700;font-family:inherit;
+                               cursor:pointer;white-space:nowrap;flex-shrink:0;">
+                    Claim
+                </button>` : `
+                <span style="font-size:11px;color:#9ab0c6;font-weight:600;white-space:nowrap;flex-shrink:0;">
+                    In Roster
+                </span>`}
+            </div>`;
+        }).join('');
+
+    } catch (e) {
+        console.error('[Roster] searchStudentRegistry:', e);
+        resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;">
+            Search failed. Try again.
+        </div>`;
+    }
+
+    btn.textContent = 'Search';
+    btn.disabled    = false;
+};
+
+// ── CLAIM STUDENT FROM SEARCH RESULTS ─────────────────────────────────────────
+window.claimSearchedStudent = async function (studentId) {
+    const classVal = document.getElementById('sClass').value;
+    if (!classVal) {
+        alert('Please select a class from the "Assign to Class" dropdown first, then claim.');
         return;
     }
 
+    const btn = document.querySelector(`button[onclick="window.claimSearchedStudent('${studentId}')"]`);
+    if (btn) { btn.textContent = '…'; btn.disabled = true; }
+
     try {
-        if (method === 'new') {
-            const name = document.getElementById('sName').value.trim();
-            if (!name) {
-                showMsg('addStudentMsg', 'Student name is required.', true);
-                btn.textContent = 'Save to Roster'; btn.disabled = false; return;
-            }
-            
-            const allActSnap = await getDocs(query(
-                collection(db, 'schools', session.schoolId, 'students'),
-                where('archived', '==', false)
-            ));
-            if (allActSnap.size >= schoolLimit) {
-                showMsg('addStudentMsg', `School capacity reached (${schoolLimit} max). Contact Admin to upgrade.`, true);
-                btn.textContent = 'Save to Roster'; btn.disabled = false; return;
-            }
-            
-            await addDoc(collection(db, 'schools', session.schoolId, 'students'), {
-                name,
-                parentName:  document.getElementById('sParentName').value.trim(),
-                parentPhone: document.getElementById('sParentPhone').value.trim(),
-                pin:         document.getElementById('sPin').value.trim() || Math.floor(1000 + Math.random() * 9000).toString(),
-                teacherId:   session.teacherId,
-                className:   assignedClass, 
-                dob:         document.getElementById('sDob').value,
-                medicalNotes: '', 
-                studentIdNum: generateStudentId(), 
-                archived:    false,
-                archivedAt:  null,
-                archiveReason: '',
-                createdAt:   new Date().toISOString()
-            });
-            
-        } else {
-            const sid = document.getElementById('sExistingSelect').value;
-            if (!sid) {
-                showMsg('addStudentMsg', 'Please select an existing student.', true);
-                btn.textContent = 'Save to Roster'; btn.disabled = false; return;
-            }
-            await updateDoc(doc(db, 'schools', session.schoolId, 'students', sid), {
-                teacherId: session.teacherId,
-                className: assignedClass
-            });
+        await updateDoc(doc(db, 'students', studentId), {
+            currentSchoolId:  session.schoolId,
+            teacherId:        session.teacherId,
+            className:        classVal,
+            enrollmentStatus: 'Active'
+        });
+        window.closeAddStudentModal();
+        await loadStudents();
+    } catch (e) {
+        console.error('[Roster] claimSearchedStudent:', e);
+        alert('Error claiming student. Please try again.');
+        if (btn) { btn.textContent = 'Claim'; btn.disabled = false; }
+    }
+};
+
+// ── SAVE NEW STUDENT ──────────────────────────────────────────────────────────
+document.getElementById('saveStudentBtn').addEventListener('click', async () => {
+    const assignedClass = document.getElementById('sClass').value;
+    const btn           = document.getElementById('saveStudentBtn');
+
+    if (!assignedClass) {
+        showMsg('addStudentMsg', 'You must assign the student to a class.', true);
+        return;
+    }
+
+    const name = document.getElementById('sName').value.trim();
+    if (!name) {
+        showMsg('addStudentMsg', 'Student name is required.', true);
+        return;
+    }
+
+    btn.textContent = 'Saving…';
+    btn.disabled    = true;
+
+    try {
+        // ── CHANGED: check limit against global collection ─────────────────
+        const countSnap = await getDocs(query(
+            collection(db, 'students'),
+            where('currentSchoolId', '==', session.schoolId),
+            where('enrollmentStatus', '==', 'Active')
+        ));
+        if (countSnap.size >= schoolLimit) {
+            showMsg('addStudentMsg', `School capacity reached (${schoolLimit} max). Contact Admin to upgrade.`, true);
+            btn.textContent = 'Save to Roster';
+            btn.disabled    = false;
+            return;
         }
-        
-        closeAddStudentModal();
+
+        // ── CHANGED: setDoc on global /students path with new schema ───────
+        const newId = generateStudentId();
+        await setDoc(doc(db, 'students', newId), {
+            studentIdNum:     newId,
+            name,
+            dob:              document.getElementById('sDob').value,
+            parentName:       document.getElementById('sParentName').value.trim(),
+            parentPhone:      document.getElementById('sParentPhone').value.trim(),
+            pin:              Math.floor(1000 + Math.random() * 9000).toString(),
+            teacherId:        session.teacherId,
+            className:        assignedClass,
+            currentSchoolId:  session.schoolId,
+            enrollmentStatus: 'Active',
+            medicalNotes:     '',
+            academicHistory:  [],
+            createdAt:        new Date().toISOString()
+        });
+
+        window.closeAddStudentModal();
         await loadStudents();
     } catch (e) {
         console.error('[Roster] saveStudent:', e);
@@ -455,7 +551,7 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
     btn.disabled    = false;
 });
 
-// ── 10. STUDENT DETAIL PANEL (WITH EDIT CLASS & REASON) ───────────────────────
+// ── 10. STUDENT DETAIL PANEL ──────────────────────────────────────────────────
 window.openStudentPanel = async function (studentId) {
     currentStudentId = studentId;
     const student    = allStudentsCache.find(s => s.id === studentId);
@@ -475,7 +571,7 @@ window.openStudentPanel = async function (studentId) {
     if (qGBtn) {
         if (!isSemesterLocked) {
             qGBtn.style.display = 'inline-flex';
-            qGBtn.onclick = () => { closeStudentPanel(); quickGradeStudent(studentId); };
+            qGBtn.onclick = () => { window.closeStudentPanel(); window.quickGradeStudent(studentId); };
         } else {
             qGBtn.style.display = 'none';
         }
@@ -483,37 +579,39 @@ window.openStudentPanel = async function (studentId) {
 
     openOverlay('studentPanel', 'studentPanelInner');
 
-    // Populate Edit Fields
-    document.getElementById('editSName').value       = student?.name         || '';
-    document.getElementById('editSDob').value        = student?.dob          || '';
-    document.getElementById('editSParentName').value = student?.parentName   || '';
-    document.getElementById('editSPhone').value      = student?.parentPhone  || '';
+    // Prefill edit fields
+    document.getElementById('editSName').value       = student?.name        || '';
+    document.getElementById('editSDob').value        = student?.dob         || '';
+    document.getElementById('editSParentName').value = student?.parentName  || '';
+    document.getElementById('editSPhone').value      = student?.parentPhone || '';
 
-    // Populate Class Edit Dropdown
+    // Populate class edit dropdown
     const classSel = document.getElementById('editSClass');
-    const classes = getClasses().filter(Boolean);
-    classSel.innerHTML = classes.map(c => `<option value="${escHtml(c)}" ${c === student.className ? 'selected' : ''}>${escHtml(c)}</option>`).join('');
-    
-    // Store original class to check if it changes
-    classSel.dataset.original = student.className || '';
-    
+    const classes  = getClasses().filter(Boolean);
+    classSel.innerHTML = classes.map(c =>
+        `<option value="${escHtml(c)}" ${c === student?.className ? 'selected' : ''}>${escHtml(c)}</option>`
+    ).join('');
+    classSel.dataset.original = student?.className || '';
+
     // Reset reason box
     document.getElementById('editSClassReasonWrap').classList.add('hidden');
     document.getElementById('editSClassReason').value = '';
 
-    // Info rows
+    // Info rows — CHANGED: show global ID (doc id = studentIdNum)
     document.getElementById('sInfoGrid').innerHTML = [
-        ['Name',          student?.name || '—'],
-        ['ID Number',     student?.studentIdNum || '—'],
-        ['Class',         student?.className || '—'],
-        ['DOB',           student?.dob || '—'],
-        ['Parent Name',   student?.parentName || '—'],
-        ['Parent Phone',  student?.parentPhone || '—'],
-        ['Enrolled',      student?.createdAt ? new Date(student.createdAt).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' }) : '—']
+        ['Name',         student?.name         || '—'],
+        ['Global ID',    student?.id           || '—'],
+        ['Class',        student?.className    || '—'],
+        ['DOB',          student?.dob          || '—'],
+        ['Parent Name',  student?.parentName   || '—'],
+        ['Parent Phone', student?.parentPhone  || '—'],
+        ['Enrolled',     student?.createdAt
+            ? new Date(student.createdAt).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })
+            : '—']
     ].map(([label, value]) => `
         <div class="info-row">
             <span class="info-row-label">${label}</span>
-            <span class="info-row-value">${escHtml(value)}</span>
+            <span class="info-row-value" style="${label === 'Global ID' ? "font-family:'DM Mono',monospace;font-size:11.5px;" : ''}">${escHtml(value)}</span>
         </div>`).join('');
 
     const semId   = document.getElementById('activeSemester')?.value || '';
@@ -521,11 +619,12 @@ window.openStudentPanel = async function (studentId) {
         document.getElementById('activeSemester')?.selectedIndex
     ]?.text || '';
 
-    document.getElementById('sPanelSemName').textContent      = semName;
-    document.getElementById('sPanelFilterSubject').value      = '';
-    document.getElementById('sPanelFilterType').value         = '';
+    document.getElementById('sPanelSemName').textContent = semName;
+    document.getElementById('sPanelFilterSubject').value = '';
+    document.getElementById('sPanelFilterType').value    = '';
 
     try {
+        // ── UNCHANGED: grades still at siloed path (grade_form writes here) ──
         const gradesSnap = await getDocs(
             collection(db, 'schools', session.schoolId, 'students', studentId, 'grades')
         );
@@ -543,7 +642,7 @@ window.openStudentPanel = async function (studentId) {
             '<option value="">All Types</option>' +
             getGradeTypes().map(t => `<option value="${escHtml(t)}">${escHtml(t)}</option>`).join('');
 
-        renderStudentGrades();
+        window.renderStudentGrades();
     } catch (e) {
         console.error('[Roster] openStudentPanel grades:', e);
     }
@@ -585,12 +684,12 @@ window.renderStudentGrades = function () {
             .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
             .map(g => {
                 gradeDetailCache[g.id] = g;
-                const pct    = g.max ? Math.round(g.score / g.max * 100) : null;
-                const color  = pct >= 75 ? '#065f46' : pct >= 65 ? '#78350f' : '#7f1d1d';
-                const bgCol  = pct >= 90 ? '#dcfce7' : pct >= 80 ? '#dbeafe' : pct >= 70 ? '#ccfbf1' : pct >= 65 ? '#fef3c7' : '#fee2e2';
-                const bdCol  = pct >= 90 ? '#bbf7d0' : pct >= 80 ? '#bfdbfe' : pct >= 70 ? '#99f6e4' : pct >= 65 ? '#fde68a' : '#fecaca';
+                const pct   = g.max ? Math.round(g.score / g.max * 100) : null;
+                const color = pct >= 75 ? '#065f46' : pct >= 65 ? '#78350f' : '#7f1d1d';
+                const bgCol = pct >= 90 ? '#dcfce7' : pct >= 80 ? '#dbeafe' : pct >= 70 ? '#ccfbf1' : pct >= 65 ? '#fef3c7' : '#fee2e2';
+                const bdCol = pct >= 90 ? '#bbf7d0' : pct >= 80 ? '#bfdbfe' : pct >= 70 ? '#99f6e4' : pct >= 65 ? '#fde68a' : '#fecaca';
 
-                return `<div onclick="openAssignmentModal('${g.id}')"
+                return `<div onclick="window.openAssignmentModal('${g.id}')"
                              style="display:flex;align-items:center;justify-content:space-between;
                                     background:#fff;border:1px solid #e8edf2;border-radius:3px;
                                     padding:10px 14px;cursor:pointer;transition:border-color 0.12s;"
@@ -619,15 +718,14 @@ window.renderStudentGrades = function () {
             }).join('');
 
         const avgRounded = Math.round(avg);
-        const hdColor    = avgRounded >= 90 ? '#14532d' : avgRounded >= 80 ? '#1e3a8a' : avgRounded >= 70 ? '#134e4a' : avgRounded >= 65 ? '#78350f' : '#7f1d1d';
-        const hdBg       = avgRounded >= 90 ? '#dcfce7' : avgRounded >= 80 ? '#dbeafe' : avgRounded >= 70 ? '#ccfbf1' : avgRounded >= 65 ? '#fef3c7' : '#fee2e2';
-        const hdBd       = avgRounded >= 90 ? '#bbf7d0' : avgRounded >= 80 ? '#bfdbfe' : avgRounded >= 70 ? '#99f6e4' : avgRounded >= 65 ? '#fde68a' : '#fecaca';
+        const hdColor = avgRounded >= 90 ? '#14532d' : avgRounded >= 80 ? '#1e3a8a' : avgRounded >= 70 ? '#134e4a' : avgRounded >= 65 ? '#78350f' : '#7f1d1d';
+        const hdBg    = avgRounded >= 90 ? '#dcfce7' : avgRounded >= 80 ? '#dbeafe' : avgRounded >= 70 ? '#ccfbf1' : avgRounded >= 65 ? '#fef3c7' : '#fee2e2';
+        const hdBd    = avgRounded >= 90 ? '#bbf7d0' : avgRounded >= 80 ? '#bfdbfe' : avgRounded >= 70 ? '#99f6e4' : avgRounded >= 65 ? '#fde68a' : '#fecaca';
 
         return `<div style="border:1px solid #dce3ed;border-radius:4px;overflow:hidden;background:#fff;">
-            <div onclick="toggleAccordion(this)"
+            <div onclick="window.toggleAccordion(this)"
                  style="display:flex;align-items:center;justify-content:space-between;
-                        padding:13px 16px;cursor:pointer;background:#fff;
-                        transition:background 0.12s;"
+                        padding:13px 16px;cursor:pointer;background:#fff;transition:background 0.12s;"
                  onmouseover="this.style.background='#f8fafb'"
                  onmouseout="this.style.background='#fff'">
                 <div style="display:flex;align-items:center;gap:12px;">
@@ -662,22 +760,22 @@ window.renderStudentGrades = function () {
 };
 
 window.toggleAccordion = function (header) {
-    const body = header.nextElementSibling;
+    const body    = header.nextElementSibling;
     body.classList.toggle('open');
     const chevron = header.querySelector('.fa-chevron-down');
     if (chevron) chevron.style.transform = body.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0)';
 };
 
-// ── 11. EDIT STUDENT (WITH CLASS REASON VALIDATION) ───────────────────────────
+// ── 11. EDIT STUDENT ──────────────────────────────────────────────────────────
 window.toggleStudentEdit = function (show) {
-    const form = document.getElementById('sEditForm');
+    const form      = document.getElementById('sEditForm');
     const isVisible = show !== undefined ? show : form.classList.contains('hidden');
     form.classList.toggle('hidden', !isVisible);
     document.getElementById('editStudentMsg').classList.add('hidden');
 };
 
 window.checkClassChange = function () {
-    const sel = document.getElementById('editSClass');
+    const sel  = document.getElementById('editSClass');
     const wrap = document.getElementById('editSClassReasonWrap');
     if (sel.value !== sel.dataset.original && sel.dataset.original !== '') {
         wrap.classList.remove('hidden');
@@ -687,18 +785,18 @@ window.checkClassChange = function () {
 };
 
 document.getElementById('saveStudentEditBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('saveStudentEditBtn');
-    
-    const newClass = document.getElementById('editSClass').value;
+    const btn           = document.getElementById('saveStudentEditBtn');
+    const newClass      = document.getElementById('editSClass').value;
     const originalClass = document.getElementById('editSClass').dataset.original;
-    const reason = document.getElementById('editSClassReason').value.trim();
+    const reason        = document.getElementById('editSClassReason').value.trim();
 
     if (newClass !== originalClass && originalClass !== '' && !reason) {
-        showMsg('editStudentMsg', 'You must provide a reason for changing the student\'s class.', true);
+        showMsg('editStudentMsg', "You must provide a reason for changing the student's class.", true);
         return;
     }
 
-    btn.textContent = 'Saving…'; btn.disabled = true;
+    btn.textContent = 'Saving…';
+    btn.disabled    = true;
 
     try {
         const u = {
@@ -709,20 +807,20 @@ document.getElementById('saveStudentEditBtn').addEventListener('click', async ()
             className:   newClass
         };
 
-        // If class changed, save the reason
         if (newClass !== originalClass && originalClass !== '') {
             u.lastClassChangeReason = reason;
-            u.lastClassChangeDate = new Date().toISOString();
+            u.lastClassChangeDate   = new Date().toISOString();
         }
 
-        await updateDoc(doc(db, 'schools', session.schoolId, 'students', currentStudentId), u);
+        // ── CHANGED: update global doc ────────────────────────────────────
+        await updateDoc(doc(db, 'students', currentStudentId), u);
 
         const idx = allStudentsCache.findIndex(s => s.id === currentStudentId);
         if (idx !== -1) Object.assign(allStudentsCache[idx], u);
         studentMap[currentStudentId] = u.name;
 
         showMsg('editStudentMsg', 'Changes saved successfully.', false);
-        toggleStudentEdit(false);
+        window.toggleStudentEdit(false);
         document.getElementById('sPanelName').textContent = u.name;
         await loadStudents();
     } catch (e) {
@@ -730,7 +828,8 @@ document.getElementById('saveStudentEditBtn').addEventListener('click', async ()
         showMsg('editStudentMsg', 'Error saving changes.', true);
     }
 
-    btn.textContent = 'Save Changes'; btn.disabled = false;
+    btn.textContent = 'Save Changes';
+    btn.disabled    = false;
 });
 
 // ── 12. PIN ───────────────────────────────────────────────────────────────────
@@ -745,21 +844,24 @@ window.saveInlinePin = async function () {
     if (!npin || npin.length < 4) { alert('PIN must be 4–6 digits.'); return; }
 
     const btn = document.getElementById('inlinePinSaveBtn');
-    btn.textContent = '…'; btn.disabled = true;
+    btn.textContent = '…';
+    btn.disabled    = true;
 
     try {
-        await updateDoc(doc(db, 'schools', session.schoolId, 'students', currentStudentId), { pin: npin });
+        // ── CHANGED: update global doc ────────────────────────────────────
+        await updateDoc(doc(db, 'students', currentStudentId), { pin: npin });
         const idx = allStudentsCache.findIndex(s => s.id === currentStudentId);
         if (idx !== -1) allStudentsCache[idx].pin = npin;
         document.getElementById('spinReadonly').textContent = npin;
-        togglePinResetUI(false);
+        window.togglePinResetUI(false);
         await loadStudents();
     } catch (e) {
         console.error('[Roster] saveInlinePin:', e);
         alert('Error saving PIN.');
     }
 
-    btn.textContent = 'Save'; btn.disabled = false;
+    btn.textContent = 'Save';
+    btn.disabled    = false;
 };
 
 // ── 13. ASSIGNMENT DETAIL MODAL ───────────────────────────────────────────────
@@ -801,8 +903,7 @@ window.openAssignmentModal = function (gradeId) {
             ${pct !== null ? `
             <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-top:8px;">
                 <span style="font-size:18px;font-weight:700;color:${color};font-family:'DM Mono',monospace;">${pct}%</span>
-                <span style="font-size:14px;font-weight:700;padding:4px 14px;border-radius:3px;
-                             background:${bg};border:1px solid ${bd};color:${color};">
+                <span style="font-size:14px;font-weight:700;padding:4px 14px;border-radius:3px;background:${bg};border:1px solid ${bd};color:${color};">
                     ${letterGrade(pct)}
                 </span>
             </div>
@@ -826,9 +927,10 @@ window.openAssignmentModal = function (gradeId) {
 
     openOverlay('assignmentModal', 'assignmentModalInner');
 };
+
 window.closeAssignmentModal = function () { closeOverlay('assignmentModal', 'assignmentModalInner'); };
 
-// ── 14. ARCHIVE ───────────────────────────────────────────────────────────────
+// ── 14. ARCHIVE / CLOSE ENROLLMENT ───────────────────────────────────────────
 window.archiveStudent = function () {
     const s = allStudentsCache.find(x => x.id === currentStudentId);
     document.getElementById('archiveStudentName').textContent = s ? s.name : 'this student';
@@ -849,15 +951,29 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
     btn.disabled  = true;
 
     try {
-        await updateDoc(doc(db, 'schools', session.schoolId, 'students', currentStudentId), {
-            archived:      true,
-            archivedAt:    new Date().toISOString(),
-            archiveReason: reason || 'Not specified',
-            teacherId:     '',
-            className:     ''
+        const s        = allStudentsCache.find(x => x.id === currentStudentId);
+        const isTransfer = reason === 'Transferred to another school';
+        const newStatus  = reason === 'Graduated' ? 'Graduated' : isTransfer ? 'Transferred' : 'Archived';
+
+        // ── CHANGED: global doc update with snapshot + enrollmentStatus ────
+        const snapshot = {
+            schoolId:   session.schoolId,
+            teacherId:  s?.teacherId  || '',
+            className:  s?.className  || '',
+            leftAt:     new Date().toISOString(),
+            reason:     reason || 'Not specified'
+        };
+
+        await updateDoc(doc(db, 'students', currentStudentId), {
+            enrollmentStatus: newStatus,
+            currentSchoolId:  isTransfer ? '' : session.schoolId,
+            teacherId:        '',
+            className:        '',
+            academicHistory:  arrayUnion(snapshot)
         });
-        closeArchiveReasonModal();
-        closeStudentPanel();
+
+        window.closeArchiveReasonModal();
+        window.closeStudentPanel();
         await loadStudents();
     } catch (e) {
         console.error('[Roster] archiveStudent:', e);
@@ -870,9 +986,9 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
 
 // ── 15. EXPORT / PRINT ────────────────────────────────────────────────────────
 window.exportRosterCSV = function () {
-    const rows = [['#', 'Name', 'Class', 'Parent Phone', 'Parent PIN', 'Student ID']];
+    const rows = [['Global ID', 'Name', 'Class', 'Parent Phone', 'Parent PIN']];
     allStudentsCache.forEach((s, i) =>
-        rows.push([i + 1, s.name, s.className || '', s.parentPhone || '', s.pin, s.studentIdNum || ''])
+        rows.push([s.id, s.name, s.className || '', s.parentPhone || '', s.pin])
     );
     downloadCSV(rows, `${session.schoolId}_roster.csv`);
 };
@@ -902,7 +1018,6 @@ window.printRoster = function () {
         tbody td { padding: 10px 14px; color: #374f6b; font-size: 12px; }
         tbody td strong { color: #0d1f35; font-weight: 700; }
         .pin { font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.14em; }
-        .badge { display: inline-block; padding: 2px 8px; border-radius: 2px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
         .footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid #e8edf2; display: flex; justify-content: space-between; align-items: center; }
         .footer p { font-size: 10px; color: #9ab0c6; font-style: italic; }
     </style>
@@ -921,7 +1036,7 @@ window.printRoster = function () {
         <thead>
             <tr>
                 <th style="width:40px;">#</th>
-                <th>Student ID</th>
+                <th>Global ID</th>
                 <th>Student Name</th>
                 <th>Class</th>
                 <th>Parent / Guardian Phone</th>
@@ -932,7 +1047,7 @@ window.printRoster = function () {
             ${allStudentsCache.map((s, i) => `
             <tr>
                 <td style="font-family:'DM Mono',monospace;color:#9ab0c6;">${String(i + 1).padStart(2, '0')}</td>
-                <td style="font-family:'DM Mono',monospace;">${escHtml(s.studentIdNum || '—')}</td>
+                <td style="font-family:'DM Mono',monospace;font-size:11px;">${escHtml(s.id)}</td>
                 <td><strong>${escHtml(s.name)}</strong></td>
                 <td>${escHtml(s.className || '—')}</td>
                 <td>${escHtml(s.parentPhone || '—')}</td>
@@ -966,10 +1081,12 @@ window.executeStudentPrint = async function () {
     const studentId  = currentStudentId;
 
     try {
-        const sDoc = await getDoc(doc(db, 'schools', session.schoolId, 'students', studentId));
+        // ── CHANGED: student doc from global path ─────────────────────────
+        const sDoc = await getDoc(doc(db, 'students', studentId));
         if (!sDoc.exists()) { alert('Student not found.'); return; }
         const s = sDoc.data();
 
+        // ── UNCHANGED: grades still at siloed path ────────────────────────
         const gradesSnap = await getDocs(
             collection(db, 'schools', session.schoolId, 'students', studentId, 'grades')
         );
@@ -981,8 +1098,8 @@ window.executeStudentPrint = async function () {
             if (subjFilter !== 'all' && g.subject !== subjFilter) return;
             const sem = rawSemesters.find(sm => sm.id === g.semesterId)?.name || 'Unknown Period';
             const sub = g.subject || 'Uncategorized';
-            if (!bySem[sem])       bySem[sem]       = {};
-            if (!bySem[sem][sub])  bySem[sem][sub]  = [];
+            if (!bySem[sem])      bySem[sem]      = {};
+            if (!bySem[sem][sub]) bySem[sem][sub] = [];
             bySem[sem][sub].push(g);
         });
 
@@ -1006,7 +1123,7 @@ window.executeStudentPrint = async function () {
                         <th style="padding:8px 12px;background:#f2f5f8;color:#6b84a0;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;text-align:center;border:1px solid #e8edf2;">Average</th>
                         <th style="padding:8px 12px;background:#f2f5f8;color:#6b84a0;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;text-align:center;border:1px solid #e8edf2;">Grade</th>
                     </tr></thead><tbody>`;
-                    let semTotal = 0; let semCount = 0;
+                    let semTotal = 0, semCount = 0;
                     for (const sub in bySem[sem]) {
                         const sGrades = bySem[sem][sub];
                         const avg     = Math.round(sGrades.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / sGrades.length);
@@ -1084,7 +1201,7 @@ window.executeStudentPrint = async function () {
         </div>
         <div class="info-grid">
             <div class="info-item"><label>Student Name</label><span>${escHtml(s.name)}</span></div>
-            <div class="info-item"><label>Student ID Number</label><span>${escHtml(s.studentIdNum || '—')}</span></div>
+            <div class="info-item"><label>Global ID</label><span style="font-family:'DM Mono',monospace;">${escHtml(studentId)}</span></div>
             <div class="info-item"><label>Class</label><span>${escHtml(s.className || 'Unassigned')}</span></div>
             <div class="info-item"><label>Teacher</label><span>${escHtml(session.teacherData.name)}</span></div>
         </div>
@@ -1096,7 +1213,7 @@ window.executeStudentPrint = async function () {
         </body></html>`);
 
         w.document.close();
-        closePrintStudentModal();
+        window.closePrintStudentModal();
         setTimeout(() => w.print(), 600);
 
     } catch (e) {
