@@ -110,10 +110,19 @@ async function loadSemesters() {
             semSel.addEventListener('change', () => {
                 checkLockStatus();
                 loadStudents();
+                // Keep sidebar period in sync when period is changed from topbar
+                const sbP = document.getElementById('sb-period');
+                if (sbP) sbP.textContent = semSel.options[semSel.selectedIndex]?.text || '—';
             });
         }
 
         updatePeriodLabel();
+
+        // ── Update sidebar period ──────────────────────────────────────────
+        const sbPeriod = document.getElementById('sb-period');
+        if (sbPeriod && semSel) {
+            sbPeriod.textContent = semSel.options[semSel.selectedIndex]?.text || '—';
+        }
     } catch (e) {
         console.error('[Roster] loadSemesters:', e);
     }
