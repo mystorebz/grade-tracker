@@ -208,13 +208,15 @@ function checkLockStatus() {
 // ── 6. LOAD STUDENTS ──────────────────────────────────────────────────────────
 async function loadStudents() {
     try {
-        const stuQuery = query(
-            collection(db, 'schools', session.schoolId, 'students'),
-            where('archived',  '==', false),
-            where('teacherId', '==', session.teacherId)
-        );
-        const stuSnap    = await getDocs(stuQuery);
-        allStudentsCache = stuSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // CHANGED: query global /students, filter teacherId in memory
+        const stuSnap    = await getDocs(query(
+            collection(db, 'students'),
+            where('currentSchoolId', '==', session.schoolId),
+            where('enrollmentStatus', '==', 'Active')
+        ));
+        allStudentsCache = stuSnap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .filter(d => d.teacherId === session.teacherId);
         studentMap       = {};
         allStudentsCache.forEach(s => { studentMap[s.id] = s.name; });
 
