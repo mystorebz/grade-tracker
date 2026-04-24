@@ -7,14 +7,14 @@ import { gradeColorClass, letterGrade, downloadCSV } from '../../assets/js/utils
 // ── 1. AUTHENTICATION & LAYOUT ──────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
 if (session) {
-    injectTeacherLayout('reports', 'Data Query Builder', 'Generate advanced analytics and custom academic transcripts', false);
+    injectTeacherLayout('reports', 'Data Query Builder', 'Generate advanced analytics, multi-term reports, and custom academic transcripts', false);
 }
 
 // ── 2. STATE VARIABLES ──────────────────────────────────────────────────────
 let allStudentsCache = [];
 let studentMap = {};
 let rawSemesters = [];
-let allGradesCache = null; // Caches { semId, grades[] } to avoid re-fetching same parameters
+let allGradesCache = {}; // Caches { semId: [grades...] } to avoid re-fetching
 let currentQueryResults = []; 
 let currentQueryMeta = {}; 
 
@@ -37,28 +37,58 @@ async function init() {
     document.getElementById('rb-scope').addEventListener('change', toggleScope);
     document.getElementById('generateReportBtn').addEventListener('click', executeIntelligentQuery);
 
-    // Load Dropdowns safely
-    populateStaticDropdowns();
-    await loadSemesters(); // Now properly updates ALL dropdowns and sidebar
+    // Load Checkboxes & Data
+    populateStaticCheckboxes();
+    await loadSemesters(); 
     await loadStudents();
 }
 
-function populateStaticDropdowns() {
-    // Subjects (Active + Archived so historical queries still work)
+function buildCheckbox(idPrefix, value, label, isChecked = true) {
+    const safeId = `${idPrefix}-${value.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    return `
+    <label class="flex items-center gap-3 p-2.5 border border-[#dce3ed] rounded cursor-pointer transition ${isChecked ? 'bg-[#eef4ff] border-[#c7d9fd]' : 'bg-white hover:bg-[#f8fafb]'}" id="wrap-${safeId}">
+        <input type="checkbox" value="${escHtml(value)}" ${isChecked ? 'checked' : ''} onchange="toggleCbVisuals(this, 'wrap-${safeId}')" class="w-4 h-4 text-[#2563eb] rounded border-[#b8c5d4] focus:ring-[#2563eb]">
+        <span class="font-bold text-[#0d1f35] text-[12px] select-none truncate" title="${escHtml(label)}">${escHtml(label)}</span>
+    </label>`;
+}
+
+window.toggleCbVisuals = function(cb, wrapId) {
+    const wrap = document.getElementById(wrapId);
+    if (cb.checked) {
+        wrap.classList.add('bg-[#eef4ff]', 'border-[#c7d9fd]');
+        wrap.classList.remove('bg-white', 'hover:bg-[#f8fafb]');
+    } else {
+        wrap.classList.remove('bg-[#eef4ff]', 'border-[#c7d9fd]');
+        wrap.classList.add('bg-white', 'hover:bg-[#f8fafb]');
+    }
+};
+
+window.toggleAllCheckboxes = function(containerId, state) {
+    const container = document.getElementById(containerId);
+    const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+    checkboxes.forEach(cb => {
+        cb.checked = state;
+        const wrapId = cb.closest('label').id;
+        window.toggleCbVisuals(cb, wrapId);
+    });
+};
+
+function populateStaticCheckboxes() {
+    // Subjects
     const subjects = (session.teacherData.subjects || []);
-    const subSel = document.getElementById('rb-subject');
-    if (subSel) {
-        subSel.innerHTML = '<option value="all">All Subjects (Combined)</option>' + subjects.map(s => `<option value="${escHtml(s.name)}">${escHtml(s.name)}</option>`).join('');
+    const subGrid = document.getElementById('rb-subject-grid');
+    if (subGrid) {
+        subGrid.innerHTML = subjects.map(s => buildCheckbox('sub', s.name, s.name, true)).join('') || '<p class="text-xs text-slate-400">No subjects found.</p>';
     }
 
-    // Types (Active + Archived)
+    // Types
     let types = session.teacherData.customGradeTypes || ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
     let archivedTypes = session.teacherData.archivedGradeTypes || [];
     let allTypes = [...new Set([...types, ...archivedTypes])];
     
-    const typeSel = document.getElementById('rb-type');
-    if (typeSel) {
-        typeSel.innerHTML = '<option value="all">All Assignment Types</option>' + allTypes.map(t => `<option value="${escHtml(t)}">${escHtml(t)}</option>`).join('');
+    const typeGrid = document.getElementById('rb-type-grid');
+    if (typeGrid) {
+        typeGrid.innerHTML = allTypes.map(t => buildCheckbox('typ', t, t, true)).join('');
     }
 }
 
@@ -84,7 +114,7 @@ async function loadSemesters() {
             activeId = schoolSnap.data()?.activeSemesterId || '';
         } catch(e) {}
 
-        // 1. UPDATE THE TOPBAR AND SIDEBAR
+        // Topbar / Sidebar UI
         const topSemSel = document.getElementById('activeSemester');
         const sbPeriod = document.getElementById('sb-period');
         
@@ -103,30 +133,22 @@ async function loadSemesters() {
             });
         }
 
-        // 2. UPDATE THE REPORT BUILDER DROPDOWN
-        const rbSemSel = document.getElementById('rb-semester');
-        if (rbSemSel) {
-            rbSemSel.innerHTML = '<option value="all" class="font-bold text-[#2563eb]">All Periods (Full Academic Year)</option>';
-            rawSemesters.forEach(s => {
-                const opt = document.createElement('option');
-                opt.value = s.id;
-                opt.textContent = s.name;
-                if (s.id === activeId) opt.selected = true; // Auto-select current semester
-                rbSemSel.appendChild(opt);
-            });
+        // Query Builder Grid
+        const semGrid = document.getElementById('rb-semester-grid');
+        if (semGrid) {
+            semGrid.innerHTML = rawSemesters.map(s => buildCheckbox('sem', s.id, s.name, s.id === activeId)).join('');
         }
 
     } catch (e) {
         console.error("[Reports] Error loading semesters:", e);
-        const rbSemSel = document.getElementById('rb-semester');
-        if (rbSemSel) rbSemSel.innerHTML = '<option value="">Error loading periods</option>';
+        const semGrid = document.getElementById('rb-semester-grid');
+        if (semGrid) semGrid.innerHTML = '<p class="text-xs text-red-500">Error loading periods</p>';
     }
 }
 
 async function loadStudents() {
     const stuSel = document.getElementById('rb-student');
     try {
-        // Fetch ALL students assigned to this teacher (including archived, to allow historical transcripts)
         const stuQuery = query(collection(db, 'schools', session.schoolId, 'students'), where('teacherId', '==', session.teacherId));
         const stuSnap = await getDocs(stuQuery);
         
@@ -153,31 +175,36 @@ function toggleScope() {
     }
 }
 
+function getCheckedValues(containerId) {
+    const checkboxes = document.querySelectorAll(`#${containerId} input[type="checkbox"]:checked`);
+    return Array.from(checkboxes).map(cb => cb.value);
+}
+
 // ── 4. DATA FETCHING ENGINE ─────────────────────────────────────────────────
-async function fetchGradesForQuery(semId) {
-    // If we've already cached this exact semester request, use it to save DB reads
-    if (allGradesCache && allGradesCache.semId === semId) return allGradesCache.grades;
+async function fetchGradesForSemesters(semIds) {
+    let all = [];
     
-    const all = [];
-    await Promise.all(allStudentsCache.map(async s => {
-        try {
-            let q;
-            if (semId === 'all') {
-                // Fetch ALL historical grades for this student (Transcript Mode)
-                q = collection(db, 'schools', session.schoolId, 'students', s.id, 'grades');
-            } else {
-                // Fetch specifically for the target semester
-                q = query(collection(db, 'schools', session.schoolId, 'students', s.id, 'grades'), where('semesterId', '==', semId));
-            }
-            const snap = await getDocs(q);
-            snap.forEach(d => {
-                const data = d.data();
-                all.push({ id: d.id, studentId: s.id, studentName: s.name, semesterId: data.semesterId, ...data });
-            });
-        } catch (e) { } // Silent fail per student to keep loop alive
-    }));
-    
-    allGradesCache = { semId, grades: all };
+    for (const semId of semIds) {
+        if (allGradesCache[semId]) {
+            all = all.concat(allGradesCache[semId]);
+            continue;
+        }
+        
+        let semGrades = [];
+        await Promise.all(allStudentsCache.map(async s => {
+            try {
+                const q = query(collection(db, 'schools', session.schoolId, 'students', s.id, 'grades'), where('semesterId', '==', semId));
+                const snap = await getDocs(q);
+                snap.forEach(d => {
+                    const data = d.data();
+                    semGrades.push({ id: d.id, studentId: s.id, studentName: s.name, semesterId: data.semesterId, ...data });
+                });
+            } catch (e) { } 
+        }));
+        
+        allGradesCache[semId] = semGrades;
+        all = all.concat(semGrades);
+    }
     return all;
 }
 
@@ -187,55 +214,66 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function executeIntelligentQuery() {
     const btn = document.getElementById('generateReportBtn');
     
-    const semId = document.getElementById('rb-semester').value;
     const scope = document.getElementById('rb-scope').value;
     const targetStudentId = document.getElementById('rb-student').value;
-    const subject = document.getElementById('rb-subject').value;
-    const type = document.getElementById('rb-type').value;
+    
+    const selectedSems = getCheckedValues('rb-semester-grid');
+    const selectedSubs = getCheckedValues('rb-subject-grid');
+    const selectedTypes = getCheckedValues('rb-type-grid');
 
     if (scope === 'student' && !targetStudentId) {
         alert("System Notice: A target student must be selected to generate an individual report.");
         return;
     }
+    
+    if (!selectedSems.length || !selectedSubs.length || !selectedTypes.length) {
+        alert("System Notice: You must select at least one Period, Subject, and Grade Type to run a query.");
+        return;
+    }
 
     btn.disabled = true;
     const area = document.getElementById('reportResultsArea');
-    area.classList.add('opacity-0'); // Fade out old results
+    area.classList.add('opacity-0'); 
     
     try {
-        // Step 1: Simulated Database Connection
         btn.innerHTML = `<i class="fa-solid fa-database fa-fade"></i> Querying datastore...`;
-        const rawGrades = await fetchGradesForQuery(semId);
+        const rawGrades = await fetchGradesForSemesters(selectedSems);
         await sleep(350);
 
-        // Step 2: Filtering logic
         btn.innerHTML = `<i class="fa-solid fa-microchip fa-fade"></i> Filtering datasets...`;
         let filteredGrades = rawGrades;
+        
         if (scope === 'student') {
             filteredGrades = filteredGrades.filter(g => g.studentId === targetStudentId);
         }
-        if (subject !== 'all') {
-            filteredGrades = filteredGrades.filter(g => g.subject === subject);
-        }
-        if (type !== 'all') {
-            filteredGrades = filteredGrades.filter(g => g.type === type);
-        }
         
-        // Sort chronologically
+        // Use array includes to filter multiple selections
+        filteredGrades = filteredGrades.filter(g => selectedSubs.includes(g.subject));
+        filteredGrades = filteredGrades.filter(g => selectedTypes.includes(g.type));
+        
         filteredGrades.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
         currentQueryResults = filteredGrades;
         await sleep(350);
 
-        // Step 3: Aggregation
         btn.innerHTML = `<i class="fa-solid fa-chart-pie fa-fade"></i> Calculating aggregates...`;
         
-        const semSel = document.getElementById('rb-semester');
-        const semName = semSel.options[semSel.selectedIndex]?.text || 'Full Academic Year';
+        // Build Meta text based on array lengths
+        const totalSems = rawSemesters.length;
+        const totalSubs = (session.teacherData.subjects || []).length;
+        
+        let semText = selectedSems.length === totalSems ? 'All Periods' : `${selectedSems.length} Periods`;
+        let subText = selectedSubs.length >= totalSubs ? 'All Subjects' : `${selectedSubs.length} Subjects`;
+        
         const scopeName = scope === 'class' ? 'Class Overview' : studentMap[targetStudentId];
-        const subName = subject === 'all' ? 'All Subjects' : subject;
-        const typeName = type === 'all' ? 'All Types' : type;
-
-        currentQueryMeta = { semId, semName, scopeName, subName, typeName, scope, targetStudentId };
+        
+        currentQueryMeta = { 
+            selectedSems, 
+            semText, 
+            scopeName, 
+            subText, 
+            scope, 
+            targetStudentId 
+        };
 
         let sumPct = 0;
         let high = null;
@@ -255,25 +293,18 @@ async function executeIntelligentQuery() {
         const avg = validGradesCount > 0 ? Math.round(sumPct / validGradesCount) : null;
         await sleep(300);
 
-        // Step 4: Render UI
+        // 4. Render UI
         btn.innerHTML = `<i class="fa-solid fa-object-group fa-fade"></i> Rendering interface...`;
         
-        // Change title dynamically if we are generating a Full Transcript
-        if (semId === 'all' && scope === 'student') {
-            document.getElementById('reportOutputTitle').textContent = 'Academic Transcript Profile';
-        } else {
-            document.getElementById('reportOutputTitle').textContent = scope === 'class' ? 'Aggregated Class Data' : 'Student Academic Profile';
-        }
-        
-        document.getElementById('reportOutputMeta').textContent = `${semName} · ${scopeName} · ${subName}`;
+        const isTranscript = scope === 'student' && selectedSems.length > 1;
+        document.getElementById('reportOutputTitle').textContent = isTranscript ? 'Academic Transcript Profile' : (scope === 'class' ? 'Aggregated Class Data' : 'Student Academic Profile');
+        document.getElementById('reportOutputMeta').textContent = `${semText} · ${scopeName} · ${subText}`;
 
-        // Populate Stat Cards
         document.getElementById('resAvg').innerHTML = avg !== null ? `${avg}<span class="text-sm text-[#6b84a0] ml-1">%</span>` : '—';
         document.getElementById('resHigh').innerHTML = high !== null ? `${high}<span class="text-sm text-[#0ea871] ml-1">%</span>` : '—';
         document.getElementById('resLow').innerHTML = low !== null ? `${low}<span class="text-sm text-[#e31b4a] ml-1">%</span>` : '—';
         document.getElementById('resCount').textContent = filteredGrades.length;
 
-        // Populate Data Table
         const tbody = document.getElementById('reportTableBody');
         if (filteredGrades.length === 0) {
             tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-12 text-center text-[#9ab0c6] italic font-semibold">Query returned 0 matching records.</td></tr>`;
@@ -281,8 +312,7 @@ async function executeIntelligentQuery() {
             tbody.innerHTML = filteredGrades.map(g => {
                 const pct = g.max ? Math.round((g.score / g.max) * 100) : null;
                 const cClass = gradeColorClass(pct || 0);
-                // If checking "All Semesters", prepend the semester name to the date for context
-                const semTag = semId === 'all' ? `<br><span class="text-[9px] uppercase text-[#2563eb]">${rawSemesters.find(s=>s.id===g.semesterId)?.name || 'Unknown'}</span>` : '';
+                const semTag = selectedSems.length > 1 ? `<br><span class="text-[9px] uppercase text-[#2563eb]">${rawSemesters.find(s=>s.id===g.semesterId)?.name || 'Unknown'}</span>` : '';
                 
                 return `
                 <tr class="border-b border-[#f0f4f8] hover:bg-[#f8fafb] transition">
@@ -297,7 +327,6 @@ async function executeIntelligentQuery() {
             }).join('');
         }
 
-        // Reveal the Results Area
         area.classList.remove('hidden');
         setTimeout(() => { area.classList.remove('opacity-0'); }, 50);
 
@@ -306,8 +335,7 @@ async function executeIntelligentQuery() {
         alert("System Error: Query execution failed.");
     }
 
-    // Reset button state
-    btn.innerHTML = `<i class="fa-solid fa-play"></i> Execute Query`;
+    btn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles"></i> Generate Report`;
     btn.disabled = false;
 }
 
@@ -350,14 +378,13 @@ window.printReport = function() {
     }
     
     const isStudentReport = currentQueryMeta.scope === 'student';
-    const isFullTranscript = currentQueryMeta.semId === 'all';
+    const isFullTranscript = currentQueryMeta.selectedSems.length > 1;
     
-    // Determine the Document Type
     let reportTitle = 'Aggregated Class Data';
     let docSubtitle = 'ACADEMIC REPORT';
     if (isStudentReport && isFullTranscript) {
         reportTitle = 'Official Academic Transcript';
-        docSubtitle = 'COMPLETE HISTORICAL RECORD';
+        docSubtitle = 'COMPREHENSIVE RECORD';
     } else if (isStudentReport) {
         reportTitle = 'Official Student Report Card';
         docSubtitle = 'PERIODIC ACADEMIC RECORD';
@@ -403,15 +430,14 @@ window.printReport = function() {
     
     <div class="info-grid">
         <div><strong>Target Scope</strong> ${escHtml(currentQueryMeta.scopeName)}</div>
-        <div><strong>Academic Period</strong> ${escHtml(currentQueryMeta.semName)}</div>
-        <div><strong>Subject Filter</strong> ${escHtml(currentQueryMeta.subName)}</div>
+        <div><strong>Academic Period(s)</strong> ${escHtml(currentQueryMeta.semText)}</div>
+        <div><strong>Subject Filter</strong> ${escHtml(currentQueryMeta.subText)}</div>
         <div><strong>Date Generated</strong> ${new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}</div>
     </div>`;
 
-    // ── LOGIC FOR TRANSCRIPT / ALL PERIODS ─────────────────────────────────
+    // ── LOGIC FOR TRANSCRIPT / MULTI PERIODS ─────────────────────────────────
     if (isStudentReport && isFullTranscript) {
         
-        // Group grades by Semester
         const semGroups = {};
         currentQueryResults.forEach(g => {
             const sName = rawSemesters.find(x => x.id === g.semesterId)?.name || 'Unknown Period';
@@ -438,7 +464,6 @@ window.printReport = function() {
             let semSumPct = 0;
             let semValidCount = 0;
             
-            // Sort chronologically within the semester block
             semGroups[sName].sort((a, b) => (a.date || '').localeCompare(b.date || '')).forEach(g => {
                 const pct = g.max ? Math.round((g.score / g.max) * 100) : null;
                 if (pct !== null) {
@@ -466,7 +491,6 @@ window.printReport = function() {
             html += `</tbody></table></div>`;
         }
 
-        // Print Cumulative GPA at the bottom
         const cumAvg = totalCumCount > 0 ? Math.round(totalCumPct / totalCumCount) : null;
         if (cumAvg !== null) {
             html += `<div class="cum-gpa">
