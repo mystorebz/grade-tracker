@@ -23,6 +23,14 @@
       "fields": [
         { "fieldPath": "currentSchoolId", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "teachers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "currentSchoolId", "order": "ASCENDING" },
+        { "fieldPath": "pin", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
