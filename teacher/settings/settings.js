@@ -47,6 +47,14 @@ function escHtml(str) {
         .replace(/"/g, '&quot;');
 }
 
+
+// ── HELPER: resolve correct teacher document path (global vs legacy) ──────────
+function getTeacherRef() {
+    return /^T\d{2}-[A-Z0-9]{5}$/i.test(session.teacherId)
+        ? doc(db, 'teachers', session.teacherId)
+        : getTeacherRef();
+}
+
 // ── 3. INITIALIZATION ───────────────────────────────────────────────────────
 async function init() {
     if (!session) return;
@@ -197,7 +205,7 @@ async function updateLoginCode() {
     btn.disabled = true;
     
     try {
-        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { loginCode: nw });
+        await updateDoc(getTeacherRef(), { loginCode: nw });
         session.teacherData.loginCode = nw;
         setSessionData('teacher', session);
         
@@ -225,7 +233,7 @@ async function saveProfile() {
     btn.disabled = true;
     
     try {
-        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), u);
+        await updateDoc(getTeacherRef(), u);
         Object.assign(session.teacherData, u);
         setSessionData('teacher', session);
         
@@ -268,7 +276,7 @@ async function saveClasses() {
     btn.disabled = true;
     
     try {
-        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { 
+        await updateDoc(getTeacherRef(), { 
             classes: selected, 
             className: selected[0] 
         });
@@ -350,7 +358,7 @@ window.addGradeType = async function() {
     activeTypes.push(nt);
 
     try {
-        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { customGradeTypes: activeTypes });
+        await updateDoc(getTeacherRef(), { customGradeTypes: activeTypes });
         session.teacherData.customGradeTypes = activeTypes;
         setSessionData('teacher', session);
         
@@ -374,7 +382,7 @@ window.archiveGradeType = async function(type) {
     }
     
     try {
-        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { 
+        await updateDoc(getTeacherRef(), { 
             customGradeTypes: activeTypes,
             archivedGradeTypes: archivedTypes
         });
@@ -399,7 +407,7 @@ window.restoreGradeType = async function(type) {
     }
 
     try {
-        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { 
+        await updateDoc(getTeacherRef(), { 
             customGradeTypes: activeTypes,
             archivedGradeTypes: archivedTypes
         });
@@ -421,7 +429,7 @@ window.deleteGradeTypePermanently = async function(type) {
     let archivedTypes = getArchivedGradeTypes().filter(t => t !== type);
 
     try {
-        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { 
+        await updateDoc(getTeacherRef(), { 
             archivedGradeTypes: archivedTypes
         });
         
@@ -529,9 +537,15 @@ async function saveSubject() {
             newSubs = newSubs.map(s => s.id === editingSubjectId ? { ...s, name, description: desc } : s);
             
             if (oldName && oldName !== name) {
-                const stuQuery = query(collection(db, 'schools', session.schoolId, 'students'), where('teacherId', '==', session.teacherId));
-                const stuSnap = await getDocs(stuQuery);
-                const students = stuSnap.docs.map(d => d.id);
+                // CHANGED: query global /students for subject rename
+                const stuSnap = await getDocs(query(
+                    collection(db, 'students'),
+                    where('currentSchoolId', '==', session.schoolId),
+                    where('enrollmentStatus', '==', 'Active')
+                ));
+                const students = stuSnap.docs
+                    .filter(d => d.data().teacherId === session.teacherId)
+                    .map(d => d.id);
                 
                 const batch = writeBatch(db);
                 let batchCount = 0;
@@ -560,7 +574,7 @@ async function saveSubject() {
             newSubs.push({ id: genId(), name, description: desc, archived: false, archivedAt: null });
         }
         
-        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { subjects: newSubs });
+        await updateDoc(getTeacherRef(), { subjects: newSubs });
         session.teacherData.subjects = newSubs;
         setSessionData('teacher', session);
         
@@ -579,7 +593,7 @@ window.archiveSubject = async function(subjectId, subjectName) {
     
     try {
         const newSubs = session.teacherData.subjects.map(s => s.id === subjectId ? { ...s, archived: true, archivedAt: new Date().toISOString() } : s);
-        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { subjects: newSubs });
+        await updateDoc(getTeacherRef(), { subjects: newSubs });
         
         session.teacherData.subjects = newSubs;
         setSessionData('teacher', session);
@@ -594,7 +608,7 @@ window.restoreSubject = async function(subjectId, subjectName) {
     
     try {
         const newSubs = session.teacherData.subjects.map(s => s.id === subjectId ? { ...s, archived: false, archivedAt: null } : s);
-        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { subjects: newSubs });
+        await updateDoc(getTeacherRef(), { subjects: newSubs });
         
         session.teacherData.subjects = newSubs;
         setSessionData('teacher', session);
@@ -609,7 +623,7 @@ window.deleteSubjectPermanently = async function(subjectId, subjectName) {
     
     try {
         const newSubs = session.teacherData.subjects.filter(s => s.id !== subjectId);
-        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { subjects: newSubs });
+        await updateDoc(getTeacherRef(), { subjects: newSubs });
         
         session.teacherData.subjects = newSubs;
         setSessionData('teacher', session);
