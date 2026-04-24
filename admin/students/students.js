@@ -487,8 +487,11 @@ window.openStudentPanel = async (studentId) => {
     openOverlay('studentPanel', 'studentPanelInner', true);
 
     try {
-        // Grades live at /students/{studentId}/grades (global path)
-        const gradesSnap = await getDocs(collection(db, 'students', studentId, 'grades'));
+        // Try global path first; fall back to legacy siloed path for pre-migration data
+        let gradesSnap = await getDocs(collection(db, 'students', studentId, 'grades'));
+        if (gradesSnap.empty) {
+            gradesSnap = await getDocs(collection(db, 'schools', session.schoolId, 'students', studentId, 'grades'));
+        }
 
         if (gradesSnap.empty) {
             loader.innerHTML = `<div class="text-center py-16"><div class="text-5xl mb-3">📂</div><p class="text-slate-400 font-semibold">No grades recorded yet.</p></div>`;
@@ -625,7 +628,11 @@ window.printStudentRecord = async (studentId) => {
     if (!sDoc.exists()) { alert('Student not found.'); return; }
     const s = sDoc.data();
 
-    const gradesSnap = await getDocs(collection(db, 'students', studentId, 'grades'));
+    // Try global path first; fall back to legacy siloed path for pre-migration data
+    let gradesSnap = await getDocs(collection(db, 'students', studentId, 'grades'));
+    if (gradesSnap.empty) {
+        gradesSnap = await getDocs(collection(db, 'schools', session.schoolId, 'students', studentId, 'grades'));
+    }
     const bySem = {};
     gradesSnap.forEach(d => {
         const g   = d.data();
