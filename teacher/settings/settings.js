@@ -3,7 +3,7 @@ import { doc, getDoc, updateDoc, collection, query, where, getDocs, writeBatch }
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { openOverlay, closeOverlay, showMsg } from '../../assets/js/utils.js';
-
+ 
 // ── 1. AUTHENTICATION & LAYOUT ──────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
 if (session) {
