@@ -27,11 +27,23 @@ function getTeacherClasses(t) {
     return t.classes || (t.className ? [t.className] : []);
 }
 
+// Generates the short 6-character login code (e.g., MT1234)
 function generateTeacherCode(n) {
     const w = n.trim().split(/\s+/);
     const f = w[0]?.charAt(0).toUpperCase() || 'T';
     const l = w.length > 1 ? w[w.length - 1].charAt(0).toUpperCase() : (w[0]?.charAt(1).toUpperCase() || 'X');
     return `${f}${l}${Math.floor(1000 + Math.random() * 9000)}`;
+}
+
+// Generates an official, permanent alphanumeric Teacher ID (e.g., T26-4X9BA)
+function generateTeacherId() {
+    const year = new Date().getFullYear().toString().slice(-2);
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let rand = '';
+    for(let i = 0; i < 5; i++) {
+        rand += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return `T${year}-${rand}`;
 }
 
 // ── 3. LOAD TEACHERS ──────────────────────────────────────────────────────
@@ -130,10 +142,18 @@ document.getElementById('saveTeacherBtn').addEventListener('click', async () => 
             email: document.getElementById('tEmail').value.trim(),
             phone: document.getElementById('tPhone').value.trim(),
             loginCode: document.getElementById('tCode').value.trim().toUpperCase() || generateTeacherCode(name),
-            subjects: [],
+            
+            // The new permanent Teacher ID
+            teacherIdNum: generateTeacherId(),
+
+            subjects: [
+                { id: "sub_" + Date.now().toString(36) + "1", name: "Mathematics", archived: false },
+                { id: "sub_" + Date.now().toString(36) + "2", name: "English Language Arts", archived: false },
+                { id: "sub_" + Date.now().toString(36) + "3", name: "Science", archived: false },
+                { id: "sub_" + Date.now().toString(36) + "4", name: "Social Studies", archived: false }
+            ],
             classes: [],
             className: '',
-            // Added default customGradeTypes to ensure Grade Form has data immediately
             customGradeTypes: [
                 "Test",
                 "Quiz",
@@ -193,6 +213,7 @@ window.openTeacherPanel = async function(teacherId) {
         document.getElementById('tPanelClass').textContent = classes.length ? classes.join(' · ') : 'Class not yet assigned';
         
         document.getElementById('tInfoGrid').innerHTML = [
+            ['Teacher ID', t.teacherIdNum || '—'],
             ['Email', t.email || '—'],
             ['Phone', t.phone || '—'],
             ['Login Code', t.loginCode],
@@ -280,8 +301,9 @@ window.archiveCurrentTeacher = async function() {
 
 // ── 6. CSV & PRINT EXPORTS ────────────────────────────────────────────────
 document.getElementById('exportCsvBtn').addEventListener('click', () => {
-    const rows = [['Name', 'Email', 'Phone', 'Classes', 'Subjects', 'Login Code', 'Status'], 
+    const rows = [['Teacher ID', 'Name', 'Email', 'Phone', 'Classes', 'Subjects', 'Login Code', 'Status'], 
         ...allTeachersCache.map(t => [
+            t.teacherIdNum || '',
             t.name, 
             t.email || '', 
             t.phone || '', 
@@ -300,7 +322,7 @@ document.getElementById('exportCsvBtn').addEventListener('click', () => {
 
 document.getElementById('printListBtn').addEventListener('click', () => {
     const w = window.open('', '_blank');
-    w.document.write(`<html><head><title>Staff</title><style>body{font-family:sans-serif;padding:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #e2e8f0;padding:8px 12px;font-size:13px;text-align:left}th{background:#f8fafc;font-weight:700}</style></head><body><h2>${session.schoolName} — Teaching Staff</h2><p style="color:#64748b;font-size:12px;margin-bottom:16px">Printed ${new Date().toLocaleDateString()}</p><table><thead><tr><th>Name</th><th>Email</th><th>Classes</th><th>Login Code</th><th>Status</th></tr></thead><tbody>${allTeachersCache.map(t => `<tr><td>${t.name}</td><td>${t.email || '—'}</td><td>${getTeacherClasses(t).join(', ') || 'Pending'}</td><td>${t.loginCode}</td><td>Active</td></tr>`).join('')}</tbody></table></body></html>`);
+    w.document.write(`<html><head><title>Staff</title><style>body{font-family:sans-serif;padding:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #e2e8f0;padding:8px 12px;font-size:13px;text-align:left}th{background:#f8fafc;font-weight:700}</style></head><body><h2>${session.schoolName} — Teaching Staff</h2><p style="color:#64748b;font-size:12px;margin-bottom:16px">Printed ${new Date().toLocaleDateString()}</p><table><thead><tr><th>Teacher ID</th><th>Name</th><th>Email</th><th>Classes</th><th>Login Code</th><th>Status</th></tr></thead><tbody>${allTeachersCache.map(t => `<tr><td>${t.teacherIdNum || '—'}</td><td>${t.name}</td><td>${t.email || '—'}</td><td>${getTeacherClasses(t).join(', ') || 'Pending'}</td><td>${t.loginCode}</td><td>Active</td></tr>`).join('')}</tbody></table></body></html>`);
     w.document.close();
     w.print();
 });
