@@ -7,9 +7,7 @@ import { gradeColorClass, letterGrade, downloadCSV } from '../../assets/js/utils
 // ── 1. AUTHENTICATION & LAYOUT ──────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
 if (session) {
-    // Note: If you haven't added a 'reports' link to layout-teachers.js yet, 
-    // it will just inject without highlighting a sidebar item. 
-    injectTeacherLayout('reports', 'Custom Reports', 'Generate multi-filtered performance data', false);
+    injectTeacherLayout('reports', 'Query Builder', 'Generate advanced analytics and custom report cards', false);
 }
 
 // ── 2. STATE VARIABLES ──────────────────────────────────────────────────────
@@ -17,21 +15,27 @@ let allStudentsCache = [];
 let studentMap = {};
 let rawSemesters = [];
 let allGradesCache = null; // Caches { semId, grades[] } to avoid re-fetching same semester
-let currentQueryResults = []; // Stores the active table data for exporting
-let currentQueryMeta = {}; // Stores the text labels of the current query for the print header
+let currentQueryResults = []; 
+let currentQueryMeta = {}; 
+
+// Escapes HTML to prevent XSS
+function escHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
 
 // ── 3. INITIALIZATION ───────────────────────────────────────────────────────
 async function init() {
     if (!session) return;
 
-    // Sidebar Data
-    document.getElementById('displayTeacherName').textContent = session.teacherData.name;
-    document.getElementById('teacherAvatar').textContent = session.teacherData.name.charAt(0).toUpperCase();
-    document.getElementById('sidebarSchoolId').textContent = session.schoolId;
-
     // Attach Listeners
     document.getElementById('rb-scope').addEventListener('change', toggleScope);
-    document.getElementById('generateReportBtn').addEventListener('click', generateReport);
+    document.getElementById('generateReportBtn').addEventListener('click', executeIntelligentQuery);
 
     // Load Dropdowns
     populateStaticDropdowns();
@@ -41,14 +45,14 @@ async function init() {
 
 function populateStaticDropdowns() {
     // Subjects
-    const subjects = (session.teacherData.subjects || []); // Show all (even archived) so past reports work
+    const subjects = (session.teacherData.subjects || []);
     const subSel = document.getElementById('rb-subject');
-    subSel.innerHTML = '<option value="all">All Subjects</option>' + subjects.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+    subSel.innerHTML = '<option value="all">All Subjects (Combined)</option>' + subjects.map(s => `<option value="${escHtml(s.name)}">${escHtml(s.name)}</option>`).join('');
 
     // Types
     const types = session.teacherData.customGradeTypes || ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
     const typeSel = document.getElementById('rb-type');
-    typeSel.innerHTML = '<option value="all">All Types</option>' + types.map(t => `<option value="${t}">${t}</option>`).join('');
+    typeSel.innerHTML = '<option value="all">All Assignment Types</option>' + types.map(t => `<option value="${escHtml(t)}">${escHtml(t)}</option>`).join('');
 }
 
 async function loadSemesters() {
@@ -62,16 +66,16 @@ async function loadSemesters() {
         const semSel = document.getElementById('rb-semester');
         semSel.innerHTML = '';
         rawSemesters.forEach(s => {
-            semSel.innerHTML += `<option value="${s.id}"${s.id === activeId ? ' selected' : ''}>${s.name}</option>`;
+            semSel.innerHTML += `<option value="${s.id}"${s.id === activeId ? ' selected' : ''}>${escHtml(s.name)}</option>`;
         });
     } catch (e) {
-        console.error("Error loading semesters:", e);
+        console.error("[Reports] Error loading semesters:", e);
     }
 }
 
 async function loadStudents() {
     try {
-        // Fetch ALL students assigned to this teacher (even if archived, so past reports work)
+        // Fetch ALL students assigned to this teacher (including archived, so historical queries work)
         const stuQuery = query(collection(db, 'schools', session.schoolId, 'students'), where('teacherId', '==', session.teacherId));
         const stuSnap = await getDocs(stuQuery);
         
@@ -79,14 +83,11 @@ async function loadStudents() {
         studentMap = {};
         allStudentsCache.forEach(s => { studentMap[s.id] = s.name; });
 
-        // Populate Student Dropdown
         const stuSel = document.getElementById('rb-student');
-        
-        // Sort alphabetically
         const sortedStudents = [...allStudentsCache].sort((a, b) => a.name.localeCompare(b.name));
-        stuSel.innerHTML = '<option value="">— Select a Student —</option>' + sortedStudents.map(s => `<option value="${s.id}">${s.name} ${s.archived ? '(Archived)' : ''}</option>`).join('');
+        stuSel.innerHTML = '<option value="">— Target a specific student —</option>' + sortedStudents.map(s => `<option value="${s.id}">${escHtml(s.name)} ${s.archived ? '(Archived)' : ''}</option>`).join('');
     } catch (e) {
-        console.error("Error loading students:", e);
+        console.error("[Reports] Error loading students:", e);
     }
 }
 
@@ -97,7 +98,7 @@ function toggleScope() {
         wrap.classList.remove('hidden');
     } else {
         wrap.classList.add('hidden');
-        document.getElementById('rb-student').value = ''; // clear selection
+        document.getElementById('rb-student').value = ''; 
     }
 }
 
@@ -106,8 +107,6 @@ async function fetchGradesForSemester(semId) {
     if (allGradesCache && allGradesCache.semId === semId) return allGradesCache.grades;
     
     const all = [];
-    // We iterate over the students in cache to grab their subcollections
-    // This is the fastest way without an expensive Collection Group query
     await Promise.all(allStudentsCache.map(async s => {
         try {
             const q = query(collection(db, 'schools', session.schoolId, 'students', s.id, 'grades'), where('semesterId', '==', semId));
@@ -120,32 +119,34 @@ async function fetchGradesForSemester(semId) {
     return all;
 }
 
-// ── 5. GENERATE REPORT LOGIC ────────────────────────────────────────────────
-async function generateReport() {
+// ── 5. INTELLIGENT GENERATOR ────────────────────────────────────────────────
+// Added a slight delay sequence to give the UI an advanced, analytical feel
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function executeIntelligentQuery() {
     const btn = document.getElementById('generateReportBtn');
     
-    // Grab Filters
     const semId = document.getElementById('rb-semester').value;
     const scope = document.getElementById('rb-scope').value;
     const targetStudentId = document.getElementById('rb-student').value;
     const subject = document.getElementById('rb-subject').value;
     const type = document.getElementById('rb-type').value;
 
-    // Validation
     if (scope === 'student' && !targetStudentId) {
-        alert("Please select a target student.");
+        alert("SQL Error: Target student ID required for individual scope.");
         return;
     }
 
-    // UI Loading state
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Processing...`;
     btn.disabled = true;
-
+    const area = document.getElementById('reportResultsArea');
+    area.classList.add('opacity-0');
+    
     try {
-        // 1. Fetch raw dataset
+        btn.innerHTML = `<i class="fa-solid fa-server fa-fade"></i> Querying database...`;
         const rawGrades = await fetchGradesForSemester(semId);
+        await sleep(400);
 
-        // 2. Apply Filters
+        btn.innerHTML = `<i class="fa-solid fa-microchip fa-fade"></i> Filtering datasets...`;
         let filteredGrades = rawGrades;
         if (scope === 'student') {
             filteredGrades = filteredGrades.filter(g => g.studentId === targetStudentId);
@@ -156,23 +157,20 @@ async function generateReport() {
         if (type !== 'all') {
             filteredGrades = filteredGrades.filter(g => g.type === type);
         }
-
-        // Sort by Date (newest first)
         filteredGrades.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-
-        // Save state for export
         currentQueryResults = filteredGrades;
+        await sleep(300);
 
-        // Save Meta tags for UI
+        btn.innerHTML = `<i class="fa-solid fa-chart-line fa-fade"></i> Calculating aggregates...`;
+        
         const semSel = document.getElementById('rb-semester');
         const semName = semSel.options[semSel.selectedIndex]?.text || 'Unknown Period';
-        const scopeName = scope === 'class' ? 'Whole Class' : studentMap[targetStudentId];
+        const scopeName = scope === 'class' ? 'Class Overview' : studentMap[targetStudentId];
         const subName = subject === 'all' ? 'All Subjects' : subject;
         const typeName = type === 'all' ? 'All Types' : type;
 
-        currentQueryMeta = { semName, scopeName, subName, typeName };
+        currentQueryMeta = { semName, scopeName, subName, typeName, scope, targetStudentId };
 
-        // 3. Calculate Stats
         let sumPct = 0;
         let high = null;
         let low = null;
@@ -189,55 +187,52 @@ async function generateReport() {
         });
 
         const avg = validGradesCount > 0 ? Math.round(sumPct / validGradesCount) : null;
+        await sleep(200);
 
-        // 4. Update UI - Meta
-        document.getElementById('reportOutputTitle').textContent = scope === 'class' ? 'Class Report' : 'Student Report';
-        document.getElementById('reportOutputMeta').textContent = `${semName} · ${scopeName} · ${subName} · ${typeName}`;
+        // 4. Update UI
+        btn.innerHTML = `<i class="fa-solid fa-object-group fa-fade"></i> Rendering interface...`;
+        
+        document.getElementById('reportOutputTitle').textContent = scope === 'class' ? 'Aggregated Class Data' : 'Student Academic Profile';
+        document.getElementById('reportOutputMeta').textContent = `${semName} · ${scopeName} · ${subName}`;
 
-        // 5. Update UI - Stat Cards
-        document.getElementById('resAvg').innerHTML = avg !== null ? `${avg}<span class="text-lg text-slate-400">%</span>` : '—';
-        document.getElementById('resHigh').innerHTML = high !== null ? `${high}<span class="text-lg text-emerald-300">%</span>` : '—';
-        document.getElementById('resLow').innerHTML = low !== null ? `${low}<span class="text-lg text-rose-300">%</span>` : '—';
+        document.getElementById('resAvg').innerHTML = avg !== null ? `${avg}<span class="text-sm text-[#6b84a0] ml-1">%</span>` : '—';
+        document.getElementById('resHigh').innerHTML = high !== null ? `${high}<span class="text-sm text-[#0ea871] ml-1">%</span>` : '—';
+        document.getElementById('resLow').innerHTML = low !== null ? `${low}<span class="text-sm text-[#e31b4a] ml-1">%</span>` : '—';
         document.getElementById('resCount').textContent = filteredGrades.length;
 
-        // 6. Update UI - Table
         const tbody = document.getElementById('reportTableBody');
         if (filteredGrades.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-12 text-center text-slate-400 italic font-semibold">No records match your exact query.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-12 text-center text-[#9ab0c6] italic font-semibold">Query returned 0 matching records.</td></tr>`;
         } else {
             tbody.innerHTML = filteredGrades.map(g => {
                 const pct = g.max ? Math.round((g.score / g.max) * 100) : null;
                 const cClass = gradeColorClass(pct || 0);
                 return `
-                <tr class="gb-row">
-                    <td class="px-6 py-4 text-xs font-semibold text-slate-500">${g.date || '—'}</td>
-                    <td class="px-6 py-4 font-bold text-slate-700">${g.studentName}</td>
-                    <td class="px-6 py-4"><span class="text-xs font-black bg-indigo-50 text-indigo-600 border border-indigo-100 px-2.5 py-1 rounded-lg">${g.subject || '—'}</span></td>
-                    <td class="px-6 py-4 font-bold text-slate-700 text-sm">${g.title || '—'}</td>
-                    <td class="px-6 py-4"><span class="text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-500 border border-slate-200 px-2 py-1 rounded-md">${g.type || '—'}</span></td>
-                    <td class="px-6 py-4 text-center font-bold text-slate-600 text-sm">${g.score} / ${g.max || '?'}</td>
-                    <td class="px-6 py-4 text-center"><span class="font-black text-sm ${cClass}">${pct !== null ? pct + '%' : '—'}</span></td>
+                <tr class="border-b border-[#f0f4f8] hover:bg-[#f8fafb] transition">
+                    <td class="px-6 py-4 text-[12px] font-mono text-[#6b84a0]">${g.date || '—'}</td>
+                    <td class="px-6 py-4 font-bold text-[#0d1f35] text-[13px]">${escHtml(g.studentName)}</td>
+                    <td class="px-6 py-4"><span class="text-[10px] font-black bg-[#eef4ff] text-[#2563eb] border border-[#c7d9fd] px-2.5 py-1 rounded tracking-wide">${escHtml(g.subject || '—')}</span></td>
+                    <td class="px-6 py-4 font-bold text-[#374f6b] text-[13px]">${escHtml(g.title || '—')}</td>
+                    <td class="px-6 py-4"><span class="text-[10px] font-black uppercase tracking-widest bg-[#f8fafb] text-[#6b84a0] border border-[#dce3ed] px-2 py-1 rounded">${escHtml(g.type || '—')}</span></td>
+                    <td class="px-6 py-4 text-center font-mono font-bold text-[#0d1f35] text-[13px]">${g.score} / ${g.max || '?'}</td>
+                    <td class="px-6 py-4 text-center"><span class="font-black font-mono text-[14px] ${cClass}">${pct !== null ? pct + '%' : '—'}</span></td>
                 </tr>`;
             }).join('');
         }
 
-        // Reveal the Results Area
-        const area = document.getElementById('reportResultsArea');
         area.classList.remove('hidden');
-        // Small timeout to allow display:block to apply before fading in
         setTimeout(() => { area.classList.remove('opacity-0'); }, 50);
 
     } catch (e) {
         console.error(e);
-        alert("Error generating report.");
+        alert("Query Execution Failed.");
     }
 
-    // Reset button
-    btn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles"></i> Generate Report`;
+    btn.innerHTML = `<i class="fa-solid fa-play"></i> Execute Query`;
     btn.disabled = false;
 }
 
-// ── 6. EXPORT / PRINT ───────────────────────────────────────────────────────
+// ── 6. EXPORT / PRINT (OFFICIAL REPORT CARD GEN) ────────────────────────────
 window.exportReportCSV = function() {
     if (!currentQueryResults || currentQueryResults.length === 0) {
         alert("No data to export.");
@@ -263,7 +258,7 @@ window.exportReportCSV = function() {
     });
     
     const safeName = currentQueryMeta.scopeName.replace(/\s+/g, '_').toLowerCase();
-    downloadCSV(rows, `connectus_report_${safeName}.csv`);
+    downloadCSV(rows, `connectus_query_${safeName}.csv`);
 };
 
 window.printReport = function() {
@@ -272,38 +267,54 @@ window.printReport = function() {
         return;
     }
     
-    const printDisclaimer = "<p style='font-size:10px;color:#64748b;margin-top:40px;text-align:center;border-top:1px solid #e2e8f0;padding-top:10px;font-style:italic;'>This document is automatically generated by ConnectUs Data Services.</p>";
+    const isStudentReport = currentQueryMeta.scope === 'student';
+    const reportTitle = isStudentReport ? 'Official Academic Report' : 'Aggregated Class Data';
     
-    let html = `<html><head><title>Custom Report</title>
+    const printDisclaimer = "<p style='font-size:10px;color:#9ab0c6;margin-top:40px;text-align:center;border-top:1px solid #dce3ed;padding-top:14px;font-style:italic;'>Generated by ConnectUs Analytical Engine. This document does not constitute a certified administrative transcript.</p>";
+    
+    let html = `<html><head><title>Data Report — ${escHtml(currentQueryMeta.scopeName)}</title>
     <style>
-        body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;padding:40px;color:#1e293b;line-height:1.5;font-size:13px;}
-        .header{text-align:center;border-bottom:2px solid #cbd5e1;padding-bottom:20px;margin-bottom:30px;}
-        .header h1{margin:0 0 5px 0;font-size:22px;color:#0f172a;text-transform:uppercase;letter-spacing:1px;}
-        .header h2{margin:0;font-size:15px;color:#4f46e5;font-weight:bold;}
-        .info-grid{background:#f8fafc;padding:15px;border-radius:6px;border:1px solid #e2e8f0;margin-bottom:30px;display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-        table{width:100%;border-collapse:collapse;margin-bottom:20px;}
-        th,td{border:1px solid #e2e8f0;padding:8px 12px;text-align:left;}
-        th{background:#f1f5f9;color:#475569;font-weight:bold;text-transform:uppercase;font-size:10px;letter-spacing:0.5px;}
-        .tc{text-align:center;}
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+        body { font-family: 'DM Sans', sans-serif; padding: 40px; color: #0d1f35; line-height: 1.5; background: white; }
+        
+        .header { display: flex; flex-direction: column; align-items: center; border-bottom: 2px solid #0d1f35; padding-bottom: 20px; margin-bottom: 30px; }
+        .logo { max-height: 50px; max-width: 180px; object-fit: contain; margin-bottom: 12px; }
+        
+        .header h1 { margin: 0 0 4px 0; font-size: 20px; color: #0d1f35; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
+        .header h2 { margin: 0; font-size: 12px; color: #6b84a0; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; }
+        
+        .info-grid { background: #f8fafb; padding: 18px; border-radius: 4px; border: 1px solid #dce3ed; margin-bottom: 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .info-grid div { font-size: 13px; color: #0d1f35; }
+        .info-grid strong { font-size: 10px; color: #6b84a0; text-transform: uppercase; letter-spacing: 0.1em; display: block; margin-bottom: 2px; }
+        
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        th, td { border: 1px solid #dce3ed; padding: 10px 14px; text-align: left; font-size: 12px; }
+        th { background: #f8fafb; color: #0d1f35; font-weight: 700; text-transform: uppercase; font-size: 10px; letter-spacing: 0.05em; }
+        .tc { text-align: center; }
+        .font-mono { font-family: 'DM Mono', monospace; font-weight: 700; }
     </style></head><body>
+    
     <div class="header">
-        <h1>${session.teacherData.name} — ConnectUs</h1>
-        <h2>Data Query: ${document.getElementById('reportOutputTitle').textContent}</h2>
+        <img src="../../assets/images/logo.png" alt="ConnectUs" class="logo" onerror="this.style.display='none'">
+        <h1>${reportTitle}</h1>
+        <h2>${escHtml(session.teacherData.name)} • ${currentQueryMeta.semName}</h2>
     </div>
+    
     <div class="info-grid">
-        <div><strong>Period:</strong> ${currentQueryMeta.semName}</div>
-        <div><strong>Scope:</strong> ${currentQueryMeta.scopeName}</div>
-        <div><strong>Subject:</strong> ${currentQueryMeta.subName}</div>
-        <div><strong>Grade Type:</strong> ${currentQueryMeta.typeName}</div>
+        <div><strong>Target Scope</strong> ${escHtml(currentQueryMeta.scopeName)}</div>
+        <div><strong>Subject Filter</strong> ${escHtml(currentQueryMeta.subName)}</div>
+        <div><strong>Assignment Type</strong> ${escHtml(currentQueryMeta.typeName)}</div>
+        <div><strong>Date Generated</strong> ${new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}</div>
     </div>
+    
     <table>
         <thead>
             <tr>
-                <th>Date</th>
-                <th>Student</th>
+                <th style="width: 90px;">Date</th>
+                ${!isStudentReport ? '<th>Student</th>' : ''}
                 <th>Subject</th>
                 <th>Assignment</th>
-                <th>Type</th>
+                <th class="tc">Type</th>
                 <th class="tc">Score</th>
                 <th class="tc">%</th>
             </tr>
@@ -314,13 +325,13 @@ window.printReport = function() {
         const pct = g.max ? Math.round((g.score / g.max) * 100) : null;
         html += `
             <tr>
-                <td>${g.date || '—'}</td>
-                <td>${g.studentName}</td>
-                <td>${g.subject}</td>
-                <td>${g.title}</td>
-                <td>${g.type}</td>
-                <td class="tc">${g.score}/${g.max}</td>
-                <td class="tc">${pct !== null ? pct + '%' : '—'}</td>
+                <td class="font-mono text-[#6b84a0]">${g.date || '—'}</td>
+                ${!isStudentReport ? `<td><strong>${escHtml(g.studentName)}</strong></td>` : ''}
+                <td>${escHtml(g.subject)}</td>
+                <td>${escHtml(g.title)}</td>
+                <td class="tc" style="color:#6b84a0; font-size:10px; text-transform:uppercase;">${escHtml(g.type)}</td>
+                <td class="tc font-mono">${g.score}/${g.max}</td>
+                <td class="tc font-mono">${pct !== null ? pct + '%' : '—'}</td>
             </tr>`;
     });
     
@@ -329,7 +340,7 @@ window.printReport = function() {
     const w = window.open('', '_blank');
     w.document.write(html);
     w.document.close();
-    setTimeout(() => w.print(), 500);
+    setTimeout(() => w.print(), 600);
 };
 
 // Fire it up
