@@ -45,7 +45,7 @@ export function injectTeacherLayout(activePageId, pageTitle, pageSub, showSearch
 
         <nav class="sidebar-nav">
           <p class="nav-section-label">Main</p>
-          <a href="../home/home.html"            id="nav-overview"      class="nav-item"><i class="fa-solid fa-chart-pie"></i><span>Overview</span></a>
+          <a href="../home/home.html"             id="nav-overview"      class="nav-item"><i class="fa-solid fa-chart-pie"></i><span>Overview</span></a>
           <a href="../roster/roster.html"         id="nav-students"      class="nav-item"><i class="fa-solid fa-users"></i><span>My Roster</span></a>
           <a href="../grade_form/grade_form.html" id="nav-enter-grade"  class="nav-item"><i class="fa-solid fa-plus-circle"></i><span>Enter Grade</span></a>
           <a href="../subjects/subjects.html"     id="nav-subjects"      class="nav-item"><i class="fa-solid fa-layer-group"></i><span>Subjects</span></a>
@@ -120,6 +120,26 @@ export function injectTeacherLayout(activePageId, pageTitle, pageSub, showSearch
         const classes = session.teacherData.classes || [session.teacherData.className || ''];
         document.getElementById('displayTeacherClasses').innerHTML =
             classes.filter(Boolean).map(c => `<span class="class-pill">${c}</span>`).join('');
+    }
+
+    // ── INJECT CACHED SIDEBAR STATS ──────────────────────────────────────────
+    try {
+        const cachedStats = localStorage.getItem('connectus_sidebar_stats');
+        if (cachedStats) {
+            const stats = JSON.parse(cachedStats);
+            const sbStudents = document.getElementById('sb-students');
+            const sbRisk = document.getElementById('sb-risk');
+
+            if (sbStudents && stats.students !== undefined) {
+                sbStudents.textContent = stats.students;
+            }
+            if (sbRisk && stats.risk !== undefined) {
+                sbRisk.textContent = stats.risk;
+                sbRisk.classList.toggle('is-risk', stats.risk > 0);
+            }
+        }
+    } catch (e) {
+        console.error('[Layout] Error loading cached sidebar stats:', e);
     }
 
     // ── ACTIVE NAV HIGHLIGHT ─────────────────────────────────────────────────
