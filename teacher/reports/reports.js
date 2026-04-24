@@ -12,9 +12,9 @@ if (session) {
 
 // ── 2. STATE VARIABLES ──────────────────────────────────────────────────────
 let allStudentsCache = [];
-let studentMap = {};
+let studentMap = {}; // Maps ID to full student object to access className
 let rawSemesters = [];
-let allGradesCache = {}; // Caches { semId: [grades...] } to avoid re-fetching
+let allGradesCache = {}; 
 let currentQueryResults = []; 
 let currentQueryMeta = {}; 
 
@@ -90,6 +90,13 @@ function populateStaticCheckboxes() {
     if (typeGrid) {
         typeGrid.innerHTML = allTypes.map(t => buildCheckbox('typ', t, t, true)).join('');
     }
+
+    // Populate the Class Filter dropdown from teacher's assigned classes
+    const classes = session.teacherData.classes || [session.teacherData.className || ''];
+    const classSel = document.getElementById('rb-class');
+    if (classSel && classes.length > 0) {
+        classSel.innerHTML = '<option value="">All Classes</option>' + classes.filter(Boolean).map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+    }
 }
 
 async function loadSemesters() {
@@ -114,7 +121,6 @@ async function loadSemesters() {
             activeId = schoolSnap.data()?.activeSemesterId || '';
         } catch(e) {}
 
-        // Topbar / Sidebar UI
         const topSemSel = document.getElementById('activeSemester');
         const sbPeriod = document.getElementById('sb-period');
         
@@ -133,7 +139,6 @@ async function loadSemesters() {
             });
         }
 
-        // Query Builder Grid
         const semGrid = document.getElementById('rb-semester-grid');
         if (semGrid) {
             semGrid.innerHTML = rawSemesters.map(s => buildCheckbox('sem', s.id, s.name, s.id === activeId)).join('');
@@ -154,7 +159,7 @@ async function loadStudents() {
         
         allStudentsCache = stuSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         studentMap = {};
-        allStudentsCache.forEach(s => { studentMap[s.id] = s.name; });
+        allStudentsCache.forEach(s => { studentMap[s.id] = s; }); // Map full object to access .className later
 
         const sortedStudents = [...allStudentsCache].sort((a, b) => a.name.localeCompare(b.name));
         stuSel.innerHTML = '<option value="">— Target a specific student —</option>' + sortedStudents.map(s => `<option value="${s.id}">${escHtml(s.name)} ${s.archived ? '(Archived)' : ''}</option>`).join('');
@@ -166,11 +171,20 @@ async function loadStudents() {
 
 function toggleScope() {
     const scope = document.getElementById('rb-scope').value;
-    const wrap = document.getElementById('studentFilterWrap');
+    const studentWrap = document.getElementById('studentFilterWrap');
+    const classWrap = document.getElementById('classFilterWrap');
+    const standingWrap = document.getElementById('standingFilterWrap');
+
     if (scope === 'student') {
-        wrap.classList.remove('hidden');
+        studentWrap.classList.remove('hidden');
+        classWrap.classList.add('hidden');
+        standingWrap.classList.add('hidden');
+        document.getElementById('rb-class').value = ''; 
+        document.getElementById('rb-standing').value = ''; 
     } else {
-        wrap.classList.add('hidden');
+        studentWrap.classList.add('hidden');
+        classWrap.classList.remove('hidden');
+        standingWrap.classList.remove('hidden');
         document.getElementById('rb-student').value = ''; 
     }
 }
@@ -208,7 +222,7 @@ async function fetchGradesForSemesters(semIds) {
     return all;
 }
 
-// ── 5. INTELLIGENT GENERATOR (UI SEQUENCE) ──────────────────────────────────
+// ── 5. INTELLIGENT GENERATOR (UI SEQUENCE & ADVANCED MATH) ──────────────────
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function executeIntelligentQuery() {
@@ -216,6 +230,8 @@ async function executeIntelligentQuery() {
     
     const scope = document.getElementById('rb-scope').value;
     const targetStudentId = document.getElementById('rb-student').value;
+    const filterClass = document.getElementById('rb-class').value;
+    const filterStanding = document.getElementById('rb-standing').value;
     
     const selectedSems = getCheckedValues('rb-semester-grid');
     const selectedSubs = getCheckedValues('rb-subject-grid');
@@ -243,13 +259,49 @@ async function executeIntelligentQuery() {
         btn.innerHTML = `<i class="fa-solid fa-microchip fa-fade"></i> Filtering datasets...`;
         let filteredGrades = rawGrades;
         
+        // 1. Initial Filtering (Scope, Subjects, Types)
         if (scope === 'student') {
             filteredGrades = filteredGrades.filter(g => g.studentId === targetStudentId);
+        } else if (filterClass) {
+            // Filter by selected class
+            filteredGrades = filteredGrades.filter(g => {
+                const student = studentMap[g.studentId];
+                return student && student.className === filterClass;
+            });
         }
         
-        // Use array includes to filter multiple selections
         filteredGrades = filteredGrades.filter(g => selectedSubs.includes(g.subject));
         filteredGrades = filteredGrades.filter(g => selectedTypes.includes(g.type));
+
+        // 2. Advanced Mathematical Standing Filter (On the fly calculation)
+        if (scope === 'class' && filterStanding) {
+            const studentAvgs = {};
+            filteredGrades.forEach(g => {
+                if (!studentAvgs[g.studentId]) studentAvgs[g.studentId] = { sum: 0, count: 0 };
+                if (g.max > 0) {
+                    studentAvgs[g.studentId].sum += (g.score / g.max) * 100;
+                    studentAvgs[g.studentId].count++;
+                }
+            });
+
+            const allowedStudentIds = new Set();
+            Object.entries(studentAvgs).forEach(([sid, data]) => {
+                if (data.count > 0) {
+                    const avg = Math.round(data.sum / data.count);
+                    let std = 'none';
+                    if (avg >= 90) std = 'excelling';
+                    else if (avg >= 80) std = 'good';
+                    else if (avg >= 70) std = 'ontrack';
+                    else if (avg >= 65) std = 'needsattention';
+                    else std = 'atrisk';
+
+                    if (std === filterStanding) allowedStudentIds.add(sid);
+                }
+            });
+
+            // Strip out grades from students who don't match the standing requirement
+            filteredGrades = filteredGrades.filter(g => allowedStudentIds.has(g.studentId));
+        }
         
         filteredGrades.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
         currentQueryResults = filteredGrades;
@@ -257,14 +309,22 @@ async function executeIntelligentQuery() {
 
         btn.innerHTML = `<i class="fa-solid fa-chart-pie fa-fade"></i> Calculating aggregates...`;
         
-        // Build Meta text based on array lengths
+        // Build Meta text based on parameters
         const totalSems = rawSemesters.length;
         const totalSubs = (session.teacherData.subjects || []).length;
         
         let semText = selectedSems.length === totalSems ? 'All Periods' : `${selectedSems.length} Periods`;
         let subText = selectedSubs.length >= totalSubs ? 'All Subjects' : `${selectedSubs.length} Subjects`;
         
-        const scopeName = scope === 'class' ? 'Class Overview' : studentMap[targetStudentId];
+        let scopeName = 'Class Overview';
+        if (scope === 'student') {
+            scopeName = studentMap[targetStudentId]?.name || 'Student';
+        } else {
+            const cStr = filterClass ? filterClass : 'All Classes';
+            const sEl = document.getElementById('rb-standing');
+            const sStr = filterStanding ? sEl.options[sEl.selectedIndex].text : 'All Standings';
+            scopeName = `${cStr} (${sStr})`;
+        }
         
         currentQueryMeta = { 
             selectedSems, 
@@ -293,7 +353,7 @@ async function executeIntelligentQuery() {
         const avg = validGradesCount > 0 ? Math.round(sumPct / validGradesCount) : null;
         await sleep(300);
 
-        // 4. Render UI
+        // 3. Render UI
         btn.innerHTML = `<i class="fa-solid fa-object-group fa-fade"></i> Rendering interface...`;
         
         const isTranscript = scope === 'student' && selectedSems.length > 1;
@@ -339,7 +399,7 @@ async function executeIntelligentQuery() {
     btn.disabled = false;
 }
 
-// ── 6. EXPORT / PRINT (OFFICIAL TRANSCRIPT & REPORT CARD GEN) ───────────────
+// ── 6. EXPORT / PRINT (PROFESSIONAL TRANSCRIPT OVERHAUL) ────────────────────
 window.exportReportCSV = function() {
     if (!currentQueryResults || currentQueryResults.length === 0) {
         alert("No data available to export.");
@@ -383,24 +443,33 @@ window.printReport = function() {
     let reportTitle = 'Aggregated Class Data';
     let docSubtitle = 'ACADEMIC REPORT';
     if (isStudentReport && isFullTranscript) {
-        reportTitle = 'Official Academic Transcript';
+        reportTitle = 'Academic Transcript';
         docSubtitle = 'COMPREHENSIVE RECORD';
     } else if (isStudentReport) {
-        reportTitle = 'Official Student Report Card';
+        reportTitle = 'Student Report Card';
         docSubtitle = 'PERIODIC ACADEMIC RECORD';
     }
     
+    const unofficalBanner = `<div style="background:#e31b4a;color:white;text-align:center;font-weight:900;letter-spacing:0.3em;padding:6px;font-size:12px;margin-bottom:20px;width:100%;">*** UNOFFICIAL RECORD ***</div>`;
     const printDisclaimer = "<p style='font-size:10px;color:#9ab0c6;margin-top:40px;text-align:center;border-top:1px solid #dce3ed;padding-top:14px;font-style:italic;'>Generated by ConnectUs Analytical Engine. This document does not constitute a certified administrative transcript unless signed and stamped by school administration.</p>";
     
     let html = `<html><head><title>${reportTitle} — ${escHtml(currentQueryMeta.scopeName)}</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+        
+        /* Force browsers to print the precise colors and backgrounds */
+        @media print {
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            body { padding: 0; margin: 0; }
+            @page { margin: 1.5cm; }
+        }
+        
         body { font-family: 'DM Sans', sans-serif; padding: 40px; color: #0d1f35; line-height: 1.5; background: white; }
         
         .header { display: flex; flex-direction: column; align-items: center; border-bottom: 2px solid #0d1f35; padding-bottom: 20px; margin-bottom: 24px; }
-        .logo { max-height: 50px; max-width: 180px; object-fit: contain; margin-bottom: 12px; }
+        .logo { max-height: 60px; max-width: 220px; object-fit: contain; margin-bottom: 12px; }
         
-        .header h1 { margin: 0 0 4px 0; font-size: 20px; color: #0d1f35; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
+        .header h1 { margin: 0 0 4px 0; font-size: 22px; color: #0d1f35; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 800; }
         .header h2 { margin: 0; font-size: 11px; color: #6b84a0; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; }
         
         .info-grid { background: #f8fafb; padding: 18px; border-radius: 4px; border: 1px solid #dce3ed; margin-bottom: 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -421,6 +490,8 @@ window.printReport = function() {
         .cum-gpa-label { font-size: 11px; font-weight: 700; color: #2563eb; text-transform: uppercase; letter-spacing: 0.1em; }
         .cum-gpa-val { font-size: 20px; font-weight: 700; color: #0d1f35; font-family: 'DM Mono', monospace; }
     </style></head><body>
+    
+    ${unofficalBanner}
     
     <div class="header">
         <img src="../../assets/images/logo.png" alt="ConnectUs" class="logo" onerror="this.style.display='none'">
@@ -531,7 +602,9 @@ window.printReport = function() {
         html += `</tbody></table>`;
     }
     
-    html += `${printDisclaimer}</body></html>`;
+    html += `${printDisclaimer}
+    <br><br>${unofficalBanner}
+    </body></html>`;
     
     const w = window.open('', '_blank');
     w.document.write(html);
