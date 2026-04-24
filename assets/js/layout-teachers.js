@@ -110,16 +110,23 @@ export function injectTeacherLayout(activePageId, pageTitle, pageSub, showSearch
     document.getElementById('layout-topbar-container').innerHTML  = topbarHTML;
 
     // ── POPULATE TEACHER PROFILE DATA ────────────────────────────────────────
-    // We grab the session directly here so it works instantly on every page
     const session = getSessionData('teacher');
     if (session && session.teacherData) {
         document.getElementById('displayTeacherName').textContent = session.teacherData.name || 'Teacher';
         document.getElementById('teacherAvatar').textContent = (session.teacherData.name || 'T').charAt(0).toUpperCase();
         document.getElementById('sidebarSchoolId').textContent = session.schoolId || '—';
 
-        const classes = session.teacherData.classes || [session.teacherData.className || ''];
+        // ── CLASSES SYNC FIX ──
+        // Check for globally cached classes first, fallback to session data
+        const cachedClasses = localStorage.getItem('connectus_cached_classes');
+        let classesToDisplay = session.teacherData.classes || [session.teacherData.className || ''];
+        
+        if (cachedClasses) {
+            try { classesToDisplay = JSON.parse(cachedClasses); } catch(e) {}
+        }
+        
         document.getElementById('displayTeacherClasses').innerHTML =
-            classes.filter(Boolean).map(c => `<span class="class-pill">${c}</span>`).join('');
+            classesToDisplay.filter(Boolean).map(c => `<span class="class-pill">${c}</span>`).join('');
     }
 
     // ── INJECT CACHED SIDEBAR STATS ──────────────────────────────────────────
