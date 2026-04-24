@@ -39,7 +39,8 @@ async function loadSettingsData() {
         }
 
         // Fetch latest Student Data
-        const studentSnap = await getDoc(doc(db, 'schools', session.schoolId, 'students', session.studentId));
+        // CHANGED: student doc is now global
+        const studentSnap = await getDoc(doc(db, 'students', session.studentId));
         if (studentSnap.exists()) {
             fullStudentData = studentSnap.data();
             document.getElementById('parentPhone').value = fullStudentData.parentPhone || '';
@@ -59,9 +60,8 @@ document.getElementById('saveProfileBtn').addEventListener('click', async () => 
     btn.disabled = true;
 
     try {
-        await updateDoc(doc(db, 'schools', session.schoolId, 'students', session.studentId), { 
-            parentPhone: phone 
-        });
+        // CHANGED: update global student doc
+        await updateDoc(doc(db, 'students', session.studentId), { parentPhone: phone });
         fullStudentData.parentPhone = phone; // Update local state
         
         showMsg('profileMsg', 'Contact information updated successfully!', false, 'bg-emerald-50 text-emerald-700 border border-emerald-200');
@@ -108,9 +108,8 @@ document.getElementById('updatePinBtn').addEventListener('click', async () => {
 
     try {
         // Save as string to standardize the data type moving forward
-        await updateDoc(doc(db, 'schools', session.schoolId, 'students', session.studentId), { 
-            pin: String(newPin) 
-        });
+        // CHANGED: update global student doc
+        await updateDoc(doc(db, 'students', session.studentId), { pin: String(newPin) });
         
         fullStudentData.pin = String(newPin); // Update local state
         
