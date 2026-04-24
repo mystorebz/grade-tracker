@@ -1,5 +1,5 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, getDocs, doc, getDoc, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectStudentLayout } from '../../assets/js/layout-student.js';
 
@@ -61,8 +61,8 @@ async function loadDashboardData() {
             document.getElementById('activeSemesterDisplay').textContent = semSnap.data()?.name || 'Unknown Period';
         }
 
-        // Map Teachers (for name resolution in feed)
-        const tSnap = await getDocs(collection(db, 'schools', schoolId, 'teachers'));
+        // CHANGED: teachers are global — query by currentSchoolId
+        const tSnap = await getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', schoolId)));
         tSnap.forEach(d => { teachersMap[d.id] = d.data().name; });
 
         // Fetch Grades
