@@ -1,6 +1,6 @@
 import { db } from '../../assets/js/firebase-init.js';
 import { collection, query, where, getDocs, getDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { requireAuth } from '../../assets/js/auth.js';
+import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { openOverlay, closeOverlay, showMsg, gradeColorClass, letterGrade, standingBadge, gradeFill } from '../../assets/js/utils.js';
 
@@ -35,6 +35,13 @@ function escHtml(str) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+// ── HELPER: resolve correct teacher document path (global vs legacy) ──────────
+function getTeacherRef() {
+    return /^T\d{2}-[A-Z0-9]{5}$/i.test(session.teacherId)
+        ? doc(db, 'teachers', session.teacherId)
+        : doc(db, 'schools', session.schoolId, 'teachers', session.teacherId);
 }
 
 // ── 3. INITIALIZATION ───────────────────────────────────────────────────────
@@ -95,9 +102,15 @@ function checkLockStatus() {
 
 async function loadStudents() {
     try {
-        const stuQuery = query(collection(db, 'schools', session.schoolId, 'students'), where('archived', '==', false), where('teacherId', '==', session.teacherId));
-        const stuSnap = await getDocs(stuQuery);
-        allStudentsCache = stuSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // CHANGED: query global /students, filter teacherId in memory
+        const stuSnap = await getDocs(query(
+            collection(db, 'students'),
+            where('currentSchoolId', '==', session.schoolId),
+            where('enrollmentStatus', '==', 'Active')
+        ));
+        allStudentsCache = stuSnap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .filter(s => s.teacherId === session.teacherId);
         studentMap = {};
         allStudentsCache.forEach(s => { studentMap[s.id] = s; }); // Store full object
         
@@ -491,9 +504,10 @@ async function saveSubject() {
         
         newSubs.push({ id: genId(), name, description: desc, archived: false, archivedAt: null });
         
-        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { subjects: newSubs });
+        // CHANGED: use getTeacherRef() for global/legacy compatibility
+        await updateDoc(getTeacherRef(), { subjects: newSubs });
         session.teacherData.subjects = newSubs;
-        sessionStorage.setItem('connectus_teacher_session', JSON.stringify(session));
+        setSessionData('teacher', session);
         
         closeSubjectFormModal();
         loadSubjectsTab(); // Reload table
