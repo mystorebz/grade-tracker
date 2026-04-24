@@ -29,31 +29,61 @@ function escHtml(str) {
 async function init() {
     if (!session) return;
 
-    // Attach Search Listener
     const searchInput = document.getElementById('archiveStudentSearch');
     if (searchInput) searchInput.addEventListener('input', filterArchivedStudents);
     
-    // Attach Print Modal Listeners
     document.getElementById('closePrintBtn').addEventListener('click', () => {
         closeOverlay('printStudentModal', 'printStudentModalInner');
     });
     document.getElementById('executePrintBtn').addEventListener('click', executeStudentPrint);
 
-    await loadSemesters(); // Needed for printing records
+    await loadSemesters(); 
     await loadArchivesTab();
 }
 
+// ── THE FIX: POPULATING TOPBAR & SIDEBAR ──
 async function loadSemesters() {
     try {
+        let rawSems = [];
         const cacheKey = `connectus_semesters_${session.schoolId}`;
         const cached = localStorage.getItem(cacheKey);
 
         if (cached) {
-            rawSemesters = JSON.parse(cached);
+            rawSems = JSON.parse(cached);
         } else {
             const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
-            rawSemesters = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
-            localStorage.setItem(cacheKey, JSON.stringify(rawSemesters));
+            rawSems = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
+            localStorage.setItem(cacheKey, JSON.stringify(rawSems));
+        }
+        
+        rawSemesters = rawSems;
+
+        let activeId = '';
+        try {
+            const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
+            activeId = schoolSnap.data()?.activeSemesterId || '';
+        } catch(e) {}
+
+        // Bind directly to the topbar dropdown injected by layout-teachers.js
+        const topSemSel = document.getElementById('activeSemester');
+        const sbPeriod = document.getElementById('sb-period');
+        
+        if (topSemSel) {
+            topSemSel.innerHTML = '';
+            rawSemesters.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.id;
+                opt.textContent = s.name;
+                if (s.id === activeId) opt.selected = true;
+                topSemSel.appendChild(opt);
+            });
+            
+            // Sync sidebar text
+            if (sbPeriod) sbPeriod.textContent = topSemSel.options[topSemSel.selectedIndex]?.text || '—';
+            
+            topSemSel.addEventListener('change', () => {
+                if (sbPeriod) sbPeriod.textContent = topSemSel.options[topSemSel.selectedIndex]?.text || '—';
+            });
         }
     } catch (e) {
         console.error("[Archives] Error loading semesters:", e);
@@ -72,7 +102,6 @@ async function loadArchivesTab() {
     studentListEl.innerHTML = '<div class="text-center py-10 text-[#9ab0c6] text-[13px] font-bold"><i class="fa-solid fa-spinner fa-spin text-[#2563eb] text-2xl mb-3 block"></i>Loading archived records...</div>';
     subjectListEl.innerHTML = '<div class="text-center py-10 text-[#9ab0c6] text-[13px] font-bold"><i class="fa-solid fa-spinner fa-spin text-[#2563eb] text-2xl mb-3 block"></i>Loading archived subjects...</div>';
 
-    // Load Archived Students (Optimized Query)
     try {
         const q = query(
             collection(db, 'schools', session.schoolId, 'students'),
@@ -80,7 +109,6 @@ async function loadArchivesTab() {
         );
         const snap = await getDocs(q);
         
-        // Filter locally for teachers who originally owned them or unassigned
         const archivedStudents = snap.docs.filter(d => {
             const data = d.data();
             return data.teacherId === session.teacherId || !data.teacherId || data.teacherId === '';
@@ -116,7 +144,6 @@ async function loadArchivesTab() {
         studentListEl.innerHTML = '<p class="text-[13px] text-[#e31b4a] font-bold text-center py-4 bg-[#fff0f3] rounded border border-[#fecaca]">Error loading archived students.</p>';
     }
 
-    // Load Archived Subjects
     const archivedSubjects = getArchivedSubjects();
     const subjCountEl = document.getElementById('archivesSubjCount');
     if (subjCountEl) subjCountEl.textContent = archivedSubjects.length;
@@ -138,7 +165,6 @@ async function loadArchivesTab() {
     }
 }
 
-// Search Filter for Students
 window.filterArchivedStudents = function() {
     const term = document.getElementById('archiveStudentSearch').value.toLowerCase();
     document.querySelectorAll('.archive-student-row').forEach(row => {
@@ -152,9 +178,9 @@ window.restoreStudent = async function(id) {
         await updateDoc(doc(db, 'schools', session.schoolId, 'students', id), {
             archived: false,
             archivedAt: null,
-            teacherId: session.teacherId // Re-claim the student automatically
+            teacherId: session.teacherId 
         });
-        loadArchivesTab(); // Refresh the list
+        loadArchivesTab(); 
     } catch (e) {
         console.error('[Archives] Error restoring student:', e);
         alert("Error restoring student.");
@@ -165,7 +191,6 @@ window.permanentDeleteStudent = async function(id, studentName) {
     if (!confirm(`Permanently delete ${studentName} and ALL their grades?\n\nWARNING: This action CANNOT be undone.`)) return;
     
     try {
-        // 1. Delete all grade subcollection documents first
         const gradesSnap = await getDocs(collection(db, 'schools', session.schoolId, 'students', id, 'grades'));
         const batch = writeBatch(db);
         
@@ -174,9 +199,8 @@ window.permanentDeleteStudent = async function(id, studentName) {
             await batch.commit();
         }
         
-        // 2. Delete the student document
         await deleteDoc(doc(db, 'schools', session.schoolId, 'students', id));
-        loadArchivesTab(); // Refresh the list
+        loadArchivesTab(); 
     } catch (e) {
         console.error('[Archives] Deletion error:', e);
         alert("Failed to permanently delete student data.");
@@ -222,7 +246,6 @@ window.permanentDeleteSubject = async function(subjectId, subjectName) {
 window.printStudentRecord = function(studentId) {
     currentStudentId = studentId;
     
-    // Populate the subjects drop down in the modal with all subjects (active & archived)
     const psSubj = document.getElementById('psSubject');
     const allSubjects = session.teacherData.subjects || [];
     psSubj.innerHTML = '<option value="all">All Subjects</option>' + allSubjects.map(s => `<option value="${escHtml(s.name)}">${escHtml(s.name)}</option>`).join('');
@@ -248,7 +271,6 @@ window.executeStudentPrint = async function() {
         let grades = [];
         gradesSnap.forEach(d => grades.push(d.data()));
         
-        // Group by Semester -> Subject
         const bySem = {};
         grades.forEach(g => {
             if (subjFilter !== 'all' && g.subject !== subjFilter) return;
@@ -264,9 +286,10 @@ window.executeStudentPrint = async function() {
         <style>
             @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
             body { font-family: 'DM Sans', sans-serif; padding: 40px; color: #0d1f35; line-height: 1.5; background: white; }
-            .header { text-align: center; border-bottom: 2px solid #0d1f35; padding-bottom: 20px; margin-bottom: 30px; }
+            .header { display: flex; flex-direction: column; align-items: center; border-bottom: 2px solid #0d1f35; padding-bottom: 20px; margin-bottom: 24px; }
+            .logo { max-height: 50px; max-width: 180px; object-fit: contain; margin-bottom: 12px; }
             .header h1 { margin: 0 0 5px 0; font-size: 22px; color: #0d1f35; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
-            .header h2 { margin: 0; font-size: 14px; color: #6b84a0; font-weight: 700; letter-spacing: 2px; }
+            .header h2 { margin: 0; font-size: 11px; color: #6b84a0; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; }
             .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 40px; background: #f8fafb; padding: 20px; border-radius: 4px; border: 1px solid #dce3ed; }
             .info-item label { display: block; font-size: 10px; text-transform: uppercase; color: #6b84a0; font-weight: 700; letter-spacing: 1px; margin-bottom: 4px; }
             .info-item span { font-size: 14px; font-weight: 700; color: #0d1f35; }
@@ -278,7 +301,11 @@ window.executeStudentPrint = async function() {
             .tc { text-align: center; } .tr { text-align: right; }
             .avg-row { background: #f0f4f8; font-weight: 700; }
         </style></head><body>
-        <div class="header"><h1>ConnectUs — Official Record</h1><h2>STUDENT ${mode === 'summary' ? 'REPORT CARD' : 'DETAILED TRANSCRIPT'}</h2></div>
+        <div class="header">
+            <img src="../../assets/images/logo.png" alt="ConnectUs" class="logo" onerror="this.style.display='none'">
+            <h1>Official Academic Record</h1>
+            <h2>${mode === 'summary' ? 'REPORT CARD SUMMARY' : 'DETAILED TRANSCRIPT'}</h2>
+        </div>
         <div class="info-grid">
             <div class="info-item"><label>Student Name</label><span>${escHtml(s.name)}</span></div>
             <div class="info-item"><label>Status</label><span style="color:#e31b4a;">${s.archived ? 'Archived / Transferred' : 'Active'}</span></div>
@@ -316,7 +343,7 @@ window.executeStudentPrint = async function() {
             }
         }
         
-        const printDisclaimer = "<p style='font-size:10px;color:#9ab0c6;margin-top:40px;text-align:center;border-top:1px solid #dce3ed;padding-top:14px;font-style:italic;'>This document does not constitute an official report card.</p>";
+        const printDisclaimer = "<p style='font-size:10px;color:#9ab0c6;margin-top:40px;text-align:center;border-top:1px solid #dce3ed;padding-top:14px;font-style:italic;'>Generated by ConnectUs. This document does not constitute a certified administrative transcript unless signed and stamped by school administration.</p>";
         html += printDisclaimer + `</body></html>`;
         
         const w = window.open('', '_blank');
