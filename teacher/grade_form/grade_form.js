@@ -7,7 +7,7 @@ import { gradeFill, letterGrade } from '../../assets/js/utils.js';
 // ── 1. AUTHENTICATION & LAYOUT ──────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
 if (session) {
-    injectTeacherLayout('enter-grade', 'Enter Grade', 'Log a new assignment or assessment', false);
+    injectTeacherLayout('enter-grade', 'Enter Grade', 'Log a new assignment or assessment into the system', false);
 }
 
 // ── 2. STATE VARIABLES ──────────────────────────────────────────────────────
@@ -35,6 +35,15 @@ async function init() {
     // Attach Event Listeners for UI
     document.getElementById('eg-score').addEventListener('input', updateLivePreview);
     document.getElementById('eg-max').addEventListener('input', updateLivePreview);
+    
+    // Allow pressing "Enter" on the score box to trigger save
+    document.getElementById('eg-score').addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            saveGrade();
+        }
+    });
+
     document.getElementById('saveGradeBtn').addEventListener('click', saveGrade);
     document.getElementById('closeBannerBtn').addEventListener('click', () => {
         document.getElementById('gradeSavedBanner').classList.add('hidden');
@@ -47,7 +56,7 @@ async function init() {
     await populateStudentDropdown();
 }
 
-// ── 4. INTELLIGENT SEARCHABLE DROPDOWN ENGINE ───────────────────────────────
+// ── 4. INTELLIGENT COMBOBOX ENGINE ──────────────────────────────────────────
 function setupSearchableDropdown(inputId, hiddenId, listId, dataArray, nextFocusId = null) {
     const inputEl = document.getElementById(inputId);
     const hiddenEl = document.getElementById(hiddenId);
@@ -58,21 +67,23 @@ function setupSearchableDropdown(inputId, hiddenId, listId, dataArray, nextFocus
         listEl.innerHTML = '';
         
         if (filtered.length === 0) {
-            listEl.innerHTML = `<li class="p-3 text-[13px] text-[#9ab0c6] italic text-center">No matches found</li>`;
+            listEl.innerHTML = `<li class="p-2.5 text-[12px] text-[#9ab0c6] italic text-center">No matches found</li>`;
             return;
         }
 
         filtered.forEach((item) => {
             const li = document.createElement('li');
-            // Premium UI Styling
-            li.className = 'p-3 text-[13px] text-[#0d1f35] hover:bg-[#eef4ff] hover:text-[#2563eb] cursor-pointer transition-colors border-b border-[#f0f4f8] last:border-0 font-bold';
+            li.className = 'p-2.5 text-[13px] text-[#0d1f35] hover:bg-[#eef4ff] hover:text-[#2563eb] cursor-pointer transition-colors border-b border-[#f0f4f8] last:border-0 font-bold';
             
-            // Highlight matching text for visual feedback
-            const regex = new RegExp(`(${filterText})`, "gi");
-            li.innerHTML = item.label.replace(regex, `<span class="text-[#2563eb] bg-[#c7d9fd]/50">$1</span>`);
+            // Highlight matching text
+            if (filterText) {
+                const regex = new RegExp(`(${filterText})`, "gi");
+                li.innerHTML = item.label.replace(regex, `<span class="text-[#2563eb] bg-[#eef4ff]">$1</span>`);
+            } else {
+                li.innerHTML = item.label;
+            }
             
             li.addEventListener('mousedown', (e) => {
-                // mousedown fires before input blur, allowing selection
                 e.preventDefault(); 
                 selectItem(item);
             });
@@ -85,27 +96,31 @@ function setupSearchableDropdown(inputId, hiddenId, listId, dataArray, nextFocus
         hiddenEl.value = item.value;
         listEl.classList.add('hidden');
         
-        // Auto-advance focus to the next logical field for fast data entry
         if(nextFocusId) {
             document.getElementById(nextFocusId).focus();
         }
     }
 
-    // Event Listeners for Interaction
-    inputEl.addEventListener('input', (e) => {
-        hiddenEl.value = ''; // Clear hidden value if they start altering the text
+    // Combobox Behavior: Click or Focus opens the full list
+    inputEl.addEventListener('click', () => {
         listEl.classList.remove('hidden');
-        renderList(e.target.value);
+        renderList(''); // Show all
+        inputEl.select();
     });
 
     inputEl.addEventListener('focus', () => {
         listEl.classList.remove('hidden');
-        renderList(inputEl.value);
-        inputEl.select(); // Highlight text so they can easily type over it
+        renderList(''); // Show all
+        inputEl.select();
+    });
+
+    inputEl.addEventListener('input', (e) => {
+        hiddenEl.value = ''; 
+        listEl.classList.remove('hidden');
+        renderList(e.target.value);
     });
 
     inputEl.addEventListener('blur', () => {
-        // Enforce valid selection on blur
         const match = dataArray.find(i => i.label.toLowerCase() === inputEl.value.toLowerCase().trim());
         if(match) {
              hiddenEl.value = match.value;
@@ -117,7 +132,6 @@ function setupSearchableDropdown(inputId, hiddenId, listId, dataArray, nextFocus
         listEl.classList.add('hidden');
     });
 
-    // Close dropdowns if clicking anywhere else on the page
     document.addEventListener('click', (e) => {
         if(!inputEl.contains(e.target) && !listEl.contains(e.target)) {
             listEl.classList.add('hidden');
@@ -133,14 +147,14 @@ function populateSubjectDropdown() {
 }
 
 function populateGradeTypeDropdown() {
-    const types = session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES;
+    let types = session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES;
     const data = types.map(t => ({ value: t, label: t }));
     setupSearchableDropdown('eg-type-search', 'eg-type', 'eg-type-list', data, 'eg-title');
 }
 
 async function populateStudentDropdown() {
     const inputEl = document.getElementById('eg-student-search');
-    inputEl.placeholder = "Loading students...";
+    inputEl.placeholder = "Loading database...";
     inputEl.disabled = true;
 
     try {
@@ -159,15 +173,15 @@ async function populateStudentDropdown() {
         const students = stuSnap.docs.map(d => ({ value: d.id, label: d.data().name }));
         students.sort((a, b) => a.label.localeCompare(b.label));
 
-        inputEl.placeholder = "Type to search student...";
+        inputEl.placeholder = "Select student...";
         inputEl.disabled = false;
         
-        setupSearchableDropdown('eg-student-search', 'eg-student', 'eg-student-list', students, 'eg-subject-search');
+        setupSearchableDropdown('eg-student-search', 'eg-student', 'eg-student-list', students, 'eg-score');
         handleQuickGrade(students);
 
     } catch (e) {
         console.error("[Grade Form] Error loading students:", e);
-        inputEl.placeholder = "Error loading students";
+        inputEl.placeholder = "System error loading students";
     }
 }
 
@@ -216,10 +230,8 @@ async function loadSemestersAndLockStatus() {
                 topSemSel.appendChild(opt);
             });
             
-            // Sync sidebar
             if (sbPeriod) sbPeriod.textContent = topSemSel.options[topSemSel.selectedIndex]?.text || '—';
             
-            // Check initial lock status
             checkLockStatus(rawSemesters);
 
             topSemSel.addEventListener('change', () => {
@@ -260,7 +272,7 @@ function checkLockStatus(semestersArray) {
     }
 }
 
-// ── 7. UI PREVIEW LOGIC (PREMIUM STYLING) ───────────────────────────────────
+// ── 7. UI PREVIEW LOGIC (ENTERPRISE STYLING) ────────────────────────────────
 function updateLivePreview() {
     const score = parseFloat(document.getElementById('eg-score').value);
     const max = parseFloat(document.getElementById('eg-max').value);
@@ -269,34 +281,33 @@ function updateLivePreview() {
         const pct = Math.round((score / max) * 100);
         const fill = gradeFill(pct);
         
-        // Premium hex codes mapped to standard colors
         const color = pct >= 90 ? 'text-[#0ea871]' : pct >= 80 ? 'text-[#2563eb]' : pct >= 70 ? 'text-[#0891b2]' : pct >= 65 ? 'text-[#b45309]' : 'text-[#e31b4a]';
         const lbg = pct >= 90 ? 'bg-[#edfaf4] border-[#c6f0db] text-[#0ea871]' : pct >= 80 ? 'bg-[#eef4ff] border-[#c7d9fd] text-[#2563eb]' : pct >= 70 ? 'bg-[#ecfeff] border-[#a5f3fc] text-[#0891b2]' : pct >= 65 ? 'bg-[#fffbeb] border-[#fde68a] text-[#b45309]' : 'bg-[#fff0f3] border-[#fecaca] text-[#e31b4a]';
         const lbl = pct >= 90 ? 'Excelling' : pct >= 80 ? 'Good Standing' : pct >= 70 ? 'On Track' : pct >= 65 ? 'Needs Attention' : 'At Risk';
         
         document.getElementById('prev-pct').textContent = pct + '%';
-        document.getElementById('prev-pct').className = `text-4xl font-mono font-bold tracking-tight ${color}`;
+        document.getElementById('prev-pct').className = `text-3xl font-mono font-bold tracking-tight ${color}`;
         
         document.getElementById('prev-letter').textContent = letterGrade(pct);
-        document.getElementById('prev-letter').className = `text-2xl font-black px-5 py-2 rounded border text-center min-w-[64px] ${lbg}`;
+        document.getElementById('prev-letter').className = `text-xl font-black px-4 py-1.5 rounded-sm border text-center min-w-[56px] ${lbg}`;
         
         document.getElementById('prev-bar').style.width = Math.min(pct, 100) + '%';
         document.getElementById('prev-bar').style.background = fill;
         
         document.getElementById('prev-label').textContent = lbl;
-        document.getElementById('prev-label').className = `text-[12px] uppercase tracking-widest font-bold mt-2 ${color}`;
+        document.getElementById('prev-label').className = `text-[10px] font-bold uppercase tracking-widest mt-2 ${color}`;
     } else {
         document.getElementById('prev-pct').textContent = '—';
-        document.getElementById('prev-pct').className = 'text-4xl font-mono font-bold text-[#c5d0db]';
+        document.getElementById('prev-pct').className = 'text-3xl font-mono font-bold text-[#c5d0db]';
         document.getElementById('prev-letter').textContent = '—';
-        document.getElementById('prev-letter').className = 'text-2xl font-black px-5 py-2 rounded border border-[#dce3ed] bg-[#f8fafb] text-[#9ab0c6] text-center min-w-[64px]';
+        document.getElementById('prev-letter').className = 'text-xl font-black px-4 py-1.5 rounded-sm border border-[#dce3ed] bg-[#f8fafb] text-[#9ab0c6] text-center min-w-[56px]';
         document.getElementById('prev-bar').style.width = '0%';
-        document.getElementById('prev-label').textContent = 'Enter score to preview';
-        document.getElementById('prev-label').className = 'text-[11px] font-bold uppercase tracking-widest mt-2 text-[#9ab0c6]';
+        document.getElementById('prev-label').textContent = 'Awaiting Input';
+        document.getElementById('prev-label').className = 'text-[10px] font-bold uppercase tracking-widest mt-2 text-[#9ab0c6] m-0';
     }
 }
 
-// ── 8. SAVE GRADE LOGIC ─────────────────────────────────────────────────────
+// ── 8. SAVE GRADE LOGIC (STACK OF PAPERS WORKFLOW) ──────────────────────────
 async function saveGrade() {
     if (isSemesterLocked) return;
 
@@ -317,7 +328,7 @@ async function saveGrade() {
     }
     
     const btn = document.getElementById('saveGradeBtn');
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving to Database...`;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Committing Record...`;
     btn.disabled = true;
     
     try {
@@ -337,8 +348,10 @@ async function saveGrade() {
             createdAt: new Date().toISOString()
         });
         
-        // Success: Clear specific fields for rapid-fire grading but keep Subject/Type selections
-        document.getElementById('eg-title').value = '';
+        // ── STACK OF PAPERS RESET ──
+        // Clear ONLY Student, Score, and Notes. Keep the rest for the next paper in the stack.
+        document.getElementById('eg-student-search').value = '';
+        document.getElementById('eg-student').value = '';
         document.getElementById('eg-score').value = '';
         document.getElementById('eg-notes').value = '';
         
@@ -347,20 +360,19 @@ async function saveGrade() {
         const banner = document.getElementById('gradeSavedBanner');
         if (banner) {
             banner.classList.remove('hidden');
-            setTimeout(() => banner.classList.add('hidden'), 5000); // Auto-hide after 5s
+            setTimeout(() => banner.classList.add('hidden'), 5000); 
         }
         
-        // Focus back on student search so they can immediately type the next kid's name
+        // Auto-focus back to student search for keyboard-only speed entry
         const stuSearch = document.getElementById('eg-student-search');
         stuSearch.focus();
-        stuSearch.select();
         
     } catch (e) {
         console.error(e);
-        alert('Error saving grade.');
+        alert('System Error: Could not commit record.');
     }
     
-    btn.innerHTML = `<i class="fa-solid fa-check-circle"></i> Save Grade to Gradebook`;
+    btn.innerHTML = `<i class="fa-solid fa-database text-[11px]"></i> Commit Record`;
     btn.disabled = false;
 }
 
