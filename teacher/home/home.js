@@ -111,6 +111,10 @@ async function fetchMetrics() {
             document.getElementById('stat-risk').textContent   = '0';
             const sbRisk = document.getElementById('sb-risk');
             if (sbRisk) sbRisk.textContent = '0';
+            
+            // CACHE STATS GLOBALLY
+            localStorage.setItem('connectus_sidebar_stats', JSON.stringify({ students: allStudents.length || 0, risk: 0 }));
+
             renderEmptyActivity();
             renderEmptyRisk();
             return;
@@ -157,6 +161,9 @@ async function fetchMetrics() {
             // Add visual indicator on the sidebar pill when there are at-risk students
             sbRisk.classList.toggle('is-risk', riskCount > 0);
         }
+
+        // CACHE STATS GLOBALLY
+        localStorage.setItem('connectus_sidebar_stats', JSON.stringify({ students: allStudents.length, risk: riskCount }));
 
         // ── 5d. At-Risk banner ───────────────────────────────────────────────
         const banner = document.getElementById('atRiskBanner');
@@ -231,7 +238,6 @@ function renderActivityRow(g) {
        onmouseover="this.style.background='#f8fafc'"
        onmouseout="this.style.background=''">
 
-      <!-- Student & Assignment -->
       <div style="display:flex;align-items:center;gap:10px;min-width:0;">
         <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#0ea871,#053d29);
                     color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;
@@ -248,24 +254,20 @@ function renderActivityRow(g) {
         </div>
       </div>
 
-      <!-- Subject -->
       <div style="font-size:12px;font-weight:500;color:#374f6b;
                   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
         ${escHtml(g.subject || '—')}
       </div>
 
-      <!-- Type -->
       <div style="font-size:11px;color:#9ab0c6;font-weight:400;">
         ${escHtml(g.type || '—')}
       </div>
 
-      <!-- Score -->
       <div style="font-size:12px;font-weight:600;color:#374f6b;text-align:right;
                   font-family:'DM Mono',monospace;">
         ${g.score}/${g.max || '?'}
       </div>
 
-      <!-- Grade % badge -->
       <div style="text-align:right;">
         <span style="${badgeStyle}padding:2px 8px;border-radius:99px;
                      font-size:11px;font-weight:700;font-family:'DM Mono',monospace;">
