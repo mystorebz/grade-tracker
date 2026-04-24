@@ -1,6 +1,6 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { collection, query, getDocs, getDoc, doc, updateDoc, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { requireAuth } from '../../assets/js/auth.js';
+import { collection, query, where, getDocs, getDoc, doc, updateDoc, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { openOverlay, closeOverlay, letterGrade } from '../../assets/js/utils.js';
 
@@ -14,12 +14,24 @@ if (session) {
 let currentStudentId = null;
 let rawSemesters = [];
 
+// Escapes HTML to prevent XSS
+function escHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 // ── 3. INITIALIZATION ───────────────────────────────────────────────────────
 async function init() {
     if (!session) return;
 
     // Attach Search Listener
-    document.getElementById('archiveStudentSearch').addEventListener('input', filterArchivedStudents);
+    const searchInput = document.getElementById('archiveStudentSearch');
+    if (searchInput) searchInput.addEventListener('input', filterArchivedStudents);
     
     // Attach Print Modal Listeners
     document.getElementById('closePrintBtn').addEventListener('click', () => {
@@ -33,10 +45,18 @@ async function init() {
 
 async function loadSemesters() {
     try {
-        const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
-        rawSemesters = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
+        const cacheKey = `connectus_semesters_${session.schoolId}`;
+        const cached = localStorage.getItem(cacheKey);
+
+        if (cached) {
+            rawSemesters = JSON.parse(cached);
+        } else {
+            const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
+            rawSemesters = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
+            localStorage.setItem(cacheKey, JSON.stringify(rawSemesters));
+        }
     } catch (e) {
-        console.error("Error loading semesters:", e);
+        console.error("[Archives] Error loading semesters:", e);
     }
 }
 
@@ -49,76 +69,82 @@ async function loadArchivesTab() {
     const studentListEl = document.getElementById('archivesStudentList');
     const subjectListEl = document.getElementById('archivesSubjectList');
 
-    studentListEl.innerHTML = '<div class="text-center py-6 text-slate-400 italic text-sm"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading...</div>';
-    subjectListEl.innerHTML = '<div class="text-center py-6 text-slate-400 italic text-sm"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading...</div>';
+    studentListEl.innerHTML = '<div class="text-center py-10 text-[#9ab0c6] text-[13px] font-bold"><i class="fa-solid fa-spinner fa-spin text-[#2563eb] text-2xl mb-3 block"></i>Loading archived records...</div>';
+    subjectListEl.innerHTML = '<div class="text-center py-10 text-[#9ab0c6] text-[13px] font-bold"><i class="fa-solid fa-spinner fa-spin text-[#2563eb] text-2xl mb-3 block"></i>Loading archived subjects...</div>';
 
-    // Load Archived Students
+    // Load Archived Students (Optimized Query)
     try {
-        const snap = await getDocs(collection(db, 'schools', session.schoolId, 'students'));
+        const q = query(
+            collection(db, 'schools', session.schoolId, 'students'),
+            where('archived', '==', true)
+        );
+        const snap = await getDocs(q);
         
-        // Filter: Must be archived AND belong to this teacher (or have no teacher assigned after archiving)
+        // Filter locally for teachers who originally owned them or unassigned
         const archivedStudents = snap.docs.filter(d => {
             const data = d.data();
-            return data.archived && (data.teacherId === session.teacherId || !data.teacherId || data.teacherId === '');
+            return data.teacherId === session.teacherId || !data.teacherId || data.teacherId === '';
         });
         
-        document.getElementById('archivesStudentCount').textContent = archivedStudents.length;
+        const countEl = document.getElementById('archivesStudentCount');
+        if (countEl) countEl.textContent = archivedStudents.length;
 
         if (archivedStudents.length) {
             studentListEl.innerHTML = archivedStudents.sort((a, b) => ((b.data().archivedAt || '').localeCompare(a.data().archivedAt || ''))).map(d => {
                 const s = d.data();
                 return `
-                <div class="archive-student-row flex flex-wrap items-center justify-between bg-slate-50 border border-slate-200 rounded-xl p-4 mb-3 gap-3">
+                <div class="archive-student-row flex flex-wrap items-center justify-between bg-white border border-[#dce3ed] hover:border-[#b8c5d4] rounded-xl p-4 mb-3 gap-3 shadow-sm transition">
                     <div class="flex-1 min-w-0">
-                        <p class="font-black text-slate-800">${s.name || 'Unnamed'}</p>
-                        <p class="text-xs text-slate-500 font-semibold mt-0.5">
-                            ${s.className ? `Class: ${s.className} · ` : ''}Archived ${s.archivedAt ? new Date(s.archivedAt).toLocaleDateString() : '—'}
-                            ${s.archiveReason ? `<br><span class="text-amber-700 font-bold">Reason: ${s.archiveReason}</span>` : ''}
+                        <p class="font-bold text-[#0d1f35] text-[14px] m-0">${escHtml(s.name) || 'Unnamed'}</p>
+                        <p class="text-[11.5px] text-[#6b84a0] font-medium mt-1 m-0">
+                            ${s.className ? `<span class="font-bold text-[#374f6b]">Class: ${escHtml(s.className)}</span> · ` : ''}Archived ${s.archivedAt ? new Date(s.archivedAt).toLocaleDateString() : '—'}
+                            ${s.archiveReason ? `<br><span class="text-[#b45309] font-bold mt-1 inline-block"><i class="fa-solid fa-clock-rotate-left mr-1"></i>Reason: ${escHtml(s.archiveReason)}</span>` : ''}
                         </p>
                     </div>
                     <div class="flex gap-2 flex-shrink-0">
-                        <button onclick="printStudentRecord('${d.id}')" class="text-xs font-black text-slate-600 hover:bg-slate-200 border border-slate-300 bg-white px-3 py-1.5 rounded-lg transition flex items-center gap-1.5"><i class="fa-solid fa-print text-[10px]"></i> Print</button>
-                        <button onclick="restoreStudent('${d.id}')" class="text-xs font-black text-emerald-700 hover:bg-emerald-600 hover:text-white border border-emerald-300 bg-white px-3 py-1.5 rounded-lg transition">Restore</button>
-                        <button onclick="permanentDeleteStudent('${d.id}')" class="text-xs font-black text-red-600 hover:bg-red-600 hover:text-white border border-red-300 bg-white px-3 py-1.5 rounded-lg transition">Delete</button>
+                        <button onclick="printStudentRecord('${d.id}')" class="text-[11px] font-bold text-[#374f6b] hover:bg-[#f8fafb] border border-[#c5d0db] hover:border-[#0d1f35] bg-white px-3 py-1.5 rounded transition flex items-center gap-1.5 shadow-sm"><i class="fa-solid fa-print"></i> Print</button>
+                        <button onclick="restoreStudent('${d.id}')" class="text-[11px] font-bold text-[#0ea871] hover:bg-[#0ea871] hover:text-white border border-[#c6f0db] bg-white px-3 py-1.5 rounded transition shadow-sm">Restore</button>
+                        <button onclick="permanentDeleteStudent('${d.id}', '${escHtml(s.name).replace(/'/g, "\\'")}')" class="text-[11px] font-bold text-[#e31b4a] hover:bg-[#e31b4a] hover:text-white border border-[#fecaca] bg-white px-3 py-1.5 rounded transition shadow-sm">Delete</button>
                     </div>
                 </div>`;
             }).join('');
         } else {
-            studentListEl.innerHTML = '<p class="text-sm text-slate-400 italic text-center py-6 bg-slate-50 rounded-xl">No archived students.</p>';
+            studentListEl.innerHTML = '<div class="text-center py-10 bg-[#f8fafb] rounded border border-dashed border-[#b8c5d4]"><p class="text-[13px] text-[#6b84a0] font-bold m-0">No archived students.</p></div>';
         }
     } catch (e) {
-        console.error(e);
-        studentListEl.innerHTML = '<p class="text-sm text-red-400 italic text-center py-4">Error loading archived students.</p>';
+        console.error('[Archives] Error loading students:', e);
+        studentListEl.innerHTML = '<p class="text-[13px] text-[#e31b4a] font-bold text-center py-4 bg-[#fff0f3] rounded border border-[#fecaca]">Error loading archived students.</p>';
     }
 
     // Load Archived Subjects
     const archivedSubjects = getArchivedSubjects();
-    document.getElementById('archivesSubjCount').textContent = archivedSubjects.length;
+    const subjCountEl = document.getElementById('archivesSubjCount');
+    if (subjCountEl) subjCountEl.textContent = archivedSubjects.length;
 
     if (archivedSubjects.length) {
         subjectListEl.innerHTML = archivedSubjects.sort((a, b) => ((b.archivedAt || '').localeCompare(a.archivedAt || ''))).map(s => `
-        <div class="archive-subj-row flex flex-wrap items-center justify-between bg-slate-50 border border-slate-200 rounded-xl p-4 mb-3 gap-3">
+        <div class="archive-subj-row flex flex-wrap items-center justify-between bg-white border border-[#dce3ed] hover:border-[#b8c5d4] rounded-xl p-4 mb-3 gap-3 shadow-sm transition">
             <div class="flex-1 min-w-0">
-                <p class="font-black text-slate-500 line-through">${s.name}</p>
-                <p class="text-xs text-slate-400 font-semibold mt-0.5">Archived ${s.archivedAt ? new Date(s.archivedAt).toLocaleDateString() : '—'} · All existing grades preserved</p>
+                <p class="font-bold text-[#6b84a0] text-[14px] line-through decoration-[#b8c5d4] m-0">${escHtml(s.name)}</p>
+                <p class="text-[11.5px] text-[#9ab0c6] font-medium mt-1 m-0">Archived ${s.archivedAt ? new Date(s.archivedAt).toLocaleDateString() : '—'} · All existing grades preserved</p>
             </div>
             <div class="flex gap-2 flex-shrink-0">
-                <button onclick="restoreSubject('${s.id}')" class="text-xs font-black text-emerald-700 hover:bg-emerald-600 hover:text-white border border-emerald-300 bg-white px-3 py-1.5 rounded-lg transition">Restore</button>
-                <button onclick="permanentDeleteSubject('${s.id}')" class="text-xs font-black text-red-600 hover:bg-red-600 hover:text-white border border-red-300 bg-white px-3 py-1.5 rounded-lg transition">Delete</button>
+                <button onclick="restoreSubject('${s.id}')" class="text-[11px] font-bold text-[#0ea871] hover:bg-[#0ea871] hover:text-white border border-[#c6f0db] bg-white px-3 py-1.5 rounded transition shadow-sm">Restore</button>
+                <button onclick="permanentDeleteSubject('${s.id}', '${escHtml(s.name).replace(/'/g, "\\'")}')" class="text-[11px] font-bold text-[#e31b4a] hover:bg-[#e31b4a] hover:text-white border border-[#fecaca] bg-white px-3 py-1.5 rounded transition shadow-sm">Delete</button>
             </div>
         </div>`).join('');
     } else {
-        subjectListEl.innerHTML = '<p class="text-sm text-slate-400 italic text-center py-6 bg-slate-50 rounded-xl">No archived subjects.</p>';
+        subjectListEl.innerHTML = '<div class="text-center py-10 bg-[#f8fafb] rounded border border-dashed border-[#b8c5d4]"><p class="text-[13px] text-[#6b84a0] font-bold m-0">No archived subjects.</p></div>';
     }
 }
 
 // Search Filter for Students
-function filterArchivedStudents() {
+window.filterArchivedStudents = function() {
     const term = document.getElementById('archiveStudentSearch').value.toLowerCase();
     document.querySelectorAll('.archive-student-row').forEach(row => {
         row.style.display = row.textContent.toLowerCase().includes(term) ? '' : 'none';
     });
-}
+};
 
 // ── 5. STUDENT ACTIONS ──────────────────────────────────────────────────────
 window.restoreStudent = async function(id) {
@@ -130,13 +156,13 @@ window.restoreStudent = async function(id) {
         });
         loadArchivesTab(); // Refresh the list
     } catch (e) {
-        console.error(e);
+        console.error('[Archives] Error restoring student:', e);
         alert("Error restoring student.");
     }
 };
 
-window.permanentDeleteStudent = async function(id) {
-    if (!confirm('Permanently delete this student and ALL their grades? This action CANNOT be undone.')) return;
+window.permanentDeleteStudent = async function(id, studentName) {
+    if (!confirm(`Permanently delete ${studentName} and ALL their grades?\n\nWARNING: This action CANNOT be undone.`)) return;
     
     try {
         // 1. Delete all grade subcollection documents first
@@ -152,7 +178,7 @@ window.permanentDeleteStudent = async function(id) {
         await deleteDoc(doc(db, 'schools', session.schoolId, 'students', id));
         loadArchivesTab(); // Refresh the list
     } catch (e) {
-        console.error('Deletion error:', e);
+        console.error('[Archives] Deletion error:', e);
         alert("Failed to permanently delete student data.");
     }
 };
@@ -166,27 +192,29 @@ window.restoreSubject = async function(subjectId) {
     try {
         await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { subjects: newSubs });
         session.teacherData.subjects = newSubs;
-        sessionStorage.setItem('connectus_teacher_session', JSON.stringify(session));
+        setSessionData('teacher', session);
         loadArchivesTab();
     } catch (e) {
-        console.error(e);
+        console.error('[Archives] Error restoring subject:', e);
+        alert('Error restoring subject.');
     }
 };
 
-window.permanentDeleteSubject = async function(subjectId) {
+window.permanentDeleteSubject = async function(subjectId, subjectName) {
     const sub = (session.teacherData.subjects || []).find(s => s.id === subjectId);
     if (!sub) return;
     
-    if (!confirm(`Permanently delete "${sub.name}"? Existing student grades will still reference this subject name text, but the subject will be removed from your lists entirely.`)) return;
+    if (!confirm(`Permanently delete "${subjectName}"?\n\nWARNING: Existing student grades will still reference this subject name text, but the subject will be removed from your curriculum lists entirely.`)) return;
     
     const newSubs = session.teacherData.subjects.filter(s => s.id !== subjectId);
     try {
         await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { subjects: newSubs });
         session.teacherData.subjects = newSubs;
-        sessionStorage.setItem('connectus_teacher_session', JSON.stringify(session));
+        setSessionData('teacher', session);
         loadArchivesTab();
     } catch (e) {
-        console.error(e);
+        console.error('[Archives] Error deleting subject:', e);
+        alert('Error deleting subject permanently.');
     }
 };
 
@@ -197,12 +225,12 @@ window.printStudentRecord = function(studentId) {
     // Populate the subjects drop down in the modal with all subjects (active & archived)
     const psSubj = document.getElementById('psSubject');
     const allSubjects = session.teacherData.subjects || [];
-    psSubj.innerHTML = '<option value="all">All Subjects</option>' + allSubjects.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+    psSubj.innerHTML = '<option value="all">All Subjects</option>' + allSubjects.map(s => `<option value="${escHtml(s.name)}">${escHtml(s.name)}</option>`).join('');
     
     openOverlay('printStudentModal', 'printStudentModalInner');
 };
 
-async function executeStudentPrint() {
+window.executeStudentPrint = async function() {
     const mode = document.getElementById('psMode').value;
     const subjFilter = document.getElementById('psSubject').value;
     const studentId = currentStudentId;
@@ -232,36 +260,37 @@ async function executeStudentPrint() {
             bySem[sem][sub].push(g);
         });
         
-        let html = `<html><head><title>Student Record - ${s.name}</title>
+        let html = `<html><head><title>Student Record - ${escHtml(s.name)}</title>
         <style>
-            body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;padding:40px;color:#1e293b;line-height:1.5;}
-            .header{text-align:center;border-bottom:2px solid #cbd5e1;padding-bottom:20px;margin-bottom:30px;}
-            .header h1{margin:0 0 5px 0;font-size:22px;color:#0f172a;text-transform:uppercase;letter-spacing:1px;}
-            .header h2{margin:0;font-size:14px;color:#059669;font-weight:bold;letter-spacing:2px;}
-            .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:40px;background:#f8fafc;padding:20px;border-radius:8px;border:1px solid #e2e8f0;}
-            .info-item label{display:block;font-size:10px;text-transform:uppercase;color:#64748b;font-weight:bold;letter-spacing:1px;}
-            .info-item span{font-size:14px;font-weight:bold;color:#0f172a;}
-            .sem-block{margin-bottom:40px;page-break-inside:avoid;}
-            .sem-title{font-size:14px;font-weight:bold;background:#064e3b;color:white;padding:8px 15px;margin:0 0 15px 0;border-radius:4px;}
-            table{width:100%;border-collapse:collapse;margin-bottom:10px;font-size:13px;}
-            th,td{border:1px solid #e2e8f0;padding:8px 12px;text-align:left;}
-            th{background:#f1f5f9;color:#475569;font-weight:bold;text-transform:uppercase;font-size:10px;letter-spacing:0.5px;}
-            .tc{text-align:center;}.tr{text-align:right;}
-            .avg-row{background:#f8fafc;font-weight:bold;}
+            @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+            body { font-family: 'DM Sans', sans-serif; padding: 40px; color: #0d1f35; line-height: 1.5; background: white; }
+            .header { text-align: center; border-bottom: 2px solid #0d1f35; padding-bottom: 20px; margin-bottom: 30px; }
+            .header h1 { margin: 0 0 5px 0; font-size: 22px; color: #0d1f35; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+            .header h2 { margin: 0; font-size: 14px; color: #6b84a0; font-weight: 700; letter-spacing: 2px; }
+            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 40px; background: #f8fafb; padding: 20px; border-radius: 4px; border: 1px solid #dce3ed; }
+            .info-item label { display: block; font-size: 10px; text-transform: uppercase; color: #6b84a0; font-weight: 700; letter-spacing: 1px; margin-bottom: 4px; }
+            .info-item span { font-size: 14px; font-weight: 700; color: #0d1f35; }
+            .sem-block { margin-bottom: 40px; page-break-inside: avoid; }
+            .sem-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; background: #0d1f35; color: white; padding: 8px 14px; margin: 0 0 15px 0; border-radius: 2px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 13px; }
+            th, td { border: 1px solid #dce3ed; padding: 10px 14px; text-align: left; }
+            th { background: #f8fafb; color: #6b84a0; font-weight: 700; text-transform: uppercase; font-size: 10px; letter-spacing: 0.05em; }
+            .tc { text-align: center; } .tr { text-align: right; }
+            .avg-row { background: #f0f4f8; font-weight: 700; }
         </style></head><body>
         <div class="header"><h1>ConnectUs — Official Record</h1><h2>STUDENT ${mode === 'summary' ? 'REPORT CARD' : 'DETAILED TRANSCRIPT'}</h2></div>
         <div class="info-grid">
-            <div class="info-item"><label>Student Name</label><span>${s.name}</span></div>
-            <div class="info-item"><label>Status</label><span>${s.archived ? 'Archived / Transferred' : 'Active'}</span></div>
-            <div class="info-item"><label>Last Known Class</label><span>${s.className || 'Unassigned'}</span></div>
-            <div class="info-item"><label>Teacher</label><span>${session.teacherData.name}</span></div>
+            <div class="info-item"><label>Student Name</label><span>${escHtml(s.name)}</span></div>
+            <div class="info-item"><label>Status</label><span style="color:#e31b4a;">${s.archived ? 'Archived / Transferred' : 'Active'}</span></div>
+            <div class="info-item"><label>Last Known Class</label><span>${escHtml(s.className) || 'Unassigned'}</span></div>
+            <div class="info-item"><label>Teacher</label><span>${escHtml(session.teacherData.name)}</span></div>
         </div>`;
         
         if (!Object.keys(bySem).length) {
-            html += `<p style="text-align:center;color:#64748b;font-style:italic;padding:40px;">No grades recorded matching filters.</p>`;
+            html += `<p style="text-align:center;color:#6b84a0;font-style:italic;padding:40px;">No grades recorded matching filters.</p>`;
         } else {
             for (let sem in bySem) {
-                html += `<div class="sem-block"><h3 class="sem-title">${sem}</h3><table>`;
+                html += `<div class="sem-block"><h3 class="sem-title">${escHtml(sem)}</h3><table>`;
                 if (mode === 'summary') {
                     html += `<thead><tr><th>Subject</th><th class="tc">Assignments</th><th class="tc">Average (%)</th><th class="tc">Letter Grade</th></tr></thead><tbody>`;
                     let semTotalPct = 0; let semSubjCount = 0;
@@ -269,17 +298,17 @@ async function executeStudentPrint() {
                         const sGrades = bySem[sem][sub];
                         const avg = Math.round(sGrades.reduce((acc, g) => acc + (g.max ? (g.score / g.max) * 100 : 0), 0) / sGrades.length);
                         semTotalPct += avg; semSubjCount++;
-                        html += `<tr><td>${sub}</td><td class="tc">${sGrades.length}</td><td class="tc">${avg}%</td><td class="tc">${letterGrade(avg)}</td></tr>`;
+                        html += `<tr><td>${escHtml(sub)}</td><td class="tc">${sGrades.length}</td><td class="tc font-mono font-bold">${avg}%</td><td class="tc font-bold">${letterGrade(avg)}</td></tr>`;
                     }
                     const semAvg = Math.round(semTotalPct / semSubjCount);
-                    html += `<tr class="avg-row"><td colspan="2" class="tr">PERIOD AVERAGE:</td><td class="tc">${semAvg}%</td><td class="tc">${letterGrade(semAvg)}</td></tr></tbody></table></div>`;
+                    html += `<tr class="avg-row"><td colspan="2" class="tr text-[10px] text-[#6b84a0] uppercase tracking-wider">Period Average</td><td class="tc font-mono font-bold text-[#0d1f35]">${semAvg}%</td><td class="tc font-bold text-[#0d1f35]">${letterGrade(semAvg)}</td></tr></tbody></table></div>`;
                 } else {
                     html += `<thead><tr><th>Subject</th><th>Assignment</th><th>Type</th><th class="tc">Score</th><th class="tc">%</th></tr></thead><tbody>`;
                     for (let sub in bySem[sem]) {
                         const sGrades = bySem[sem][sub].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
                         sGrades.forEach(g => {
                             const pct = g.max ? Math.round(g.score / g.max * 100) : null;
-                            html += `<tr><td>${sub}</td><td>${g.title}<br><span style="font-size:10px;color:#94a3b8">${g.date || ''}</span></td><td>${g.type}</td><td class="tc">${g.score}/${g.max}</td><td class="tc">${pct !== null ? pct + '%' : '—'}</td></tr>`;
+                            html += `<tr><td>${escHtml(sub)}</td><td>${escHtml(g.title)}<br><span style="font-size:10px;color:#9ab0c6">${escHtml(g.date) || ''}</span></td><td>${escHtml(g.type)}</td><td class="tc font-mono">${g.score}/${g.max}</td><td class="tc font-bold">${pct !== null ? pct + '%' : '—'}</td></tr>`;
                         });
                     }
                     html += `</tbody></table></div>`;
@@ -287,7 +316,7 @@ async function executeStudentPrint() {
             }
         }
         
-        const printDisclaimer = "<p style='font-size:10px;color:#64748b;margin-top:40px;text-align:center;border-top:1px solid #e2e8f0;padding-top:10px;font-style:italic;'>This document does not constitute an official report card.</p>";
+        const printDisclaimer = "<p style='font-size:10px;color:#9ab0c6;margin-top:40px;text-align:center;border-top:1px solid #dce3ed;padding-top:14px;font-style:italic;'>This document does not constitute an official report card.</p>";
         html += printDisclaimer + `</body></html>`;
         
         const w = window.open('', '_blank');
@@ -295,10 +324,10 @@ async function executeStudentPrint() {
         w.document.close();
         
         closeOverlay('printStudentModal', 'printStudentModalInner');
-        setTimeout(() => w.print(), 500);
+        setTimeout(() => w.print(), 600);
         
     } catch (e) {
-        console.error(e);
+        console.error('[Archives] Error generating print:', e);
         alert('Error generating print.');
     }
 }
