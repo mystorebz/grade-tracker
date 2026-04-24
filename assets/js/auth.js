@@ -10,17 +10,15 @@
  *     replace() removes the current page from history so the back button doesn't
  *     loop the user back to a protected page after logout or an auth failure.
  *
- *  3. Page fade-in on requireAuth()
- *     Every protected HTML page starts with `html { opacity: 0 }`.
- *     requireAuth() schedules a smooth fade-in after auth passes.
- *     If auth fails the page stays invisible while the redirect fires — no flash.
- *
- *  4. Session integrity check
+ *  3. Session integrity check
  *     Validates that stored session has the minimum required fields before
  *     treating it as authenticated. Corrupt/incomplete data = re-login.
  *
  *  All exported function signatures are IDENTICAL to the original —
  *  zero changes needed in any page script that already calls these.
+ *
+ *  NOTE: The fadePageIn() function was removed. It caused a visible white-flash
+ *  "splash" on every page load. Pages load normally without it.
  */
 
 // ── PRIVATE HELPERS ───────────────────────────────────────────────────────────
@@ -36,21 +34,7 @@ function isValidSession(role, data) {
     if (role === 'teacher') return !!(data.schoolId && data.teacherId && data.teacherData);
     if (role === 'admin')   return !!(data.schoolId && data.adminId);
     if (role === 'student') return !!(data.schoolId && data.studentId);
-    return !!data; // unknown role — just check it exists
-}
-
-/**
- * Triggers a smooth fade-in of the page after the layout has been injected.
- * Uses two nested rAF calls to guarantee we're past the current paint frame
- * AND the layout injection synchronous work before starting the transition.
- */
-function fadePageIn() {
-    requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-            document.documentElement.style.transition = 'opacity 0.2s ease';
-            document.documentElement.style.opacity   = '1';
-        });
-    });
+    return !!data;
 }
 
 // ── PUBLIC API — signatures match original exactly ────────────────────────────
@@ -112,8 +96,6 @@ export function requireAuth(role, redirectUrl = '../index.html') {
         return null;
     }
 
-    // Auth passed — trigger the page fade-in after layout injection runs
-    fadePageIn();
     return session;
 }
 
