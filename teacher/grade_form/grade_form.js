@@ -33,11 +33,19 @@ async function init() {
     document.getElementById('eg-date').valueAsDate = new Date();
 
     // Attach Event Listeners for UI
-    document.getElementById('eg-score').addEventListener('input', updateLivePreview);
-    document.getElementById('eg-max').addEventListener('input', updateLivePreview);
+    const scoreInput = document.getElementById('eg-score');
+    const maxInput = document.getElementById('eg-max');
+
+    // Run validation on input to prevent bad keystrokes
+    scoreInput.addEventListener('input', validateAndPreview);
+    maxInput.addEventListener('input', validateAndPreview);
+
+    // Prevent non-numeric characters (like 'e', '+', '-') from being typed
+    scoreInput.addEventListener('keydown', restrictNumeric);
+    maxInput.addEventListener('keydown', restrictNumeric);
     
     // Allow pressing "Enter" on the score box to trigger save
-    document.getElementById('eg-score').addEventListener('keypress', function (e) {
+    scoreInput.addEventListener('keypress', function (e) {
         if (e.key === 'Enter') {
             e.preventDefault();
             saveGrade();
@@ -272,11 +280,46 @@ function checkLockStatus(semestersArray) {
     }
 }
 
-// ── 7. UI PREVIEW LOGIC (ENTERPRISE STYLING) ────────────────────────────────
-function updateLivePreview() {
-    const score = parseFloat(document.getElementById('eg-score').value);
-    const max = parseFloat(document.getElementById('eg-max').value);
-    
+// ── 7. UI PREVIEW & MATH VALIDATION ─────────────────────────────────────────
+
+// Helper to block keyboard inputs like 'e' and '-' in the number field
+function restrictNumeric(e) {
+    if (['e', 'E', '+', '-'].includes(e.key)) {
+        e.preventDefault();
+    }
+}
+
+function validateAndPreview() {
+    const scoreInput = document.getElementById('eg-score');
+    const maxInput = document.getElementById('eg-max');
+
+    // Parse current values
+    let score = parseFloat(scoreInput.value);
+    let max = parseFloat(maxInput.value);
+
+    // Default max to 1 if it's wiped out so we don't divide by zero
+    if (isNaN(max) || max <= 0) {
+        max = 1;
+    }
+
+    // 1. Enforce Minimums (No negatives)
+    if (score < 0) {
+        score = 0;
+        scoreInput.value = score;
+    }
+
+    // 2. Enforce Maximums (Cannot exceed Max possible points)
+    if (score > max) {
+        score = max;
+        scoreInput.value = score;
+    }
+
+    // Pass the clean, validated numbers to the visual preview engine
+    updateLivePreviewUI(score, max);
+}
+
+
+function updateLivePreviewUI(score, max) {
     if (!isNaN(score) && !isNaN(max) && max > 0 && score >= 0) {
         const pct = Math.round((score / max) * 100);
         const fill = gradeFill(pct);
@@ -310,6 +353,9 @@ function updateLivePreview() {
 // ── 8. SAVE GRADE LOGIC (STACK OF PAPERS WORKFLOW) ──────────────────────────
 async function saveGrade() {
     if (isSemesterLocked) return;
+
+    // Call the validation one final time just in case
+    validateAndPreview();
 
     const studentId = document.getElementById('eg-student').value;
     const subj = document.getElementById('eg-subject').value;
@@ -355,7 +401,7 @@ async function saveGrade() {
         document.getElementById('eg-score').value = '';
         document.getElementById('eg-notes').value = '';
         
-        updateLivePreview();
+        validateAndPreview();
         
         const banner = document.getElementById('gradeSavedBanner');
         if (banner) {
