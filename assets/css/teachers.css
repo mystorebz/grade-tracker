@@ -1,82 +1,102 @@
 /* ==========================================================================
-   CONNECTUS - TEACHER PORTAL CSS (PROFESSIONAL TECH EDITION)
+   CONNECTUS - TEACHER PORTAL CSS (PREMIUM 2026 EDITION)
    ========================================================================== */
 
-/* FORCE A SINGLE PROFESSIONAL FONT AND CLEAN BACKGROUNDS */
+/* Apply premium font without breaking FontAwesome icons */
 html, body { 
     margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; 
-    background-color: #f8fafc !important; /* Professional slate-white for main area */
-}
-
-/* Aggressively override all fonts to ensure unity */
-* { 
-    font-family: 'Inter', system-ui, -apple-system, sans-serif !important; 
-    border-radius: 0 !important; /* Keep the sharp, futuristic edges */
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background-color: #f4f7f6; /* Soft, premium light-gray/green background */
+    color: #0f172a;
 }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #f8fafc; border-left: 1px solid #e2e8f0; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-/* ── SIDEBAR STYLING ── */
+/* ── PREMIUM SIDEBAR (Matches Login Page Vibe) ── */
 #sidebar { 
-    background: #ffffff !important; 
-    border-right: 1px solid #e2e8f0 !important; 
-    box-shadow: 2px 0 10px rgba(0,0,0,0.02);
+    background: linear-gradient(160deg, #022c22 0%, #064e3b 50%, #047857 100%) !important; 
+    border-right: 1px solid rgba(255, 255, 255, 0.05) !important; 
+    box-shadow: 4px 0 25px rgba(0,0,0,0.1);
 }
 
 .nav-section-label { 
-    font-size: 10px; font-weight: 800; color: #94a3b8 !important; 
+    font-size: 10px; font-weight: 800; color: rgba(255, 255, 255, 0.4) !important; 
     text-transform: uppercase; letter-spacing: 0.15em; 
-    padding: 0 16px; margin-top: 24px; margin-bottom: 8px; 
+    padding: 0 24px; margin-top: 24px; margin-bottom: 8px; 
 }
 
 .nav-item { 
-    color: #475569 !important; font-weight: 600; 
-    transition: all 0.15s ease; position: relative; 
-    border: 1px solid transparent; margin-bottom: 4px;
-    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.7) !important; font-weight: 600; 
+    transition: all 0.2s ease; position: relative; 
+    border-radius: 12px; margin: 4px 12px; padding: 12px 16px;
+    font-size: 0.9rem; display: flex; align-items: center; gap: 12px;
 }
-.nav-item:hover { background: #f8fafc !important; color: #0f172a !important; border-color: #e2e8f0; }
+.nav-item:hover { 
+    background: rgba(255, 255, 255, 0.08) !important; 
+    color: #ffffff !important; 
+}
 .nav-item.active { 
-    background: rgba(16, 185, 129, 0.05) !important; 
-    color: #059669 !important; font-weight: 700;
-    border: 1px solid #10b981 !important; 
+    background: linear-gradient(90deg, rgba(16, 185, 129, 0.2), transparent) !important; 
+    color: #34d399 !important; font-weight: 700;
+    border: 1px solid rgba(52, 211, 153, 0.2) !important; 
 }
 .nav-item.active::before { 
-    content: ''; position: absolute; left: 0; top: 0; 
-    width: 4px; height: 100%; background: #10b981; 
+    content: ''; position: absolute; left: -12px; top: 15%; 
+    width: 4px; height: 70%; background: #34d399; 
+    border-radius: 0 4px 4px 0;
 }
 
-/* ── DASHBOARD ELEMENTS ── */
-/* Stat Cards */
+/* ── DASHBOARD CARDS ── */
 .stat-card { 
-    transition: transform 0.18s; 
+    transition: all 0.2s ease; 
     border: 1px solid #e2e8f0 !important; 
     background: #ffffff !important;
-    clip-path: polygon(15px 0, 100% 0, 100% calc(100% - 15px), calc(100% - 15px) 100%, 0 100%, 0 15px);
+    border-radius: 16px !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
 }
-.stat-card:hover { transform: translateY(-2px); border-color: #10b981 !important; box-shadow: 0 10px 25px rgba(16, 185, 129, 0.05); }
+.stat-card:hover { 
+    transform: translateY(-3px); 
+    border-color: #10b981 !important; 
+    box-shadow: 0 12px 25px rgba(16, 185, 129, 0.08); 
+}
 
-/* Quick Action Buttons */
+/* ── QUICK ACTION BUTTONS ── */
 .qa-btn { 
-    display: flex; align-items: center; gap: 10px; padding: 12px 16px; 
-    font-weight: 800; font-size: 0.85rem; transition: all 0.18s; 
-    border: 1px solid #cbd5e1 !important; background: #ffffff !important; 
+    display: flex; align-items: center; gap: 12px; padding: 14px 18px; 
+    font-weight: 800; font-size: 0.85rem; transition: all 0.2s; 
+    border: 1px solid #e2e8f0 !important; background: #ffffff !important; 
+    border-radius: 14px !important;
     text-decoration: none; text-transform: uppercase; letter-spacing: 0.5px; color: #1e293b !important; 
+    box-shadow: 0 2px 10px rgba(0,0,0,0.02);
 }
-.qa-btn:hover { background: #10b981 !important; color: #fff !important; border-color: #10b981 !important; transform: translate(-2px, -2px); box-shadow: 3px 3px 0 rgba(16, 185, 129, 0.2); }
-.qa-icon { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; background: #f8fafc; border: 1px solid #e2e8f0; color: #10b981; transition: all 0.2s; }
-.qa-btn:hover .qa-icon { color: #fff; border-color: transparent; background: transparent; }
+.qa-btn:hover { 
+    background: linear-gradient(135deg, #10b981, #059669) !important; 
+    color: #fff !important; border-color: transparent !important; 
+    transform: translateY(-2px); 
+    box-shadow: 0 8px 20px rgba(16, 185, 129, 0.25); 
+}
+.qa-icon { 
+    width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; 
+    font-size: 1.1rem; flex-shrink: 0; background: #f0fdf4; border: 1px solid #bbf7d0; 
+    border-radius: 10px; color: #10b981; transition: all 0.2s; 
+}
+.qa-btn:hover .qa-icon { color: #10b981; border-color: transparent; background: #ffffff; }
 
-/* Subject Cards */
-.subject-card { display: flex; align-items: flex-start; justify-content: space-between; background: #fff; border: 1px solid #e2e8f0; padding: 12px 14px; transition: all 0.13s; border-left: 4px solid #10b981; }
-.subject-card:hover { transform: translateX(4px); border-color: #10b981; }
+/* ── LIST ROWS (Recent Activity, Gradebook) ── */
+.gb-row, .trow { 
+    border-bottom: 1px solid #f1f5f9; transition: all 0.15s; background: #ffffff; 
+}
+.gb-row:hover, .trow:hover { 
+    background: #f8fafc !important; 
+}
 
-/* Recent Activity Rows */
-.gb-row, .trow { border-bottom: 1px solid #e2e8f0; transition: background 0.1s; background: #ffffff; }
-.gb-row:hover, .trow:hover { background: #f8fafc !important; }
-
-/* Topbar */
-.topbar { background: #fff !important; border-bottom: 1px solid #e2e8f0 !important; }
+/* ── TOPBAR ── */
+.topbar { 
+    background: rgba(255, 255, 255, 0.9) !important; 
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid #e2e8f0 !important; 
+    box-shadow: 0 2px 10px rgba(0,0,0,0.02); 
+}
