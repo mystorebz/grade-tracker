@@ -166,19 +166,21 @@ async function populateStudentDropdown() {
     inputEl.disabled = true;
 
     try {
-        const stuQuery = query(
-            collection(db, 'schools', session.schoolId, 'students'),
-            where('archived', '==', false),
-            where('teacherId', '==', session.teacherId)
-        );
-        const stuSnap = await getDocs(stuQuery);
+        // CHANGED: query global /students, filter teacherId in memory
+        const stuSnap = await getDocs(query(
+            collection(db, 'students'),
+            where('currentSchoolId', '==', session.schoolId),
+            where('enrollmentStatus', '==', 'Active')
+        ));
         
-        if (stuSnap.empty) {
+        if (!stuSnap.docs.length) {
             inputEl.placeholder = "No active students found";
             return;
         }
 
-        const students = stuSnap.docs.map(d => ({ value: d.id, label: d.data().name }));
+        const students = stuSnap.docs
+            .filter(d => d.data().teacherId === session.teacherId)
+            .map(d => ({ value: d.id, label: d.data().name }));
         students.sort((a, b) => a.label.localeCompare(b.label));
 
         inputEl.placeholder = "Select student...";
