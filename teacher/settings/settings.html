@@ -135,7 +135,7 @@
                             
                             <div id="settingsClassGrid" class="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto mb-5 flex-1 pr-1"></div>
                             
-                            <button id="saveClassesBtn" class="bg-white border border-[#c5d0db] hover:border-[#0d1f35] hover:bg-[#0d1f35] hover:text-white text-[#374f6b] py-2.5 rounded font-bold text-[12.5px] transition w-full">Update My Classes</button>
+                            <button id="saveClassesBtn" class="bg-white border border-[#c5d0db] hover:border-[#0d1f35] hover:bg-[#0d1f35] hover:text-white text-[#374f6b] py-2.5 rounded font-bold text-[12.5px] transition w-full mt-auto">Update My Classes</button>
                             <p id="settingsClassMsg" class="text-[11.5px] hidden font-bold p-2.5 rounded text-center m-0 mt-3"></p>
                         </div>
                     </div>
@@ -159,7 +159,12 @@
                             </div>
                             <p id="gradeTypeMsg" class="text-[11.5px] hidden font-bold p-2 rounded text-center m-0 mb-3"></p>
                             
-                            <div class="flex-1 overflow-y-auto max-h-48 pr-1" id="gradeTypesList"></div>
+                            <div class="overflow-y-auto max-h-48 pr-1" id="gradeTypesList"></div>
+                            
+                            <div id="archivedGradeTypesWrap" class="mt-4 pt-4 border-t border-[#f0f4f8] hidden">
+                                <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Archived Types</h4>
+                                <div id="archivedGradeTypesList" class="space-y-2 max-h-32 overflow-y-auto pr-1"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -182,6 +187,11 @@
                     <div class="p-6">
                         <div id="activeSubjectsList" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
                         <p id="subjectsMsg" class="text-[11.5px] hidden font-bold p-3 rounded text-center m-0 mt-4"></p>
+                        
+                        <div id="archivedSubjectsWrap" class="mt-6 pt-6 border-t border-[#f0f4f8] hidden">
+                            <h4 class="text-[11px] font-bold text-[#6b84a0] uppercase tracking-widest mb-4">Archived Subjects</h4>
+                            <div id="archivedSubjectsList" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+                        </div>
                     </div>
                 </div>
 
