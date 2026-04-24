@@ -17,7 +17,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     
     <style>
-        /* ── PAGE SPECIFIC STYLES ── */
         body { 
             background: linear-gradient(135deg, #022c22 0%, #064e3b 40%, #065f46 70%, #047857 100%); 
         }
@@ -26,23 +25,19 @@
             background-image: radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px); 
             background-size: 32px 32px; pointer-events: none; z-index: 0; 
         }
-        
-        /* Floating Background Orbs (Green Theme) */
         .orb { position: absolute; border-radius: 50%; filter: blur(60px); opacity: 0.4; z-index: 0; animation: float 10s infinite ease-in-out alternate; }
         .orb-1 { width: 300px; height: 300px; background: #10b981; top: -50px; left: -50px; }
         .orb-2 { width: 250px; height: 250px; background: #059669; bottom: -50px; right: -50px; animation-delay: -2s; }
         .orb-3 { width: 200px; height: 200px; background: #34d399; top: 40%; left: 60%; animation-delay: -4s; }
 
-        /* Logo Animations */
         @keyframes floatLogo {
-            0% { transform: translateY(0px); }
-            50% { transform: translateY(-8px); }
+            0%   { transform: translateY(0px); }
+            50%  { transform: translateY(-8px); }
             100% { transform: translateY(0px); }
         }
-        .logo-bob { animation: floatLogo 4s ease-in-out infinite; }
+        .logo-bob  { animation: floatLogo 4s ease-in-out infinite; }
         .logo-glow img { filter: drop-shadow(0 10px 15px rgba(16, 185, 129, 0.3)); }
         
-        /* Inputs & Checkboxes */
         .login-input { width: 100%; padding: 0.9rem 1.1rem; background: #f0fdf4; border: 2px solid #bbf7d0; border-radius: 14px; font-size: 0.9rem; font-family: 'Nunito', sans-serif; outline: none; transition: all 0.2s; color: #1e293b; font-weight: 600; }
         .login-input:focus { border-color: #10b981; background: #fff; box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.14); }
         
@@ -62,7 +57,9 @@
 
     <div id="loginScreen" class="w-full flex flex-col items-center justify-center relative z-10">
         <div class="mb-5 w-full max-w-md text-left">
-            <a href="../" class="back-btn text-white/80 hover:text-white transition"><i class="fa-solid fa-arrow-left text-xs"></i> Back to Main Site</a>
+            <a href="../" class="back-btn text-white/80 hover:text-white transition">
+                <i class="fa-solid fa-arrow-left text-xs"></i> Back to Main Site
+            </a>
         </div>
 
         <div class="login-card bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden">
@@ -76,18 +73,27 @@
                 <h1 class="text-2xl font-black text-slate-800 tracking-tight">Teacher Portal</h1>
                 <p class="text-slate-500 text-sm mt-1 font-semibold">Your classroom command center</p>
                 <div class="flex items-center justify-center gap-2 mt-4 flex-wrap">
-                    <span class="bg-emerald-50 text-emerald-700 text-[11px] font-black px-3 py-1 rounded-full border border-emerald-100"><i class="fa-solid fa-book mr-1"></i>Gradebook</span>
-                    <span class="bg-teal-50 text-teal-700 text-[11px] font-black px-3 py-1 rounded-full border border-teal-100"><i class="fa-solid fa-users mr-1"></i>Roster</span>
+                    <span class="bg-emerald-50 text-emerald-700 text-[11px] font-black px-3 py-1 rounded-full border border-emerald-100">
+                        <i class="fa-solid fa-book mr-1"></i>Gradebook
+                    </span>
+                    <span class="bg-teal-50 text-teal-700 text-[11px] font-black px-3 py-1 rounded-full border border-teal-100">
+                        <i class="fa-solid fa-users mr-1"></i>Roster
+                    </span>
                 </div>
             </div>
             <div class="p-8 space-y-5">
                 <div>
-                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2"><i class="fa-solid fa-school mr-1.5 text-emerald-500"></i>School ID</label>
+                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2">
+                        <i class="fa-solid fa-school mr-1.5 text-emerald-500"></i>School ID
+                    </label>
                     <input type="text" id="loginSchoolId" placeholder="e.g. LA1234" class="login-input">
                 </div>
                 <div>
-                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2"><i class="fa-solid fa-key mr-1.5 text-emerald-500"></i>Teacher Code</label>
-                    <input type="password" id="loginTeacherCode" placeholder="Your login code" class="login-input uppercase font-mono tracking-widest">
+                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2">
+                        <i class="fa-solid fa-key mr-1.5 text-emerald-500"></i>Teacher PIN / Code
+                    </label>
+                    <input type="password" id="loginTeacherCode" placeholder="Your login code"
+                        class="login-input uppercase font-mono tracking-widest">
                 </div>
                 <button id="loginBtn" class="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-black py-4 rounded-2xl transition shadow-lg shadow-emerald-500/25 text-base flex justify-center items-center gap-2">
                     <i class="fa-solid fa-arrow-right-to-bracket"></i> Access Portal
@@ -100,29 +106,39 @@
         </div>
     </div>
 
+
+    <!-- ── FORCE PIN RESET MODAL ──────────────────────────────────────────── -->
     <div id="forceResetModal" class="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
         <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden" id="forceResetModalInner">
             <div class="h-1.5 bg-gradient-to-r from-emerald-500 to-teal-400"></div>
             <div class="p-8 text-center">
-                <div class="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600 text-3xl mx-auto mb-4"><i class="fa-solid fa-shield-halved"></i></div>
+                <div class="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600 text-3xl mx-auto mb-4">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
                 <h3 class="font-black text-2xl text-slate-800 mb-2">Set Your Login Code</h3>
                 <p class="text-slate-500 text-sm mb-6 font-semibold">Set a personal login code before continuing.</p>
                 <div class="space-y-4 text-left">
                     <div>
                         <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">New Login Code</label>
-                        <input type="password" id="newForceCode" placeholder="Min. 5 characters" class="form-input w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                        <input type="password" id="newForceCode" placeholder="Min. 5 characters"
+                            class="form-input w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm">
                     </div>
                     <div>
                         <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Confirm Code</label>
-                        <input type="password" id="confirmForceCode" placeholder="Type it again" class="form-input w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                        <input type="password" id="confirmForceCode" placeholder="Type it again"
+                            class="form-input w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm">
                     </div>
-                    <button id="saveForceCodeBtn" class="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 text-white font-black py-3.5 rounded-xl transition shadow-md text-base flex justify-center items-center gap-2">Save & Continue <i class="fa-solid fa-arrow-right"></i></button>
+                    <button id="saveForceCodeBtn" class="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 text-white font-black py-3.5 rounded-xl transition shadow-md text-base flex justify-center items-center gap-2">
+                        Save & Continue <i class="fa-solid fa-arrow-right"></i>
+                    </button>
                     <p id="forceResetMsg" class="text-sm font-bold text-center text-red-600 hidden bg-red-50 p-2.5 rounded-xl border border-red-100"></p>
                 </div>
             </div>
         </div>
     </div>
 
+
+    <!-- ── CLASS SELECTION ONBOARDING MODAL ──────────────────────────────── -->
     <div id="onboardModal" class="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
         <div class="bg-white rounded-3xl shadow-2xl max-w-lg w-full m-4 overflow-hidden transform scale-95 transition-transform duration-300" id="onboardModalInner">
             <div class="h-1.5 bg-gradient-to-r from-emerald-500 to-teal-400"></div>
@@ -131,11 +147,15 @@
                     <div class="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4">👋</div>
                     <h2 class="text-2xl font-black text-slate-800 mb-2">Welcome to ConnectUs!</h2>
                     <p class="text-slate-500 text-sm font-semibold" id="onboardSubtitle">Select the class(es) you teach.</p>
-                    <p class="text-xs text-emerald-600 font-bold mt-1 bg-emerald-50 rounded-xl px-3 py-1.5 inline-block"><i class="fa-solid fa-circle-info mr-1"></i>You can select more than one class</p>
+                    <p class="text-xs text-emerald-600 font-bold mt-1 bg-emerald-50 rounded-xl px-3 py-1.5 inline-block">
+                        <i class="fa-solid fa-circle-info mr-1"></i>You can select more than one class
+                    </p>
                 </div>
                 <div id="classGrid" class="cls-cb-wrap max-h-72 overflow-y-auto mb-6"></div>
                 <p id="onboardErr" class="text-sm text-red-600 font-bold text-center hidden mb-3">Please select at least one class.</p>
-                <button id="saveClassBtn" class="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 text-white font-black py-3.5 rounded-xl transition shadow-md text-base flex justify-center items-center gap-2"><i class="fa-solid fa-check"></i> Save & Enter Portal</button>
+                <button id="saveClassBtn" class="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 text-white font-black py-3.5 rounded-xl transition shadow-md text-base flex justify-center items-center gap-2">
+                    <i class="fa-solid fa-check"></i> Save & Continue
+                </button>
             </div>
         </div>
     </div>
