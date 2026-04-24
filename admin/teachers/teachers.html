@@ -10,210 +10,190 @@
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="../../assets/css/global.css">
-    <link rel="stylesheet" href="../../assets/css/admin.css">
+    <link rel="stylesheet" href="../../assets/css/teachers.css">
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body class="flex w-full h-screen overflow-hidden bg-[#f4f7fb] font-['DM_Sans']">
 
-    <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
+    <div id="layout-sidebar-container" class="flex-shrink-0 h-full z-20"></div>
 
-    <main class="flex-1 flex flex-col h-full overflow-hidden min-w-0">
-        
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden min-w-0">
         <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
 
         <div class="flex-1 overflow-y-auto p-8 view-section">
-            
-            <div class="max-w-7xl mx-auto space-y-6">
+            <div class="max-w-6xl mx-auto space-y-6">
                 
                 <div class="flex items-end justify-between border-b-2 border-[#0d1f35] pb-4 mb-6">
                     <div>
                         <h1 class="text-xl font-bold text-[#0d1f35] tracking-tight mb-1">Teaching Staff</h1>
-                        <p class="text-xs text-[#6b84a0] m-0">Manage active staff members, access codes, and curriculum assignments</p>
+                        <p class="text-xs text-[#6b84a0] m-0">Manage active educators, transfers, and national profiles.</p>
                     </div>
-                    <div class="flex items-center gap-2 no-print">
-                        <button id="exportCsvBtn" class="flex items-center gap-2 bg-white hover:bg-[#f8fafb] text-[#374f6b] font-bold px-4 py-2 rounded border border-[#c5d0db] hover:border-[#0d1f35] transition text-[12px]">
-                            <i class="fa-solid fa-file-csv"></i> Export CSV
+                    <div class="flex gap-3">
+                        <button id="exportCsvBtn" class="flex items-center gap-2 bg-white hover:bg-[#f8fafb] text-[#374f6b] font-bold px-4 py-2.5 rounded shadow-sm border border-[#c5d0db] transition text-[12px]">
+                            <i class="fa-solid fa-file-csv"></i> Export Data
                         </button>
-                        <button id="printListBtn" class="flex items-center gap-2 bg-white hover:bg-[#f8fafb] text-[#374f6b] font-bold px-4 py-2 rounded border border-[#c5d0db] hover:border-[#0d1f35] transition text-[12px]">
-                            <i class="fa-solid fa-print"></i> Print List
-                        </button>
-                        <button onclick="window.openAddTeacherModal()" class="flex items-center gap-2 bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold px-4 py-2 rounded transition shadow-sm text-[12px] ml-2">
-                            <i class="fa-solid fa-plus"></i> Add Teacher
+                        <button onclick="window.openAddTeacherModal()" class="flex items-center gap-2 bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold px-5 py-2.5 rounded shadow-md transition text-[13px]">
+                            <i class="fa-solid fa-user-plus"></i> Add or Claim Teacher
                         </button>
                     </div>
                 </div>
-                
-                <div class="bg-white rounded-xl shadow-sm border border-[#dce3ed] overflow-hidden flex flex-col">
-                    
-                    <div class="p-4 border-b border-[#f0f4f8] bg-[#f8fafb] flex items-center gap-3">
-                        <div class="w-8 h-8 rounded bg-[#eef4ff] text-[#2563eb] border border-[#c7d9fd] flex items-center justify-center">
-                            <i class="fa-solid fa-users text-sm"></i>
-                        </div>
-                        <div>
-                            <h3 class="text-[13px] font-bold text-[#0d1f35] m-0 leading-tight">Official Roster</h3>
-                            <p class="text-[10.5px] text-[#6b84a0] m-0">All active instructional staff</p>
-                        </div>
-                    </div>
-                    
+
+                <div class="bg-white rounded-xl shadow-sm border border-[#dce3ed] overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="w-full text-left text-[13px] text-[#374f6b]">
                             <thead class="bg-[#f8fafb] text-[#6b84a0] text-[10px] uppercase tracking-widest font-bold border-b-2 border-[#dce3ed]">
                                 <tr>
-                                    <th class="px-6 py-3.5">Teacher</th>
-                                    <th class="px-6 py-3.5">Class(es)</th>
-                                    <th class="px-6 py-3.5 text-center">Students</th>
-                                    <th class="px-6 py-3.5 text-center">Subjects</th>
-                                    <th class="px-6 py-3.5">Login Code</th>
-                                    <th class="px-6 py-3.5">Status</th>
-                                    <th class="px-6 py-3.5 text-right">Action</th>
+                                    <th class="px-6 py-4">Global ID & Name</th>
+                                    <th class="px-6 py-4">Classes</th>
+                                    <th class="px-6 py-4 text-center">Students</th>
+                                    <th class="px-6 py-4 text-center">Subjects</th>
+                                    <th class="px-6 py-4 text-center">Login PIN</th>
+                                    <th class="px-6 py-4 text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="teachersTableBody" class="divide-y divide-[#f0f4f8]">
-                                <tr>
-                                    <td colspan="7" class="px-6 py-16 text-center text-[#9ab0c6] font-semibold">
-                                        <i class="fa-solid fa-spinner fa-spin text-[#2563eb] text-2xl mb-3 block"></i>
-                                        Loading staff...
-                                    </td>
-                                </tr>
+                                <tr><td colspan="6" class="px-6 py-16 text-center text-[#9ab0c6] italic font-semibold"><i class="fa-solid fa-spinner fa-spin mr-2 text-[#2563eb]"></i>Connecting to National Registry...</td></tr>
                             </tbody>
                         </table>
                     </div>
-
                 </div>
+
             </div>
         </div>
     </main>
 
-    <div id="addTeacherModal" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden opacity-0 transition-opacity">
-        <div class="modal-box bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden transform scale-95 transition-transform" id="addTeacherModalInner">
-            <div class="h-[3px] bg-gradient-to-r from-[#2563eb] to-[#1d4ed8]"></div>
-            
-            <div class="p-5 border-b border-[#f0f4f8] bg-[#f8fafb] flex justify-between items-center">
-                <div class="flex items-center gap-3">
-                    <div class="w-8 h-8 bg-[#eef4ff] text-[#2563eb] border border-[#c7d9fd] rounded flex items-center justify-center">
-                        <i class="fa-solid fa-user-plus text-sm"></i>
-                    </div>
-                    <h3 class="font-bold text-[#0d1f35] text-[15px] m-0">Add New Teacher</h3>
-                </div>
-                <button onclick="window.closeAddTeacherModal()" class="text-[#9ab0c6] hover:text-[#e31b4a] hover:bg-[#fff0f3] h-7 w-7 rounded flex items-center justify-center transition">
-                    <i class="fa-solid fa-xmark text-sm"></i>
-                </button>
+    <div id="addTeacherModal" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full m-4 overflow-hidden" id="addTeacherModalInner">
+            <div class="h-1 bg-[#2563eb]"></div>
+            <div class="px-7 py-5 border-b border-[#f0f4f8] flex justify-between items-center bg-[#f8fafb]">
+                <h3 class="font-bold text-lg text-[#0d1f35]">Add or Claim Teacher</h3>
+                <button onclick="window.closeAddTeacherModal()" class="text-[#9ab0c6] hover:text-[#e31b4a] transition"><i class="fa-solid fa-xmark text-xl"></i></button>
             </div>
-            
-            <div class="p-6 bg-white space-y-5">
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="p-7 space-y-5">
+                <div class="bg-[#eef4ff] border border-[#c7d9fd] p-4 rounded-lg">
+                    <label class="block text-[10px] font-bold text-[#2563eb] uppercase tracking-widest mb-1.5">Transfer an Existing Teacher?</label>
+                    <input type="text" id="tGlobalId" placeholder="Enter Global ID (e.g. T26-X9B2A)" class="form-input w-full p-2.5 bg-white border border-[#c7d9fd] rounded text-[13px] uppercase font-mono placeholder-slate-400">
+                    <p class="text-[10px] text-[#6b84a0] mt-1.5 font-semibold">Leave blank to create a brand new National Profile.</p>
+                </div>
+                <hr class="border-[#f0f4f8]">
+                <div>
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Teacher Name <span class="text-[#e31b4a]">*</span></label>
+                    <input type="text" id="tName" placeholder="e.g. Jane Doe" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px]">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Full Name <span class="text-[#e31b4a]">*</span></label>
-                        <input type="text" id="tName" placeholder="e.g. Maria Torres" class="form-input w-full p-2.5 border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] bg-[#f8fafb] focus:bg-white focus:border-[#2563eb] outline-none transition">
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Email</label>
+                        <input type="email" id="tEmail" placeholder="Optional" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px]">
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Email Address</label>
-                        <input type="email" id="tEmail" placeholder="teacher@school.edu.bz" class="form-input w-full p-2.5 border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] bg-[#f8fafb] focus:bg-white focus:border-[#2563eb] outline-none transition">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Phone Number</label>
-                        <input type="tel" id="tPhone" placeholder="e.g. 600-0000" class="form-input w-full p-2.5 border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] bg-[#f8fafb] focus:bg-white focus:border-[#2563eb] outline-none transition">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Login Code <span class="normal-case font-medium text-[#9ab0c6] ml-1">(Auto if blank)</span></label>
-                        <input type="text" id="tCode" placeholder="e.g. MT1234" class="form-input w-full p-2.5 border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] uppercase font-mono tracking-widest bg-[#f8fafb] focus:bg-white focus:border-[#2563eb] outline-none transition">
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Phone</label>
+                        <input type="text" id="tPhone" placeholder="Optional" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px]">
                     </div>
                 </div>
-                
-                <div class="pt-2 border-t border-[#f0f4f8]">
-                    <button id="saveTeacherBtn" class="w-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold py-3 rounded transition shadow-sm text-[13px]">Create Teacher Account</button>
-                    <p class="text-[10.5px] text-[#6b84a0] text-center mt-3 mb-0 font-medium">
-                        <i class="fa-solid fa-circle-info text-[#2563eb] mr-1"></i> Teachers will select their own class(es) upon first login.
-                    </p>
-                </div>
+                <button id="saveTeacherBtn" class="w-full bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-3.5 rounded transition shadow-md text-[13px] uppercase tracking-widest">Register to School</button>
             </div>
         </div>
     </div>
 
-    <div id="teacherPanel" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-50 flex justify-end hidden opacity-0 transition-opacity">
-        <div id="teacherPanelInner" class="bg-white w-full max-w-xl h-full shadow-2xl flex flex-col translate-x-full transition-transform duration-300">
-            <div class="h-[3px] bg-gradient-to-r from-[#2563eb] to-[#1d4ed8] flex-shrink-0"></div>
-            
-            <div class="px-6 py-5 border-b border-[#dce3ed] flex justify-between items-center flex-shrink-0 bg-[#f8fafb]">
+    <div id="exitModal" class="overlay fixed inset-0 bg-[#0d1f35]/80 backdrop-blur-md z-[60] flex items-center justify-center hidden opacity-0 transition-opacity">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full m-4 overflow-hidden border-t-4 border-[#e31b4a]" id="exitModalInner">
+            <div class="px-7 py-5 border-b border-[#f0f4f8] flex justify-between items-center bg-[#fff0f3]">
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-triangle-exclamation text-[#e31b4a] text-xl"></i>
+                    <div>
+                        <h3 class="font-bold text-[15px] text-[#be123c] uppercase tracking-widest m-0">Mandatory Exit Evaluation</h3>
+                        <p class="text-[11px] text-[#e31b4a] font-bold m-0 mt-0.5">Required for National Archiving</p>
+                    </div>
+                </div>
+                <button onclick="window.closeExitModal()" class="text-[#e31b4a] hover:text-[#9f1239] transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="p-7 space-y-5">
+                <p class="text-[13px] text-[#374f6b] font-semibold">You are removing <strong id="exitTeacherName" class="text-[#0d1f35]">this teacher</strong> from your active staff. To preserve the national record, you must file a final performance review.</p>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Reason for Departure <span class="text-[#e31b4a]">*</span></label>
+                        <select id="exitReason" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35]">
+                            <option value="">— Select Reason —</option>
+                            <option value="Resigned">Resigned</option>
+                            <option value="Transferred">Transferred</option>
+                            <option value="Terminated">Terminated</option>
+                            <option value="Retired">Retired</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Performance Score (1-5) <span class="text-[#e31b4a]">*</span></label>
+                        <select id="exitScore" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35]">
+                            <option value="">— Select Score —</option>
+                            <option value="5">5 - Excellent</option>
+                            <option value="4">4 - Good</option>
+                            <option value="3">3 - Satisfactory</option>
+                            <option value="2">2 - Needs Improvement</option>
+                            <option value="1">1 - Unsatisfactory</option>
+                        </select>
+                    </div>
+                </div>
                 <div>
-                    <h3 id="tPanelName" class="font-bold text-xl text-[#0d1f35] tracking-tight m-0 leading-none">Teacher</h3>
-                    <p id="tPanelClass" class="text-[12px] text-[#2563eb] font-bold mt-1.5 m-0">—</p>
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Final Administrator Comments <span class="text-[#e31b4a]">*</span></label>
+                    <textarea id="exitComments" placeholder="Summarize the teacher's tenure and reason for leaving..." class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded text-[13px] h-24 resize-none"></textarea>
+                </div>
+                
+                <button id="confirmExitBtn" class="w-full bg-[#e31b4a] hover:bg-[#be123c] text-white font-bold py-3.5 rounded transition shadow-md text-[13px] uppercase tracking-widest flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-file-signature"></i> Submit Review & Archive Teacher
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="teacherPanel" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-40 flex justify-end hidden opacity-0 transition-opacity">
+        <div id="teacherPanelInner" class="side-panel bg-white w-full max-w-xl h-full shadow-2xl flex flex-col translate-x-full transition-transform">
+            <div class="h-1 bg-[#2563eb] flex-shrink-0"></div>
+            <div class="px-7 py-5 border-b border-[#f0f4f8] flex justify-between items-center bg-[#f8fafb] flex-shrink-0">
+                <div>
+                    <h3 id="tPanelName" class="font-bold text-xl text-[#0d1f35]">Loading...</h3>
+                    <p id="tPanelClass" class="text-xs text-[#2563eb] font-bold uppercase tracking-widest mt-1">—</p>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button onclick="window.editTeacherToggle()" class="no-print flex items-center gap-1.5 bg-white hover:bg-[#eef4ff] text-[#2563eb] font-bold px-3 py-1.5 rounded border border-[#c7d9fd] transition text-[11px]">
-                        <i class="fa-solid fa-pen"></i> Edit
+                    <button onclick="window.editTeacherToggle()" class="bg-white hover:bg-[#eef4ff] text-[#2563eb] font-bold px-4 py-2 rounded shadow-sm text-[12px] transition border border-[#c7d9fd]">
+                        <i class="fa-solid fa-pen-to-square mr-1"></i> Edit
                     </button>
-                    <button onclick="window.closeTeacherPanel()" class="text-[#9ab0c6] hover:text-[#e31b4a] h-8 w-8 rounded flex items-center justify-center hover:bg-[#fff0f3] transition">
-                        <i class="fa-solid fa-xmark text-lg"></i>
+                    <button onclick="window.closeTeacherPanel()" class="text-[#9ab0c6] hover:text-[#e31b4a] h-9 w-9 rounded-full flex items-center justify-center transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+                </div>
+            </div>
+            
+            <div id="tPanelLoader" class="flex-1 flex items-center justify-center"><i class="fa-solid fa-spinner fa-spin text-3xl text-[#2563eb]"></i></div>
+            
+            <div id="tViewMode" class="flex-1 overflow-y-auto p-7 hidden space-y-6 bg-[#f4f7fb]">
+                <div class="grid grid-cols-2 gap-3" id="tInfoGrid"></div>
+                <div class="bg-white border border-[#dce3ed] rounded-lg p-5 shadow-sm">
+                    <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Assigned Classes</h4>
+                    <div id="tClassTags" class="flex flex-wrap gap-2"></div>
+                </div>
+                <div class="bg-white border border-[#dce3ed] rounded-lg p-5 shadow-sm">
+                    <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Curriculum Subjects</h4>
+                    <div id="tSubjectTags" class="flex flex-wrap gap-2"></div>
+                </div>
+                
+                <div class="mt-8 border-t border-[#dce3ed] pt-6">
+                    <button onclick="window.openExitModal()" class="w-full bg-white hover:bg-[#fff0f3] text-[#e31b4a] font-bold py-3 rounded border border-[#fecaca] transition text-[12px] uppercase tracking-widest">
+                        <i class="fa-solid fa-user-minus mr-2"></i> Initiate Exit Evaluation
                     </button>
                 </div>
             </div>
             
-            <div class="flex-1 overflow-y-auto p-6 space-y-6 bg-white relative">
-                
-                <div id="tPanelLoader" class="absolute inset-0 bg-white/90 z-10 flex flex-col items-center justify-center">
-                    <i class="fa-solid fa-spinner fa-spin text-3xl text-[#2563eb] mb-3"></i>
-                    <p class="text-[12px] text-[#6b84a0] font-bold">Loading teacher profile...</p>
-                </div>
-                
-                <div id="tViewMode" class="hidden space-y-6">
-                    <div class="grid grid-cols-2 gap-3" id="tInfoGrid">
-                        </div>
+            <div id="tEditMode" class="flex-1 overflow-y-auto p-7 hidden bg-white">
+                <div class="space-y-4">
+                    <div><label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Name</label><input type="text" id="editTName" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px]"></div>
+                    <div><label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Email</label><input type="email" id="editTEmail" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px]"></div>
+                    <div><label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Phone</label><input type="text" id="editTPhone" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px]"></div>
                     
-                    <div class="border-t border-[#f0f4f8] pt-4">
-                        <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Assigned Classes</h4>
-                        <div id="tClassTags" class="flex flex-wrap gap-2"></div>
-                    </div>
-                    
-                    <div class="border-t border-[#f0f4f8] pt-4">
-                        <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Active Subjects</h4>
-                        <div id="tSubjectTags" class="flex flex-wrap gap-2"></div>
-                    </div>
-                    
-                    <div class="border-t border-[#f0f4f8] pt-4">
-                        <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Enrolled Students</h4>
-                        <div id="tStudentsList" class="space-y-2"></div>
-                    </div>
-                    
-                    <div class="pt-6 border-t border-[#f0f4f8] mt-8">
-                        <button id="archiveTeacherBtn" onclick="window.archiveCurrentTeacher()" class="w-full flex items-center justify-center gap-2 bg-[#fffbeb] border border-[#fde68a] text-[#b45309] hover:bg-[#f59e0b] hover:text-white hover:border-[#f59e0b] font-bold py-3 rounded transition text-[12.5px]">
-                            <i class="fa-solid fa-box-archive"></i> Archive This Teacher
-                        </button>
-                        <p class="text-[10.5px] text-[#9ab0c6] text-center mt-3 font-medium italic">Archived teachers lose login access immediately.</p>
+                    <div class="pt-4 mt-4 border-t border-[#f0f4f8]">
+                        <button id="saveTeacherEditBtn" class="w-full bg-[#0d1f35] hover:bg-[#0ea871] text-white font-bold py-3 rounded transition shadow-md text-[13px] uppercase tracking-widest">Save Changes</button>
+                        <p id="editTeacherMsg" class="text-[11px] hidden font-bold p-3 rounded mt-3 text-center"></p>
                     </div>
                 </div>
-
-                <div id="tEditMode" class="hidden space-y-5 bg-[#f8fafb] p-5 rounded-xl border border-[#dce3ed]">
-                    <h4 class="text-[11px] font-bold text-[#0d1f35] uppercase tracking-widest mb-2 border-b border-[#e2e8f0] pb-2">Edit Teacher Profile</h4>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Full Name</label>
-                            <input type="text" id="editTName" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb] focus:ring-1 focus:ring-[#2563eb]">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Email</label>
-                            <input type="email" id="editTEmail" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb] focus:ring-1 focus:ring-[#2563eb]">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Phone</label>
-                            <input type="tel" id="editTPhone" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb] focus:ring-1 focus:ring-[#2563eb]">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Login Code</label>
-                            <input type="text" id="editTCode" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] font-mono tracking-widest uppercase outline-none focus:border-[#2563eb] focus:ring-1 focus:ring-[#2563eb]">
-                        </div>
-                    </div>
-                    
-                    <div class="flex gap-3 pt-4 border-t border-[#e2e8f0]">
-                        <button id="saveTeacherEditBtn" class="flex-1 bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold py-2.5 rounded transition text-[12px] shadow-sm">Save Changes</button>
-                        <button onclick="window.editTeacherToggle(false)" class="px-5 bg-white hover:bg-[#f0f4f8] text-[#374f6b] border border-[#c5d0db] font-bold py-2.5 rounded transition text-[12px]">Cancel</button>
-                    </div>
-                    <p id="editTeacherMsg" class="text-[11px] hidden font-bold p-2.5 rounded text-center m-0 mt-2"></p>
-                </div>
-
             </div>
         </div>
     </div>
