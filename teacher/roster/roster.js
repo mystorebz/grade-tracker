@@ -351,7 +351,7 @@ window.quickGradeStudent = function (studentId) {
 
 // ── 9. ADD STUDENT MODAL ──────────────────────────────────────────────────────
 window.openAddStudentModal = function () {
-    ['sName', 'sParentPhone', 'sPin'].forEach(id => { document.getElementById(id).value = ''; });
+    ['sName', 'sParentPhone', 'sPin', 'sParentName', 'sDob'].forEach(id => { document.getElementById(id).value = ''; });
     document.getElementById('addStudentMsg').classList.add('hidden');
     document.getElementById('sAddMethod').value = 'new';
     toggleAddMethod();
@@ -421,13 +421,13 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
             
             await addDoc(collection(db, 'schools', session.schoolId, 'students'), {
                 name,
-                parentName: '',   // Ready for future updates
+                parentName:  document.getElementById('sParentName').value.trim(),
                 parentPhone: document.getElementById('sParentPhone').value.trim(),
                 pin:         document.getElementById('sPin').value.trim() || Math.floor(1000 + Math.random() * 9000).toString(),
                 teacherId:   session.teacherId,
                 className:   assignedClass,
-                dob: '',          // Ready for future updates
-                medicalNotes: '', // Ready for future updates
+                dob:         document.getElementById('sDob').value,
+                medicalNotes: '', 
                 studentIdNum: generateStudentId(), 
                 archived:    false,
                 archivedAt:  null,
@@ -486,14 +486,18 @@ window.openStudentPanel = async function (studentId) {
 
     openOverlay('studentPanel', 'studentPanelInner');
 
-    document.getElementById('editSName').value  = student?.name         || '';
-    document.getElementById('editSPhone').value = student?.parentPhone  || '';
+    document.getElementById('editSName').value       = student?.name         || '';
+    document.getElementById('editSDob').value        = student?.dob          || '';
+    document.getElementById('editSParentName').value = student?.parentName   || '';
+    document.getElementById('editSPhone').value      = student?.parentPhone  || '';
 
     // Info rows
     document.getElementById('sInfoGrid').innerHTML = [
         ['Name',          student?.name || '—'],
         ['ID Number',     student?.studentIdNum || '—'],
         ['Class',         student?.className || '—'],
+        ['DOB',           student?.dob || '—'],
+        ['Parent Name',   student?.parentName || '—'],
         ['Parent Phone',  student?.parentPhone || '—'],
         ['Enrolled',      student?.createdAt ? new Date(student.createdAt).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' }) : '—']
     ].map(([label, value]) => `
@@ -669,6 +673,8 @@ document.getElementById('saveStudentEditBtn').addEventListener('click', async ()
     try {
         const u = {
             name:        document.getElementById('editSName').value.trim(),
+            dob:         document.getElementById('editSDob').value,
+            parentName:  document.getElementById('editSParentName').value.trim(),
             parentPhone: document.getElementById('editSPhone').value.trim()
         };
         await updateDoc(doc(db, 'schools', session.schoolId, 'students', currentStudentId), u);
