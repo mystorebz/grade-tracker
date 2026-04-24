@@ -3,261 +3,1161 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Roster | Teacher Portal | ConnectUs</title>
-    
+    <title>My Roster · Teacher Portal · ConnectUs</title>
+
     <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
-    
+
+    <!-- Flash prevention — must be first -->
+    <style>html { opacity: 0; }</style>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="../../assets/css/global.css">
     <link rel="stylesheet" href="../../assets/css/teachers.css">
-    
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <style>
+        /* ═══════════════════════════════════════════════════════════════
+           ROSTER PAGE — PROFESSIONAL / INSTITUTIONAL DESIGN SYSTEM
+           Sharp edges. Authoritative typography. Government-grade clarity.
+           ═══════════════════════════════════════════════════════════════ */
+
+        body {
+            display: flex;
+            width: 100%; height: 100vh;
+            overflow: hidden;
+            background: #f2f5f8;
+            margin: 0;
+            font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+        }
+
+        #dashboardMain {
+            flex: 1; display: flex; flex-direction: column;
+            height: 100%; overflow: hidden; min-width: 0;
+        }
+
+        .roster-scroll {
+            flex: 1; overflow-y: auto;
+            padding: 24px 28px 48px;
+            background: #f2f5f8;
+        }
+
+        /* ── PAGE HEADER ─────────────────────────────────────────────── */
+        .roster-page-header {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-bottom: 18px;
+            border-bottom: 2px solid #0d1f35;
+        }
+
+        .roster-page-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #0d1f35;
+            letter-spacing: -0.4px;
+            margin: 0 0 3px;
+        }
+
+        .roster-page-sub {
+            font-size: 12px;
+            color: #6b84a0;
+            font-weight: 400;
+            margin: 0;
+            letter-spacing: 0.01em;
+        }
+
+        .roster-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* ── SHARP BUTTONS ───────────────────────────────────────────── */
+        .btn-sharp {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 12.5px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.12s, color 0.12s, border-color 0.12s;
+            font-family: inherit;
+            letter-spacing: 0.01em;
+            white-space: nowrap;
+        }
+
+        .btn-sharp-outline {
+            background: #fff;
+            border: 1px solid #c5d0db;
+            color: #374f6b;
+        }
+
+        .btn-sharp-outline:hover {
+            background: #f2f5f8;
+            border-color: #0d1f35;
+            color: #0d1f35;
+        }
+
+        .btn-sharp-primary {
+            background: #0d1f35;
+            border: 1px solid #0d1f35;
+            color: #ffffff;
+        }
+
+        .btn-sharp-primary:hover {
+            background: #0ea871;
+            border-color: #0ea871;
+        }
+
+        .btn-sharp-green {
+            background: #0ea871;
+            border: 1px solid #0ea871;
+            color: #ffffff;
+        }
+
+        .btn-sharp-green:hover {
+            background: #0b8f5e;
+            border-color: #0b8f5e;
+        }
+
+        /* ── CONTROL BAR ─────────────────────────────────────────────── */
+        .roster-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 0;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            background: #fff;
+            border: 1px solid #c5d0db;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .control-group-label {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #6b84a0;
+            padding: 0 10px;
+            border-right: 1px solid #e8edf2;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            white-space: nowrap;
+            background: #f8fafb;
+        }
+
+        .control-select {
+            border: none;
+            outline: none;
+            background: transparent;
+            font-size: 12.5px;
+            font-weight: 600;
+            color: #0d1f35;
+            font-family: inherit;
+            padding: 0 10px;
+            height: 36px;
+            cursor: pointer;
+            min-width: 100px;
+        }
+
+        .control-search {
+            display: flex;
+            align-items: center;
+            background: #fff;
+            border: 1px solid #c5d0db;
+            border-radius: 4px;
+            overflow: hidden;
+            min-width: 240px;
+        }
+
+        .control-search-icon {
+            padding: 0 10px;
+            color: #9ab0c6;
+            font-size: 12px;
+            background: #f8fafb;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            border-right: 1px solid #e8edf2;
+        }
+
+        .control-search-input {
+            flex: 1;
+            border: none;
+            outline: none;
+            font-size: 12.5px;
+            font-family: inherit;
+            color: #0d1f35;
+            font-weight: 500;
+            padding: 0 12px;
+            height: 36px;
+            background: transparent;
+        }
+
+        .control-search-input::placeholder { color: #9ab0c6; font-weight: 400; }
+
+        /* ── MAIN TABLE CONTAINER ────────────────────────────────────── */
+        .roster-table-wrap {
+            background: #fff;
+            border: 1px solid #c5d0db;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 16px;
+        }
+
+        .roster-table-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 20px;
+            background: #0d1f35;
+            border-bottom: 1px solid #1a3050;
+        }
+
+        .roster-table-header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .roster-count-badge {
+            font-size: 11px;
+            font-weight: 700;
+            background: rgba(14,168,113,0.18);
+            color: #3fffa8;
+            border: 1px solid rgba(14,168,113,0.3);
+            padding: 2px 9px;
+            border-radius: 2px;
+            font-family: 'DM Mono', monospace;
+            letter-spacing: 0.04em;
+        }
+
+        .roster-table-title {
+            font-size: 11.5px;
+            font-weight: 700;
+            color: rgba(255,255,255,0.85);
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+        }
+
+        /* ── TABLE ───────────────────────────────────────────────────── */
+        .roster-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .roster-table thead th {
+            padding: 10px 16px;
+            text-align: left;
+            font-size: 9.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #6b84a0;
+            background: #f8fafb;
+            border-bottom: 2px solid #e2e8f0;
+            white-space: nowrap;
+            user-select: none;
+        }
+
+        .roster-table thead th.text-center { text-align: center; }
+        .roster-table thead th.text-right  { text-align: right; }
+
+        .roster-table tbody tr {
+            border-bottom: 1px solid #f0f4f8;
+            transition: background 0.1s;
+        }
+
+        .roster-table tbody tr:last-child { border-bottom: none; }
+
+        .roster-table tbody tr:hover {
+            background: #f8fafb;
+        }
+
+        .roster-table tbody tr:hover td:first-child {
+            border-left: 3px solid #0ea871;
+        }
+
+        .roster-table tbody td {
+            padding: 12px 16px;
+            color: #374f6b;
+            vertical-align: middle;
+            border-left: 3px solid transparent;
+        }
+
+        .roster-table tbody td:first-child {
+            padding-left: 13px; /* compensate for the 3px border */
+        }
+
+        /* ── STUDENT CELL ────────────────────────────────────────────── */
+        .student-cell {
+            display: flex;
+            align-items: center;
+            gap: 11px;
+        }
+
+        .student-initial {
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
+            background: #0d1f35;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            letter-spacing: -0.2px;
+        }
+
+        .student-name {
+            font-size: 13px;
+            font-weight: 700;
+            color: #0d1f35;
+            letter-spacing: -0.1px;
+        }
+
+        /* ── PIN BADGE ───────────────────────────────────────────────── */
+        .pin-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            background: #f2f5f8;
+            border: 1px solid #c5d0db;
+            border-radius: 3px;
+            font-family: 'DM Mono', monospace;
+            font-size: 12px;
+            font-weight: 500;
+            color: #0d1f35;
+            letter-spacing: 0.15em;
+        }
+
+        /* ── STANDING LABELS (sharp rectangles, not pills) ───────────── */
+        .standing-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 10.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            white-space: nowrap;
+        }
+
+        .sl-excelling   { background: #dcfce7; color: #14532d; border: 1px solid #bbf7d0; }
+        .sl-good        { background: #dbeafe; color: #1e3a8a; border: 1px solid #bfdbfe; }
+        .sl-ontrack     { background: #ccfbf1; color: #134e4a; border: 1px solid #99f6e4; }
+        .sl-attention   { background: #fef3c7; color: #78350f; border: 1px solid #fde68a; }
+        .sl-atrisk      { background: #fee2e2; color: #7f1d1d; border: 1px solid #fecaca; }
+        .sl-none        { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+
+        /* ── GRADE NUMBERS ───────────────────────────────────────────── */
+        .grade-num {
+            font-family: 'DM Mono', monospace;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .grade-green  { color: #14532d; }
+        .grade-blue   { color: #1e3a8a; }
+        .grade-teal   { color: #134e4a; }
+        .grade-amber  { color: #78350f; }
+        .grade-red    { color: #7f1d1d; }
+        .grade-muted  { color: #9ab0c6; }
+
+        /* ── SUBJECT COUNT ────────────────────────────────────────────── */
+        .subject-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 28px;
+            height: 22px;
+            padding: 0 7px;
+            background: #f2f5f8;
+            border: 1px solid #c5d0db;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 700;
+            color: #374f6b;
+            font-family: 'DM Mono', monospace;
+        }
+
+        /* ── ACTION BUTTONS (in table rows) ──────────────────────────── */
+        .row-action-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            padding: 5px 12px;
+            border-radius: 3px;
+            font-size: 11.5px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.12s, color 0.12s;
+            font-family: inherit;
+            border: 1px solid;
+        }
+
+        .row-btn-grade {
+            background: #edfaf4;
+            border-color: #a7f3d0;
+            color: #065f46;
+        }
+
+        .row-btn-grade:hover {
+            background: #0ea871;
+            border-color: #0ea871;
+            color: #fff;
+        }
+
+        .row-btn-view {
+            background: #f8fafb;
+            border-color: #c5d0db;
+            color: #374f6b;
+        }
+
+        .row-btn-view:hover {
+            background: #0d1f35;
+            border-color: #0d1f35;
+            color: #fff;
+        }
+
+        /* ── MODAL OVERLAY ───────────────────────────────────────────── */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(13,31,53,0.65);
+            z-index: 50;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            transition: opacity 0.18s;
+        }
+
+        .modal-overlay.hidden { display: none; }
+        .modal-overlay.opacity-0 { opacity: 0; pointer-events: none; }
+
+        /* ── MODAL SHELL ─────────────────────────────────────────────── */
+        .modal-box {
+            background: #fff;
+            border: 1px solid #c5d0db;
+            border-radius: 4px;
+            box-shadow: 0 20px 60px rgba(13,31,53,0.25);
+            overflow: hidden;
+            transform: scale(0.97);
+            transition: transform 0.18s;
+        }
+
+        .modal-box.modal-open { transform: scale(1); }
+
+        .modal-stripe {
+            height: 3px;
+            background: linear-gradient(90deg, #0ea871, #0d1f35);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 18px 24px;
+            border-bottom: 1px solid #e8edf2;
+            background: #fafbfc;
+        }
+
+        .modal-header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .modal-icon {
+            width: 34px; height: 34px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        .modal-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #0d1f35;
+            letter-spacing: -0.2px;
+        }
+
+        .modal-close {
+            width: 30px; height: 30px;
+            display: flex; align-items: center; justify-content: center;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            color: #9ab0c6;
+            cursor: pointer;
+            transition: all 0.12s;
+            font-size: 14px;
+        }
+
+        .modal-close:hover {
+            background: #fee2e2;
+            border-color: #fecaca;
+            color: #dc2626;
+        }
+
+        .modal-body {
+            padding: 22px 24px;
+            background: #fafbfc;
+        }
+
+        /* ── FORM FIELDS inside modals ───────────────────────────────── */
+        .field-label {
+            display: block;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #6b84a0;
+            margin-bottom: 6px;
+        }
+
+        .field-input {
+            width: 100%;
+            padding: 9px 12px;
+            background: #fff;
+            border: 1px solid #c5d0db;
+            border-radius: 3px;
+            font-size: 13px;
+            color: #0d1f35;
+            font-family: inherit;
+            font-weight: 500;
+            outline: none;
+            transition: border-color 0.12s, box-shadow 0.12s;
+            box-sizing: border-box;
+        }
+
+        .field-input:focus {
+            border-color: #0ea871;
+            box-shadow: 0 0 0 3px rgba(14,168,113,0.15);
+        }
+
+        .field-input::placeholder { color: #9ab0c6; font-weight: 400; }
+
+        .field-group {
+            margin-bottom: 16px;
+        }
+
+        .form-input {
+            width: 100%; padding: 9px 12px;
+            background: #fff; border: 1px solid #c5d0db;
+            border-radius: 3px; font-size: 13px;
+            color: #0d1f35; font-family: inherit; font-weight: 500;
+            outline: none; transition: border-color 0.12s, box-shadow 0.12s;
+            box-sizing: border-box;
+        }
+
+        .form-input:focus {
+            border-color: #0ea871;
+            box-shadow: 0 0 0 3px rgba(14,168,113,0.15);
+        }
+
+        /* ── STUDENT DETAIL PANEL ────────────────────────────────────── */
+        #studentPanelInner {
+            background: #f2f5f8;
+            width: 100%;
+            max-width: 1100px;
+            height: 92vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border-radius: 4px;
+            border: 1px solid #c5d0db;
+            box-shadow: 0 24px 64px rgba(13,31,53,0.3);
+        }
+
+        .panel-top-stripe {
+            height: 3px;
+            background: linear-gradient(90deg, #0ea871 0%, #0d1f35 100%);
+            flex-shrink: 0;
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 24px;
+            border-bottom: 1px solid #dce3ed;
+            background: #fff;
+            flex-shrink: 0;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .panel-student-name {
+            font-size: 20px;
+            font-weight: 700;
+            color: #0d1f35;
+            letter-spacing: -0.4px;
+            margin: 0 0 2px;
+        }
+
+        .panel-student-meta {
+            font-size: 12px;
+            color: #6b84a0;
+            font-weight: 400;
+            margin: 0;
+        }
+
+        /* ── PROFILE INFO GRID ───────────────────────────────────────── */
+        .info-row {
+            display: flex;
+            align-items: flex-start;
+            padding: 10px 0;
+            border-bottom: 1px solid #f0f4f8;
+        }
+
+        .info-row:last-child { border-bottom: none; }
+
+        .info-row-label {
+            font-size: 9.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #9ab0c6;
+            width: 90px;
+            flex-shrink: 0;
+            padding-top: 1px;
+        }
+
+        .info-row-value {
+            font-size: 13px;
+            font-weight: 600;
+            color: #0d1f35;
+            flex: 1;
+        }
+
+        /* ── ACCORDION ───────────────────────────────────────────────── */
+        .subject-body      { display: none; }
+        .subject-body.open { display: block; }
+
+        /* ── LOADING / EMPTY STATES ──────────────────────────────────── */
+        .table-loader {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            gap: 12px;
+            color: #9ab0c6;
+        }
+
+        .table-loader i { font-size: 24px; color: #0ea871; }
+        .table-loader p { font-size: 13px; margin: 0; }
+
+        /* ── PRINT STYLES ────────────────────────────────────────────── */
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white !important; }
+            .roster-table tbody tr:hover { background: white !important; }
+            .roster-table tbody tr:hover td:first-child { border-left: none !important; }
+        }
+    </style>
 </head>
-<body class="flex w-full h-screen overflow-hidden bg-[#f0fdf8]">
 
-    <div id="layout-sidebar-container" class="flex-shrink-0 h-full z-20"></div>
+<body>
+    <div id="layout-sidebar-container" style="flex-shrink:0;height:100%;z-index:20;"></div>
 
-    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
-        
-        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+    <main id="dashboardMain">
+        <div id="layout-topbar-container" style="flex-shrink:0;z-index:10;"></div>
 
-        <div class="flex-1 overflow-y-auto p-7 view-section">
-            
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                <div class="p-6 border-b border-slate-100 flex flex-col gap-4 bg-gradient-to-r from-white to-emerald-50/30">
-                    <div class="flex flex-wrap gap-4 justify-between items-center">
-                        <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-users"></i></div>
-                            <div>
-                                <h3 class="font-black text-xl text-slate-800">My Class Roster</h3>
-                                <p class="text-sm text-slate-400 font-semibold">Manage students, PINs and academic standing</p>
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-2 flex-wrap">
-                            <button onclick="exportRosterCSV()" class="no-print flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-4 py-2 rounded-xl text-sm transition border border-slate-200"><i class="fa-solid fa-download"></i> CSV</button>
-                            <button onclick="printRoster()" class="no-print flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-4 py-2 rounded-xl text-sm transition border border-slate-200"><i class="fa-solid fa-print"></i> Print</button>
-                            <button onclick="openAddStudentModal()" class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black px-5 py-2.5 rounded-xl text-sm shadow-md shadow-emerald-500/20 transition"><i class="fa-solid fa-plus"></i> Add Student</button>
-                        </div>
+        <div class="roster-scroll">
+
+            <!-- ── PAGE HEADER ──────────────────────────────────────── -->
+            <div class="roster-page-header">
+                <div>
+                    <h1 class="roster-page-title">Class Roster</h1>
+                    <p class="roster-page-sub">Active enrolment · academic standing · parent contacts</p>
+                </div>
+                <div class="roster-header-actions no-print">
+                    <button onclick="exportRosterCSV()" class="btn-sharp btn-sharp-outline">
+                        <i class="fa-solid fa-file-csv" style="font-size:11px;"></i> Export CSV
+                    </button>
+                    <button onclick="printRoster()" class="btn-sharp btn-sharp-outline">
+                        <i class="fa-solid fa-print" style="font-size:11px;"></i> Print Roster
+                    </button>
+                    <button onclick="openAddStudentModal()" class="btn-sharp btn-sharp-green">
+                        <i class="fa-solid fa-plus" style="font-size:11px;"></i> Add Student
+                    </button>
+                </div>
+            </div>
+
+            <!-- ── CONTROL BAR ───────────────────────────────────────── -->
+            <div class="roster-controls no-print">
+
+                <!-- Live search -->
+                <div class="control-search">
+                    <div class="control-search-icon">
+                        <i class="fa-solid fa-magnifying-glass"></i>
                     </div>
-                    <div class="flex flex-wrap gap-3 border-t border-slate-200 pt-4">
-                        <div class="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm" id="classFilterWrap">
-                            <i class="fa-solid fa-chalkboard text-slate-400 text-xs"></i>
-                            <select id="rf-class" onchange="applyRosterFilters()" class="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer">
-                                <option value="">All Classes</option>
-                            </select>
-                        </div>
-                        <div class="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm">
-                            <i class="fa-solid fa-ranking-star text-slate-400 text-xs"></i>
-                            <select id="rf-standing" onchange="applyRosterFilters()" class="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer">
-                                <option value="">All Standings</option>
-                                <option value="excelling">Excelling (90-100)</option>
-                                <option value="good">Good Standing (80-89)</option>
-                                <option value="ontrack">On Track (70-79)</option>
-                                <option value="needsattention">Needs Attention (65-69)</option>
-                                <option value="atrisk">At Risk (&lt;65)</option>
-                                <option value="none">No Grades</option>
-                            </select>
-                        </div>
+                    <input type="text" id="searchInput"
+                           placeholder="Search students…"
+                           class="control-search-input"
+                           oninput="filterStudents()">
+                </div>
+
+                <!-- Class filter -->
+                <div class="control-group" id="classFilterWrap">
+                    <span class="control-group-label"><i class="fa-solid fa-chalkboard" style="margin-right:5px;"></i>Class</span>
+                    <select id="rf-class" class="control-select" onchange="applyRosterFilters()">
+                        <option value="">All Classes</option>
+                    </select>
+                </div>
+
+                <!-- Standing filter -->
+                <div class="control-group">
+                    <span class="control-group-label"><i class="fa-solid fa-chart-bar" style="margin-right:5px;"></i>Standing</span>
+                    <select id="rf-standing" class="control-select" onchange="applyRosterFilters()">
+                        <option value="">All</option>
+                        <option value="excelling">Excelling (90–100)</option>
+                        <option value="good">Good Standing (80–89)</option>
+                        <option value="ontrack">On Track (70–79)</option>
+                        <option value="needsattention">Needs Attention (65–69)</option>
+                        <option value="atrisk">At Risk (&lt;65)</option>
+                        <option value="none">No Grades</option>
+                    </select>
+                </div>
+
+            </div>
+
+            <!-- ── ROSTER TABLE ──────────────────────────────────────── -->
+            <div class="roster-table-wrap">
+
+                <!-- Table header bar -->
+                <div class="roster-table-header">
+                    <div class="roster-table-header-left">
+                        <span class="roster-table-title">Student Records</span>
+                        <span class="roster-count-badge" id="rosterCountBadge">0</span>
+                    </div>
+                    <div style="font-size:10px;color:rgba(255,255,255,0.4);font-weight:500;letter-spacing:0.06em;">
+                        ACADEMIC YEAR · <span id="rosterPeriodLabel">—</span>
                     </div>
                 </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left text-sm">
-                        <thead class="bg-slate-50 text-slate-500 uppercase text-xs tracking-wider border-b border-slate-200">
+
+                <!-- Table -->
+                <div style="overflow-x:auto;">
+                    <table class="roster-table">
+                        <thead>
                             <tr>
-                                <th class="px-6 py-4 font-black">#</th>
-                                <th class="px-6 py-4 font-black">Student</th>
-                                <th class="px-6 py-4 font-black">Class</th>
-                                <th class="px-6 py-4 font-black">Parent Phone</th>
-                                <th class="px-6 py-4 font-black">Parent PIN</th>
-                                <th class="px-6 py-4 font-black text-center">Subjects</th>
-                                <th class="px-6 py-4 font-black text-center">Avg</th>
-                                <th class="px-6 py-4 font-black">Standing</th>
-                                <th class="px-6 py-4 font-black text-right">Actions</th>
+                                <th style="width:44px;">#</th>
+                                <th>Student</th>
+                                <th>Class</th>
+                                <th>Parent Contact</th>
+                                <th>Parent PIN</th>
+                                <th class="text-center" style="width:80px;">Subjects</th>
+                                <th class="text-center" style="width:80px;">Avg</th>
+                                <th style="width:160px;">Standing</th>
+                                <th class="text-right" style="width:140px;">Actions</th>
                             </tr>
                         </thead>
-                        <tbody id="studentsTableBody" class="divide-y divide-slate-100">
-                            <tr><td colspan="9" class="px-6 py-16 text-center text-slate-400 font-semibold"><i class="fa-solid fa-spinner fa-spin text-emerald-400 text-2xl mb-3 block"></i>Loading roster...</td></tr>
+                        <tbody id="studentsTableBody">
+                            <tr>
+                                <td colspan="9">
+                                    <div class="table-loader">
+                                        <i class="fa-solid fa-spinner fa-spin"></i>
+                                        <p>Loading roster…</p>
+                                    </div>
+                                </td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
-            </div>
 
+            </div>
         </div>
     </main>
 
-    <div id="addStudentModal" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200" id="addStudentModalInner">
-            <div class="h-1 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600"></div>
-            <div class="px-7 py-5 border-b border-slate-100 flex justify-between items-center">
-                <div class="flex items-center gap-3"><div class="w-9 h-9 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-user-plus"></i></div><h3 class="font-black text-xl text-slate-800">Add Student</h3></div>
-                <button onclick="closeAddStudentModal()" class="text-slate-400 hover:text-red-500 h-8 w-8 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+    <!-- ════════════════════════════════════════════════════════════════
+         MODAL: ADD STUDENT
+         ════════════════════════════════════════════════════════════════ -->
+    <div id="addStudentModal" class="modal-overlay hidden opacity-0">
+        <div class="modal-box" id="addStudentModalInner" style="width:100%;max-width:460px;">
+            <div class="modal-stripe"></div>
+            <div class="modal-header">
+                <div class="modal-header-left">
+                    <div class="modal-icon" style="background:#edfaf4;color:#0ea871;border:1px solid #a7f3d0;">
+                        <i class="fa-solid fa-user-plus"></i>
+                    </div>
+                    <span class="modal-title">Add Student</span>
+                </div>
+                <button onclick="closeAddStudentModal()" class="modal-close">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
             </div>
-            <div class="p-7 space-y-4 bg-slate-50/50">
-                <div>
-                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Add Method</label>
-                    <select id="sAddMethod" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-emerald-700" onchange="toggleAddMethod()">
+            <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+                <div class="field-group">
+                    <label class="field-label">Add Method</label>
+                    <select id="sAddMethod" class="form-input" onchange="toggleAddMethod()">
                         <option value="new">Create New Student</option>
                         <option value="existing">Claim Unassigned Student</option>
                     </select>
                 </div>
-                <div id="sExistingStudentFields" class="hidden space-y-4">
+
+                <div id="sExistingStudentFields" class="hidden" style="display:flex;flex-direction:column;gap:14px;">
                     <div>
-                        <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Select Student</label>
-                        <select id="sExistingSelect" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm"></select>
-                        <p class="text-xs text-slate-400 mt-2 font-semibold">Only active students without a teacher assignment are shown here.</p>
+                        <label class="field-label">Select Student</label>
+                        <select id="sExistingSelect" class="form-input"></select>
+                        <p style="font-size:11px;color:#9ab0c6;margin:6px 0 0;font-weight:400;">Only active students without a teacher assignment are shown.</p>
                     </div>
                 </div>
-                <div id="sNewStudentFields" class="space-y-4">
-                    <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Student Full Name *</label><input type="text" id="sName" placeholder="e.g. John Smith" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm"></div>
-                    <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Parent / Guardian Phone</label><input type="tel" id="sParentPhone" placeholder="e.g. 600-0000" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm"></div>
-                    <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Parent PIN <span class="normal-case font-semibold text-slate-400">(auto-generated if blank)</span></label><input type="text" id="sPin" placeholder="4–6 digit PIN" maxlength="6" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-mono tracking-widest text-center"></div>
+
+                <div id="sNewStudentFields" style="display:flex;flex-direction:column;gap:14px;">
+                    <div>
+                        <label class="field-label">Student Full Name <span style="color:#e31b4a;">*</span></label>
+                        <input type="text" id="sName" placeholder="e.g. John Smith" class="form-input">
+                    </div>
+                    <div>
+                        <label class="field-label">Parent / Guardian Phone</label>
+                        <input type="tel" id="sParentPhone" placeholder="e.g. 600-0000" class="form-input">
+                    </div>
+                    <div>
+                        <label class="field-label">Parent PIN
+                            <span style="font-size:9.5px;font-weight:400;text-transform:none;color:#9ab0c6;letter-spacing:0;"> — auto-generated if blank</span>
+                        </label>
+                        <input type="text" id="sPin" placeholder="4–6 digit PIN" maxlength="6"
+                               class="form-input" style="font-family:'DM Mono',monospace;letter-spacing:0.18em;text-align:center;">
+                    </div>
                 </div>
-                <div id="sClassWrap" class="hidden border-t border-slate-200 pt-4">
-                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Assign to Class *</label>
-                    <select id="sClass" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm"></select>
+
+                <div id="sClassWrap" class="hidden" style="padding-top:14px;border-top:1px solid #e8edf2;">
+                    <label class="field-label">Assign to Class <span style="color:#e31b4a;">*</span></label>
+                    <select id="sClass" class="form-input"></select>
                 </div>
-                <button id="saveStudentBtn" class="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 text-white font-black py-3.5 rounded-xl transition shadow-md text-base mt-2">Save to Roster</button>
-                <p id="addStudentMsg" class="text-sm hidden font-bold p-3 rounded-xl text-center"></p>
+
+                <button id="saveStudentBtn"
+                        style="width:100%;padding:11px;background:#0ea871;border:none;border-radius:3px;
+                               color:#fff;font-size:13.5px;font-weight:700;font-family:inherit;
+                               cursor:pointer;transition:background 0.12s;letter-spacing:0.01em;">
+                    Save to Roster
+                </button>
+                <p id="addStudentMsg" class="hidden"
+                   style="font-size:12px;font-weight:600;padding:10px 14px;border-radius:3px;text-align:center;"></p>
             </div>
         </div>
     </div>
 
-    <div id="studentPanel" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0">
-        <div id="studentPanelInner" class="bg-[#f8fffe] w-full max-w-5xl h-[95vh] m-4 rounded-2xl shadow-2xl flex flex-col transform scale-95 transition-transform duration-200 overflow-hidden">
-            <div class="h-1 bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-500 flex-shrink-0"></div>
-            <div class="px-7 py-5 border-b border-slate-200 bg-white flex justify-between items-center flex-shrink-0 flex-wrap gap-3">
-                <div><h3 id="sPanelName" class="font-black text-2xl text-slate-800">Student</h3><p id="sPanelMeta" class="text-sm text-emerald-600 font-bold mt-0.5">—</p></div>
-                <div class="flex items-center gap-2 flex-wrap">
-                    <button id="spQuickGradeBtn2" class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-2 rounded-xl text-sm transition shadow-md"><i class="fa-solid fa-plus"></i> Enter Grade</button>
-                    <button onclick="openPrintStudentModal()" class="no-print flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black px-4 py-2 rounded-xl text-sm transition border border-slate-200"><i class="fa-solid fa-print"></i> Print</button>
-                    <button onclick="closeStudentPanel()" class="text-slate-400 hover:text-red-500 h-9 w-9 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-xl"></i></button>
-                </div>
-            </div>
-            <div class="flex-1 overflow-hidden flex flex-col relative">
-                <div id="sPanelLoader" class="absolute inset-0 bg-white/80 z-10 flex flex-col items-center justify-center"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-emerald-500"></i></div>
-                <div id="sViewMode" class="flex-1 flex flex-col lg:flex-row overflow-hidden hidden">
-                    <div class="w-full lg:w-1/3 bg-slate-50/50 border-r border-slate-200 p-6 overflow-y-auto space-y-5">
-                        <div class="flex justify-between items-center">
-                            <h4 class="font-black text-slate-700 text-sm uppercase tracking-wider flex items-center gap-2"><i class="fa-solid fa-address-card text-emerald-500"></i> Profile Info</h4>
-                            <button onclick="toggleStudentEdit()" class="text-[10px] font-black text-emerald-600 hover:underline uppercase tracking-wider">Edit</button>
-                        </div>
-                        <div class="space-y-3" id="sInfoGrid"></div>
-                        <div id="sEditForm" class="hidden bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3 shadow-sm">
-                            <div class="space-y-3">
-                                <div><label class="block text-[10px] font-black text-emerald-800 uppercase tracking-wider mb-1">Full Name</label><input type="text" id="editSName" class="form-input w-full p-2 bg-white border border-emerald-200 rounded-lg text-sm"></div>
-                                <div><label class="block text-[10px] font-black text-emerald-800 uppercase tracking-wider mb-1">Parent Phone</label><input type="tel" id="editSPhone" class="form-input w-full p-2 bg-white border border-emerald-200 rounded-lg text-sm"></div>
-                            </div>
-                            <div class="flex gap-2 pt-2">
-                                <button id="saveStudentEditBtn" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-2 rounded-lg transition text-xs shadow-md">Save</button>
-                                <button onclick="toggleStudentEdit(false)" class="px-3 bg-white border border-slate-200 text-slate-600 font-black py-2 rounded-lg transition text-xs">Cancel</button>
-                            </div>
-                            <p id="editStudentMsg" class="text-xs hidden font-bold p-2 rounded-lg"></p>
-                        </div>
-                        <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex flex-col justify-center text-center shadow-sm">
-                            <p class="text-[10px] font-black text-indigo-400 uppercase tracking-wider mb-2"><i class="fa-solid fa-key mr-1"></i>Parent PIN</p>
-                            <div id="pinDisplayArea">
-                                <p class="font-mono font-black text-2xl text-indigo-700 mb-2 tracking-widest" id="spinReadonly">—</p>
-                                <button onclick="togglePinResetUI(true)" class="text-xs font-black text-indigo-600 bg-white border border-indigo-200 px-3 py-1.5 rounded-lg hover:bg-indigo-600 hover:text-white transition w-full shadow-sm">Reset PIN</button>
-                            </div>
-                            <div id="pinEditArea" class="hidden space-y-2">
-                                <input type="text" id="inlineNewPin" placeholder="4-6 digits" maxlength="6" class="form-input w-full p-2 bg-white border border-indigo-200 rounded-lg text-sm font-mono text-center uppercase tracking-widest shadow-inner">
-                                <div class="flex gap-1">
-                                    <button onclick="saveInlinePin()" id="inlinePinSaveBtn" class="flex-1 bg-indigo-600 text-white text-xs font-black py-2 rounded-lg hover:bg-indigo-700 transition">Save</button>
-                                    <button onclick="togglePinResetUI(false)" class="flex-1 bg-white border border-slate-200 text-slate-600 text-xs font-black py-2 rounded-lg hover:bg-slate-100 transition">Cancel</button>
-                                </div>
-                                <button onclick="document.getElementById('inlineNewPin').value = Math.floor(1000 + Math.random() * 9000).toString()" class="text-[10px] text-indigo-500 font-bold hover:underline">Auto-Generate</button>
-                            </div>
-                        </div>
-                        <div class="pt-4 border-t border-slate-200">
-                            <button id="archiveStudentBtn" onclick="archiveStudent()" class="w-full flex items-center justify-center gap-2 border-2 border-amber-300 text-amber-700 hover:bg-amber-500 hover:text-white hover:border-amber-500 font-black py-2.5 rounded-xl transition text-xs shadow-sm"><i class="fa-solid fa-box-archive"></i> Archive This Student</button>
-                        </div>
-                    </div>
-                    <div class="w-full lg:w-2/3 flex flex-col bg-white">
-                        <div class="p-5 border-b border-slate-100 bg-slate-50/50 flex flex-wrap gap-3 items-center justify-between shadow-sm z-10">
-                            <h4 class="text-xs font-black text-slate-500 uppercase tracking-wider flex items-center gap-2"><i class="fa-solid fa-graduation-cap text-emerald-500"></i> Records (<span id="sPanelSemName" class="text-emerald-600"></span>)</h4>
-                            <div class="flex gap-2 flex-wrap">
-                                <div class="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-sm">
-                                    <i class="fa-solid fa-layer-group text-slate-400 text-[10px]"></i>
-                                    <select id="sPanelFilterSubject" onchange="renderStudentGrades()" class="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer"><option value="">All Subjects</option></select>
-                                </div>
-                                <div class="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-sm">
-                                    <i class="fa-solid fa-tag text-slate-400 text-[10px]"></i>
-                                    <select id="sPanelFilterType" onchange="renderStudentGrades()" class="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer"><option value="">All Types</option></select>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="flex-1 overflow-y-auto p-6 bg-slate-50/20">
-                            <div id="subjectAccordions" class="space-y-4"></div>
-                            <p id="noGradesMsg" class="hidden text-center text-slate-400 italic font-semibold py-12 bg-white rounded-2xl border border-slate-200 shadow-sm"><i class="fa-solid fa-folder-open text-4xl block mb-3 text-slate-200"></i>No records match the current filters.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+    <!-- ════════════════════════════════════════════════════════════════
+         MODAL: STUDENT DETAIL PANEL
+         ════════════════════════════════════════════════════════════════ -->
+    <div id="studentPanel" class="modal-overlay hidden opacity-0" style="padding:12px;">
+        <div id="studentPanelInner">
+            <div class="panel-top-stripe"></div>
 
-    <div id="archiveReasonModal" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center hidden opacity-0">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200" id="archiveReasonModalInner">
-            <div class="h-1 bg-gradient-to-r from-red-500 to-rose-600"></div>
-            <div class="px-7 py-5 border-b border-slate-100 flex justify-between items-center">
-                <div class="flex items-center gap-3"><div class="w-9 h-9 bg-red-100 text-red-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-box-archive"></i></div><h3 class="font-black text-xl text-slate-800">Archive Student</h3></div>
-                <button onclick="closeArchiveReasonModal()" class="text-slate-400 hover:text-red-500 h-8 w-8 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
-            </div>
-            <div class="p-7 space-y-4 bg-slate-50/50">
-                <p class="text-sm text-slate-600 font-semibold leading-relaxed">Please select a reason for archiving <span id="archiveStudentName" class="font-black"></span>.</p>
+            <!-- Panel header -->
+            <div class="panel-header">
                 <div>
-                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Reason</label>
-                    <select id="archiveReasonSelect" class="form-input w-full p-3 bg-white text-sm border border-slate-200 rounded-xl" onchange="document.getElementById('archiveReasonOther').classList.toggle('hidden', this.value !== 'Other')">
+                    <h2 id="sPanelName" class="panel-student-name">Student</h2>
+                    <p id="sPanelMeta" class="panel-student-meta">—</p>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <button id="spQuickGradeBtn2" class="btn-sharp btn-sharp-green">
+                        <i class="fa-solid fa-plus" style="font-size:11px;"></i> Enter Grade
+                    </button>
+                    <button onclick="openPrintStudentModal()" class="btn-sharp btn-sharp-outline no-print">
+                        <i class="fa-solid fa-print" style="font-size:11px;"></i> Print Record
+                    </button>
+                    <button onclick="closeStudentPanel()" class="modal-close">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Panel content -->
+            <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;position:relative;">
+
+                <!-- Loader -->
+                <div id="sPanelLoader"
+                     style="position:absolute;inset:0;background:rgba(255,255,255,0.85);z-index:10;
+                            display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;">
+                    <i class="fa-solid fa-circle-notch fa-spin" style="font-size:28px;color:#0ea871;"></i>
+                    <span style="font-size:12px;color:#6b84a0;font-weight:500;">Loading student record…</span>
+                </div>
+
+                <!-- View mode -->
+                <div id="sViewMode" class="hidden" style="flex:1;display:flex;overflow:hidden;">
+
+                    <!-- Left panel: profile + PIN -->
+                    <div style="width:280px;flex-shrink:0;background:#fff;border-right:1px solid #dce3ed;
+                                overflow-y:auto;display:flex;flex-direction:column;">
+
+                        <!-- Profile info -->
+                        <div style="padding:20px 20px 0;">
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+                                <span style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#6b84a0;">
+                                    Profile
+                                </span>
+                                <button onclick="toggleStudentEdit()"
+                                        style="font-size:11px;font-weight:600;color:#0ea871;background:none;border:none;cursor:pointer;padding:0;letter-spacing:0.01em;">
+                                    Edit Details
+                                </button>
+                            </div>
+                            <div id="sInfoGrid" style="border-top:1px solid #f0f4f8;"></div>
+                        </div>
+
+                        <!-- Edit form -->
+                        <div id="sEditForm" class="hidden"
+                             style="margin:0 16px 16px;padding:16px;background:#f8fafb;border:1px solid #c5d0db;border-radius:4px;">
+                            <p style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#6b84a0;margin:0 0 12px;">Edit Profile</p>
+                            <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;">
+                                <div>
+                                    <label class="field-label">Full Name</label>
+                                    <input type="text" id="editSName" class="form-input">
+                                </div>
+                                <div>
+                                    <label class="field-label">Parent Phone</label>
+                                    <input type="tel" id="editSPhone" class="form-input">
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:8px;">
+                                <button id="saveStudentEditBtn"
+                                        style="flex:1;padding:8px;background:#0ea871;border:none;border-radius:3px;
+                                               color:#fff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;">
+                                    Save Changes
+                                </button>
+                                <button onclick="toggleStudentEdit(false)"
+                                        style="padding:8px 14px;background:#fff;border:1px solid #c5d0db;border-radius:3px;
+                                               color:#374f6b;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;">
+                                    Cancel
+                                </button>
+                            </div>
+                            <p id="editStudentMsg" class="hidden"
+                               style="font-size:11px;font-weight:600;padding:8px;border-radius:3px;text-align:center;margin-top:8px;"></p>
+                        </div>
+
+                        <!-- PIN block -->
+                        <div style="margin:0 16px 16px;padding:16px;background:#f0f4ff;
+                                    border:1px solid #c7d2fe;border-radius:4px;text-align:center;">
+                            <p style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;
+                                      color:#4f46e5;margin:0 0 10px;">
+                                <i class="fa-solid fa-key" style="margin-right:4px;"></i>Parent PIN
+                            </p>
+                            <div id="pinDisplayArea">
+                                <p id="spinReadonly"
+                                   style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;
+                                          color:#312e81;letter-spacing:0.22em;margin:0 0 10px;">—</p>
+                                <button onclick="togglePinResetUI(true)"
+                                        style="width:100%;padding:7px;background:#fff;border:1px solid #c7d2fe;
+                                               border-radius:3px;color:#4f46e5;font-size:11.5px;font-weight:600;
+                                               font-family:inherit;cursor:pointer;transition:all 0.12s;"
+                                        onmouseover="this.style.background='#4f46e5';this.style.color='#fff'"
+                                        onmouseout="this.style.background='#fff';this.style.color='#4f46e5'">
+                                    Reset PIN
+                                </button>
+                            </div>
+                            <div id="pinEditArea" class="hidden" style="display:flex;flex-direction:column;gap:8px;">
+                                <input type="text" id="inlineNewPin" placeholder="4–6 digits" maxlength="6"
+                                       style="width:100%;padding:8px;background:#fff;border:1px solid #c7d2fe;
+                                              border-radius:3px;font-family:'DM Mono',monospace;font-size:14px;
+                                              text-align:center;letter-spacing:0.2em;color:#312e81;
+                                              outline:none;box-sizing:border-box;">
+                                <div style="display:flex;gap:6px;">
+                                    <button onclick="saveInlinePin()" id="inlinePinSaveBtn"
+                                            style="flex:1;padding:7px;background:#4f46e5;border:none;border-radius:3px;
+                                                   color:#fff;font-size:11.5px;font-weight:700;font-family:inherit;cursor:pointer;">
+                                        Save
+                                    </button>
+                                    <button onclick="togglePinResetUI(false)"
+                                            style="flex:1;padding:7px;background:#fff;border:1px solid #c5d0db;
+                                                   border-radius:3px;color:#374f6b;font-size:11.5px;font-weight:600;
+                                                   font-family:inherit;cursor:pointer;">
+                                        Cancel
+                                    </button>
+                                </div>
+                                <button onclick="document.getElementById('inlineNewPin').value = Math.floor(1000 + Math.random() * 9000).toString()"
+                                        style="font-size:10px;color:#4f46e5;font-weight:600;background:none;
+                                               border:none;cursor:pointer;padding:0;text-decoration:underline;">
+                                    Auto-Generate
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Archive -->
+                        <div style="margin:auto 16px 16px;padding-top:12px;border-top:1px solid #f0f4f8;">
+                            <button id="archiveStudentBtn" onclick="archiveStudent()"
+                                    style="width:100%;padding:9px;background:#fffbeb;border:1px solid #fde68a;
+                                           border-radius:3px;color:#78350f;font-size:12px;font-weight:700;
+                                           font-family:inherit;cursor:pointer;display:flex;align-items:center;
+                                           justify-content:center;gap:7px;transition:all 0.12s;"
+                                    onmouseover="this.style.background='#f59e0b';this.style.borderColor='#f59e0b';this.style.color='#fff'"
+                                    onmouseout="this.style.background='#fffbeb';this.style.borderColor='#fde68a';this.style.color='#78350f'">
+                                <i class="fa-solid fa-box-archive"></i> Archive This Student
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Right panel: grade records -->
+                    <div style="flex:1;display:flex;flex-direction:column;background:#f8fafb;overflow:hidden;min-width:0;">
+
+                        <!-- Records header -->
+                        <div style="padding:14px 20px;border-bottom:1px solid #dce3ed;background:#fff;
+                                    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;flex-shrink:0;">
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <i class="fa-solid fa-graduation-cap" style="font-size:12px;color:#0ea871;"></i>
+                                <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#374f6b;">
+                                    Grade Records — <span id="sPanelSemName" style="color:#0ea871;"></span>
+                                </span>
+                            </div>
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                <div class="control-group" style="border-radius:3px;">
+                                    <span class="control-group-label" style="font-size:9px;">Subject</span>
+                                    <select id="sPanelFilterSubject" onchange="renderStudentGrades()" class="control-select" style="min-width:80px;">
+                                        <option value="">All</option>
+                                    </select>
+                                </div>
+                                <div class="control-group" style="border-radius:3px;">
+                                    <span class="control-group-label" style="font-size:9px;">Type</span>
+                                    <select id="sPanelFilterType" onchange="renderStudentGrades()" class="control-select" style="min-width:80px;">
+                                        <option value="">All</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Grade accordions -->
+                        <div style="flex:1;overflow-y:auto;padding:16px 20px;">
+                            <div id="subjectAccordions" style="display:flex;flex-direction:column;gap:10px;"></div>
+                            <div id="noGradesMsg" class="hidden"
+                                 style="padding:48px 20px;text-align:center;color:#9ab0c6;font-size:13px;font-weight:400;">
+                                <i class="fa-solid fa-folder-open" style="font-size:28px;display:block;margin-bottom:10px;color:#c5d0db;"></i>
+                                No records match the current filters.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════
+         MODAL: ARCHIVE REASON
+         ════════════════════════════════════════════════════════════════ -->
+    <div id="archiveReasonModal" class="modal-overlay hidden opacity-0" style="z-index:70;">
+        <div class="modal-box" id="archiveReasonModalInner" style="width:100%;max-width:440px;">
+            <div class="modal-stripe" style="background:linear-gradient(90deg,#dc2626,#9f1239);"></div>
+            <div class="modal-header">
+                <div class="modal-header-left">
+                    <div class="modal-icon" style="background:#fee2e2;color:#dc2626;border:1px solid #fecaca;">
+                        <i class="fa-solid fa-box-archive"></i>
+                    </div>
+                    <span class="modal-title">Archive Student</span>
+                </div>
+                <button onclick="closeArchiveReasonModal()" class="modal-close">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="modal-body" style="display:flex;flex-direction:column;gap:16px;">
+                <p style="font-size:13px;color:#374f6b;font-weight:400;margin:0;line-height:1.6;">
+                    Select a reason for archiving
+                    <strong id="archiveStudentName" style="color:#0d1f35;"></strong>.
+                    This action can be reviewed by administrators.
+                </p>
+                <div>
+                    <label class="field-label">Reason</label>
+                    <select id="archiveReasonSelect" class="form-input"
+                            onchange="document.getElementById('archiveReasonOther').classList.toggle('hidden', this.value !== 'Other')">
                         <option value="Transferred to another school">Transferred to another school</option>
                         <option value="Graduated">Graduated</option>
                         <option value="Expelled">Expelled</option>
                         <option value="Dropped Out">Dropped Out</option>
-                        <option value="Other">Other</option>
+                        <option value="Other">Other (specify)</option>
                     </select>
-                    <input type="text" id="archiveReasonOther" placeholder="Specify reason..." class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm mt-2 hidden">
+                    <input type="text" id="archiveReasonOther" placeholder="Specify reason…"
+                           class="form-input hidden" style="margin-top:8px;">
                 </div>
-                <button id="confirmArchiveBtn" class="w-full bg-red-600 hover:bg-red-700 text-white font-black py-3.5 rounded-xl transition shadow-md text-base mt-2">Confirm & Archive</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="printStudentModal" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center hidden opacity-0">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200" id="printStudentModalInner">
-            <div class="h-1 bg-gradient-to-r from-slate-600 to-slate-800"></div>
-            <div class="px-7 py-5 border-b border-slate-100 flex justify-between items-center">
-                <div class="flex items-center gap-3"><div class="w-9 h-9 bg-slate-100 text-slate-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-print"></i></div><h3 class="font-black text-xl text-slate-800">Print Report</h3></div>
-                <button onclick="closePrintStudentModal()" class="text-slate-400 hover:text-red-500 h-8 w-8 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
-            </div>
-            <div class="p-7 space-y-4 bg-slate-50/50">
-                <div>
-                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Print Mode</label>
-                    <select id="psMode" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700">
-                        <option value="summary">Summary (Report Card Style)</option>
-                        <option value="detailed">Detailed (All Assignments)</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Filter by Subject</label>
-                    <select id="psSubject" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm"><option value="all">All Subjects</option></select>
-                </div>
-                <button onclick="executeStudentPrint()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-black py-3.5 rounded-xl transition shadow-md text-base mt-2 flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-print"></i> Generate Print
+                <button id="confirmArchiveBtn"
+                        style="width:100%;padding:11px;background:#dc2626;border:none;border-radius:3px;
+                               color:#fff;font-size:13.5px;font-weight:700;font-family:inherit;cursor:pointer;
+                               transition:background 0.12s;">
+                    Confirm &amp; Archive
                 </button>
             </div>
         </div>
     </div>
 
-    <div id="assignmentModal" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200" id="assignmentModalInner">
-            <div class="h-1 bg-gradient-to-r from-emerald-500 to-teal-400"></div>
-            <div class="px-7 py-5 border-b border-slate-100 flex justify-between items-center">
-                <h3 id="aModalTitle" class="font-black text-xl text-slate-800">Assignment Detail</h3>
-                <button onclick="closeAssignmentModal()" class="text-slate-400 hover:text-red-500 h-8 w-8 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+    <!-- ════════════════════════════════════════════════════════════════
+         MODAL: PRINT STUDENT RECORD
+         ════════════════════════════════════════════════════════════════ -->
+    <div id="printStudentModal" class="modal-overlay hidden opacity-0" style="z-index:70;">
+        <div class="modal-box" id="printStudentModalInner" style="width:100%;max-width:400px;">
+            <div class="modal-stripe" style="background:linear-gradient(90deg,#374f6b,#0d1f35);"></div>
+            <div class="modal-header">
+                <div class="modal-header-left">
+                    <div class="modal-icon" style="background:#f2f5f8;color:#374f6b;border:1px solid #c5d0db;">
+                        <i class="fa-solid fa-print"></i>
+                    </div>
+                    <span class="modal-title">Print Student Record</span>
+                </div>
+                <button onclick="closePrintStudentModal()" class="modal-close">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
             </div>
-            <div class="p-7" id="aModalBody"></div>
+            <div class="modal-body" style="display:flex;flex-direction:column;gap:16px;">
+                <div>
+                    <label class="field-label">Report Style</label>
+                    <select id="psMode" class="form-input">
+                        <option value="summary">Summary — Report Card Style</option>
+                        <option value="detailed">Detailed — All Assignments</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="field-label">Filter by Subject</label>
+                    <select id="psSubject" class="form-input">
+                        <option value="all">All Subjects</option>
+                    </select>
+                </div>
+                <button onclick="executeStudentPrint()"
+                        style="width:100%;padding:11px;background:#0d1f35;border:none;border-radius:3px;
+                               color:#fff;font-size:13.5px;font-weight:700;font-family:inherit;cursor:pointer;
+                               display:flex;align-items:center;justify-content:center;gap:8px;
+                               transition:background 0.12s;"
+                        onmouseover="this.style.background='#0ea871'"
+                        onmouseout="this.style.background='#0d1f35'">
+                    <i class="fa-solid fa-print"></i> Generate &amp; Print
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════
+         MODAL: ASSIGNMENT DETAIL
+         ════════════════════════════════════════════════════════════════ -->
+    <div id="assignmentModal" class="modal-overlay hidden opacity-0" style="z-index:60;">
+        <div class="modal-box" id="assignmentModalInner" style="width:100%;max-width:460px;">
+            <div class="modal-stripe"></div>
+            <div class="modal-header">
+                <span id="aModalTitle" class="modal-title">Assignment Detail</span>
+                <button onclick="closeAssignmentModal()" class="modal-close">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="modal-body" id="aModalBody"></div>
         </div>
     </div>
 
