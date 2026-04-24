@@ -3,110 +3,167 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Overview | Teacher Portal | ConnectUs</title>
-    
+    <title>Overview · Teacher Portal · ConnectUs</title>
+
     <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
-    
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="../../assets/css/global.css">
     <link rel="stylesheet" href="../../assets/css/teachers.css">
-    
+
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
-<body class="flex w-full h-screen overflow-hidden bg-[#f0fdf8]">
+<body style="display:flex;width:100%;height:100vh;overflow:hidden;background:var(--page-bg);">
 
-    <div id="layout-sidebar-container" class="flex-shrink-0 h-full z-20"></div>
+    <div id="layout-sidebar-container" style="flex-shrink:0;height:100%;z-index:20;"></div>
 
-    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
-        
-        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+    <main id="dashboardMain" style="flex:1;display:flex;flex-direction:column;height:100%;overflow:hidden;">
 
-        <div class="flex-1 overflow-y-auto p-7 view-section">
-            
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
-                <div class="stat-card bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+        <div id="layout-topbar-container" style="flex-shrink:0;z-index:10;"></div>
+
+        <div class="view-section flex-1 overflow-y-auto">
+
+            <!-- Page header -->
+            <div style="margin-bottom:24px;">
+                <h1 style="font-size:20px;font-weight:700;color:var(--text-primary);letter-spacing:-0.4px;margin:0 0 2px;">Overview</h1>
+                <p style="font-size:13px;color:var(--text-muted);margin:0;font-weight:400;">Your class at a glance for today.</p>
+            </div>
+
+            <!-- Stat cards -->
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;">
+
+                <div class="stat-card">
                     <div>
-                        <p class="text-slate-400 text-xs font-black uppercase tracking-wider mb-1">My Class</p>
-                        <h3 id="stat-students" class="text-3xl font-black text-slate-800"><i class="fa-solid fa-spinner fa-spin text-sm text-slate-300"></i></h3>
+                        <p>My Class</p>
+                        <h3 id="stat-students"><i class="fa-solid fa-spinner fa-spin" style="font-size:16px;color:#cbd5e1;"></i></h3>
+                        <span style="font-size:11px;color:var(--text-muted);font-weight:400;">enrolled students</span>
                     </div>
-                    <div class="h-12 w-12 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-xl"><i class="fa-solid fa-users"></i></div>
+                    <div class="stat-icon" style="background:var(--green-50);color:var(--green-600);border:1px solid var(--green-100);">
+                        <i class="fa-solid fa-users"></i>
+                    </div>
                 </div>
-                <div class="stat-card bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+
+                <div class="stat-card">
                     <div>
-                        <p class="text-slate-400 text-xs font-black uppercase tracking-wider mb-1">Grades Logged</p>
-                        <h3 id="stat-grades" class="text-3xl font-black text-slate-800"><i class="fa-solid fa-spinner fa-spin text-sm text-slate-300"></i></h3>
+                        <p>Grades Logged</p>
+                        <h3 id="stat-grades"><i class="fa-solid fa-spinner fa-spin" style="font-size:16px;color:#cbd5e1;"></i></h3>
+                        <span style="font-size:11px;color:var(--text-muted);font-weight:400;">total entries</span>
                     </div>
-                    <div class="h-12 w-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center text-xl"><i class="fa-solid fa-award"></i></div>
+                    <div class="stat-icon" style="background:var(--blue-50);color:var(--blue-500);border:1px solid #bfdbfe;">
+                        <i class="fa-solid fa-award"></i>
+                    </div>
                 </div>
-                <div class="stat-card bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+
+                <div class="stat-card">
                     <div>
-                        <p class="text-slate-400 text-xs font-black uppercase tracking-wider mb-1">Needs Attention</p>
-                        <h3 id="stat-risk" class="text-3xl font-black text-slate-800"><i class="fa-solid fa-spinner fa-spin text-sm text-slate-300"></i></h3>
+                        <p>Needs Attention</p>
+                        <h3 id="stat-risk"><i class="fa-solid fa-spinner fa-spin" style="font-size:16px;color:#cbd5e1;"></i></h3>
+                        <span style="font-size:11px;color:var(--text-muted);font-weight:400;">below 65% avg</span>
                     </div>
-                    <div class="h-12 w-12 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center text-xl"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                    <div class="stat-icon" style="background:var(--rose-50);color:var(--rose-500);border:1px solid #fecdd3;">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- At-risk banner (hidden by default) -->
+            <div id="atRiskBanner" class="hidden" style="margin-bottom:20px;">
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <div style="width:32px;height:32px;background:#fee2e2;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#e11d48;">
+                        <i class="fa-solid fa-triangle-exclamation" style="font-size:13px;"></i>
+                    </div>
+                    <p id="atRiskMsg" style="font-size:13px;font-weight:600;color:#be123c;margin:0;"></p>
                 </div>
             </div>
 
-            <div id="atRiskBanner" class="hidden mb-6 bg-rose-50 border border-rose-200 rounded-2xl p-4 flex items-center gap-3">
-                <div class="w-9 h-9 bg-rose-100 text-rose-600 rounded-xl flex items-center justify-center flex-shrink-0"><i class="fa-solid fa-triangle-exclamation"></i></div>
-                <p id="atRiskMsg" class="font-bold text-rose-700 text-sm"></p>
-            </div>
+            <!-- Main grid -->
+            <div style="display:grid;grid-template-columns:1fr 1fr 320px;gap:16px;align-items:start;">
 
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                
-                <div class="lg:col-span-2 space-y-5">
-                    
-                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-                        <div class="flex items-center gap-2 mb-4">
-                            <div class="w-7 h-7 bg-emerald-100 text-emerald-600 rounded-lg flex items-center justify-center text-xs"><i class="fa-solid fa-bolt"></i></div>
-                            <h3 class="font-black text-slate-700 text-sm uppercase tracking-wider">Quick Actions</h3>
+                <!-- Quick Actions -->
+                <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);overflow:hidden;">
+                    <div style="padding:14px 20px;border-bottom:1px solid var(--border);background:#fafbfc;display:flex;align-items:center;gap:8px;">
+                        <div style="width:24px;height:24px;background:var(--green-50);border:1px solid var(--green-100);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--green-600);font-size:11px;">
+                            <i class="fa-solid fa-bolt"></i>
                         </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                            <a href="../roster/roster.html" class="qa-btn bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border-2 border-emerald-100 hover:border-emerald-600">
-                                <div class="qa-icon bg-emerald-100"><i class="fa-solid fa-user-plus text-emerald-600"></i></div>
-                                <div><p class="font-black text-sm">Add Student</p></div>
-                            </a>
-                            <a href="../grade_form/grade_form.html" class="qa-btn bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white border-2 border-blue-100 hover:border-blue-600">
-                                <div class="qa-icon bg-blue-100"><i class="fa-solid fa-plus-circle text-blue-600"></i></div>
-                                <div><p class="font-black text-sm">Enter Grade</p></div>
-                            </a>
-                            <a href="../subjects/subjects.html" class="qa-btn bg-teal-50 hover:bg-teal-600 text-teal-700 hover:text-white border-2 border-teal-100 hover:border-teal-600">
-                                <div class="qa-icon bg-teal-100"><i class="fa-solid fa-layer-group text-teal-600"></i></div>
-                                <div><p class="font-black text-sm">Subjects</p></div>
-                            </a>
-                            <a href="../gradebook/gradebook.html" class="qa-btn bg-slate-50 hover:bg-slate-700 text-slate-700 hover:text-white border-2 border-slate-200 hover:border-slate-700">
-                                <div class="qa-icon bg-slate-100"><i class="fa-solid fa-book text-slate-600"></i></div>
-                                <div><p class="font-black text-sm">Gradebook</p></div>
-                            </a>
-                        </div>
+                        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-secondary);">Quick Actions</span>
                     </div>
-                    
-                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col" style="height:320px">
-                        <div class="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-                            <h4 class="font-black text-slate-700 text-sm uppercase tracking-wider flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left text-slate-400 text-xs"></i> Recent Activity</h4>
-                            <a href="../gradebook/gradebook.html" class="text-[10px] font-black text-emerald-600 hover:underline uppercase tracking-wider">View All</a>
-                        </div>
-                        <div class="flex-1 overflow-y-auto p-2" id="recentActivityList">
-                            <div class="flex items-center justify-center h-full text-slate-400 italic text-sm">
-                                <i class="fa-solid fa-spinner fa-spin mr-2 text-emerald-400"></i> Loading activity...
+                    <div style="padding:16px;display:flex;flex-direction:column;gap:8px;">
+
+                        <a href="../roster/roster.html" class="qa-btn">
+                            <div class="qa-icon"><i class="fa-solid fa-user-plus"></i></div>
+                            <div>
+                                <div style="font-weight:600;font-size:13px;color:var(--text-primary);">Add Student</div>
+                                <div style="font-size:11px;color:var(--text-muted);font-weight:400;">Manage your class roster</div>
                             </div>
+                            <i class="fa-solid fa-chevron-right" style="margin-left:auto;font-size:10px;color:var(--text-muted);"></i>
+                        </a>
+
+                        <a href="../grade_form/grade_form.html" class="qa-btn qa-blue">
+                            <div class="qa-icon" style="background:var(--blue-50);color:var(--blue-500);border-color:#bfdbfe;"><i class="fa-solid fa-plus-circle"></i></div>
+                            <div>
+                                <div style="font-weight:600;font-size:13px;color:var(--text-primary);">Enter Grade</div>
+                                <div style="font-size:11px;color:var(--text-muted);font-weight:400;">Log a new assessment</div>
+                            </div>
+                            <i class="fa-solid fa-chevron-right" style="margin-left:auto;font-size:10px;color:var(--text-muted);"></i>
+                        </a>
+
+                        <a href="../subjects/subjects.html" class="qa-btn">
+                            <div class="qa-icon"><i class="fa-solid fa-layer-group"></i></div>
+                            <div>
+                                <div style="font-weight:600;font-size:13px;color:var(--text-primary);">Subjects</div>
+                                <div style="font-size:11px;color:var(--text-muted);font-weight:400;">View all subjects</div>
+                            </div>
+                            <i class="fa-solid fa-chevron-right" style="margin-left:auto;font-size:10px;color:var(--text-muted);"></i>
+                        </a>
+
+                        <a href="../gradebook/gradebook.html" class="qa-btn">
+                            <div class="qa-icon"><i class="fa-solid fa-book-open"></i></div>
+                            <div>
+                                <div style="font-weight:600;font-size:13px;color:var(--text-primary);">Gradebook</div>
+                                <div style="font-size:11px;color:var(--text-muted);font-weight:400;">Full grade history</div>
+                            </div>
+                            <i class="fa-solid fa-chevron-right" style="margin-left:auto;font-size:10px;color:var(--text-muted);"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);overflow:hidden;display:flex;flex-direction:column;height:360px;">
+                    <div style="padding:14px 20px;border-bottom:1px solid var(--border);background:#fafbfc;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <div style="width:24px;height:24px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:11px;">
+                                <i class="fa-solid fa-clock-rotate-left"></i>
+                            </div>
+                            <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-secondary);">Recent Activity</span>
+                        </div>
+                        <a href="../gradebook/gradebook.html" class="link-action">View all →</a>
+                    </div>
+                    <div id="recentActivityList" style="flex:1;overflow-y:auto;padding:8px 0;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon"><i class="fa-solid fa-spinner fa-spin" style="color:#10b981;"></i></div>
+                            <p>Loading activity…</p>
                         </div>
                     </div>
                 </div>
 
-                <div class="lg:col-span-1">
-                    <div class="bg-white rounded-2xl border border-rose-200 shadow-sm overflow-hidden flex flex-col" style="height:100%;min-height:320px">
-                        <div class="p-4 border-b border-rose-100 bg-rose-50/50">
-                            <h4 class="font-black text-rose-700 text-sm uppercase tracking-wider flex items-center gap-2"><i class="fa-solid fa-triangle-exclamation text-xs"></i> Needs Attention</h4>
-                            <p class="text-xs text-rose-500 font-semibold mt-0.5">Students averaging below 65%</p>
+                <!-- Needs Attention -->
+                <div style="background:var(--surface);border:1px solid #fecdd3;border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);overflow:hidden;display:flex;flex-direction:column;max-height:360px;">
+                    <div style="padding:14px 20px;border-bottom:1px solid #fee2e2;background:#fff8f8;flex-shrink:0;">
+                        <div style="display:flex;align-items:center;gap:7px;margin-bottom:2px;">
+                            <i class="fa-solid fa-triangle-exclamation" style="font-size:12px;color:#e11d48;"></i>
+                            <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#be123c;">Needs Attention</span>
                         </div>
-                        <div class="flex-1 overflow-y-auto p-4 space-y-2 bg-rose-50/20" id="needsAttentionList">
-                            <div class="flex items-center justify-center h-full text-slate-400 italic text-sm">
-                                <i class="fa-solid fa-spinner fa-spin mr-2 text-rose-400"></i> Evaluating...
-                            </div>
+                        <p style="font-size:11px;color:#fb7185;font-weight:400;margin:0;">Averaging below 65%</p>
+                    </div>
+                    <div id="needsAttentionList" style="flex:1;overflow-y:auto;padding:8px 0;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon" style="background:#fff1f2;"><i class="fa-solid fa-spinner fa-spin" style="color:#f43f5e;"></i></div>
+                            <p>Evaluating…</p>
                         </div>
                     </div>
                 </div>
