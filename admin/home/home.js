@@ -1,5 +1,5 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { doc, getDocs, updateDoc, collection } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { doc, getDoc, getDocs, updateDoc, collection, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
 
@@ -23,13 +23,16 @@ const activePeriodSaved = document.getElementById('activePeriodSaved');
 // ── 2. LOAD DASHBOARD STATS ───────────────────────────────────────────────
 async function loadOverviewStats() {
     try {
+        // CHANGED: query global collections
         const [tSnap, sSnap] = await Promise.all([
-            getDocs(collection(db, 'schools', session.schoolId, 'teachers')),
-            getDocs(collection(db, 'schools', session.schoolId, 'students'))
+            getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId))),
+            getDocs(query(collection(db, 'students'),
+                where('currentSchoolId', '==', session.schoolId),
+                where('enrollmentStatus', '==', 'Active')))
         ]);
-        
-        const activeTeachers = [...tSnap.docs].filter(d => !d.data().archived).length;
-        const activeStudents = [...sSnap.docs].filter(d => !d.data().archived).length;
+
+        const activeTeachers = tSnap.docs.length;
+        const activeStudents = sSnap.docs.length;
         
         // Grab limits from the current session data
         const limit = session.planLimit || 50;
