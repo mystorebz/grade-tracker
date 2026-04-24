@@ -154,12 +154,18 @@ async function loadSemesters() {
 async function loadStudents() {
     const stuSel = document.getElementById('rb-student');
     try {
-        const stuQuery = query(collection(db, 'schools', session.schoolId, 'students'), where('teacherId', '==', session.teacherId));
-        const stuSnap = await getDocs(stuQuery);
+        // CHANGED: query global /students, filter teacherId in memory
+        const stuSnap = await getDocs(query(
+            collection(db, 'students'),
+            where('currentSchoolId', '==', session.schoolId),
+            where('enrollmentStatus', '==', 'Active')
+        ));
         
-        allStudentsCache = stuSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        allStudentsCache = stuSnap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .filter(s => s.teacherId === session.teacherId);
         studentMap = {};
-        allStudentsCache.forEach(s => { studentMap[s.id] = s; }); // Map full object to access .className later
+        allStudentsCache.forEach(s => { studentMap[s.id] = s; });
 
         const sortedStudents = [...allStudentsCache].sort((a, b) => a.name.localeCompare(b.name));
         stuSel.innerHTML = '<option value="">— Target a specific student —</option>' + sortedStudents.map(s => `<option value="${s.id}">${escHtml(s.name)} ${s.archived ? '(Archived)' : ''}</option>`).join('');
