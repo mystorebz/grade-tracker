@@ -1,6 +1,6 @@
 import { db } from '../../assets/js/firebase-init.js';
 import { doc, getDoc, updateDoc, collection, query, where, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { requireAuth } from '../../assets/js/auth.js';
+import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { openOverlay, closeOverlay, showMsg } from '../../assets/js/utils.js';
 
@@ -25,7 +25,11 @@ const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project'
 function genId() { return 'sub_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 5); }
 function getClasses() { return session.teacherData.classes || [session.teacherData.className || '']; }
 function getActiveSubjects() { return (session.teacherData.subjects || []).filter(s => !s.archived); }
-function getGradeTypes() { return session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
+
+// Pulls directly from the saved active array. Falls back to default if never saved.
+function getGradeTypes() { 
+    return session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES;
+}
 
 // Escapes HTML to prevent XSS
 function escHtml(str) {
@@ -41,7 +45,6 @@ function escHtml(str) {
 async function init() {
     if (!session) return;
 
-    // Fetch School Data to know which class list to show
     try {
         const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
         if (schoolSnap.exists()) {
@@ -54,13 +57,11 @@ async function init() {
     await loadSemesters();
     loadSettings();
 
-    // Attach static event listeners
     document.getElementById('updateCodeBtn').addEventListener('click', updateLoginCode);
     document.getElementById('saveProfileBtn').addEventListener('click', saveProfile);
     document.getElementById('saveClassesBtn').addEventListener('click', saveClasses);
     document.getElementById('saveSubjectFormBtn').addEventListener('click', saveSubject);
 
-    // Allow pressing "Enter" to add a grade type
     const gradeTypeInput = document.getElementById('newGradeTypeInput');
     if (gradeTypeInput) {
         gradeTypeInput.addEventListener('keypress', function(e) {
@@ -103,7 +104,6 @@ async function loadSemesters() {
                 semSel.appendChild(opt);
             });
 
-            // Keep sidebar in sync
             const sbPeriod = document.getElementById('sb-period');
             if (sbPeriod) sbPeriod.textContent = semSel.options[semSel.selectedIndex]?.text || '—';
 
@@ -117,7 +117,6 @@ async function loadSemesters() {
 }
 
 function loadSettings() {
-    // 1. Profile & Security
     document.getElementById('profileIdNum').value = session.teacherData.teacherIdNum || 'Not assigned';
     document.getElementById('profileName').value = session.teacherData.name || '';
     document.getElementById('profileEmail').value = session.teacherData.email || '';
@@ -125,7 +124,6 @@ function loadSettings() {
     toggleSecurityEdit(false);
     toggleProfileEdit(false);
 
-    // 2. Classes
     const classes = getClasses().filter(Boolean);
     document.getElementById('currentClassesDisplay').textContent = classes.join(', ') || 'Not set';
     const classList = CLASSES[schoolType] || CLASSES['Primary'];
@@ -140,7 +138,6 @@ function loadSettings() {
         </label>`;
     }).join('');
 
-    // 3. Lists
     renderGradeTypesList();
     renderSubjectsInSettings();
 }
@@ -160,7 +157,6 @@ window.toggleSecurityEdit = function(isEditing) {
 };
 
 window.toggleProfileEdit = function(isEditing) {
-    // Only toggle Name, Email, and Phone. ID stays disabled.
     ['profileName', 'profileEmail', 'profilePhone'].forEach(id => {
         const el = document.getElementById(id);
         el.disabled = !isEditing;
@@ -198,12 +194,11 @@ async function updateLoginCode() {
         await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { loginCode: nw });
         session.teacherData.loginCode = nw;
         
-        sessionStorage.setItem('connectus_teacher_session', JSON.stringify(session));
+        setSessionData('teacher', session);
         
         toggleSecurityEdit(false);
         showMsg(mid, 'Login code updated successfully!', false);
     } catch (e) {
-        console.error('[Settings] Error saving code:', e);
         showMsg(mid, 'Error saving new code. Please try again.', true);
     }
     btn.innerHTML = originalText;
@@ -228,7 +223,7 @@ async function saveProfile() {
         await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), u);
         
         Object.assign(session.teacherData, u);
-        sessionStorage.setItem('connectus_teacher_session', JSON.stringify(session));
+        setSessionData('teacher', session);
         
         const sbName = document.getElementById('displayTeacherName');
         const sbAvatar = document.getElementById('teacherAvatar');
@@ -238,7 +233,6 @@ async function saveProfile() {
         toggleProfileEdit(false);
         showMsg('settingsProfileMsg', 'Profile saved successfully!', false);
     } catch (e) {
-        console.error('[Settings] Error saving profile:', e);
         showMsg('settingsProfileMsg', 'Error saving profile. Please try again.', true);
     }
     btn.innerHTML = originalText;
@@ -277,7 +271,12 @@ async function saveClasses() {
         
         session.teacherData.classes = selected;
         session.teacherData.className = selected[0];
-        sessionStorage.setItem('connectus_teacher_session', JSON.stringify(session));
+        
+        // 1. Update Auth Session cleanly
+        setSessionData('teacher', session);
+        
+        // 2. Force Cache update for Layout script sync
+        localStorage.setItem('connectus_cached_classes', JSON.stringify(selected));
         
         document.getElementById('currentClassesDisplay').textContent = selected.join(', ');
         
@@ -288,7 +287,6 @@ async function saveClasses() {
         
         showMsg('settingsClassMsg', 'Classes updated successfully!', false);
     } catch (e) {
-        console.error('[Settings] Error saving classes:', e);
         showMsg('settingsClassMsg', 'Error saving classes. Please try again.', true);
     }
     btn.innerHTML = originalText;
@@ -299,14 +297,12 @@ async function saveClasses() {
 function renderGradeTypesList() {
     const types = getGradeTypes();
     document.getElementById('gradeTypesList').innerHTML = types.map(t => {
-        const isDefault = DEFAULT_GRADE_TYPES.includes(t);
         return `
         <div class="flex items-center justify-between bg-white border border-[#dce3ed] rounded p-2.5 mb-2 shadow-sm transition hover:border-[#c7d9fd]">
             <span class="font-bold text-[#0d1f35] text-[13px]">${escHtml(t)}</span>
-            ${isDefault 
-                ? `<span class="text-[9px] uppercase tracking-widest text-[#6b84a0] font-bold px-2 py-1 bg-[#f0f4f8] rounded">Default</span>` 
-                : `<button onclick="archiveGradeType('${escHtml(t).replace(/'/g, "\\'")}')" class="text-[#9ab0c6] hover:text-[#b45309] hover:bg-[#fef3c7] p-1.5 rounded transition" title="Archive Type"><i class="fa-solid fa-box-archive text-[11px]"></i></button>`
-            }
+            <button onclick="archiveGradeType('${escHtml(t).replace(/'/g, "\\'")}')" class="text-[#9ab0c6] hover:text-[#b45309] hover:bg-[#fef3c7] p-1.5 rounded transition" title="Archive Type">
+                <i class="fa-solid fa-box-archive text-[11px]"></i>
+            </button>
         </div>`;
     }).join('');
 }
@@ -316,9 +312,11 @@ window.addGradeType = async function() {
     const nt = input.value.trim();
     if (!nt) return;
     
-    let types = getGradeTypes();
-    if (types.map(t => t.toLowerCase()).includes(nt.toLowerCase())) {
-        showMsg('gradeTypeMsg', 'This grade type already exists.', true);
+    let activeTypes = getGradeTypes();
+    let archivedTypes = session.teacherData.archivedGradeTypes || [];
+    
+    if (activeTypes.map(t => t.toLowerCase()).includes(nt.toLowerCase())) {
+        showMsg('gradeTypeMsg', 'This grade type is already active.', true);
         return;
     }
     
@@ -327,27 +325,41 @@ window.addGradeType = async function() {
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i>`;
     btn.disabled = true;
 
-    types.push(nt);
+    // Check if it exists in archives to restore it
+    const archivedIndex = archivedTypes.findIndex(t => t.toLowerCase() === nt.toLowerCase());
+    if (archivedIndex !== -1) {
+        const restoredName = archivedTypes[archivedIndex];
+        archivedTypes.splice(archivedIndex, 1);
+        activeTypes.push(restoredName);
+    } else {
+        activeTypes.push(nt);
+    }
+
     try {
-        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { customGradeTypes: types });
-        session.teacherData.customGradeTypes = types;
-        sessionStorage.setItem('connectus_teacher_session', JSON.stringify(session));
+        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { 
+            customGradeTypes: activeTypes,
+            archivedGradeTypes: archivedTypes
+        });
+        
+        session.teacherData.customGradeTypes = activeTypes;
+        session.teacherData.archivedGradeTypes = archivedTypes;
+        setSessionData('teacher', session);
         
         input.value = '';
         renderGradeTypesList();
-        showMsg('gradeTypeMsg', 'New grade type added!', false);
+        showMsg('gradeTypeMsg', 'Grade type added!', false);
     } catch (e) {
-        console.error('[Settings] Error adding grade type:', e);
         showMsg('gradeTypeMsg', 'Error adding grade type. Please try again.', true);
-        types.pop(); 
+        activeTypes.pop(); 
     }
     btn.innerHTML = originalIcon;
     btn.disabled = false;
 };
 
 window.archiveGradeType = async function(type) {
-    if (!confirm(`Are you sure you want to archive the "${type}" assignment category? It will be moved to your Archives.`)) return;
+    if (!confirm(`Are you sure you want to archive the "${type}" category? It will be removed from your active dropdowns.`)) return;
     
+    // Completely slice it out of the active array
     let activeTypes = getGradeTypes().filter(t => t !== type);
     let archivedTypes = session.teacherData.archivedGradeTypes || [];
     
@@ -356,18 +368,19 @@ window.archiveGradeType = async function(type) {
     }
     
     try {
+        // Save BOTH to firestore so it is actively removed
         await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { 
             customGradeTypes: activeTypes,
             archivedGradeTypes: archivedTypes
         });
+        
         session.teacherData.customGradeTypes = activeTypes;
         session.teacherData.archivedGradeTypes = archivedTypes;
-        sessionStorage.setItem('connectus_teacher_session', JSON.stringify(session));
+        setSessionData('teacher', session);
         
         renderGradeTypesList();
         showMsg('gradeTypeMsg', 'Grade type archived successfully.', false);
     } catch (e) {
-        console.error('[Settings] Error archiving grade type:', e);
         showMsg('gradeTypeMsg', 'Error archiving type. Please try again.', true);
     }
 };
@@ -475,12 +488,11 @@ async function saveSubject() {
         
         await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { subjects: newSubs });
         session.teacherData.subjects = newSubs;
-        sessionStorage.setItem('connectus_teacher_session', JSON.stringify(session));
+        setSessionData('teacher', session);
         
         closeSubjectFormModal();
         renderSubjectsInSettings();
     } catch (e) {
-        console.error('[Settings] Error saving subject:', e);
         showMsg('subjectFormMsg', 'Error saving subject. Please try again.', true);
     }
     btn.innerHTML = originalText;
@@ -497,10 +509,9 @@ window.archiveSubject = async function(subjectId) {
         await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { subjects: newSubs });
         
         session.teacherData.subjects = newSubs;
-        sessionStorage.setItem('connectus_teacher_session', JSON.stringify(session));
+        setSessionData('teacher', session);
         renderSubjectsInSettings();
     } catch (e) {
-        console.error('[Settings] Error archiving subject:', e);
         alert('Failed to archive subject. Please check your connection and try again.');
     }
 };
