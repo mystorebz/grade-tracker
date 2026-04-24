@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complete Your Profile | ConnectUs</title>
+
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: linear-gradient(135deg, #022c22 0%, #064e3b 50%, #047857 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
+            background-size: 28px 28px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .card {
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 24px 64px rgba(0,0,0,0.3);
+            max-width: 520px;
+            width: 100%;
+            overflow: hidden;
+            position: relative;
+            z-index: 1;
+        }
+
+        .field-label {
+            display: block;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: #6b84a0;
+            margin-bottom: 6px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px 14px;
+            background: #fff;
+            border: 1.5px solid #c5d0db;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: 'DM Sans', sans-serif;
+            color: #0d1f35;
+            font-weight: 500;
+            outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+            box-sizing: border-box;
+        }
+
+        .form-input:focus {
+            border-color: #10b981;
+            box-shadow: 0 0 0 3px rgba(16,185,129,0.15);
+        }
+
+        .step-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #ecfdf5;
+            border: 2px solid #10b981;
+            color: #059669;
+            font-size: 12px;
+            font-weight: 900;
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <!-- Top stripe -->
+        <div style="height:4px;background:linear-gradient(90deg,#10b981,#059669);"></div>
+
+        <!-- Header -->
+        <div style="padding:32px 36px 24px;border-bottom:1px solid #f0f4f8;text-align:center;">
+            <img src="../../assets/images/logo.png" alt="ConnectUs"
+                 style="height:56px;width:auto;margin:0 auto 16px;" onerror="this.style.display='none'">
+            <h1 style="font-size:22px;font-weight:700;color:#0d1f35;margin:0 0 6px;">
+                One Last Step
+            </h1>
+            <p style="font-size:13px;color:#6b84a0;font-weight:400;margin:0;">
+                Complete your National Educator Profile to enter the portal.
+            </p>
+            <div id="welcomeTeacherName"
+                 style="display:inline-block;margin-top:12px;padding:6px 16px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:20px;font-size:12px;font-weight:700;color:#059669;">
+            </div>
+        </div>
+
+        <!-- Progress indicator -->
+        <div style="padding:16px 36px;background:#f8fafb;border-bottom:1px solid #f0f4f8;display:flex;align-items:center;gap:10px;">
+            <div style="flex:1;height:4px;background:#10b981;border-radius:2px;"></div>
+            <div style="flex:1;height:4px;background:#10b981;border-radius:2px;"></div>
+            <div style="flex:1;height:4px;background:#10b981;border-radius:2px;"></div>
+            <div style="flex:1;height:4px;background:#c5d0db;border-radius:2px;"></div>
+            <span style="font-size:10px;font-weight:700;color:#6b84a0;text-transform:uppercase;letter-spacing:0.1em;white-space:nowrap;">
+                Step 4 of 4
+            </span>
+        </div>
+
+        <!-- Form -->
+        <div style="padding:32px 36px;display:flex;flex-direction:column;gap:20px;">
+
+            <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 16px;display:flex;gap:12px;align-items:flex-start;">
+                <i class="fa-solid fa-circle-info" style="color:#2563eb;margin-top:2px;flex-shrink:0;"></i>
+                <p style="font-size:12px;color:#1e40af;font-weight:500;margin:0;line-height:1.6;">
+                    This information is part of your permanent National Educator Record.
+                    It helps the Ministry of Education track educator distribution across districts.
+                </p>
+            </div>
+
+            <div>
+                <label class="field-label">Country of Residence <span style="color:#e31b4a;">*</span></label>
+                <select id="obCountry" class="form-input">
+                    <option value="">— Select Country —</option>
+                    <option value="Belize" selected>Belize</option>
+                    <option value="Guatemala">Guatemala</option>
+                    <option value="Mexico">Mexico</option>
+                    <option value="Honduras">Honduras</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="field-label">District / Region <span style="color:#e31b4a;">*</span></label>
+                <select id="obDistrict" class="form-input">
+                    <option value="">— Select District —</option>
+                    <option value="Belize District">Belize District</option>
+                    <option value="Cayo District">Cayo District</option>
+                    <option value="Corozal District">Corozal District</option>
+                    <option value="Orange Walk District">Orange Walk District</option>
+                    <option value="Stann Creek District">Stann Creek District</option>
+                    <option value="Toledo District">Toledo District</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="field-label">Town / Village</label>
+                <input type="text" id="obTown" placeholder="e.g. Belmopan" class="form-input">
+            </div>
+
+            <div>
+                <label class="field-label">Years of Teaching Experience</label>
+                <select id="obYears" class="form-input">
+                    <option value="">— Select —</option>
+                    <option value="0-1">Less than 1 year</option>
+                    <option value="1-3">1–3 years</option>
+                    <option value="3-5">3–5 years</option>
+                    <option value="5-10">5–10 years</option>
+                    <option value="10-20">10–20 years</option>
+                    <option value="20+">20+ years</option>
+                </select>
+            </div>
+
+            <p id="obMsg" class="hidden"
+               style="font-size:12px;font-weight:600;padding:10px 14px;border-radius:6px;text-align:center;background:#fee2e2;color:#dc2626;border:1px solid #fecaca;"></p>
+
+            <button id="obSaveBtn"
+                    style="width:100%;padding:13px;background:#059669;border:none;border-radius:8px;
+                           color:#fff;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;
+                           cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;
+                           transition:background 0.15s;letter-spacing:0.01em;"
+                    onmouseover="this.style.background='#047857'"
+                    onmouseout="this.style.background='#059669'">
+                <i class="fa-solid fa-check"></i> Complete Profile & Enter Portal
+            </button>
+
+            <p style="font-size:11px;color:#9ab0c6;text-align:center;margin:0;">
+                This information can be updated later in your profile settings.
+            </p>
+        </div>
+    </div>
+
+    <script type="module" src="onboarding.js"></script>
+</body>
+</html>
