@@ -758,46 +758,67 @@
     </main>
 
     <div id="addStudentModal" class="modal-overlay hidden opacity-0">
-        <div class="modal-box" id="addStudentModalInner" style="width:100%;max-width:460px; max-height: 90vh; overflow-y: auto;">
+        <div class="modal-box" id="addStudentModalInner" style="width:100%;max-width:500px;max-height:90vh;overflow-y:auto;">
             <div class="modal-stripe"></div>
-            <div class="modal-header sticky top-0 bg-[#fafbfc] z-10">
+            <div class="modal-header" style="position:sticky;top:0;background:#fafbfc;z-index:10;">
                 <div class="modal-header-left">
                     <div class="modal-icon" style="background:#edfaf4;color:#0ea871;border:1px solid #a7f3d0;">
                         <i class="fa-solid fa-user-plus"></i>
                     </div>
-                    <span class="modal-title">Add Student</span>
+                    <span class="modal-title">Enroll or Claim Student</span>
                 </div>
                 <button onclick="closeAddStudentModal()" class="modal-close">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
-            <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
-                <div class="field-group">
-                    <label class="field-label">Add Method</label>
-                    <select id="sAddMethod" class="form-input" onchange="toggleAddMethod()">
-                        <option value="new">Create New Student</option>
-                        <option value="existing">Claim Unassigned Student</option>
-                    </select>
-                </div>
+            <div class="modal-body" style="display:flex;flex-direction:column;gap:16px;">
 
-                <div id="sExistingStudentFields" class="hidden" style="display:flex;flex-direction:column;gap:14px;">
-                    <div>
-                        <label class="field-label">Select Student</label>
-                        <select id="sExistingSelect" class="form-input"></select>
-                        <p style="font-size:11px;color:#9ab0c6;margin:6px 0 0;font-weight:400;">Only active students without a teacher assignment are shown.</p>
+                <!-- STEP 1: SEARCH NATIONAL REGISTRY -->
+                <div style="background:#edfaf4;border:1px solid #a7f3d0;border-radius:3px;padding:14px;">
+                    <label class="field-label" style="color:#065f46;">Search National Registry First</label>
+                    <div style="display:flex;gap:8px;">
+                        <input type="text" id="sSearchQuery"
+                               placeholder="Student name  or  S26-XXXXX ID"
+                               class="form-input" style="flex:1;">
+                        <button id="sSearchBtn" onclick="window.searchStudentRegistry()"
+                                style="padding:9px 16px;background:#0ea871;border:none;border-radius:3px;
+                                       color:#fff;font-size:12.5px;font-weight:700;font-family:inherit;
+                                       cursor:pointer;white-space:nowrap;transition:background 0.12s;"
+                                onmouseover="this.style.background='#0b8f5e'"
+                                onmouseout="this.style.background='#0ea871'">
+                            Search
+                        </button>
                     </div>
+                    <p style="font-size:10px;color:#065f46;margin:6px 0 0;font-weight:500;">
+                        Search by name or existing ID to find and claim a student from the national registry.
+                    </p>
                 </div>
 
+                <!-- SEARCH RESULTS -->
+                <div id="sSearchResults" class="hidden"
+                     style="border:1px solid #c5d0db;border-radius:3px;overflow:hidden;max-height:220px;overflow-y:auto;">
+                </div>
+
+                <!-- DIVIDER -->
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="flex:1;height:1px;background:#e8edf2;"></div>
+                    <span style="font-size:9.5px;font-weight:700;color:#9ab0c6;text-transform:uppercase;letter-spacing:0.1em;white-space:nowrap;">
+                        Or Create New Identity
+                    </span>
+                    <div style="flex:1;height:1px;background:#e8edf2;"></div>
+                </div>
+
+                <!-- CREATE NEW FORM -->
                 <div id="sNewStudentFields" style="display:flex;flex-direction:column;gap:14px;">
                     <div>
                         <label class="field-label">Student Full Name <span style="color:#e31b4a;">*</span></label>
-                        <input type="text" id="sName" placeholder="e.g. John Smith" class="form-input">
+                        <input type="text" id="sName" placeholder="As on birth certificate" class="form-input">
                     </div>
                     <div>
                         <label class="field-label">Date of Birth</label>
                         <input type="date" id="sDob" class="form-input">
                     </div>
-                    <div style="border-top: 1px solid #e8edf2; padding-top: 14px; margin-top: 4px;">
+                    <div style="border-top:1px solid #e8edf2;padding-top:14px;margin-top:4px;">
                         <label class="field-label">Parent / Guardian Name</label>
                         <input type="text" id="sParentName" placeholder="e.g. Jane Smith" class="form-input">
                     </div>
@@ -805,25 +826,24 @@
                         <label class="field-label">Parent / Guardian Phone</label>
                         <input type="tel" id="sParentPhone" placeholder="e.g. 600-0000" class="form-input">
                     </div>
-                    <div>
-                        <label class="field-label">Parent PIN
-                            <span style="font-size:9.5px;font-weight:400;text-transform:none;color:#9ab0c6;letter-spacing:0;"> — auto-generated if blank</span>
-                        </label>
-                        <input type="text" id="sPin" placeholder="4–6 digit PIN" maxlength="6"
-                               class="form-input" style="font-family:'DM Mono',monospace;letter-spacing:0.18em;text-align:center;">
-                    </div>
                 </div>
 
+                <!-- CLASS ASSIGNMENT -->
                 <div id="sClassWrap" style="padding-top:14px;border-top:1px solid #e8edf2;">
                     <label class="field-label">Assign to Class <span style="color:#e31b4a;">*</span></label>
                     <select id="sClass" class="form-input"></select>
+                    <p style="font-size:10px;color:#9ab0c6;margin:5px 0 0;font-weight:400;">
+                        Select a class before claiming from search results, or saving a new student.
+                    </p>
                 </div>
 
                 <button id="saveStudentBtn"
                         style="width:100%;padding:11px;background:#0ea871;border:none;border-radius:3px;
                                color:#fff;font-size:13.5px;font-weight:700;font-family:inherit;
-                               cursor:pointer;transition:background 0.12s;letter-spacing:0.01em;">
-                    Save to Roster
+                               cursor:pointer;transition:background 0.12s;letter-spacing:0.01em;"
+                        onmouseover="this.style.background='#0b8f5e'"
+                        onmouseout="this.style.background='#0ea871'">
+                    Create New Student Identity
                 </button>
                 <p id="addStudentMsg" class="hidden"
                    style="font-size:12px;font-weight:600;padding:10px 14px;border-radius:3px;text-align:center;"></p>
