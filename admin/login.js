@@ -31,6 +31,7 @@ function launchDashboard(schoolId, data) {
     // Store necessary admin data in sessionStorage via auth.js
     setSessionData('admin', {
         schoolId: schoolId,
+        adminId: schoolId,
         schoolName: data.schoolName,
         logoUrl: data.logoUrl || '',
         activeSemesterId: data.activeSemesterId || '',
