@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Career Analytics | ConnectUs Pro</title>
+    
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/teachers.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 flex h-screen overflow-hidden text-gray-900">
+
+    <div id="app-layout" class="flex w-full h-full">
+        
+        <main class="flex-1 flex flex-col overflow-y-auto" id="main-content">
+            <div class="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8" id="pro-analytics-container">
+                
+                <div class="flex justify-between items-center mb-8 border-b border-gray-200 pb-5">
+                    <div>
+                        <h1 class="text-3xl font-bold text-gray-900 tracking-tight" id="teacher-name-display">Career Ledger</h1>
+                        <p class="text-sm text-gray-500 mt-1">National Educator ID: <span id="teacher-global-id" class="font-mono text-gray-700">Loading...</span></p>
+                    </div>
+                    <div>
+                        <span class="inline-flex items-center px-4 py-1.5 rounded-full text-sm font-semibold bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-sm">
+                            <i class="fa-solid fa-crown mr-2 text-yellow-300"></i> ConnectUs Pro
+                        </span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col justify-center">
+                        <dt class="text-sm font-medium text-gray-500 mb-1">Average Evaluation</dt>
+                        <dd class="text-3xl font-bold text-gray-900" id="stat-avg-score">--/5</dd>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col justify-center">
+                        <dt class="text-sm font-medium text-gray-500 mb-1">Schools Taught</dt>
+                        <dd class="text-3xl font-bold text-gray-900" id="stat-schools-count">--</dd>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col justify-center">
+                        <dt class="text-sm font-medium text-gray-500 mb-1">Total Exit Reviews</dt>
+                        <dd class="text-3xl font-bold text-gray-900" id="stat-eval-count">--</dd>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col justify-center">
+                        <dt class="text-sm font-medium text-gray-500 mb-1">Current Status</dt>
+                        <dd class="text-xl font-bold text-green-600 flex items-center">
+                            <i class="fa-solid fa-circle-check text-sm mr-2"></i> Active
+                        </dd>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div class="lg:col-span-2">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                            <div class="px-6 py-5 border-b border-gray-100 bg-gray-50">
+                                <h3 class="text-lg font-semibold text-gray-900">Historical Performance Evaluations</h3>
+                                <p class="text-sm text-gray-500">Official exit reviews and tenure assessments</p>
+                            </div>
+                            <div class="divide-y divide-gray-100" id="evaluations-list">
+                                <div class="p-8 text-center text-gray-400">Loading permanent records...</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-8">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4">Professional Identity</h3>
+                            <dl class="space-y-4 text-sm">
+                                <div class="flex justify-between border-b border-gray-50 pb-2">
+                                    <dt class="text-gray-500">Declared District</dt>
+                                    <dd class="font-medium text-gray-900" id="profile-district">--</dd>
+                                </div>
+                                <div class="flex justify-between border-b border-gray-50 pb-2">
+                                    <dt class="text-gray-500">Specialty</dt>
+                                    <dd class="font-medium text-gray-900" id="profile-subjects">--</dd>
+                                </div>
+                                <div class="flex justify-between pb-2">
+                                    <dt class="text-gray-500">Joined ConnectUs</dt>
+                                    <dd class="font-medium text-gray-900" id="profile-joined">--</dd>
+                                </div>
+                            </dl>
+                        </div>
+
+                        <div class="bg-slate-900 rounded-xl shadow-sm border border-slate-800 p-6 text-white">
+                            <h3 class="text-lg font-semibold mb-4">Career Trajectory</h3>
+                            <div class="relative border-l border-slate-700 ml-3 space-y-6" id="career-timeline">
+                                </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            </main>
+    </div>
+
+    <script type="module" src="../../assets/js/layout-teachers.js"></script>
+    <script type="module" src="analytics.js"></script>
+
+</body>
+</html>
