@@ -1,5 +1,5 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { collection, doc, getDoc, getDocs, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, doc, getDoc, getDocs, updateDoc, deleteDoc, query, where, arrayRemove, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
 
@@ -20,9 +20,12 @@ window.switchArchiveTab = function(tab) {
 // ── 3. LOAD ARCHIVED RECORDS ──────────────────────────────────────────────
 async function loadArchivedRecords() {
     try {
-        // Fetch Teachers
-        const tSnap = await getDocs(collection(db, 'schools', session.schoolId, 'teachers'));
-        const archivedTeachers = tSnap.docs.filter(d => d.data().archived);
+        // CHANGED: global teachers archived at this school appear in archivedSchoolIds
+        const tSnap = await getDocs(query(
+            collection(db, 'teachers'),
+            where('archivedSchoolIds', 'array-contains', session.schoolId)
+        ));
+        const archivedTeachers = tSnap.docs;
         
         document.getElementById('archiveTeachersList').innerHTML = archivedTeachers.length ? archivedTeachers.map(d => {
             const t = d.data();
@@ -40,9 +43,13 @@ async function loadArchivedRecords() {
             </div>`;
         }).join('') : '<div class="text-center py-12 bg-slate-50 rounded-xl border border-slate-100"><i class="fa-solid fa-folder-open text-3xl text-slate-300 mb-3 block"></i><p class="text-sm text-slate-500 font-semibold">No archived teachers.</p></div>';
         
-        // Fetch Students
-        const sSnap = await getDocs(collection(db, 'schools', session.schoolId, 'students'));
-        const archivedStudents = sSnap.docs.filter(d => d.data().archived);
+        // CHANGED: global students with non-Active status at this school
+        const sSnap = await getDocs(query(
+            collection(db, 'students'),
+            where('currentSchoolId', '==', session.schoolId),
+            where('enrollmentStatus', 'in', ['Archived', 'Graduated', 'Expelled', 'Dropped Out'])
+        ));
+        const archivedStudents = sSnap.docs;
         
         document.getElementById('archiveStudentsList').innerHTML = archivedStudents.length ? archivedStudents.map(d => {
             const s = d.data();
@@ -75,46 +82,82 @@ async function loadArchivedRecords() {
 window.restoreTeacher = async function(id) {
     if (!confirm('Restore this teacher to active duty?')) return;
     try {
-        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', id), { archived: false, archivedAt: null });
+        // CHANGED: global teachers — restore by setting currentSchoolId and removing from archivedSchoolIds
+        const isGlobal = /^T\d{2}-[A-Z0-9]{5}$/i.test(id);
+        if (isGlobal) {
+            await updateDoc(doc(db, 'teachers', id), {
+                currentSchoolId:   session.schoolId,
+                archivedSchoolIds: arrayRemove(session.schoolId)
+            });
+        } else {
+            await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', id), { archived: false, archivedAt: null });
+        }
         loadArchivedRecords();
     } catch(e) {
-        alert("Failed to restore teacher.");
+        alert('Failed to restore teacher.');
     }
 };
 
 window.permanentDeleteTeacher = async function(id) {
-    if (!confirm('Permanently delete this teacher? This action CANNOT be undone.')) return;
+    const isGlobal = /^T\d{2}-[A-Z0-9]{5}$/i.test(id);
+    const msg = isGlobal
+        ? 'Remove this teacher from your school archive? Their National Registry record will be preserved.'
+        : 'Permanently delete this teacher? This CANNOT be undone.';
+    if (!confirm(msg)) return;
     try {
-        await deleteDoc(doc(db, 'schools', session.schoolId, 'teachers', id));
+        if (isGlobal) {
+            // CHANGED: preserve national record — just remove this school from their history
+            await updateDoc(doc(db, 'teachers', id), {
+                archivedSchoolIds: arrayRemove(session.schoolId)
+            });
+        } else {
+            await deleteDoc(doc(db, 'schools', session.schoolId, 'teachers', id));
+        }
         loadArchivedRecords();
     } catch(e) {
-        alert("Failed to delete teacher.");
+        alert('Failed to remove teacher record.');
     }
 };
 
 window.restoreStudent = async function(id) {
-    if (!confirm('Restore this student to active status? (They will be unassigned from classes and need a new teacher assignment)')) return;
+    if (!confirm('Restore this student to Active status? They will need to be reassigned to a teacher.')) return;
     try {
-        await updateDoc(doc(db, 'schools', session.schoolId, 'students', id), { archived: false, archivedAt: null, archiveReason: '' });
+        // CHANGED: update global student doc
+        await updateDoc(doc(db, 'students', id), {
+            enrollmentStatus: 'Active',
+            currentSchoolId:  session.schoolId
+        });
         loadArchivedRecords();
     } catch(e) {
-        alert("Failed to restore student.");
+        alert('Failed to restore student.');
     }
 };
 
 window.permanentDeleteStudent = async function(id) {
-    if (!confirm('Permanently delete student and all associated grades? This action CANNOT be undone.')) return;
+    if (!confirm('Permanently delete this student and all their grades? This CANNOT be undone.')) return;
     try {
-        await deleteDoc(doc(db, 'schools', session.schoolId, 'students', id));
+        // Delete siloed grades first, then global student doc
+        const gradesSnap = await getDocs(collection(db, 'schools', session.schoolId, 'students', id, 'grades'));
+        if (!gradesSnap.empty) {
+            const batch = writeBatch(db);
+            gradesSnap.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+        }
+        // CHANGED: delete from global /students
+        await deleteDoc(doc(db, 'students', id));
         loadArchivedRecords();
     } catch(e) {
-        alert("Failed to delete student.");
+        alert('Failed to delete student.');
     }
 };
 
 // ── 5. PRINT ARCHIVED RECORDS ─────────────────────────────────────────────
 window.printTeacherRecord = async function(teacherId) {
-    const tDoc = await getDoc(doc(db, 'schools', session.schoolId, 'teachers', teacherId));
+    // CHANGED: global teachers read from /teachers, legacy from siloed path
+    const isGlobal = /^T\d{2}-[A-Z0-9]{5}$/i.test(teacherId);
+    const tDoc = await getDoc(isGlobal
+        ? doc(db, 'teachers', teacherId)
+        : doc(db, 'schools', session.schoolId, 'teachers', teacherId));
     if (!tDoc.exists()) return;
     const t = tDoc.data();
     
@@ -139,7 +182,8 @@ window.printTeacherRecord = async function(teacherId) {
 };
 
 window.printStudentRecord = async function(studentId) {
-    const sDoc = await getDoc(doc(db, 'schools', session.schoolId, 'students', studentId));
+    // CHANGED: read from global /students
+    const sDoc = await getDoc(doc(db, 'students', studentId));
     if (!sDoc.exists()) return;
     const s = sDoc.data();
     
