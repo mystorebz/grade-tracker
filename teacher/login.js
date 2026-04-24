@@ -90,9 +90,12 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         // Determine Next Step in Flow
         document.getElementById('loginScreen').style.display = 'none';
         
+        // Check if the classes array exists AND is actually empty
+        const needsClasses = !tData.classes || tData.classes.length === 0;
+
         if (tData.requiresPinReset) {
             openOverlay('forceResetModal', 'forceResetModalInner');
-        } else if (!tData.classes && !tData.className) {
+        } else if (needsClasses) {
             triggerOnboarding();
         } else {
             finalizeLogin();
@@ -102,8 +105,8 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         console.error(e);
         msgEl.textContent = 'Connection error. Please try again.';
         msgEl.classList.remove('hidden');
+        resetLoginBtn(btn);
     }
-    resetLoginBtn(btn);
 });
 
 function resetLoginBtn(btn) {
@@ -136,7 +139,10 @@ document.getElementById('saveForceCodeBtn').addEventListener('click', async () =
     closeOverlay('forceResetModal', 'forceResetModalInner');
     
     setTimeout(() => {
-        if (!tempSession.teacherData.classes && !tempSession.teacherData.className) {
+        // Same strict check for empty arrays here
+        const needsClasses = !tempSession.teacherData.classes || tempSession.teacherData.classes.length === 0;
+        
+        if (needsClasses) {
             triggerOnboarding();
         } else {
             finalizeLogin();
@@ -201,11 +207,14 @@ document.getElementById('saveClassBtn').addEventListener('click', async () => {
 // ── 4. FINALIZE LOGIN & REDIRECT ───────────────────────────────────────────
 async function finalizeLogin() {
     // Safety check for legacy teachers missing a classes array
-    if (!tempSession.teacherData.classes) {
+    if (!tempSession.teacherData.classes || tempSession.teacherData.classes.length === 0) {
         const classes = tempSession.teacherData.className ? [tempSession.teacherData.className] : [];
         await updateDoc(doc(db, 'schools', tempSession.schoolId, 'teachers', tempSession.teacherId), { classes });
         tempSession.teacherData.classes = classes;
     }
+    
+    // Set global cache for classes instantly
+    localStorage.setItem('connectus_cached_classes', JSON.stringify(tempSession.teacherData.classes));
     
     // Safety check: Migrate legacy string subjects to object structure
     if (tempSession.teacherData.subjects?.length && typeof tempSession.teacherData.subjects[0] === 'string') {
