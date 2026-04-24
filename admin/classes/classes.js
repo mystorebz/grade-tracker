@@ -60,13 +60,16 @@ async function loadClasses() {
     const semId = globalPeriodSelect.value || session.activeSemesterId || '';
 
     try {
+        // CHANGED: query global collections for teachers and students
         const [tSnap, sSnap] = await Promise.all([
-            getDocs(collection(db, 'schools', session.schoolId, 'teachers')),
-            getDocs(collection(db, 'schools', session.schoolId, 'students'))
+            getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId))),
+            getDocs(query(collection(db, 'students'),
+                where('currentSchoolId', '==', session.schoolId),
+                where('enrollmentStatus', '==', 'Active')))
         ]);
-        
-        const teachers = tSnap.docs.filter(d => !d.data().archived).map(d => ({ id: d.id, ...d.data() }));
-        const students = sSnap.docs.filter(d => !d.data().archived).map(d => ({ id: d.id, ...d.data() }));
+
+        const teachers = tSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const students = sSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
         const classesByName = {};
         students.forEach(s => {
@@ -233,7 +236,7 @@ window.openClassPanel = function(className) {
             <div>
                 <p class="font-black text-slate-800">${teacher.name}</p>
                 <p class="text-xs text-slate-400 font-semibold">${teacher.email || ''} ${teacher.phone ? '· ' + teacher.phone : ''}</p>
-                <p class="text-xs text-slate-500 font-semibold mt-1">Code: <span class="font-mono font-black text-blue-600">${teacher.loginCode}</span></p>
+                <p class="text-xs text-slate-500 font-semibold mt-1">PIN: <span class="font-mono font-black text-blue-600">${teacher.pin || teacher.loginCode || '—'}</span></p>
             </div>
         </div>` : '<div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm font-bold text-amber-700"><i class="fa-solid fa-triangle-exclamation mr-2"></i>No teacher assigned to this class yet.</div>'}
         
