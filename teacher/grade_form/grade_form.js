@@ -13,6 +13,18 @@ if (session) {
 // ── 2. STATE VARIABLES ──────────────────────────────────────────────────────
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 let isSemesterLocked = false;
+let rawSemesters = [];
+
+// Escapes HTML to prevent XSS
+function escHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
 
 // ── 3. INITIALIZATION ───────────────────────────────────────────────────────
 async function init() {
@@ -46,17 +58,18 @@ function setupSearchableDropdown(inputId, hiddenId, listId, dataArray, nextFocus
         listEl.innerHTML = '';
         
         if (filtered.length === 0) {
-            listEl.innerHTML = `<li class="p-3 text-sm text-slate-500 italic text-center">No matches found</li>`;
+            listEl.innerHTML = `<li class="p-3 text-[13px] text-[#9ab0c6] italic text-center">No matches found</li>`;
             return;
         }
 
         filtered.forEach((item) => {
             const li = document.createElement('li');
-            li.className = 'p-3 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 cursor-pointer transition-colors border-b border-slate-50 last:border-0 font-semibold';
+            // Premium UI Styling
+            li.className = 'p-3 text-[13px] text-[#0d1f35] hover:bg-[#eef4ff] hover:text-[#2563eb] cursor-pointer transition-colors border-b border-[#f0f4f8] last:border-0 font-bold';
             
             // Highlight matching text for visual feedback
             const regex = new RegExp(`(${filterText})`, "gi");
-            li.innerHTML = item.label.replace(regex, `<span class="text-emerald-600 bg-emerald-100/50">$1</span>`);
+            li.innerHTML = item.label.replace(regex, `<span class="text-[#2563eb] bg-[#c7d9fd]/50">$1</span>`);
             
             li.addEventListener('mousedown', (e) => {
                 // mousedown fires before input blur, allowing selection
@@ -116,14 +129,12 @@ function setupSearchableDropdown(inputId, hiddenId, listId, dataArray, nextFocus
 function populateSubjectDropdown() {
     const activeSubjects = (session.teacherData.subjects || []).filter(s => !s.archived);
     const data = activeSubjects.map(s => ({ value: s.name, label: s.name }));
-    // Flows into Type search
     setupSearchableDropdown('eg-subject-search', 'eg-subject', 'eg-subject-list', data, 'eg-type-search');
 }
 
 function populateGradeTypeDropdown() {
     const types = session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES;
     const data = types.map(t => ({ value: t, label: t }));
-    // Flows into Title input
     setupSearchableDropdown('eg-type-search', 'eg-type', 'eg-type-list', data, 'eg-title');
 }
 
@@ -146,19 +157,16 @@ async function populateStudentDropdown() {
         }
 
         const students = stuSnap.docs.map(d => ({ value: d.id, label: d.data().name }));
-        students.sort((a, b) => a.label.localeCompare(b.label)); // Alphabetical
+        students.sort((a, b) => a.label.localeCompare(b.label));
 
         inputEl.placeholder = "Type to search student...";
         inputEl.disabled = false;
         
-        // Flows into Subject search
         setupSearchableDropdown('eg-student-search', 'eg-student', 'eg-student-list', students, 'eg-subject-search');
-
-        // Handle "Quick Grade" handoff from Roster/Subjects page
         handleQuickGrade(students);
 
     } catch (e) {
-        console.error("Error loading students:", e);
+        console.error("[Grade Form] Error loading students:", e);
         inputEl.placeholder = "Error loading students";
     }
 }
@@ -175,27 +183,52 @@ function handleQuickGrade(studentsData) {
     }
 }
 
-// ── 6. SEMESTERS & LOCK STATUS ──────────────────────────────────────────────
+// ── 6. STANDARDIZED SEMESTER & LOCK STATUS ──────────────────────────────────
 async function loadSemestersAndLockStatus() {
     try {
-        const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
-        const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
-        const activeId = schoolSnap.data()?.activeSemesterId || '';
+        const cacheKey = `connectus_semesters_${session.schoolId}`;
+        const cached = localStorage.getItem(cacheKey);
 
-        const rawSemesters = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
-
-        const semSel = document.getElementById('activeSemester');
-        if(semSel) {
-            semSel.innerHTML = '';
-            rawSemesters.forEach(s => {
-                semSel.innerHTML += `<option value="${s.id}"${s.id === activeId ? ' selected' : ''}>${s.name}</option>`;
-            });
-            checkLockStatus(rawSemesters);
-            semSel.addEventListener('change', () => { checkLockStatus(rawSemesters); });
+        if (cached) {
+            rawSemesters = JSON.parse(cached);
+        } else {
+            const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
+            rawSemesters = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
+            localStorage.setItem(cacheKey, JSON.stringify(rawSemesters));
         }
 
+        let activeId = '';
+        try {
+            const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
+            activeId = schoolSnap.data()?.activeSemesterId || '';
+        } catch(e) {}
+
+        const topSemSel = document.getElementById('activeSemester');
+        const sbPeriod = document.getElementById('sb-period');
+        
+        if (topSemSel) {
+            topSemSel.innerHTML = '';
+            rawSemesters.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.id;
+                opt.textContent = s.name;
+                if (s.id === activeId) opt.selected = true;
+                topSemSel.appendChild(opt);
+            });
+            
+            // Sync sidebar
+            if (sbPeriod) sbPeriod.textContent = topSemSel.options[topSemSel.selectedIndex]?.text || '—';
+            
+            // Check initial lock status
+            checkLockStatus(rawSemesters);
+
+            topSemSel.addEventListener('change', () => {
+                if (sbPeriod) sbPeriod.textContent = topSemSel.options[topSemSel.selectedIndex]?.text || '—';
+                checkLockStatus(rawSemesters);
+            });
+        }
     } catch (e) {
-        console.error("Error loading semesters:", e);
+        console.error("[Grade Form] Error loading semesters:", e);
     }
 }
 
@@ -214,18 +247,20 @@ function checkLockStatus(semestersArray) {
 
     if (isSemesterLocked) {
         if(badge) { badge.classList.remove('hidden'); badge.classList.add('flex'); }
-        gradeBtn.disabled = true; gradeBtn.classList.add('opacity-50', 'cursor-not-allowed');
-        formWrap.classList.add('opacity-60', 'pointer-events-none'); 
+        gradeBtn.disabled = true; 
+        gradeBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        formWrap.classList.add('opacity-50', 'pointer-events-none', 'grayscale'); 
         lockedNotice.classList.remove('hidden');
     } else {
         if(badge) { badge.classList.add('hidden'); badge.classList.remove('flex'); }
-        gradeBtn.disabled = false; gradeBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-        formWrap.classList.remove('opacity-60', 'pointer-events-none'); 
+        gradeBtn.disabled = false; 
+        gradeBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        formWrap.classList.remove('opacity-50', 'pointer-events-none', 'grayscale'); 
         lockedNotice.classList.add('hidden');
     }
 }
 
-// ── 7. UI PREVIEW LOGIC ─────────────────────────────────────────────────────
+// ── 7. UI PREVIEW LOGIC (PREMIUM STYLING) ───────────────────────────────────
 function updateLivePreview() {
     const score = parseFloat(document.getElementById('eg-score').value);
     const max = parseFloat(document.getElementById('eg-max').value);
@@ -234,29 +269,30 @@ function updateLivePreview() {
         const pct = Math.round((score / max) * 100);
         const fill = gradeFill(pct);
         
-        const color = pct >= 90 ? 'text-emerald-600' : pct >= 80 ? 'text-blue-600' : pct >= 70 ? 'text-teal-600' : pct >= 65 ? 'text-amber-600' : 'text-red-600';
-        const lbg = pct >= 90 ? 'bg-emerald-100 border-emerald-300 text-emerald-700' : pct >= 80 ? 'bg-blue-100 border-blue-300 text-blue-700' : pct >= 70 ? 'bg-teal-100 border-teal-300 text-teal-700' : pct >= 65 ? 'bg-amber-100 border-amber-300 text-amber-700' : 'bg-red-100 border-red-300 text-red-700';
+        // Premium hex codes mapped to standard colors
+        const color = pct >= 90 ? 'text-[#0ea871]' : pct >= 80 ? 'text-[#2563eb]' : pct >= 70 ? 'text-[#0891b2]' : pct >= 65 ? 'text-[#b45309]' : 'text-[#e31b4a]';
+        const lbg = pct >= 90 ? 'bg-[#edfaf4] border-[#c6f0db] text-[#0ea871]' : pct >= 80 ? 'bg-[#eef4ff] border-[#c7d9fd] text-[#2563eb]' : pct >= 70 ? 'bg-[#ecfeff] border-[#a5f3fc] text-[#0891b2]' : pct >= 65 ? 'bg-[#fffbeb] border-[#fde68a] text-[#b45309]' : 'bg-[#fff0f3] border-[#fecaca] text-[#e31b4a]';
         const lbl = pct >= 90 ? 'Excelling' : pct >= 80 ? 'Good Standing' : pct >= 70 ? 'On Track' : pct >= 65 ? 'Needs Attention' : 'At Risk';
         
         document.getElementById('prev-pct').textContent = pct + '%';
-        document.getElementById('prev-pct').className = `text-4xl font-black ${color}`;
+        document.getElementById('prev-pct').className = `text-4xl font-mono font-bold tracking-tight ${color}`;
         
         document.getElementById('prev-letter').textContent = letterGrade(pct);
-        document.getElementById('prev-letter').className = `text-2xl font-black px-5 py-2 rounded-xl border text-center min-w-[64px] ${lbg}`;
+        document.getElementById('prev-letter').className = `text-2xl font-black px-5 py-2 rounded border text-center min-w-[64px] ${lbg}`;
         
         document.getElementById('prev-bar').style.width = Math.min(pct, 100) + '%';
         document.getElementById('prev-bar').style.background = fill;
         
         document.getElementById('prev-label').textContent = lbl;
-        document.getElementById('prev-label').className = `text-sm font-black mt-2 ${color}`;
+        document.getElementById('prev-label').className = `text-[12px] uppercase tracking-widest font-bold mt-2 ${color}`;
     } else {
         document.getElementById('prev-pct').textContent = '—';
-        document.getElementById('prev-pct').className = 'text-4xl font-black text-slate-300';
+        document.getElementById('prev-pct').className = 'text-4xl font-mono font-bold text-[#c5d0db]';
         document.getElementById('prev-letter').textContent = '—';
-        document.getElementById('prev-letter').className = 'text-2xl font-black px-5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-400 text-center min-w-[64px]';
+        document.getElementById('prev-letter').className = 'text-2xl font-black px-5 py-2 rounded border border-[#dce3ed] bg-[#f8fafb] text-[#9ab0c6] text-center min-w-[64px]';
         document.getElementById('prev-bar').style.width = '0%';
         document.getElementById('prev-label').textContent = 'Enter score to preview';
-        document.getElementById('prev-label').className = 'text-sm font-black mt-2 text-slate-400';
+        document.getElementById('prev-label').className = 'text-[11px] font-bold uppercase tracking-widest mt-2 text-[#9ab0c6]';
     }
 }
 
@@ -264,7 +300,6 @@ function updateLivePreview() {
 async function saveGrade() {
     if (isSemesterLocked) return;
 
-    // Read from the hidden inputs that contain the exact validated selections
     const studentId = document.getElementById('eg-student').value;
     const subj = document.getElementById('eg-subject').value;
     const type = document.getElementById('eg-type').value;
@@ -282,7 +317,7 @@ async function saveGrade() {
     }
     
     const btn = document.getElementById('saveGradeBtn');
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving to Database...`;
     btn.disabled = true;
     
     try {
@@ -302,17 +337,23 @@ async function saveGrade() {
             createdAt: new Date().toISOString()
         });
         
-        // Success: Clear specific fields for rapid-fire grading but keep selections
+        // Success: Clear specific fields for rapid-fire grading but keep Subject/Type selections
         document.getElementById('eg-title').value = '';
         document.getElementById('eg-score').value = '';
         document.getElementById('eg-notes').value = '';
         
         updateLivePreview();
-        document.getElementById('gradeSavedBanner').classList.remove('hidden');
+        
+        const banner = document.getElementById('gradeSavedBanner');
+        if (banner) {
+            banner.classList.remove('hidden');
+            setTimeout(() => banner.classList.add('hidden'), 5000); // Auto-hide after 5s
+        }
         
         // Focus back on student search so they can immediately type the next kid's name
-        document.getElementById('eg-student-search').focus();
-        document.getElementById('eg-student-search').select();
+        const stuSearch = document.getElementById('eg-student-search');
+        stuSearch.focus();
+        stuSearch.select();
         
     } catch (e) {
         console.error(e);
