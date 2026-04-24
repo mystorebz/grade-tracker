@@ -6,38 +6,38 @@ import { injectStudentLayout } from '../../assets/js/layout-student.js';
 // ── 1. INIT & AUTH ────────────────────────────────────────────────────────
 const session = requireAuth('student', '../login.html');
 
-// Inject layout
-injectStudentLayout('history', 'Academic History', 'Review past semesters and classes');
+injectStudentLayout('history', 'Academic History', 'Review past semesters and your full academic passport');
 
-// Update UI with session data
-document.getElementById('displayStudentName').innerText = session.studentData.name || 'Student';
-document.getElementById('studentAvatar').innerText = (session.studentData.name || 'S').charAt(0).toUpperCase();
-document.getElementById('displayStudentClass').innerText = session.studentData.className ? `Class: ${session.studentData.className}` : 'Unassigned Class';
+document.getElementById('displayStudentName').innerText  = session.studentData.name || 'Student';
+document.getElementById('studentAvatar').innerText       = (session.studentData.name || 'S').charAt(0).toUpperCase();
+document.getElementById('displayStudentClass').innerText = session.studentData.className
+    ? `Class: ${session.studentData.className}` : 'Unassigned Class';
 
 // Elements
-const historySemesterSelect = document.getElementById('historySemesterSelect');
+const historySemesterSelect    = document.getElementById('historySemesterSelect');
 const historySubjectsContainer = document.getElementById('historySubjectsContainer');
-const noHistoryGradesMsg = document.getElementById('noHistoryGradesMsg');
-const historyInfoCard = document.getElementById('historyInfoCard');
-const historyTeacherName = document.getElementById('historyTeacherName');
+const noHistoryGradesMsg       = document.getElementById('noHistoryGradesMsg');
+const historyInfoCard          = document.getElementById('historyInfoCard');
+const historyTeacherName       = document.getElementById('historyTeacherName');
 
 // State
-let teachersMap = {};
-let currentViewGrades = [];
+let teachersMap            = {};
+let currentViewGrades      = [];
 let schoolActiveSemesterId = null;
 
 // ── 2. UI HELPERS ─────────────────────────────────────────────────────────
 function getGradeStyle(p) {
     if (p >= 90) return { cls: 'text-emerald-700 bg-emerald-50 border-emerald-200', ltr: 'A' };
-    if (p >= 80) return { cls: 'text-blue-700 bg-blue-50 border-blue-200', ltr: 'B' };
-    if (p >= 70) return { cls: 'text-teal-700 bg-teal-50 border-teal-200', ltr: 'C' };
-    if (p >= 65) return { cls: 'text-amber-700 bg-amber-50 border-amber-200', ltr: 'D' };
-    return { cls: 'text-red-700 bg-red-50 border-red-200', ltr: 'F' };
+    if (p >= 80) return { cls: 'text-blue-700 bg-blue-50 border-blue-200',         ltr: 'B' };
+    if (p >= 70) return { cls: 'text-teal-700 bg-teal-50 border-teal-200',         ltr: 'C' };
+    if (p >= 65) return { cls: 'text-amber-700 bg-amber-50 border-amber-200',      ltr: 'D' };
+    return             { cls: 'text-red-700 bg-red-50 border-red-200',             ltr: 'F' };
 }
 
 function gradeColorText(p) {
     if (p >= 90) return 'text-emerald-600'; if (p >= 80) return 'text-blue-600';
-    if (p >= 70) return 'text-teal-600'; if (p >= 65) return 'text-amber-600'; return 'text-red-600';
+    if (p >= 70) return 'text-teal-600';    if (p >= 65) return 'text-amber-600';
+    return 'text-red-600';
 }
 
 function isNew(dateStr, createdStr) {
@@ -49,71 +49,168 @@ function isNew(dateStr, createdStr) {
 window.toggleAccordion = function(h) {
     const b = h.nextElementSibling;
     b.classList.toggle('open');
-    h.querySelector('.fa-chevron-down').style.transform = b.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0deg)';
+    h.querySelector('.fa-chevron-down').style.transform =
+        b.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0deg)';
 };
 
-// ── 3. LOAD INITIAL DATA ──────────────────────────────────────────────────
+// ── 3. ACADEMIC PASSPORT — school transfer timeline ───────────────────────
+function renderAcademicPassport(academicHistory) {
+    let passportEl = document.getElementById('academicPassportSection');
+    if (!passportEl) {
+        passportEl = document.createElement('div');
+        passportEl.id = 'academicPassportSection';
+        // Insert before the semester select or grades container
+        const anchor = historySemesterSelect?.closest('div') || historySubjectsContainer;
+        anchor?.parentElement?.insertBefore(passportEl, anchor);
+    }
+
+    if (!academicHistory || !academicHistory.length) {
+        passportEl.innerHTML = '';
+        return;
+    }
+
+    passportEl.innerHTML = `
+        <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-radius:16px;padding:24px 28px;margin-bottom:28px;color:#fff;">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+                <div style="width:40px;height:40px;background:rgba(255,255,255,0.15);border-radius:10px;
+                            display:flex;align-items:center;justify-content:center;font-size:18px;">🎒</div>
+                <div>
+                    <h3 style="margin:0;font-size:15px;font-weight:800;letter-spacing:-0.2px;">Academic Passport</h3>
+                    <p style="margin:2px 0 0;font-size:11px;color:rgba(255,255,255,0.6);font-weight:500;
+                              text-transform:uppercase;letter-spacing:0.08em;">Lifelong School History</p>
+                </div>
+                <div style="margin-left:auto;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);
+                            border-radius:8px;padding:4px 12px;font-size:11px;font-weight:700;
+                            color:rgba(255,255,255,0.75);font-family:monospace;letter-spacing:0.05em;">
+                    ${session.studentId}
+                </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:0;">
+                ${academicHistory.map((h, i) => `
+                <div style="display:flex;gap:14px;align-items:flex-start;
+                            padding-bottom:${i < academicHistory.length - 1 ? '16px' : '0'};">
+                    <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">
+                        <div style="width:12px;height:12px;border-radius:50%;background:#a5b4fc;
+                                    border:2px solid rgba(255,255,255,0.4);flex-shrink:0;"></div>
+                        ${i < academicHistory.length - 1
+                            ? '<div style="width:2px;flex:1;min-height:20px;background:rgba(255,255,255,0.15);margin-top:4px;"></div>'
+                            : ''}
+                    </div>
+                    <div style="flex:1;padding-bottom:4px;">
+                        <p style="margin:0 0 2px;font-size:13px;font-weight:700;color:#e0e7ff;">
+                            ${h.schoolName || h.schoolId || 'Unknown School'}
+                        </p>
+                        <p style="margin:0;font-size:11px;color:rgba(255,255,255,0.55);font-weight:500;">
+                            ${h.className ? `Class: ${h.className}` : ''}
+                            ${h.className && h.leftAt ? ' · ' : ''}
+                            ${h.leftAt
+                                ? `Left: ${new Date(h.leftAt).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' })}`
+                                : ''}
+                            ${h.gpa ? ` · GPA: ${h.gpa}` : ''}
+                        </p>
+                    </div>
+                    <div style="flex-shrink:0;">
+                        <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;
+                            background:${h.reason === 'Graduated'
+                                ? 'rgba(52,211,153,0.2)'
+                                : h.reason === 'Transferred'
+                                ? 'rgba(147,197,253,0.2)'
+                                : 'rgba(255,255,255,0.1)'};
+                            color:${h.reason === 'Graduated'
+                                ? '#6ee7b7'
+                                : h.reason === 'Transferred'
+                                ? '#93c5fd'
+                                : 'rgba(255,255,255,0.6)'};
+                            border:1px solid ${h.reason === 'Graduated'
+                                ? 'rgba(52,211,153,0.3)'
+                                : h.reason === 'Transferred'
+                                ? 'rgba(147,197,253,0.3)'
+                                : 'rgba(255,255,255,0.15)'};">
+                            ${h.reason || 'Enrolled'}
+                        </span>
+                    </div>
+                </div>`).join('')}
+            </div>
+        </div>`;
+}
+
+// ── 4. LOAD INITIAL DATA ──────────────────────────────────────────────────
 async function initializeHistory() {
     try {
-        // Fetch school doc to get schoolName and activeSemesterId
+        // School doc — school-scoped, unchanged
         const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
         if (schoolSnap.exists()) {
             document.getElementById('displaySchoolName').innerText = schoolSnap.data().schoolName;
             schoolActiveSemesterId = schoolSnap.data().activeSemesterId;
         }
 
-        // Fetch Teachers (for mapping teacher IDs to Names)
-        const tSnap = await getDocs(collection(db, 'schools', session.schoolId, 'teachers'));
+        // CHANGED: teachers are global — query by currentSchoolId
+        const tSnap = await getDocs(query(
+            collection(db, 'teachers'),
+            where('currentSchoolId', '==', session.schoolId)
+        ));
         tSnap.forEach(d => { teachersMap[d.id] = d.data().name; });
 
-        // Fetch Semesters
+        // Semesters — school-scoped, unchanged
         const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
-        const allSemesters = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
+        const allSemesters = semSnap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => (a.order || 0) - (b.order || 0));
 
-        // Populate Topbar Active Period Display
         const activeSemObj = allSemesters.find(s => s.id === schoolActiveSemesterId);
-        document.getElementById('activeSemesterDisplay').textContent = activeSemObj ? activeSemObj.name : 'Unknown';
+        document.getElementById('activeSemesterDisplay').textContent =
+            activeSemObj ? activeSemObj.name : 'Unknown';
 
-        // Populate Dropdown (Filter out active semester, or show all with indicators)
-        if (allSemesters.length === 0) {
+        if (!allSemesters.length) {
             historySemesterSelect.innerHTML = '<option value="">No periods available</option>';
             historySubjectsContainer.innerHTML = '';
             noHistoryGradesMsg.classList.remove('hidden');
             return;
         }
 
-        historySemesterSelect.innerHTML = allSemesters.map(s => 
+        historySemesterSelect.innerHTML = allSemesters.map(s =>
             `<option value="${s.id}">${s.name}${s.id === schoolActiveSemesterId ? ' (Current)' : ''}</option>`
         ).join('');
 
-        // Try to default to the most recent past semester if available
         const pastSemesters = allSemesters.filter(s => s.id !== schoolActiveSemesterId);
-        if (pastSemesters.length > 0) {
-            historySemesterSelect.value = pastSemesters[pastSemesters.length - 1].id;
-        } else {
-            historySemesterSelect.value = schoolActiveSemesterId;
+        historySemesterSelect.value = pastSemesters.length
+            ? pastSemesters[pastSemesters.length - 1].id
+            : schoolActiveSemesterId;
+
+        // ADDED: fetch global student doc for academicHistory passport section
+        try {
+            const globalStudentSnap = await getDoc(doc(db, 'students', session.studentId));
+            if (globalStudentSnap.exists()) {
+                renderAcademicPassport(globalStudentSnap.data().academicHistory || []);
+            }
+        } catch (e) {
+            // Non-critical — passport section simply won't render if doc not found
+            console.warn('[History] Could not load academic passport:', e);
         }
 
-        // Attach event listener and load grades
         historySemesterSelect.addEventListener('change', loadHistoricalGrades);
         loadHistoricalGrades();
 
     } catch (e) {
-        console.error("Error initializing history:", e);
-        historySubjectsContainer.innerHTML = '<p class="text-red-500 text-center font-bold">Failed to load data. Please refresh.</p>';
+        console.error('Error initializing history:', e);
+        historySubjectsContainer.innerHTML =
+            '<p class="text-red-500 text-center font-bold">Failed to load data. Please refresh.</p>';
     }
 }
 
-// ── 4. LOAD GRADES FOR SELECTED SEMESTER ──────────────────────────────────
+// ── 5. LOAD GRADES FOR SELECTED SEMESTER ──────────────────────────────────
 async function loadHistoricalGrades() {
     const semId = historySemesterSelect.value;
     if (!semId) return;
 
-    historySubjectsContainer.innerHTML = '<div class="text-center py-12 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-3xl text-indigo-400"></i></div>';
+    historySubjectsContainer.innerHTML =
+        '<div class="text-center py-12 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-3xl text-indigo-400"></i></div>';
     noHistoryGradesMsg.classList.add('hidden');
     historyInfoCard.classList.add('hidden');
 
     try {
+        // Grades stay at siloed path — grade_form writes here, unchanged
         const q = query(
             collection(db, 'schools', session.schoolId, 'students', session.studentId, 'grades'),
             where('semesterId', '==', semId)
@@ -121,17 +218,13 @@ async function loadHistoricalGrades() {
         const gSnap = await getDocs(q);
         currentViewGrades = gSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        // Determine Teacher on Record for this period (the one who graded the most)
+        // Teacher on record — most frequent grader this period
         const tCount = {};
         let topId = null, topN = 0;
-        
         currentViewGrades.forEach(g => {
             if (g.teacherId) {
                 tCount[g.teacherId] = (tCount[g.teacherId] || 0) + 1;
-                if (tCount[g.teacherId] > topN) {
-                    topN = tCount[g.teacherId];
-                    topId = g.teacherId;
-                }
+                if (tCount[g.teacherId] > topN) { topN = tCount[g.teacherId]; topId = g.teacherId; }
             }
         });
 
@@ -143,128 +236,146 @@ async function loadHistoricalGrades() {
         renderSubjectAccordions(currentViewGrades);
 
     } catch (e) {
-        console.error("Error fetching historical grades:", e);
-        historySubjectsContainer.innerHTML = '<p class="text-red-500 text-center font-bold">Error loading grades.</p>';
+        console.error('Error fetching historical grades:', e);
+        historySubjectsContainer.innerHTML =
+            '<p class="text-red-500 text-center font-bold">Error loading grades.</p>';
     }
 }
 
+// ── 6. RENDER ACCORDIONS ──────────────────────────────────────────────────
 function renderSubjectAccordions(grades) {
-    if (!grades.length) { 
-        historySubjectsContainer.innerHTML = ''; 
-        noHistoryGradesMsg.classList.remove('hidden'); 
-        return; 
+    if (!grades.length) {
+        historySubjectsContainer.innerHTML = '';
+        noHistoryGradesMsg.classList.remove('hidden');
+        return;
     }
 
     const bySub = {};
-    grades.forEach(g => { 
-        const s = g.subject || 'Uncategorized'; 
-        if (!bySub[s]) bySub[s] = []; 
-        bySub[s].push(g); 
+    grades.forEach(g => {
+        const s = g.subject || 'Uncategorized';
+        if (!bySub[s]) bySub[s] = [];
+        bySub[s].push(g);
     });
 
     historySubjectsContainer.innerHTML = Object.entries(bySub).map(([subject, gList]) => {
-        const avg = gList.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / gList.length;
+        const avg   = gList.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / gList.length;
         const style = getGradeStyle(Math.round(avg));
-        
-        const rows = gList.sort((a, b) => (b.date || '').localeCompare(a.date || '')).map(g => {
-            const pct = g.max ? Math.round((g.score / g.max) * 100) : null;
-            const pColor = pct !== null ? gradeColorText(pct) : 'text-slate-500';
-            const badge = isNew(g.date, g.createdAt) ? `<span class="new-badge">New</span>` : '';
-            const hasNotes = g.notes || (g.historyLogs && g.historyLogs.length > 0);
-            
-            return `
-            <div class="bg-white border border-slate-200 rounded-xl p-3 sm:p-4 flex items-center justify-between hover:shadow-md transition cursor-pointer mb-2 last:mb-0" onclick="window.viewGradeDetails('${g.id}')">
-                <div class="flex-1 min-w-0">
-                    <p class="font-black text-slate-800 text-sm sm:text-base truncate">${g.title} ${badge}</p>
-                    <p class="text-xs text-slate-400 font-bold mt-1 uppercase tracking-wider">${g.type} • ${g.date}</p>
-                </div>
-                <div class="flex items-center gap-3 sm:gap-5 flex-shrink-0 ml-2">
-                    <div class="text-right">
-                        <span class="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">Score</span>
-                        <span class="font-black text-sm sm:text-base ${pColor}">${g.score}/${g.max||'?'}</span>
+
+        const rows = gList
+            .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+            .map(g => {
+                const pct      = g.max ? Math.round((g.score / g.max) * 100) : null;
+                const pColor   = pct !== null ? gradeColorText(pct) : 'text-slate-500';
+                const badge    = isNew(g.date, g.createdAt) ? `<span class="new-badge">New</span>` : '';
+                const hasNotes = g.notes || (g.historyLogs && g.historyLogs.length > 0);
+
+                return `
+                <div class="bg-white border border-slate-200 rounded-xl p-3 sm:p-4 flex items-center justify-between hover:shadow-md transition cursor-pointer mb-2 last:mb-0"
+                     onclick="window.viewGradeDetails('${g.id}')">
+                    <div class="flex-1 min-w-0">
+                        <p class="font-black text-slate-800 text-sm sm:text-base truncate">${g.title} ${badge}</p>
+                        <p class="text-xs text-slate-400 font-bold mt-1 uppercase tracking-wider">${g.type} • ${g.date}</p>
                     </div>
-                    <div class="hidden sm:block text-right">
-                        <span class="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">Pct</span>
-                        <span class="font-black text-sm sm:text-base ${pColor}">${pct !== null ? pct + '%' : '—'}</span>
+                    <div class="flex items-center gap-3 sm:gap-5 flex-shrink-0 ml-2">
+                        <div class="text-right">
+                            <span class="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">Score</span>
+                            <span class="font-black text-sm sm:text-base ${pColor}">${g.score}/${g.max || '?'}</span>
+                        </div>
+                        <div class="hidden sm:block text-right">
+                            <span class="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">Pct</span>
+                            <span class="font-black text-sm sm:text-base ${pColor}">${pct !== null ? pct + '%' : '—'}</span>
+                        </div>
+                        ${hasNotes
+                            ? '<i class="fa-solid fa-comment-dots text-indigo-400 text-lg drop-shadow-sm ml-1"></i>'
+                            : '<i class="fa-solid fa-chevron-right text-slate-300 ml-1"></i>'}
                     </div>
-                    ${hasNotes ? '<i class="fa-solid fa-comment-dots text-indigo-400 text-lg drop-shadow-sm ml-1"></i>' : '<i class="fa-solid fa-chevron-right text-slate-300 ml-1"></i>'}
-                </div>
-            </div>`;
-        }).join('');
+                </div>`;
+            }).join('');
 
         return `
         <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden transition-shadow hover:shadow-md">
-            <div class="p-5 sm:p-6 border-b border-slate-100 flex justify-between items-center cursor-pointer bg-slate-50/50 hover:bg-slate-100/50 transition" onclick="window.toggleAccordion(this)">
+            <div class="p-5 sm:p-6 border-b border-slate-100 flex justify-between items-center cursor-pointer bg-slate-50/50 hover:bg-slate-100/50 transition"
+                 onclick="window.toggleAccordion(this)">
                 <div class="flex items-center gap-4">
-                    <div class="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-xl flex items-center justify-center font-black text-lg shadow-sm">${subject.charAt(0)}</div>
+                    <div class="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-xl flex items-center justify-center font-black text-lg shadow-sm">
+                        ${subject.charAt(0)}
+                    </div>
                     <div>
                         <h3 class="text-lg sm:text-xl font-extrabold text-slate-800">${subject}</h3>
-                        <p class="text-xs text-slate-500 font-bold mt-1 uppercase tracking-wider">${gList.length} Assignment${gList.length !== 1 ? 's' : ''}</p>
+                        <p class="text-xs text-slate-500 font-bold mt-1 uppercase tracking-wider">
+                            ${gList.length} Assignment${gList.length !== 1 ? 's' : ''}
+                        </p>
                     </div>
                 </div>
                 <div class="flex items-center gap-4">
                     <div class="text-right hidden sm:block">
                         <span class="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">Average</span>
-                        <span class="px-3 py-1.5 rounded-xl font-black text-sm border shadow-sm ${style.cls}">${Math.round(avg)}% • ${style.ltr}</span>
+                        <span class="px-3 py-1.5 rounded-xl font-black text-sm border shadow-sm ${style.cls}">
+                            ${Math.round(avg)}% • ${style.ltr}
+                        </span>
                     </div>
-                    <div class="sm:hidden px-3 py-1 rounded-xl font-black text-sm border shadow-sm ${style.cls}">${Math.round(avg)}%</div>
+                    <div class="sm:hidden px-3 py-1 rounded-xl font-black text-sm border shadow-sm ${style.cls}">
+                        ${Math.round(avg)}%
+                    </div>
                     <i class="fa-solid fa-chevron-down text-slate-400 transition-transform duration-200 text-lg"></i>
                 </div>
             </div>
-            <div class="subject-body"><div class="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 shadow-inner">${rows}</div></div>
+            <div class="subject-body">
+                <div class="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 shadow-inner">${rows}</div>
+            </div>
         </div>`;
     }).join('');
 }
 
-// ── 5. GRADE DETAIL MODAL ─────────────────────────────────────────────────
+// ── 7. GRADE DETAIL MODAL ─────────────────────────────────────────────────
 window.viewGradeDetails = function(gradeId) {
-    const g = currentViewGrades.find(x => x.id === gradeId); 
+    const g = currentViewGrades.find(x => x.id === gradeId);
     if (!g) return;
-    
+
     const p = g.max ? Math.round((g.score / g.max) * 100) : 0;
     document.getElementById('modalTitle').innerText = g.title;
-    document.getElementById('modalMeta').innerText = `${g.date} • ${g.subject} • ${g.type}`;
+    document.getElementById('modalMeta').innerText  = `${g.date} • ${g.subject} • ${g.type}`;
     document.getElementById('modalScore').innerText = `${g.score} / ${g.max}`;
-    
+
     const pEl = document.getElementById('modalPercentage');
-    pEl.innerText = `${p}%`; 
+    pEl.innerText = `${p}%`;
     pEl.className = `font-black text-3xl ${gradeColorText(p)}`;
-    
+
     const notesEl = document.getElementById('modalNotes');
     if (g.notes) {
         notesEl.innerText = g.notes;
-        notesEl.className = "bg-indigo-50 border-l-4 border-indigo-500 p-5 rounded-r-2xl text-sm text-indigo-900 whitespace-pre-wrap leading-relaxed shadow-sm font-bold";
+        notesEl.className = 'bg-indigo-50 border-l-4 border-indigo-500 p-5 rounded-r-2xl text-sm text-indigo-900 whitespace-pre-wrap leading-relaxed shadow-sm font-bold';
     } else {
-        notesEl.innerText = "No specific notes provided by teacher.";
-        notesEl.className = "bg-slate-50 border-l-4 border-slate-300 p-5 rounded-r-2xl text-sm text-slate-500 italic whitespace-pre-wrap leading-relaxed";
+        notesEl.innerText = 'No specific notes provided by teacher.';
+        notesEl.className = 'bg-slate-50 border-l-4 border-slate-300 p-5 rounded-r-2xl text-sm text-slate-500 italic whitespace-pre-wrap leading-relaxed';
     }
-    
+
     const histSec = document.getElementById('historySection');
-    const histEl = document.getElementById('modalHistory');
+    const histEl  = document.getElementById('modalHistory');
     if (g.historyLogs && g.historyLogs.length > 0) {
         histSec.classList.remove('hidden');
-        histEl.innerHTML = g.historyLogs.map(log => 
-            `<div class="bg-amber-50/50 border border-amber-200 p-3 text-[11px] text-amber-800 rounded-xl shadow-sm font-bold leading-relaxed"><i class="fa-solid fa-clock-rotate-left mr-1"></i>${typeof log === 'object' ? `[${log.changedAt}] Changed from ${log.oldScore} to ${log.newScore}. Reason: ${log.reason}` : log}</div>`
+        histEl.innerHTML = g.historyLogs.map(log =>
+            `<div class="bg-amber-50/50 border border-amber-200 p-3 text-[11px] text-amber-800 rounded-xl shadow-sm font-bold leading-relaxed">
+                <i class="fa-solid fa-clock-rotate-left mr-1"></i>
+                ${typeof log === 'object'
+                    ? `[${log.changedAt}] Changed from ${log.oldScore} to ${log.newScore}. Reason: ${log.reason}`
+                    : log}
+            </div>`
         ).join('');
     } else {
         histSec.classList.add('hidden');
     }
-    
+
     const modal = document.getElementById('assignmentModal');
     const inner = document.getElementById('assignmentModalInner');
     modal.classList.remove('hidden');
-    
-    // Tiny timeout to allow display:block to render before transitioning opacity
-    setTimeout(() => { 
-        modal.classList.remove('opacity-0'); 
-        inner.classList.remove('scale-95'); 
-    }, 10);
+    setTimeout(() => { modal.classList.remove('opacity-0'); inner.classList.remove('scale-95'); }, 10);
 };
 
 window.closeAssignmentModal = function() {
     const modal = document.getElementById('assignmentModal');
     const inner = document.getElementById('assignmentModalInner');
-    modal.classList.add('opacity-0'); 
+    modal.classList.add('opacity-0');
     inner.classList.add('scale-95');
     setTimeout(() => modal.classList.add('hidden'), 300);
 };
