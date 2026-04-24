@@ -8,162 +8,569 @@
     <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
 
+    <!--
+      FLASH PREVENTION — must be the very first <style> block.
+      Hides the page instantly. auth.js / requireAuth() fades it back in
+      only after the session is validated and the layout has been injected.
+      This eliminates the white-flash between pages entirely.
+    -->
+    <style>html { opacity: 0; }</style>
+
+    <!--
+      Tailwind CDN — loaded AFTER our opacity:0 guard so its runtime
+      style injection doesn't flash unstyled content.
+    -->
     <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Our stylesheets -->
     <link rel="stylesheet" href="../../assets/css/global.css">
     <link rel="stylesheet" href="../../assets/css/teachers.css">
 
+    <!-- Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-</head>
-<body style="display:flex;width:100%;height:100vh;overflow:hidden;background:var(--page-bg);">
 
+    <!--
+      Fonts via <link> — NOT @import in CSS.
+      <link> is non-blocking; @import is render-blocking and causes flash.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <style>
+        /* ── PAGE-LEVEL LAYOUT ────────────────────────────────────────────── */
+        body {
+            display: flex;
+            width: 100%;
+            height: 100vh;
+            overflow: hidden;
+            background: var(--page-bg, #f4f7fb);
+            margin: 0;
+        }
+
+        #dashboardMain {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+            min-width: 0;
+        }
+
+        /* ── CONTENT SCROLL AREA ──────────────────────────────────────────── */
+        .home-scroll {
+            flex: 1;
+            overflow-y: auto;
+            padding: 28px 32px 40px;
+            background: var(--page-bg, #f4f7fb);
+        }
+
+        /* ── PAGE HEADER ──────────────────────────────────────────────────── */
+        .page-header {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            margin-bottom: 24px;
+        }
+
+        .page-header-greeting {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text-primary, #0d1f35);
+            letter-spacing: -0.5px;
+            margin: 0 0 3px;
+            line-height: 1.2;
+        }
+
+        .page-header-sub {
+            font-size: 13px;
+            color: var(--text-muted, #6b84a0);
+            font-weight: 400;
+            margin: 0;
+        }
+
+        .page-header-date {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-faint, #9ab0c6);
+            letter-spacing: 0.01em;
+            text-align: right;
+        }
+
+        /* ── STAT CARDS ROW ───────────────────────────────────────────────── */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+            margin-bottom: 16px;
+        }
+
+        .stat-card {
+            background: var(--surface, #fff);
+            border: 1px solid var(--border, #dce3ed);
+            border-radius: 14px;
+            box-shadow: 0 1px 3px rgba(13,31,53,0.07);
+            padding: 20px 22px;
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            transition: box-shadow 0.18s, border-color 0.18s, transform 0.18s;
+            cursor: default;
+        }
+
+        .stat-card:hover {
+            border-color: var(--border-strong, #b8c5d4);
+            box-shadow: 0 4px 14px rgba(13,31,53,0.09);
+            transform: translateY(-1px);
+        }
+
+        .stat-card-label {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-muted, #6b84a0);
+            margin: 0 0 6px;
+        }
+
+        .stat-card-value {
+            font-size: 30px;
+            font-weight: 700;
+            color: var(--text-primary, #0d1f35);
+            letter-spacing: -1px;
+            line-height: 1;
+            margin: 0 0 4px;
+            font-family: 'DM Mono', monospace;
+        }
+
+        .stat-card-sub {
+            font-size: 11px;
+            color: var(--text-faint, #9ab0c6);
+            font-weight: 400;
+            margin: 0;
+        }
+
+        .stat-card-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        /* ── AT-RISK BANNER ───────────────────────────────────────────────── */
+        #atRiskBanner {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: #fff8f9;
+            border: 1px solid #ffd6de;
+            border-radius: 12px;
+            padding: 12px 18px;
+            margin-bottom: 16px;
+        }
+
+        #atRiskBanner.hidden { display: none !important; }
+
+        .at-risk-icon-wrap {
+            width: 32px;
+            height: 32px;
+            background: #fee2e2;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            color: #dc2626;
+            font-size: 13px;
+        }
+
+        /* ── MAIN DASHBOARD GRID ──────────────────────────────────────────── */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 320px;
+            gap: 16px;
+            align-items: start;
+        }
+
+        .dashboard-left {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            min-width: 0;
+        }
+
+        /* ── QUICK ACTIONS ────────────────────────────────────────────────── */
+        .quick-actions-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+
+        .quick-action-card {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 16px;
+            background: var(--surface, #fff);
+            border: 1px solid var(--border, #dce3ed);
+            border-radius: 12px;
+            text-decoration: none;
+            transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+            box-shadow: 0 1px 2px rgba(13,31,53,0.05);
+        }
+
+        .quick-action-card:hover {
+            border-color: var(--green-500, #0ea871);
+            box-shadow: 0 0 0 3px rgba(14,168,113,0.12);
+            transform: translateY(-1px);
+        }
+
+        .qa-card-icon {
+            width: 34px;
+            height: 34px;
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .qa-card-label {
+            font-size: 12.5px;
+            font-weight: 700;
+            color: var(--text-primary, #0d1f35);
+            letter-spacing: -0.1px;
+            margin: 0;
+        }
+
+        .qa-card-sub {
+            font-size: 10.5px;
+            color: var(--text-muted, #6b84a0);
+            font-weight: 400;
+            margin: 0;
+        }
+
+        /* ── ACTIVITY PANEL ───────────────────────────────────────────────── */
+        .panel {
+            background: var(--surface, #fff);
+            border: 1px solid var(--border, #dce3ed);
+            border-radius: 14px;
+            box-shadow: 0 1px 3px rgba(13,31,53,0.07);
+            overflow: hidden;
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border, #dce3ed);
+            background: #fafbfc;
+        }
+
+        .panel-header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .panel-header-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            flex-shrink: 0;
+        }
+
+        .panel-title {
+            font-size: 10.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-secondary, #374f6b);
+            margin: 0;
+        }
+
+        .panel-link {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--green-600, #0b8f5e);
+            text-decoration: none;
+            letter-spacing: 0.02em;
+        }
+
+        .panel-link:hover { text-decoration: underline; }
+
+        /* ── ACTIVITY TABLE HEADER ────────────────────────────────────────── */
+        .activity-table-head {
+            display: grid;
+            grid-template-columns: 1fr 100px 80px 64px 80px;
+            padding: 9px 20px;
+            background: #f8fafc;
+            border-bottom: 1px solid #f0f4f9;
+        }
+
+        .activity-col-label {
+            font-size: 9.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-faint, #9ab0c6);
+        }
+
+        .activity-col-label.text-right { text-align: right; }
+
+        /* Activity rows are rendered by home.js inside #recentActivityList */
+        #recentActivityList {
+            max-height: 340px;
+            overflow-y: auto;
+        }
+
+        /* ── RISK PANEL ───────────────────────────────────────────────────── */
+        .risk-panel {
+            background: var(--surface, #fff);
+            border: 1px solid #ffd6de;
+            border-radius: 14px;
+            box-shadow: 0 1px 3px rgba(13,31,53,0.07);
+            overflow: hidden;
+        }
+
+        .risk-panel-header {
+            padding: 14px 20px;
+            border-bottom: 1px solid #fee2e2;
+            background: #fff8f9;
+        }
+
+        .risk-panel-title {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            margin-bottom: 2px;
+        }
+
+        .risk-panel-title span {
+            font-size: 10.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #be123c;
+        }
+
+        .risk-panel-sub {
+            font-size: 11px;
+            color: #fb7185;
+            font-weight: 400;
+            margin: 0;
+        }
+
+        #needsAttentionList {
+            max-height: 400px;
+            overflow-y: auto;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+        }
+
+        /* ── LOADING SPINNER ──────────────────────────────────────────────── */
+        .loading-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            gap: 10px;
+            color: var(--text-faint, #9ab0c6);
+        }
+
+        .loading-state i { font-size: 20px; }
+        .loading-state p { font-size: 12.5px; font-weight: 400; margin: 0; }
+    </style>
+</head>
+
+<body>
+    <!-- Sidebar (injected by layout-teachers.js) -->
     <div id="layout-sidebar-container" style="flex-shrink:0;height:100%;z-index:20;"></div>
 
-    <main id="dashboardMain" style="flex:1;display:flex;flex-direction:column;height:100%;overflow:hidden;">
+    <!-- Main content -->
+    <main id="dashboardMain">
 
+        <!-- Topbar (injected by layout-teachers.js) -->
         <div id="layout-topbar-container" style="flex-shrink:0;z-index:10;"></div>
 
-        <div class="view-section flex-1 overflow-y-auto">
+        <!-- Scrollable content area -->
+        <div class="home-scroll">
 
-            <!-- Page header -->
-            <div style="margin-bottom:24px;">
-                <h1 style="font-size:20px;font-weight:700;color:var(--text-primary);letter-spacing:-0.4px;margin:0 0 2px;">Overview</h1>
-                <p style="font-size:13px;color:var(--text-muted);margin:0;font-weight:400;">Your class at a glance for today.</p>
+            <!-- ── PAGE HEADER ──────────────────────────────────────────── -->
+            <div class="page-header">
+                <div>
+                    <h1 class="page-header-greeting">Good morning, Teacher.</h1>
+                    <p class="page-header-sub">Here's what's happening in your class today.</p>
+                </div>
+                <div class="page-header-date" id="todayDate"></div>
             </div>
 
-            <!-- Stat cards -->
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;">
+            <!-- ── STAT CARDS ───────────────────────────────────────────── -->
+            <div class="stats-row">
 
                 <div class="stat-card">
                     <div>
-                        <p>My Class</p>
-                        <h3 id="stat-students"><i class="fa-solid fa-spinner fa-spin" style="font-size:16px;color:#cbd5e1;"></i></h3>
-                        <span style="font-size:11px;color:var(--text-muted);font-weight:400;">enrolled students</span>
+                        <p class="stat-card-label">My Class</p>
+                        <p class="stat-card-value" id="stat-students">
+                            <i class="fa-solid fa-spinner fa-spin" style="font-size:18px;color:#c3cdd8;"></i>
+                        </p>
+                        <p class="stat-card-sub">enrolled students</p>
                     </div>
-                    <div class="stat-icon" style="background:var(--green-50);color:var(--green-600);border:1px solid var(--green-100);">
+                    <div class="stat-card-icon" style="background:#edfaf4;color:#0b8f5e;border:1px solid #c6f0db;">
                         <i class="fa-solid fa-users"></i>
                     </div>
                 </div>
 
                 <div class="stat-card">
                     <div>
-                        <p>Grades Logged</p>
-                        <h3 id="stat-grades"><i class="fa-solid fa-spinner fa-spin" style="font-size:16px;color:#cbd5e1;"></i></h3>
-                        <span style="font-size:11px;color:var(--text-muted);font-weight:400;">total entries</span>
+                        <p class="stat-card-label">Grades Logged</p>
+                        <p class="stat-card-value" id="stat-grades">
+                            <i class="fa-solid fa-spinner fa-spin" style="font-size:18px;color:#c3cdd8;"></i>
+                        </p>
+                        <p class="stat-card-sub">this period</p>
                     </div>
-                    <div class="stat-icon" style="background:var(--blue-50);color:var(--blue-500);border:1px solid #bfdbfe;">
-                        <i class="fa-solid fa-award"></i>
+                    <div class="stat-card-icon" style="background:#eef4ff;color:#2563eb;border:1px solid #c7d9fd;">
+                        <i class="fa-solid fa-graduation-cap"></i>
                     </div>
                 </div>
 
                 <div class="stat-card">
                     <div>
-                        <p>Needs Attention</p>
-                        <h3 id="stat-risk"><i class="fa-solid fa-spinner fa-spin" style="font-size:16px;color:#cbd5e1;"></i></h3>
-                        <span style="font-size:11px;color:var(--text-muted);font-weight:400;">below 65% avg</span>
+                        <p class="stat-card-label">Needs Attention</p>
+                        <p class="stat-card-value" id="stat-risk">
+                            <i class="fa-solid fa-spinner fa-spin" style="font-size:18px;color:#c3cdd8;"></i>
+                        </p>
+                        <p class="stat-card-sub">averaging below 65%</p>
                     </div>
-                    <div class="stat-icon" style="background:var(--rose-50);color:var(--rose-500);border:1px solid #fecdd3;">
+                    <div class="stat-card-icon" style="background:#fff0f3;color:#e31b4a;border:1px solid #ffd6de;">
                         <i class="fa-solid fa-triangle-exclamation"></i>
                     </div>
                 </div>
 
             </div>
 
-            <!-- At-risk banner (hidden by default) -->
-            <div id="atRiskBanner" class="hidden" style="margin-bottom:20px;">
-                <div style="display:flex;align-items:center;gap:12px;">
-                    <div style="width:32px;height:32px;background:#fee2e2;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#e11d48;">
-                        <i class="fa-solid fa-triangle-exclamation" style="font-size:13px;"></i>
-                    </div>
-                    <p id="atRiskMsg" style="font-size:13px;font-weight:600;color:#be123c;margin:0;"></p>
+            <!-- ── AT-RISK BANNER (hidden until home.js shows it) ────────── -->
+            <div id="atRiskBanner" class="hidden">
+                <div class="at-risk-icon-wrap">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
                 </div>
+                <p id="atRiskMsg" style="font-size:13px;font-weight:600;color:#be123c;margin:0;"></p>
             </div>
 
-            <!-- Main grid -->
-            <div style="display:grid;grid-template-columns:1fr 1fr 320px;gap:16px;align-items:start;">
+            <!-- ── MAIN DASHBOARD GRID ──────────────────────────────────── -->
+            <div class="dashboard-grid">
 
-                <!-- Quick Actions -->
-                <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);overflow:hidden;">
-                    <div style="padding:14px 20px;border-bottom:1px solid var(--border);background:#fafbfc;display:flex;align-items:center;gap:8px;">
-                        <div style="width:24px;height:24px;background:var(--green-50);border:1px solid var(--green-100);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--green-600);font-size:11px;">
-                            <i class="fa-solid fa-bolt"></i>
+                <!-- LEFT COLUMN -->
+                <div class="dashboard-left">
+
+                    <!-- Quick Actions -->
+                    <div>
+                        <p style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin:0 0 10px;">Quick Actions</p>
+                        <div class="quick-actions-grid">
+
+                            <a href="../roster/roster.html" class="quick-action-card">
+                                <div class="qa-card-icon" style="background:#edfaf4;color:#0b8f5e;border:1px solid #c6f0db;">
+                                    <i class="fa-solid fa-user-plus"></i>
+                                </div>
+                                <div>
+                                    <p class="qa-card-label">Add Student</p>
+                                    <p class="qa-card-sub">Manage roster</p>
+                                </div>
+                            </a>
+
+                            <a href="../grade_form/grade_form.html" class="quick-action-card">
+                                <div class="qa-card-icon" style="background:#eef4ff;color:#2563eb;border:1px solid #c7d9fd;">
+                                    <i class="fa-solid fa-plus-circle"></i>
+                                </div>
+                                <div>
+                                    <p class="qa-card-label">Enter Grade</p>
+                                    <p class="qa-card-sub">Log assessment</p>
+                                </div>
+                            </a>
+
+                            <a href="../subjects/subjects.html" class="quick-action-card">
+                                <div class="qa-card-icon" style="background:#f0f9ff;color:#0284c7;border:1px solid #bae6fd;">
+                                    <i class="fa-solid fa-layer-group"></i>
+                                </div>
+                                <div>
+                                    <p class="qa-card-label">Subjects</p>
+                                    <p class="qa-card-sub">Manage curriculum</p>
+                                </div>
+                            </a>
+
+                            <a href="../gradebook/gradebook.html" class="quick-action-card">
+                                <div class="qa-card-icon" style="background:#fafafa;color:#374f6b;border:1px solid #dce3ed;">
+                                    <i class="fa-solid fa-book-open"></i>
+                                </div>
+                                <div>
+                                    <p class="qa-card-label">Gradebook</p>
+                                    <p class="qa-card-sub">Full history</p>
+                                </div>
+                            </a>
+
                         </div>
-                        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-secondary);">Quick Actions</span>
                     </div>
-                    <div style="padding:16px;display:flex;flex-direction:column;gap:8px;">
 
-                        <a href="../roster/roster.html" class="qa-btn">
-                            <div class="qa-icon"><i class="fa-solid fa-user-plus"></i></div>
-                            <div>
-                                <div style="font-weight:600;font-size:13px;color:var(--text-primary);">Add Student</div>
-                                <div style="font-size:11px;color:var(--text-muted);font-weight:400;">Manage your class roster</div>
+                    <!-- Recent Activity Panel -->
+                    <div class="panel">
+                        <div class="panel-header">
+                            <div class="panel-header-left">
+                                <div class="panel-header-icon" style="background:#f1f5f9;color:#9ab0c6;border:1px solid #e2e8f0;">
+                                    <i class="fa-solid fa-clock-rotate-left"></i>
+                                </div>
+                                <p class="panel-title">Recent Activity</p>
                             </div>
-                            <i class="fa-solid fa-chevron-right" style="margin-left:auto;font-size:10px;color:var(--text-muted);"></i>
-                        </a>
+                            <a href="../gradebook/gradebook.html" class="panel-link">View all →</a>
+                        </div>
 
-                        <a href="../grade_form/grade_form.html" class="qa-btn qa-blue">
-                            <div class="qa-icon" style="background:var(--blue-50);color:var(--blue-500);border-color:#bfdbfe;"><i class="fa-solid fa-plus-circle"></i></div>
-                            <div>
-                                <div style="font-weight:600;font-size:13px;color:var(--text-primary);">Enter Grade</div>
-                                <div style="font-size:11px;color:var(--text-muted);font-weight:400;">Log a new assessment</div>
+                        <!-- Table column headers — visual only, rows injected by home.js -->
+                        <div class="activity-table-head">
+                            <span class="activity-col-label">Student &amp; Assignment</span>
+                            <span class="activity-col-label">Subject</span>
+                            <span class="activity-col-label">Type</span>
+                            <span class="activity-col-label text-right">Score</span>
+                            <span class="activity-col-label text-right">Grade</span>
+                        </div>
+
+                        <!-- home.js fills this -->
+                        <div id="recentActivityList">
+                            <div class="loading-state">
+                                <i class="fa-solid fa-spinner fa-spin" style="color:#0ea871;"></i>
+                                <p>Loading recent activity…</p>
                             </div>
-                            <i class="fa-solid fa-chevron-right" style="margin-left:auto;font-size:10px;color:var(--text-muted);"></i>
-                        </a>
-
-                        <a href="../subjects/subjects.html" class="qa-btn">
-                            <div class="qa-icon"><i class="fa-solid fa-layer-group"></i></div>
-                            <div>
-                                <div style="font-weight:600;font-size:13px;color:var(--text-primary);">Subjects</div>
-                                <div style="font-size:11px;color:var(--text-muted);font-weight:400;">View all subjects</div>
-                            </div>
-                            <i class="fa-solid fa-chevron-right" style="margin-left:auto;font-size:10px;color:var(--text-muted);"></i>
-                        </a>
-
-                        <a href="../gradebook/gradebook.html" class="qa-btn">
-                            <div class="qa-icon"><i class="fa-solid fa-book-open"></i></div>
-                            <div>
-                                <div style="font-weight:600;font-size:13px;color:var(--text-primary);">Gradebook</div>
-                                <div style="font-size:11px;color:var(--text-muted);font-weight:400;">Full grade history</div>
-                            </div>
-                            <i class="fa-solid fa-chevron-right" style="margin-left:auto;font-size:10px;color:var(--text-muted);"></i>
-                        </a>
-
+                        </div>
                     </div>
+
                 </div>
 
-                <!-- Recent Activity -->
-                <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);overflow:hidden;display:flex;flex-direction:column;height:360px;">
-                    <div style="padding:14px 20px;border-bottom:1px solid var(--border);background:#fafbfc;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-                        <div style="display:flex;align-items:center;gap:8px;">
-                            <div style="width:24px;height:24px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:11px;">
-                                <i class="fa-solid fa-clock-rotate-left"></i>
-                            </div>
-                            <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-secondary);">Recent Activity</span>
+                <!-- RIGHT COLUMN: Needs Attention -->
+                <div class="risk-panel">
+                    <div class="risk-panel-header">
+                        <div class="risk-panel-title">
+                            <i class="fa-solid fa-triangle-exclamation" style="font-size:12px;color:#e31b4a;"></i>
+                            <span>Needs Attention</span>
                         </div>
-                        <a href="../gradebook/gradebook.html" class="link-action">View all →</a>
+                        <p class="risk-panel-sub">Students averaging below 65%</p>
                     </div>
-                    <div id="recentActivityList" style="flex:1;overflow-y:auto;padding:8px 0;">
-                        <div class="empty-state">
-                            <div class="empty-state-icon"><i class="fa-solid fa-spinner fa-spin" style="color:#10b981;"></i></div>
-                            <p>Loading activity…</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Needs Attention -->
-                <div style="background:var(--surface);border:1px solid #fecdd3;border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);overflow:hidden;display:flex;flex-direction:column;max-height:360px;">
-                    <div style="padding:14px 20px;border-bottom:1px solid #fee2e2;background:#fff8f8;flex-shrink:0;">
-                        <div style="display:flex;align-items:center;gap:7px;margin-bottom:2px;">
-                            <i class="fa-solid fa-triangle-exclamation" style="font-size:12px;color:#e11d48;"></i>
-                            <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#be123c;">Needs Attention</span>
-                        </div>
-                        <p style="font-size:11px;color:#fb7185;font-weight:400;margin:0;">Averaging below 65%</p>
-                    </div>
-                    <div id="needsAttentionList" style="flex:1;overflow-y:auto;padding:8px 0;">
-                        <div class="empty-state">
-                            <div class="empty-state-icon" style="background:#fff1f2;"><i class="fa-solid fa-spinner fa-spin" style="color:#f43f5e;"></i></div>
-                            <p>Evaluating…</p>
+                    <!-- home.js fills this -->
+                    <div id="needsAttentionList">
+                        <div class="loading-state">
+                            <i class="fa-solid fa-spinner fa-spin" style="color:#e31b4a;"></i>
+                            <p>Evaluating performance…</p>
                         </div>
                     </div>
                 </div>
@@ -173,5 +580,16 @@
     </main>
 
     <script type="module" src="home.js"></script>
+
+    <!-- Inject today's date into the page header -->
+    <script>
+        const d = new Date();
+        const el = document.getElementById('todayDate');
+        if (el) {
+            el.textContent = d.toLocaleDateString('en-US', {
+                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+            });
+        }
+    </script>
 </body>
 </html>
