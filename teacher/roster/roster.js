@@ -108,9 +108,9 @@ async function loadSemesters() {
         if (semSel) {
             semSel.innerHTML = '';
             rawSemesters.forEach(s => {
-                const opt       = document.createElement('option');
-                opt.value       = s.id;
-                opt.textContent = s.name;
+                const opt        = document.createElement('option');
+                opt.value        = s.id;
+                opt.textContent  = s.name;
                 if (s.id === activeId) opt.selected = true;
                 semSel.appendChild(opt);
             });
@@ -375,15 +375,16 @@ window.openAddStudentModal = function () {
             unassignedStudentsCache.map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`).join('');
     }
 
+    // STRICT CLASS SELECTION: Always show, always require selection
     const classes = getClasses().filter(Boolean);
     const wrap    = document.getElementById('sClassWrap');
     const sel     = document.getElementById('sClass');
-    if (classes.length > 1) {
-        wrap.classList.remove('hidden');
-        sel.innerHTML = classes.map(c => `<option>${escHtml(c)}</option>`).join('');
-    } else {
-        wrap.classList.add('hidden');
-    }
+    
+    wrap.classList.remove('hidden'); // Enforce visibility
+    
+    let optionsHtml = '<option value="">— Select a Class —</option>';
+    optionsHtml += classes.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+    sel.innerHTML = optionsHtml;
 
     openOverlay('addStudentModal', 'addStudentModalInner');
 };
@@ -402,14 +403,19 @@ window.toggleAddMethod = function () {
 
 document.getElementById('saveStudentBtn').addEventListener('click', async () => {
     const method        = document.getElementById('sAddMethod').value;
-    const classes       = getClasses().filter(Boolean);
-    const assignedClass = classes.length > 1
-        ? document.getElementById('sClass').value
-        : (classes[0] || session.teacherData.className || '');
+    const assignedClass = document.getElementById('sClass').value; // Always fetch from dropdown
 
     const btn = document.getElementById('saveStudentBtn');
     btn.textContent = 'Saving…';
     btn.disabled    = true;
+
+    // STRICT VALIDATION
+    if (!assignedClass) {
+        showMsg('addStudentMsg', 'You must assign the student to a class.', true);
+        btn.textContent = 'Save to Roster'; 
+        btn.disabled = false; 
+        return;
+    }
 
     try {
         if (method === 'new') {
@@ -418,6 +424,7 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
                 showMsg('addStudentMsg', 'Student name is required.', true);
                 btn.textContent = 'Save to Roster'; btn.disabled = false; return;
             }
+            
             // Capacity check
             const allActSnap = await getDocs(query(
                 collection(db, 'schools', session.schoolId, 'students'),
@@ -434,7 +441,7 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
                 parentPhone: document.getElementById('sParentPhone').value.trim(),
                 pin:         document.getElementById('sPin').value.trim() || Math.floor(1000 + Math.random() * 9000).toString(),
                 teacherId:   session.teacherId,
-                className:   assignedClass,
+                className:   assignedClass, // Ensured by validation
                 dob:         document.getElementById('sDob').value,
                 medicalNotes: '', 
                 studentIdNum: generateStudentId(), 
@@ -447,14 +454,15 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
         } else {
             const sid = document.getElementById('sExistingSelect').value;
             if (!sid) {
-                showMsg('addStudentMsg', 'Please select a student.', true);
+                showMsg('addStudentMsg', 'Please select an existing student.', true);
                 btn.textContent = 'Save to Roster'; btn.disabled = false; return;
             }
             await updateDoc(doc(db, 'schools', session.schoolId, 'students', sid), {
                 teacherId: session.teacherId,
-                className: assignedClass
+                className: assignedClass // Ensured by validation
             });
         }
+        
         closeAddStudentModal();
         await loadStudents();
     } catch (e) {
@@ -520,7 +528,7 @@ window.openStudentPanel = async function (studentId) {
         document.getElementById('activeSemester')?.selectedIndex
     ]?.text || '';
 
-    document.getElementById('sPanelSemName').textContent     = semName;
+    document.getElementById('sPanelSemName').textContent      = semName;
     document.getElementById('sPanelFilterSubject').value      = '';
     document.getElementById('sPanelFilterType').value         = '';
 
