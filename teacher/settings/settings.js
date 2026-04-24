@@ -51,6 +51,7 @@ async function init() {
         console.error("[Settings] Error fetching school data", e); 
     }
 
+    await loadSemesters();
     loadSettings();
 
     // Attach static event listeners
@@ -71,9 +72,55 @@ async function init() {
     }
 }
 
+// ── 3.5. LOAD SEMESTERS ─────────────────────────────────────────────────────
+async function loadSemesters() {
+    try {
+        let rawSemesters = [];
+        const cacheKey   = `connectus_semesters_${session.schoolId}`;
+        const cached     = localStorage.getItem(cacheKey);
+
+        if (cached) {
+            rawSemesters = JSON.parse(cached);
+        } else {
+            const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
+            rawSemesters  = semSnap.docs
+                .map(d => ({ id: d.id, ...d.data() }))
+                .sort((a, b) => (a.order || 0) - (b.order || 0));
+            localStorage.setItem(cacheKey, JSON.stringify(rawSemesters));
+        }
+
+        const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
+        const activeId   = schoolSnap.data()?.activeSemesterId || '';
+
+        const semSel = document.getElementById('activeSemester');
+        if (semSel) {
+            semSel.innerHTML = '';
+            rawSemesters.forEach(s => {
+                const opt      = document.createElement('option');
+                opt.value      = s.id;
+                opt.textContent = s.name;
+                if (s.id === activeId) opt.selected = true;
+                semSel.appendChild(opt);
+            });
+
+            // Keep sidebar in sync
+            const sbPeriod = document.getElementById('sb-period');
+            if (sbPeriod) sbPeriod.textContent = semSel.options[semSel.selectedIndex]?.text || '—';
+
+            semSel.addEventListener('change', () => {
+                if (sbPeriod) sbPeriod.textContent = semSel.options[semSel.selectedIndex]?.text || '—';
+            });
+        }
+    } catch (e) {
+        console.error('[Settings] loadSemesters:', e);
+    }
+}
+
 function loadSettings() {
     // 1. Profile & Security
+    document.getElementById('profileIdNum').value = session.teacherData.teacherIdNum || 'Not assigned';
     document.getElementById('profileName').value = session.teacherData.name || '';
+    document.getElementById('profileEmail').value = session.teacherData.email || '';
     document.getElementById('profilePhone').value = session.teacherData.phone || '';
     toggleSecurityEdit(false);
     toggleProfileEdit(false);
@@ -83,14 +130,13 @@ function loadSettings() {
     document.getElementById('currentClassesDisplay').textContent = classes.join(', ') || 'Not set';
     const classList = CLASSES[schoolType] || CLASSES['Primary'];
     
-    // Fixed checkbox rendering to prevent double-toggling issues when clicking
     document.getElementById('settingsClassGrid').innerHTML = classList.map(c => {
         const safeId = c.replace(/\s/g, '_');
         const isChecked = classes.includes(c);
         return `
-        <label class="flex items-center gap-3 p-3 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 transition ${isChecked ? 'bg-blue-50 border-blue-200 shadow-sm' : 'bg-white'}" id="swrap-${safeId}">
-            <input type="checkbox" id="scb-${safeId}" value="${c}" ${isChecked ? 'checked' : ''} onchange="toggleClassVisuals('${safeId}')" class="w-5 h-5 text-blue-600 rounded border-slate-300 focus:ring-blue-500">
-            <span class="font-bold text-slate-700 text-sm select-none">${c}</span>
+        <label class="flex items-center gap-3 p-3 border border-[#dce3ed] rounded cursor-pointer hover:bg-white transition ${isChecked ? 'bg-[#eef4ff] border-[#c7d9fd] shadow-sm' : 'bg-white'}" id="swrap-${safeId}">
+            <input type="checkbox" id="scb-${safeId}" value="${c}" ${isChecked ? 'checked' : ''} onchange="toggleClassVisuals('${safeId}')" class="w-4 h-4 text-[#2563eb] rounded border-[#b8c5d4] focus:ring-[#2563eb]">
+            <span class="font-bold text-[#0d1f35] text-[13px] select-none">${c}</span>
         </label>`;
     }).join('');
 
@@ -105,7 +151,7 @@ window.toggleSecurityEdit = function(isEditing) {
         const el = document.getElementById(id);
         el.disabled = !isEditing;
         if (!isEditing) el.value = '';
-        el.classList.toggle('bg-slate-50', !isEditing);
+        el.classList.toggle('bg-[#f8fafb]', !isEditing);
         el.classList.toggle('bg-white', isEditing);
     });
     document.getElementById('securityEditBtn').classList.toggle('hidden', isEditing);
@@ -114,15 +160,17 @@ window.toggleSecurityEdit = function(isEditing) {
 };
 
 window.toggleProfileEdit = function(isEditing) {
-    ['profileName', 'profilePhone'].forEach(id => {
+    // Only toggle Name, Email, and Phone. ID stays disabled.
+    ['profileName', 'profileEmail', 'profilePhone'].forEach(id => {
         const el = document.getElementById(id);
         el.disabled = !isEditing;
-        el.classList.toggle('bg-slate-50', !isEditing);
+        el.classList.toggle('bg-[#f8fafb]', !isEditing);
         el.classList.toggle('bg-white', isEditing);
     });
     
     if (!isEditing) {
         document.getElementById('profileName').value = session.teacherData.name || '';
+        document.getElementById('profileEmail').value = session.teacherData.email || '';
         document.getElementById('profilePhone').value = session.teacherData.phone || '';
     }
     document.getElementById('profileEditBtn').classList.toggle('hidden', isEditing);
@@ -150,7 +198,6 @@ async function updateLoginCode() {
         await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { loginCode: nw });
         session.teacherData.loginCode = nw;
         
-        // Update session storage so it persists
         sessionStorage.setItem('connectus_teacher_session', JSON.stringify(session));
         
         toggleSecurityEdit(false);
@@ -166,6 +213,7 @@ async function updateLoginCode() {
 async function saveProfile() {
     const u = {
         name: document.getElementById('profileName').value.trim(),
+        email: document.getElementById('profileEmail').value.trim(),
         phone: document.getElementById('profilePhone').value.trim()
     };
     
@@ -182,7 +230,6 @@ async function saveProfile() {
         Object.assign(session.teacherData, u);
         sessionStorage.setItem('connectus_teacher_session', JSON.stringify(session));
         
-        // Update Sidebar visually
         const sbName = document.getElementById('displayTeacherName');
         const sbAvatar = document.getElementById('teacherAvatar');
         if (sbName) sbName.textContent = u.name;
@@ -203,10 +250,10 @@ window.toggleClassVisuals = function(safeId) {
     const cb = document.getElementById('scb-' + safeId);
     const wrap = document.getElementById('swrap-' + safeId);
     if (cb.checked) {
-        wrap.classList.add('bg-blue-50', 'border-blue-200', 'shadow-sm');
+        wrap.classList.add('bg-[#eef4ff]', 'border-[#c7d9fd]', 'shadow-sm');
         wrap.classList.remove('bg-white');
     } else {
-        wrap.classList.remove('bg-blue-50', 'border-blue-200', 'shadow-sm');
+        wrap.classList.remove('bg-[#eef4ff]', 'border-[#c7d9fd]', 'shadow-sm');
         wrap.classList.add('bg-white');
     }
 };
@@ -225,7 +272,7 @@ async function saveClasses() {
     try {
         await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { 
             classes: selected, 
-            className: selected[0] // Set primary class as the first selected
+            className: selected[0] 
         });
         
         session.teacherData.classes = selected;
@@ -234,7 +281,6 @@ async function saveClasses() {
         
         document.getElementById('currentClassesDisplay').textContent = selected.join(', ');
         
-        // Update Sidebar Classes manually since we aren't reloading the page
         const sbClasses = document.getElementById('displayTeacherClasses');
         if (sbClasses) {
             sbClasses.innerHTML = selected.map(c => `<span class="class-pill">${escHtml(c)}</span>`).join('');
@@ -255,11 +301,11 @@ function renderGradeTypesList() {
     document.getElementById('gradeTypesList').innerHTML = types.map(t => {
         const isDefault = DEFAULT_GRADE_TYPES.includes(t);
         return `
-        <div class="flex items-center justify-between bg-white border border-slate-200 rounded-lg p-3 mb-2 shadow-sm transition hover:border-indigo-200">
-            <span class="font-bold text-slate-700 text-sm">${escHtml(t)}</span>
+        <div class="flex items-center justify-between bg-white border border-[#dce3ed] rounded p-2.5 mb-2 shadow-sm transition hover:border-[#c7d9fd]">
+            <span class="font-bold text-[#0d1f35] text-[13px]">${escHtml(t)}</span>
             ${isDefault 
-                ? `<span class="text-[10px] uppercase tracking-wider text-slate-400 font-black px-2 py-1 bg-slate-100 rounded-md">Default</span>` 
-                : `<button onclick="deleteGradeType('${escHtml(t).replace(/'/g, "\\'")}')" class="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded transition" title="Delete Type"><i class="fa-solid fa-trash-can text-sm"></i></button>`
+                ? `<span class="text-[9px] uppercase tracking-widest text-[#6b84a0] font-bold px-2 py-1 bg-[#f0f4f8] rounded">Default</span>` 
+                : `<button onclick="archiveGradeType('${escHtml(t).replace(/'/g, "\\'")}')" class="text-[#9ab0c6] hover:text-[#b45309] hover:bg-[#fef3c7] p-1.5 rounded transition" title="Archive Type"><i class="fa-solid fa-box-archive text-[11px]"></i></button>`
             }
         </div>`;
     }).join('');
@@ -271,13 +317,11 @@ window.addGradeType = async function() {
     if (!nt) return;
     
     let types = getGradeTypes();
-    // Case-insensitive check for duplicates
     if (types.map(t => t.toLowerCase()).includes(nt.toLowerCase())) {
         showMsg('gradeTypeMsg', 'This grade type already exists.', true);
         return;
     }
     
-    // UI Feedback
     const btn = input.nextElementSibling;
     const originalIcon = btn.innerHTML;
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i>`;
@@ -295,25 +339,36 @@ window.addGradeType = async function() {
     } catch (e) {
         console.error('[Settings] Error adding grade type:', e);
         showMsg('gradeTypeMsg', 'Error adding grade type. Please try again.', true);
-        // Revert local array on failure
         types.pop(); 
     }
     btn.innerHTML = originalIcon;
     btn.disabled = false;
 };
 
-window.deleteGradeType = async function(type) {
-    if (!confirm(`Are you sure you want to delete the "${type}" assignment category?`)) return;
+window.archiveGradeType = async function(type) {
+    if (!confirm(`Are you sure you want to archive the "${type}" assignment category? It will be moved to your Archives.`)) return;
     
-    let types = getGradeTypes().filter(t => t !== type);
+    let activeTypes = getGradeTypes().filter(t => t !== type);
+    let archivedTypes = session.teacherData.archivedGradeTypes || [];
+    
+    if (!archivedTypes.includes(type)) {
+        archivedTypes.push(type);
+    }
+    
     try {
-        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { customGradeTypes: types });
-        session.teacherData.customGradeTypes = types;
+        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { 
+            customGradeTypes: activeTypes,
+            archivedGradeTypes: archivedTypes
+        });
+        session.teacherData.customGradeTypes = activeTypes;
+        session.teacherData.archivedGradeTypes = archivedTypes;
         sessionStorage.setItem('connectus_teacher_session', JSON.stringify(session));
+        
         renderGradeTypesList();
+        showMsg('gradeTypeMsg', 'Grade type archived successfully.', false);
     } catch (e) {
-        console.error('[Settings] Error deleting grade type:', e);
-        showMsg('gradeTypeMsg', 'Error deleting type. Please try again.', true);
+        console.error('[Settings] Error archiving grade type:', e);
+        showMsg('gradeTypeMsg', 'Error archiving type. Please try again.', true);
     }
 };
 
@@ -323,22 +378,22 @@ function renderSubjectsInSettings() {
     const container = document.getElementById('activeSubjectsList');
     
     if (!active.length) {
-        container.innerHTML = '<div class="col-span-1 md:col-span-2 text-center py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200"><div class="w-12 h-12 bg-slate-100 text-slate-300 rounded-full flex items-center justify-center mx-auto mb-3 text-xl"><i class="fa-solid fa-book-open"></i></div><p class="text-sm font-bold text-slate-500">No active subjects</p><p class="text-xs text-slate-400 mt-1">Add your first subject to start building your curriculum.</p></div>';
+        container.innerHTML = '<div class="col-span-1 md:col-span-2 xl:col-span-3 text-center py-10 bg-[#f8fafb] rounded border border-dashed border-[#b8c5d4]"><div class="w-10 h-10 bg-white text-[#9ab0c6] border border-[#dce3ed] rounded-full flex items-center justify-center mx-auto mb-3"><i class="fa-solid fa-book-open"></i></div><p class="text-[13px] font-bold text-[#374f6b] m-0">No active subjects</p><p class="text-[11.5px] text-[#6b84a0] m-0 mt-1">Add your first subject to build your curriculum.</p></div>';
         return;
     }
     
     container.innerHTML = active.map(s => `
-        <div class="bg-white border border-slate-200 hover:border-teal-300 rounded-xl p-4 shadow-sm hover:shadow-md transition flex flex-col group">
+        <div class="bg-white border border-[#dce3ed] hover:border-[#0d1f35] rounded p-4 shadow-sm transition flex flex-col group">
             <div class="w-full flex justify-between items-start mb-2">
                 <div class="flex-1 min-w-0 pr-2">
-                    <p class="font-black text-slate-800 text-base truncate">${escHtml(s.name)}</p>
+                    <p class="font-bold text-[#0d1f35] text-[14px] m-0 truncate">${escHtml(s.name)}</p>
                 </div>
                 <div class="flex items-center gap-1.5 flex-shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                    <button onclick="openSubjectFormModal('${s.id}')" class="h-8 w-8 bg-white border border-teal-200 text-teal-600 hover:bg-teal-500 hover:text-white rounded-lg flex items-center justify-center transition shadow-sm" title="Edit Subject"><i class="fa-solid fa-pen text-xs"></i></button>
-                    <button onclick="archiveSubject('${s.id}')" class="h-8 w-8 bg-white border border-amber-200 text-amber-600 hover:bg-amber-500 hover:text-white rounded-lg flex items-center justify-center transition shadow-sm" title="Archive Subject"><i class="fa-solid fa-box-archive text-xs"></i></button>
+                    <button onclick="openSubjectFormModal('${s.id}')" class="h-7 w-7 bg-white border border-[#c5d0db] text-[#374f6b] hover:bg-[#0d1f35] hover:text-white rounded flex items-center justify-center transition" title="Edit Subject"><i class="fa-solid fa-pen text-[10px]"></i></button>
+                    <button onclick="archiveSubject('${s.id}')" class="h-7 w-7 bg-white border border-[#fde68a] text-[#b45309] hover:bg-[#f59e0b] hover:text-white rounded flex items-center justify-center transition" title="Archive Subject"><i class="fa-solid fa-box-archive text-[10px]"></i></button>
                 </div>
             </div>
-            ${s.description ? `<p class="text-xs text-slate-500 font-medium leading-relaxed line-clamp-2">${escHtml(s.description)}</p>` : `<p class="text-xs text-slate-300 italic">No description provided</p>`}
+            ${s.description ? `<p class="text-[11.5px] text-[#6b84a0] font-medium leading-relaxed line-clamp-2 m-0">${escHtml(s.description)}</p>` : `<p class="text-[11.5px] text-[#9ab0c6] italic m-0">No description provided</p>`}
         </div>`).join('');
 }
 
@@ -347,7 +402,7 @@ window.openSubjectFormModal = function(subjectId = null) {
     const isEdit = subjectId !== null;
     
     document.getElementById('subjectFormTitle').textContent = isEdit ? 'Edit Subject' : 'Add Subject';
-    document.getElementById('subjectFormIcon').className = isEdit ? 'fa-solid fa-pen text-lg' : 'fa-solid fa-layer-group text-lg';
+    document.getElementById('subjectFormIcon').className = isEdit ? 'fa-solid fa-pen text-[13px]' : 'fa-solid fa-layer-group text-[13px]';
     document.getElementById('saveSubjectFormBtn').textContent = isEdit ? 'Save Changes' : 'Create Subject';
     
     if (isEdit) {
@@ -386,9 +441,7 @@ async function saveSubject() {
             const oldName = oldSub?.name || '';
             newSubs = newSubs.map(s => s.id === editingSubjectId ? { ...s, name, description: desc } : s);
             
-            // If the name changed, we need to batch update all existing grades for all students so history doesn't break
             if (oldName && oldName !== name) {
-                // Fetch all students belonging to this teacher
                 const stuQuery = query(collection(db, 'schools', session.schoolId, 'students'), where('teacherId', '==', session.teacherId));
                 const stuSnap = await getDocs(stuQuery);
                 const students = stuSnap.docs.map(d => d.id);
@@ -403,7 +456,6 @@ async function saveSubject() {
                         batch.update(d.ref, { subject: name });
                         batchCount++;
                     });
-                    // Firestore limit is 500 per batch. Commit and reset if getting close.
                     if (batchCount >= 490) { 
                         await batch.commit(); 
                         batchCount = 0; 
@@ -412,7 +464,6 @@ async function saveSubject() {
                 if (batchCount > 0) await batch.commit();
             }
         } else {
-            // New Subject: check for duplicates
             if (newSubs.some(s => s.name.toLowerCase() === name.toLowerCase() && !s.archived)) {
                 showMsg('subjectFormMsg', 'An active subject with this name already exists.', true);
                 btn.innerHTML = originalText; 
