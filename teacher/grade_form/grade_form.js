@@ -18,12 +18,9 @@ let isSemesterLocked = false;
 async function init() {
     if (!session) return;
 
-    // Load static UI elements based on Teacher Data
-    populateSubjectDropdown();
-    populateGradeTypeDropdown();
     document.getElementById('eg-date').valueAsDate = new Date();
 
-    // Attach Event Listeners
+    // Attach Event Listeners for UI
     document.getElementById('eg-score').addEventListener('input', updateLivePreview);
     document.getElementById('eg-max').addEventListener('input', updateLivePreview);
     document.getElementById('saveGradeBtn').addEventListener('click', saveGrade);
@@ -31,37 +28,109 @@ async function init() {
         document.getElementById('gradeSavedBanner').classList.add('hidden');
     });
 
+    // Load Data
     await loadSemestersAndLockStatus();
+    populateSubjectDropdown();
+    populateGradeTypeDropdown();
     await populateStudentDropdown();
-
-    // Handle "Quick Grade" handoff from Roster/Subjects page
-    const quickGradeStudentId = sessionStorage.getItem('connectus_quick_grade_student');
-    if (quickGradeStudentId) {
-        const studentSelect = document.getElementById('eg-student');
-        // Wait a tiny bit to ensure the DOM is painted and options are loaded
-        setTimeout(() => {
-            studentSelect.value = quickGradeStudentId;
-            sessionStorage.removeItem('connectus_quick_grade_student'); // Clear it so it doesn't trigger again
-        }, 100);
-    }
 }
 
-// ── 4. POPULATE DROPDOWNS ───────────────────────────────────────────────────
+// ── 4. INTELLIGENT SEARCHABLE DROPDOWN ENGINE ───────────────────────────────
+function setupSearchableDropdown(inputId, hiddenId, listId, dataArray, nextFocusId = null) {
+    const inputEl = document.getElementById(inputId);
+    const hiddenEl = document.getElementById(hiddenId);
+    const listEl = document.getElementById(listId);
+
+    function renderList(filterText = '') {
+        const filtered = dataArray.filter(item => item.label.toLowerCase().includes(filterText.toLowerCase()));
+        listEl.innerHTML = '';
+        
+        if (filtered.length === 0) {
+            listEl.innerHTML = `<li class="p-3 text-sm text-slate-500 italic text-center">No matches found</li>`;
+            return;
+        }
+
+        filtered.forEach((item) => {
+            const li = document.createElement('li');
+            li.className = 'p-3 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 cursor-pointer transition-colors border-b border-slate-50 last:border-0 font-semibold';
+            
+            // Highlight matching text for visual feedback
+            const regex = new RegExp(`(${filterText})`, "gi");
+            li.innerHTML = item.label.replace(regex, `<span class="text-emerald-600 bg-emerald-100/50">$1</span>`);
+            
+            li.addEventListener('mousedown', (e) => {
+                // mousedown fires before input blur, allowing selection
+                e.preventDefault(); 
+                selectItem(item);
+            });
+            listEl.appendChild(li);
+        });
+    }
+
+    function selectItem(item) {
+        inputEl.value = item.label;
+        hiddenEl.value = item.value;
+        listEl.classList.add('hidden');
+        
+        // Auto-advance focus to the next logical field for fast data entry
+        if(nextFocusId) {
+            document.getElementById(nextFocusId).focus();
+        }
+    }
+
+    // Event Listeners for Interaction
+    inputEl.addEventListener('input', (e) => {
+        hiddenEl.value = ''; // Clear hidden value if they start altering the text
+        listEl.classList.remove('hidden');
+        renderList(e.target.value);
+    });
+
+    inputEl.addEventListener('focus', () => {
+        listEl.classList.remove('hidden');
+        renderList(inputEl.value);
+        inputEl.select(); // Highlight text so they can easily type over it
+    });
+
+    inputEl.addEventListener('blur', () => {
+        // Enforce valid selection on blur
+        const match = dataArray.find(i => i.label.toLowerCase() === inputEl.value.toLowerCase().trim());
+        if(match) {
+             hiddenEl.value = match.value;
+             inputEl.value = match.label;
+        } else {
+             inputEl.value = '';
+             hiddenEl.value = '';
+        }
+        listEl.classList.add('hidden');
+    });
+
+    // Close dropdowns if clicking anywhere else on the page
+    document.addEventListener('click', (e) => {
+        if(!inputEl.contains(e.target) && !listEl.contains(e.target)) {
+            listEl.classList.add('hidden');
+        }
+    });
+}
+
+// ── 5. POPULATE DROPDOWNS ───────────────────────────────────────────────────
 function populateSubjectDropdown() {
     const activeSubjects = (session.teacherData.subjects || []).filter(s => !s.archived);
-    const egSub = document.getElementById('eg-subject');
-    egSub.innerHTML = '<option value="">— Select Subject —</option>' + activeSubjects.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+    const data = activeSubjects.map(s => ({ value: s.name, label: s.name }));
+    // Flows into Type search
+    setupSearchableDropdown('eg-subject-search', 'eg-subject', 'eg-subject-list', data, 'eg-type-search');
 }
 
 function populateGradeTypeDropdown() {
     const types = session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES;
-    const egType = document.getElementById('eg-type');
-    egType.innerHTML = types.map(t => `<option value="${t}">${t}</option>`).join('');
+    const data = types.map(t => ({ value: t, label: t }));
+    // Flows into Title input
+    setupSearchableDropdown('eg-type-search', 'eg-type', 'eg-type-list', data, 'eg-title');
 }
 
 async function populateStudentDropdown() {
-    const egStudent = document.getElementById('eg-student');
-    egStudent.innerHTML = '<option value="">Loading students...</option>';
+    const inputEl = document.getElementById('eg-student-search');
+    inputEl.placeholder = "Loading students...";
+    inputEl.disabled = true;
 
     try {
         const stuQuery = query(
@@ -72,23 +141,41 @@ async function populateStudentDropdown() {
         const stuSnap = await getDocs(stuQuery);
         
         if (stuSnap.empty) {
-            egStudent.innerHTML = '<option value="">— No active students —</option>';
+            inputEl.placeholder = "No active students found";
             return;
         }
 
-        const students = stuSnap.docs.map(d => ({ id: d.id, name: d.data().name }));
-        
-        // Sort alphabetically by name
-        students.sort((a, b) => a.name.localeCompare(b.name));
+        const students = stuSnap.docs.map(d => ({ value: d.id, label: d.data().name }));
+        students.sort((a, b) => a.label.localeCompare(b.label)); // Alphabetical
 
-        egStudent.innerHTML = '<option value="">— Select Student —</option>' + students.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+        inputEl.placeholder = "Type to search student...";
+        inputEl.disabled = false;
+        
+        // Flows into Subject search
+        setupSearchableDropdown('eg-student-search', 'eg-student', 'eg-student-list', students, 'eg-subject-search');
+
+        // Handle "Quick Grade" handoff from Roster/Subjects page
+        handleQuickGrade(students);
+
     } catch (e) {
         console.error("Error loading students:", e);
-        egStudent.innerHTML = '<option value="">— Error loading —</option>';
+        inputEl.placeholder = "Error loading students";
     }
 }
 
-// ── 5. SEMESTERS & LOCK STATUS ──────────────────────────────────────────────
+function handleQuickGrade(studentsData) {
+    const quickGradeStudentId = sessionStorage.getItem('connectus_quick_grade_student');
+    if (quickGradeStudentId) {
+        const student = studentsData.find(s => s.value === quickGradeStudentId);
+        if(student) {
+            document.getElementById('eg-student').value = student.value;
+            document.getElementById('eg-student-search').value = student.label;
+            sessionStorage.removeItem('connectus_quick_grade_student'); 
+        }
+    }
+}
+
+// ── 6. SEMESTERS & LOCK STATUS ──────────────────────────────────────────────
 async function loadSemestersAndLockStatus() {
     try {
         const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
@@ -98,15 +185,14 @@ async function loadSemestersAndLockStatus() {
         const rawSemesters = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
 
         const semSel = document.getElementById('activeSemester');
-        semSel.innerHTML = '';
-        rawSemesters.forEach(s => {
-            semSel.innerHTML += `<option value="${s.id}"${s.id === activeId ? ' selected' : ''}>${s.name}</option>`;
-        });
-
-        checkLockStatus(rawSemesters);
-
-        // If they change the period in the topbar, update lock status dynamically
-        semSel.addEventListener('change', () => { checkLockStatus(rawSemesters); });
+        if(semSel) {
+            semSel.innerHTML = '';
+            rawSemesters.forEach(s => {
+                semSel.innerHTML += `<option value="${s.id}"${s.id === activeId ? ' selected' : ''}>${s.name}</option>`;
+            });
+            checkLockStatus(rawSemesters);
+            semSel.addEventListener('change', () => { checkLockStatus(rawSemesters); });
+        }
 
     } catch (e) {
         console.error("Error loading semesters:", e);
@@ -114,7 +200,10 @@ async function loadSemestersAndLockStatus() {
 }
 
 function checkLockStatus(semestersArray) {
-    const semId = document.getElementById('activeSemester').value;
+    const semSel = document.getElementById('activeSemester');
+    if(!semSel) return;
+    
+    const semId = semSel.value;
     const activeSem = semestersArray.find(s => s.id === semId);
     isSemesterLocked = activeSem ? !!activeSem.isLocked : false;
     
@@ -124,19 +213,19 @@ function checkLockStatus(semestersArray) {
     const lockedNotice = document.getElementById('lockedGradeNotice');
 
     if (isSemesterLocked) {
-        badge.classList.remove('hidden'); badge.classList.add('flex');
+        if(badge) { badge.classList.remove('hidden'); badge.classList.add('flex'); }
         gradeBtn.disabled = true; gradeBtn.classList.add('opacity-50', 'cursor-not-allowed');
         formWrap.classList.add('opacity-60', 'pointer-events-none'); 
         lockedNotice.classList.remove('hidden');
     } else {
-        badge.classList.add('hidden'); badge.classList.remove('flex');
+        if(badge) { badge.classList.add('hidden'); badge.classList.remove('flex'); }
         gradeBtn.disabled = false; gradeBtn.classList.remove('opacity-50', 'cursor-not-allowed');
         formWrap.classList.remove('opacity-60', 'pointer-events-none'); 
         lockedNotice.classList.add('hidden');
     }
 }
 
-// ── 6. UI PREVIEW LOGIC ─────────────────────────────────────────────────────
+// ── 7. UI PREVIEW LOGIC ─────────────────────────────────────────────────────
 function updateLivePreview() {
     const score = parseFloat(document.getElementById('eg-score').value);
     const max = parseFloat(document.getElementById('eg-max').value);
@@ -161,36 +250,34 @@ function updateLivePreview() {
         document.getElementById('prev-label').textContent = lbl;
         document.getElementById('prev-label').className = `text-sm font-black mt-2 ${color}`;
     } else {
-        // Reset to default empty state
         document.getElementById('prev-pct').textContent = '—';
         document.getElementById('prev-pct').className = 'text-4xl font-black text-slate-300';
-        
         document.getElementById('prev-letter').textContent = '—';
         document.getElementById('prev-letter').className = 'text-2xl font-black px-5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-400 text-center min-w-[64px]';
-        
         document.getElementById('prev-bar').style.width = '0%';
-        
         document.getElementById('prev-label').textContent = 'Enter score to preview';
         document.getElementById('prev-label').className = 'text-sm font-black mt-2 text-slate-400';
     }
 }
 
-// ── 7. SAVE GRADE LOGIC ─────────────────────────────────────────────────────
+// ── 8. SAVE GRADE LOGIC ─────────────────────────────────────────────────────
 async function saveGrade() {
     if (isSemesterLocked) return;
 
+    // Read from the hidden inputs that contain the exact validated selections
     const studentId = document.getElementById('eg-student').value;
+    const subj = document.getElementById('eg-subject').value;
+    const type = document.getElementById('eg-type').value;
+    
     const title = document.getElementById('eg-title').value.trim();
     const score = parseFloat(document.getElementById('eg-score').value);
     const max = parseFloat(document.getElementById('eg-max').value);
-    const semId = document.getElementById('activeSemester').value;
-    const subj = document.getElementById('eg-subject').value;
-    const type = document.getElementById('eg-type').value;
+    const semId = document.getElementById('activeSemester') ? document.getElementById('activeSemester').value : '';
     const gdate = document.getElementById('eg-date').value;
     const tNotes = document.getElementById('eg-notes').value.trim();
     
     if (!studentId || !title || !subj || !type || isNaN(score) || isNaN(max)) {
-        alert('Please fill all required fields (Student, Subject, Title, Score, and Max).');
+        alert('Please fill all required fields (Student, Subject, Type, Title, Score, and Max).');
         return;
     }
     
@@ -215,7 +302,7 @@ async function saveGrade() {
             createdAt: new Date().toISOString()
         });
         
-        // Success: Clear fields except student/subject/date for rapid-fire grading
+        // Success: Clear specific fields for rapid-fire grading but keep selections
         document.getElementById('eg-title').value = '';
         document.getElementById('eg-score').value = '';
         document.getElementById('eg-notes').value = '';
@@ -223,8 +310,9 @@ async function saveGrade() {
         updateLivePreview();
         document.getElementById('gradeSavedBanner').classList.remove('hidden');
         
-        // Focus back on title for quick entry
-        document.getElementById('eg-title').focus();
+        // Focus back on student search so they can immediately type the next kid's name
+        document.getElementById('eg-student-search').focus();
+        document.getElementById('eg-student-search').select();
         
     } catch (e) {
         console.error(e);
