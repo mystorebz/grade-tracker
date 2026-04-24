@@ -10,7 +10,7 @@ if (session) {
     injectTeacherLayout('students', 'My Roster', 'Manage students · PINs · academic standing', true);
 }
 
-// ── 2. STATE ─────────────────────────────────────────────────────────────────
+// ── 2. STATE & HELPERS ───────────────────────────────────────────────────────
 let allStudentsCache        = [];
 let unassignedStudentsCache = [];
 let studentMap              = {};
@@ -26,6 +26,17 @@ const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project'
 function getClasses()        { return session.teacherData.classes || [session.teacherData.className || '']; }
 function getActiveSubjects() { return (session.teacherData.subjects || []).filter(s => !s.archived); }
 function getGradeTypes()     { return session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
+
+// Generates an official alphanumeric student ID (e.g., S26-4X9BA)
+function generateStudentId() {
+    const year = new Date().getFullYear().toString().slice(-2);
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let rand = '';
+    for(let i = 0; i < 5; i++) {
+        rand += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return `S${year}-${rand}`;
+}
 
 // ── 3. INIT ───────────────────────────────────────────────────────────────────
 async function init() {
@@ -54,8 +65,7 @@ async function init() {
         }
     }
 
-    // PARALLEL: load school limit AND semesters at the same time — this is
-    // why semesters now appear immediately instead of after a sequential wait.
+    // PARALLEL: load school limit AND semesters at the same time
     await Promise.all([fetchSchoolLimit(), loadSemesters()]);
     await loadStudents();
 }
@@ -408,17 +418,23 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
                 showMsg('addStudentMsg', `School capacity reached (${schoolLimit} max). Contact Admin to upgrade.`, true);
                 btn.textContent = 'Save to Roster'; btn.disabled = false; return;
             }
+            
             await addDoc(collection(db, 'schools', session.schoolId, 'students'), {
                 name,
+                parentName: '',   // Ready for future updates
                 parentPhone: document.getElementById('sParentPhone').value.trim(),
                 pin:         document.getElementById('sPin').value.trim() || Math.floor(1000 + Math.random() * 9000).toString(),
                 teacherId:   session.teacherId,
                 className:   assignedClass,
+                dob: '',          // Ready for future updates
+                medicalNotes: '', // Ready for future updates
+                studentIdNum: generateStudentId(), 
                 archived:    false,
                 archivedAt:  null,
                 archiveReason: '',
                 createdAt:   new Date().toISOString()
             });
+            
         } else {
             const sid = document.getElementById('sExistingSelect').value;
             if (!sid) {
@@ -476,6 +492,7 @@ window.openStudentPanel = async function (studentId) {
     // Info rows
     document.getElementById('sInfoGrid').innerHTML = [
         ['Name',          student?.name || '—'],
+        ['ID Number',     student?.studentIdNum || '—'],
         ['Class',         student?.className || '—'],
         ['Parent Phone',  student?.parentPhone || '—'],
         ['Enrolled',      student?.createdAt ? new Date(student.createdAt).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' }) : '—']
@@ -809,9 +826,9 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
 
 // ── 15. EXPORT / PRINT ────────────────────────────────────────────────────────
 window.exportRosterCSV = function () {
-    const rows = [['#', 'Name', 'Class', 'Parent Phone', 'Parent PIN']];
+    const rows = [['#', 'Name', 'Class', 'Parent Phone', 'Parent PIN', 'Student ID']];
     allStudentsCache.forEach((s, i) =>
-        rows.push([i + 1, s.name, s.className || '', s.parentPhone || '', s.pin])
+        rows.push([i + 1, s.name, s.className || '', s.parentPhone || '', s.pin, s.studentIdNum || ''])
     );
     downloadCSV(rows, `${session.schoolId}_roster.csv`);
 };
@@ -860,6 +877,7 @@ window.printRoster = function () {
         <thead>
             <tr>
                 <th style="width:40px;">#</th>
+                <th>Student ID</th>
                 <th>Student Name</th>
                 <th>Class</th>
                 <th>Parent / Guardian Phone</th>
@@ -870,6 +888,7 @@ window.printRoster = function () {
             ${allStudentsCache.map((s, i) => `
             <tr>
                 <td style="font-family:'DM Mono',monospace;color:#9ab0c6;">${String(i + 1).padStart(2, '0')}</td>
+                <td style="font-family:'DM Mono',monospace;">${escHtml(s.studentIdNum || '—')}</td>
                 <td><strong>${escHtml(s.name)}</strong></td>
                 <td>${escHtml(s.className || '—')}</td>
                 <td>${escHtml(s.parentPhone || '—')}</td>
@@ -1021,7 +1040,7 @@ window.executeStudentPrint = async function () {
         </div>
         <div class="info-grid">
             <div class="info-item"><label>Student Name</label><span>${escHtml(s.name)}</span></div>
-            <div class="info-item"><label>Academic Status</label><span>${s.archived ? 'Archived' : 'Active'}</span></div>
+            <div class="info-item"><label>Student ID Number</label><span>${escHtml(s.studentIdNum || '—')}</span></div>
             <div class="info-item"><label>Class</label><span>${escHtml(s.className || 'Unassigned')}</span></div>
             <div class="info-item"><label>Teacher</label><span>${escHtml(session.teacherData.name)}</span></div>
         </div>
