@@ -1,5 +1,5 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, getDocs, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
 import { letterGrade, gradeColorClass } from '../../assets/js/utils.js';
@@ -32,15 +32,18 @@ let CLASSES = [];
 async function initializeBuilder() {
     try {
         // Fetch baseline data for dropdowns
+        // CHANGED: teachers and students from global collections
         const [semSnap, tSnap, sSnap] = await Promise.all([
             getDocs(collection(db, 'schools', session.schoolId, 'semesters')),
-            getDocs(collection(db, 'schools', session.schoolId, 'teachers')),
-            getDocs(collection(db, 'schools', session.schoolId, 'students'))
+            getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId))),
+            getDocs(query(collection(db, 'students'),
+                where('currentSchoolId', '==', session.schoolId),
+                where('enrollmentStatus', '==', 'Active')))
         ]);
 
         allSemesters = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => !s.archived).sort((a,b) => a.order - b.order);
-        allTeachers = tSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(t => !t.archived);
-        allStudents = sSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => !s.archived);
+        allTeachers  = tSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        allStudents  = sSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
         // Populate Periods
         allSemesters.forEach(s => {
