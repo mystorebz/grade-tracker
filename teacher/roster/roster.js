@@ -1,6 +1,6 @@
 import { db } from '../../assets/js/firebase-init.js';
 import { collection, query, where, getDocs, getDoc, doc, updateDoc, addDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { requireAuth } from '../../assets/js/auth.js';
+import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { openOverlay, closeOverlay, showMsg, gradeColorClass, standingBadge, standingText, gradeFill, letterGrade, downloadCSV } from '../../assets/js/utils.js';
 
@@ -27,7 +27,6 @@ function getClasses()        { return session.teacherData.classes || [session.te
 function getActiveSubjects() { return (session.teacherData.subjects || []).filter(s => !s.archived); }
 function getGradeTypes()     { return session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
 
-// Generates an official alphanumeric student ID (e.g., S26-4X9BA)
 function generateStudentId() {
     const year = new Date().getFullYear().toString().slice(-2);
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -42,18 +41,15 @@ function generateStudentId() {
 async function init() {
     if (!session) return;
 
-    // Wire search input
     const searchInput = document.getElementById('searchInput');
     if (searchInput) searchInput.addEventListener('input', filterStudents);
 
-    // Populate sidebar
     document.getElementById('displayTeacherName').textContent = session.teacherData.name;
     document.getElementById('teacherAvatar').textContent      = session.teacherData.name.charAt(0).toUpperCase();
     document.getElementById('sidebarSchoolId').textContent    = session.schoolId;
     document.getElementById('displayTeacherClasses').innerHTML =
         getClasses().filter(Boolean).map(c => `<span class="class-pill">${c}</span>`).join('');
 
-    // Class filter dropdown
     const classes     = getClasses().filter(Boolean);
     const classFilter = document.getElementById('rf-class');
     if (classFilter) {
@@ -65,7 +61,6 @@ async function init() {
         }
     }
 
-    // PARALLEL: load school limit AND semesters at the same time
     await Promise.all([fetchSchoolLimit(), loadSemesters()]);
     await loadStudents();
 }
@@ -82,7 +77,7 @@ async function fetchSchoolLimit() {
     } catch (e) { console.error('[Roster] fetchSchoolLimit:', e); }
 }
 
-// ── 5. SEMESTERS (localStorage cached) ───────────────────────────────────────
+// ── 5. SEMESTERS (localStorage cached & UI synced) ───────────────────────────
 async function loadSemesters() {
     try {
         const cacheKey = `connectus_semesters_${session.schoolId}`;
@@ -101,10 +96,15 @@ async function loadSemesters() {
 
         rawSemesters = rawSems;
 
-        const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
-        const activeId   = schoolSnap.data()?.activeSemesterId || '';
+        let activeId = '';
+        try {
+            const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
+            activeId = schoolSnap.data()?.activeSemesterId || '';
+        } catch(e) {}
 
         const semSel = document.getElementById('activeSemester');
+        const sbPeriod = document.getElementById('sb-period');
+
         if (semSel) {
             semSel.innerHTML = '';
             rawSemesters.forEach(s => {
@@ -120,16 +120,12 @@ async function loadSemesters() {
             semSel.addEventListener('change', () => {
                 checkLockStatus();
                 loadStudents();
-                // Keep sidebar period in sync when period is changed from topbar
-                const sbP = document.getElementById('sb-period');
-                if (sbP) sbP.textContent = semSel.options[semSel.selectedIndex]?.text || '—';
+                if (sbPeriod) sbPeriod.textContent = semSel.options[semSel.selectedIndex]?.text || '—';
             });
         }
 
         updatePeriodLabel();
 
-        // ── Update sidebar period ──────────────────────────────────────────
-        const sbPeriod = document.getElementById('sb-period');
         if (sbPeriod && semSel) {
             sbPeriod.textContent = semSel.options[semSel.selectedIndex]?.text || '—';
         }
@@ -172,7 +168,6 @@ async function loadStudents() {
     </div></td></tr>`;
 
     try {
-        // Fetch all active students in one query, split client-side
         const allActSnap  = await getDocs(query(
             collection(db, 'schools', session.schoolId, 'students'),
             where('archived', '==', false)
@@ -185,11 +180,9 @@ async function loadStudents() {
         studentMap = {};
         allStudentsCache.forEach(s => { studentMap[s.id] = s.name; });
 
-        // Sidebar student count
         const sbStudents = document.getElementById('sb-students');
         if (sbStudents) sbStudents.textContent = allStudentsCache.length;
 
-        // Roster count badge
         const badge = document.getElementById('rosterCountBadge');
         if (badge) badge.textContent = allStudentsCache.length;
 
@@ -200,11 +193,9 @@ async function loadStudents() {
                     <p>No students yet — add your first student to get started.</p>
                 </div>
             </td></tr>`;
-            // Make sure risk shows 0, not the loading placeholder
             const sbRisk0 = document.getElementById('sb-risk');
             if (sbRisk0) { sbRisk0.textContent = '0'; sbRisk0.classList.remove('is-risk'); }
             
-            // CACHE STATS GLOBALLY
             localStorage.setItem('connectus_sidebar_stats', JSON.stringify({ students: 0, risk: 0 }));
             return;
         }
@@ -256,21 +247,19 @@ async function loadStudents() {
                         </button>
                         <button onclick="openStudentPanel('${s.id}')"
                                 class="row-action-btn row-btn-view">
-                            View Record
+                            <i class="fa-solid fa-eye"></i> View
                         </button>
                     </div>
                 </td>
             </tr>`;
         }).join('');
 
-        // Update sidebar risk count
         const sbRisk = document.getElementById('sb-risk');
         if (sbRisk) {
             sbRisk.textContent = riskCount;
             sbRisk.classList.toggle('is-risk', riskCount > 0);
         }
 
-        // CACHE STATS GLOBALLY
         localStorage.setItem('connectus_sidebar_stats', JSON.stringify({ students: allStudentsCache.length, risk: riskCount }));
 
         applyRosterFilters();
@@ -283,13 +272,12 @@ async function loadStudents() {
                 <p style="color:#dc2626;">Error loading roster. Please refresh the page.</p>
             </div>
         </td></tr>`;
-        // Always update sidebar so values are never stuck on placeholder
+        
         const sbStudentsErr = document.getElementById('sb-students');
         if (sbStudentsErr) sbStudentsErr.textContent = allStudentsCache.length || '0';
         const sbRiskErr = document.getElementById('sb-risk');
         if (sbRiskErr) { sbRiskErr.textContent = '0'; sbRiskErr.classList.remove('is-risk'); }
 
-        // CACHE STATS GLOBALLY ON ERROR
         localStorage.setItem('connectus_sidebar_stats', JSON.stringify({ students: allStudentsCache.length || 0, risk: 0 }));
     }
 }
@@ -375,13 +363,8 @@ window.openAddStudentModal = function () {
             unassignedStudentsCache.map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`).join('');
     }
 
-    // STRICT CLASS SELECTION: Always show, always require selection
     const classes = getClasses().filter(Boolean);
-    const wrap    = document.getElementById('sClassWrap');
     const sel     = document.getElementById('sClass');
-    
-    wrap.classList.remove('hidden'); // Enforce visibility
-    
     let optionsHtml = '<option value="">— Select a Class —</option>';
     optionsHtml += classes.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
     sel.innerHTML = optionsHtml;
@@ -403,13 +386,12 @@ window.toggleAddMethod = function () {
 
 document.getElementById('saveStudentBtn').addEventListener('click', async () => {
     const method        = document.getElementById('sAddMethod').value;
-    const assignedClass = document.getElementById('sClass').value; // Always fetch from dropdown
+    const assignedClass = document.getElementById('sClass').value;
 
     const btn = document.getElementById('saveStudentBtn');
     btn.textContent = 'Saving…';
     btn.disabled    = true;
 
-    // STRICT VALIDATION
     if (!assignedClass) {
         showMsg('addStudentMsg', 'You must assign the student to a class.', true);
         btn.textContent = 'Save to Roster'; 
@@ -425,7 +407,6 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
                 btn.textContent = 'Save to Roster'; btn.disabled = false; return;
             }
             
-            // Capacity check
             const allActSnap = await getDocs(query(
                 collection(db, 'schools', session.schoolId, 'students'),
                 where('archived', '==', false)
@@ -441,7 +422,7 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
                 parentPhone: document.getElementById('sParentPhone').value.trim(),
                 pin:         document.getElementById('sPin').value.trim() || Math.floor(1000 + Math.random() * 9000).toString(),
                 teacherId:   session.teacherId,
-                className:   assignedClass, // Ensured by validation
+                className:   assignedClass, 
                 dob:         document.getElementById('sDob').value,
                 medicalNotes: '', 
                 studentIdNum: generateStudentId(), 
@@ -459,7 +440,7 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
             }
             await updateDoc(doc(db, 'schools', session.schoolId, 'students', sid), {
                 teacherId: session.teacherId,
-                className: assignedClass // Ensured by validation
+                className: assignedClass
             });
         }
         
@@ -474,7 +455,7 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
     btn.disabled    = false;
 });
 
-// ── 10. STUDENT DETAIL PANEL ──────────────────────────────────────────────────
+// ── 10. STUDENT DETAIL PANEL (WITH EDIT CLASS & REASON) ───────────────────────
 window.openStudentPanel = async function (studentId) {
     currentStudentId = studentId;
     const student    = allStudentsCache.find(s => s.id === studentId);
@@ -490,7 +471,6 @@ window.openStudentPanel = async function (studentId) {
     document.getElementById('sViewMode').classList.add('hidden');
     document.getElementById('sEditForm').classList.add('hidden');
 
-    // Quick grade button
     const qGBtn = document.getElementById('spQuickGradeBtn2');
     if (qGBtn) {
         if (!isSemesterLocked) {
@@ -503,10 +483,23 @@ window.openStudentPanel = async function (studentId) {
 
     openOverlay('studentPanel', 'studentPanelInner');
 
+    // Populate Edit Fields
     document.getElementById('editSName').value       = student?.name         || '';
     document.getElementById('editSDob').value        = student?.dob          || '';
     document.getElementById('editSParentName').value = student?.parentName   || '';
     document.getElementById('editSPhone').value      = student?.parentPhone  || '';
+
+    // Populate Class Edit Dropdown
+    const classSel = document.getElementById('editSClass');
+    const classes = getClasses().filter(Boolean);
+    classSel.innerHTML = classes.map(c => `<option value="${escHtml(c)}" ${c === student.className ? 'selected' : ''}>${escHtml(c)}</option>`).join('');
+    
+    // Store original class to check if it changes
+    classSel.dataset.original = student.className || '';
+    
+    // Reset reason box
+    document.getElementById('editSClassReasonWrap').classList.add('hidden');
+    document.getElementById('editSClassReason').value = '';
 
     // Info rows
     document.getElementById('sInfoGrid').innerHTML = [
@@ -675,7 +668,7 @@ window.toggleAccordion = function (header) {
     if (chevron) chevron.style.transform = body.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0)';
 };
 
-// ── 11. EDIT STUDENT ──────────────────────────────────────────────────────────
+// ── 11. EDIT STUDENT (WITH CLASS REASON VALIDATION) ───────────────────────────
 window.toggleStudentEdit = function (show) {
     const form = document.getElementById('sEditForm');
     const isVisible = show !== undefined ? show : form.classList.contains('hidden');
@@ -683,8 +676,28 @@ window.toggleStudentEdit = function (show) {
     document.getElementById('editStudentMsg').classList.add('hidden');
 };
 
+window.checkClassChange = function () {
+    const sel = document.getElementById('editSClass');
+    const wrap = document.getElementById('editSClassReasonWrap');
+    if (sel.value !== sel.dataset.original && sel.dataset.original !== '') {
+        wrap.classList.remove('hidden');
+    } else {
+        wrap.classList.add('hidden');
+    }
+};
+
 document.getElementById('saveStudentEditBtn').addEventListener('click', async () => {
     const btn = document.getElementById('saveStudentEditBtn');
+    
+    const newClass = document.getElementById('editSClass').value;
+    const originalClass = document.getElementById('editSClass').dataset.original;
+    const reason = document.getElementById('editSClassReason').value.trim();
+
+    if (newClass !== originalClass && originalClass !== '' && !reason) {
+        showMsg('editStudentMsg', 'You must provide a reason for changing the student\'s class.', true);
+        return;
+    }
+
     btn.textContent = 'Saving…'; btn.disabled = true;
 
     try {
@@ -692,8 +705,16 @@ document.getElementById('saveStudentEditBtn').addEventListener('click', async ()
             name:        document.getElementById('editSName').value.trim(),
             dob:         document.getElementById('editSDob').value,
             parentName:  document.getElementById('editSParentName').value.trim(),
-            parentPhone: document.getElementById('editSPhone').value.trim()
+            parentPhone: document.getElementById('editSPhone').value.trim(),
+            className:   newClass
         };
+
+        // If class changed, save the reason
+        if (newClass !== originalClass && originalClass !== '') {
+            u.lastClassChangeReason = reason;
+            u.lastClassChangeDate = new Date().toISOString();
+        }
+
         await updateDoc(doc(db, 'schools', session.schoolId, 'students', currentStudentId), u);
 
         const idx = allStudentsCache.findIndex(s => s.id === currentStudentId);
