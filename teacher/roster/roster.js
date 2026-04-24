@@ -181,6 +181,9 @@ async function loadStudents() {
                     <p>No students yet — add your first student to get started.</p>
                 </div>
             </td></tr>`;
+            // Make sure risk shows 0, not the loading placeholder
+            const sbRisk0 = document.getElementById('sb-risk');
+            if (sbRisk0) { sbRisk0.textContent = '0'; sbRisk0.classList.remove('is-risk'); }
             return;
         }
 
@@ -255,6 +258,11 @@ async function loadStudents() {
                 <p style="color:#dc2626;">Error loading roster. Please refresh the page.</p>
             </div>
         </td></tr>`;
+        // Always update sidebar so values are never stuck on placeholder
+        const sbStudentsErr = document.getElementById('sb-students');
+        if (sbStudentsErr) sbStudentsErr.textContent = allStudentsCache.length || '0';
+        const sbRiskErr = document.getElementById('sb-risk');
+        if (sbRiskErr) { sbRiskErr.textContent = '0'; sbRiskErr.classList.remove('is-risk'); }
     }
 }
 
