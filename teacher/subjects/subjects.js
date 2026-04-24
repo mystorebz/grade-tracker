@@ -12,7 +12,7 @@ if (session) {
 
 // ── 2. STATE VARIABLES ──────────────────────────────────────────────────────
 let allStudentsCache = [];
-let studentMap = {};
+let studentMap = {}; // Maps ID to full student object (includes className)
 let allGradesCache = null;
 let cachedSubjectGrades = [];
 let rawSemesters = [];
@@ -99,7 +99,7 @@ async function loadStudents() {
         const stuSnap = await getDocs(stuQuery);
         allStudentsCache = stuSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         studentMap = {};
-        allStudentsCache.forEach(s => { studentMap[s.id] = s.name; });
+        allStudentsCache.forEach(s => { studentMap[s.id] = s; }); // Store full object
         
         // Update Sidebar Stat
         const sbStudents = document.getElementById('sb-students');
@@ -184,9 +184,19 @@ window.openSubjectPanel = async function(subjectName) {
     currentSubjectName = subjectName;
     document.getElementById('spPanelTitle').textContent = subjectName;
     document.getElementById('subjectPanelBody').innerHTML = '<div class="flex justify-center py-16"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-teal-500"></i></div>';
-    document.getElementById('spFilterStudent').value = '';
-    document.getElementById('spFilterType').value = '';
     
+    // Reset Filters
+    document.getElementById('spFilterClass').value = '';
+    document.getElementById('spFilterStudent').value = '';
+    document.getElementById('spFilterStanding').value = '';
+    document.getElementById('spFilterType').value = '';
+    document.getElementById('spSearchTitle').value = '';
+    
+    // Populate Class Filter
+    const classes = session.teacherData.classes || [session.teacherData.className || ''];
+    const spClass = document.getElementById('spFilterClass');
+    spClass.innerHTML = '<option value="">All Classes</option>' + classes.filter(Boolean).map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+
     // Populate Type Filter
     const spType = document.getElementById('spFilterType');
     spType.innerHTML = '<option value="">All Types</option>' + getGradeTypes().map(t => `<option value="${t}">${t}</option>`).join('');
@@ -198,10 +208,7 @@ window.openSubjectPanel = async function(subjectName) {
         quickGradeBtn.classList.add('hidden');
     } else {
         quickGradeBtn.classList.remove('hidden');
-        quickGradeBtn.onclick = () => {
-            // Optional: You could pass the subject via sessionStorage here to prefill it on grade_form
-            window.location.href = '../grade_form/grade_form.html';
-        };
+        quickGradeBtn.onclick = () => { window.location.href = '../grade_form/grade_form.html'; };
     }
     
     const semId = document.getElementById('activeSemester').value;
@@ -211,27 +218,86 @@ window.openSubjectPanel = async function(subjectName) {
     const allGrades = await getAllGrades(semId);
     cachedSubjectGrades = allGrades.filter(g => g.subject === subjectName);
     
+    // Populate Student Filter based on enrolled
     const spStuFilter = document.getElementById('spFilterStudent');
     const stuIdsInSubj = [...new Set(cachedSubjectGrades.map(g => g.studentId))];
-    spStuFilter.innerHTML = '<option value="">All Students</option>' + stuIdsInSubj.map(sid => `<option value="${sid}">${studentMap[sid] || 'Unknown'}</option>`).join('');
+    spStuFilter.innerHTML = '<option value="">All Students</option>' + stuIdsInSubj.map(sid => `<option value="${sid}">${studentMap[sid]?.name || 'Unknown'}</option>`).join('');
     
     renderSubjectPanelData();
 };
 
-window.renderSubjectPanelData = function() {
+function getFilteredSubjectData() {
+    const fClass = document.getElementById('spFilterClass').value;
     const fStudent = document.getElementById('spFilterStudent').value;
+    const fStanding = document.getElementById('spFilterStanding').value;
     const fType = document.getElementById('spFilterType').value;
+    const fTitle = document.getElementById('spSearchTitle').value.toLowerCase();
     
     let sg = cachedSubjectGrades;
+
+    // Pre-calculate student averages for standing filter
+    const studentAvgs = {};
+    sg.forEach(g => {
+        if (!studentAvgs[g.studentId]) studentAvgs[g.studentId] = { sum: 0, count: 0 };
+        if (g.max > 0) {
+            studentAvgs[g.studentId].sum += (g.score / g.max) * 100;
+            studentAvgs[g.studentId].count++;
+        }
+    });
+
+    // 1. Filter students by Class and Standing
+    const validStudentIds = new Set();
+    Object.entries(studentAvgs).forEach(([sid, data]) => {
+        const student = studentMap[sid];
+        if (!student) return;
+
+        if (fClass && student.className !== fClass) return;
+        
+        if (fStanding) {
+            if (data.count > 0) {
+                const avg = Math.round(data.sum / data.count);
+                let std = 'none';
+                if (avg >= 90) std = 'excelling';
+                else if (avg >= 80) std = 'good';
+                else if (avg >= 70) std = 'ontrack';
+                else if (avg >= 65) std = 'needsattention';
+                else std = 'atrisk';
+
+                if (std !== fStanding) return;
+            } else {
+                return; 
+            }
+        }
+        
+        validStudentIds.add(sid);
+    });
+
+    // 2. Filter the grades array
+    sg = sg.filter(g => validStudentIds.has(g.studentId));
     if (fStudent) sg = sg.filter(g => g.studentId === fStudent);
     if (fType) sg = sg.filter(g => g.type === fType);
-    
+    if (fTitle) sg = sg.filter(g => (g.title || '').toLowerCase().includes(fTitle));
+
+    // 3. Re-calculate filtered student data for the breakdown table
     const stuIds = [...new Set(sg.map(g => g.studentId))];
     const stuData = stuIds.map(sid => {
         const sg2 = sg.filter(g => g.studentId === sid);
         const avg = sg2.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / sg2.length;
-        return { sid, name: studentMap[sid] || 'Unknown', avg: Math.round(avg), count: sg2.length };
+        return { 
+            sid, 
+            name: studentMap[sid]?.name || 'Unknown', 
+            className: studentMap[sid]?.className || '—',
+            avg: Math.round(avg), 
+            count: sg2.length 
+        };
     }).sort((a, b) => a.avg - b.avg);
+
+    return { sg, stuData, stuIds };
+}
+
+
+window.renderSubjectPanelData = function() {
+    const { sg, stuData, stuIds } = getFilteredSubjectData();
     
     const dist = { a: 0, b: 0, c: 0, d: 0, f: 0 };
     stuData.forEach(s => {
@@ -288,7 +354,7 @@ window.renderSubjectPanelData = function() {
             <div class="space-y-2">
                 ${atRiskStudents.map(s => `
                 <div class="flex items-center justify-between bg-white border border-red-100 rounded-xl p-3">
-                    <span class="font-black text-slate-700 text-sm">${s.name}</span>
+                    <span class="font-black text-slate-700 text-sm">${s.name} <span class="text-xs text-slate-400 ml-1">(${s.className})</span></span>
                     <span class="font-black text-red-600">${s.avg}%</span>
                 </div>`).join('')}
             </div>
@@ -301,6 +367,7 @@ window.renderSubjectPanelData = function() {
                     <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                         <tr>
                             <th class="px-4 py-3 font-black text-left">Student</th>
+                            <th class="px-4 py-3 font-black text-left">Class</th>
                             <th class="px-4 py-3 font-black text-center">Average</th>
                             <th class="px-4 py-3 font-black text-center">Standing</th>
                             <th class="px-4 py-3 font-black text-center">Assignments</th>
@@ -315,10 +382,11 @@ window.renderSubjectPanelData = function() {
                                     <span class="font-black text-slate-700 text-sm">${s.name}</span>
                                 </div>
                             </td>
+                            <td class="px-4 py-3 text-slate-500 font-bold text-xs">${s.className}</td>
                             <td class="px-4 py-3 text-center"><span class="${gradeColorClass(s.avg)} font-black">${s.avg}% · ${letterGrade(s.avg)}</span></td>
                             <td class="px-4 py-3 text-center">${standingBadge(s.avg)}</td>
                             <td class="px-4 py-3 text-center text-slate-500 font-semibold text-sm">${s.count}</td>
-                        </tr>`).join('') : '<tr><td colspan="4" class="px-4 py-8 text-center text-slate-400 italic">No students match filter.</td></tr>'}
+                        </tr>`).join('') : '<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 italic">No students match filter.</td></tr>'}
                     </tbody>
                 </table>
             </div>
@@ -326,7 +394,7 @@ window.renderSubjectPanelData = function() {
         
         <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
             <div class="px-5 py-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-                <h4 class="font-black text-slate-700 text-sm uppercase tracking-wider">All Assignments</h4>
+                <h4 class="font-black text-slate-700 text-sm uppercase tracking-wider">Filtered Assignments</h4>
                 <span class="text-xs text-slate-400 font-bold">${sg.length} record${sg.length !== 1 ? 's' : ''}</span>
             </div>
             <div class="overflow-x-auto">
@@ -349,7 +417,7 @@ window.renderSubjectPanelData = function() {
                                     <p class="text-xs text-slate-400">${g.date || ''}</p>
                                 </td>
                                 <td class="px-4 py-3"><span class="text-[10px] font-black uppercase bg-slate-100 text-slate-500 border border-slate-200 px-2 py-1 rounded-md">${g.type || '—'}</span></td>
-                                <td class="px-4 py-3 text-sm font-bold text-slate-700">${studentMap[g.studentId] || '—'}</td>
+                                <td class="px-4 py-3 text-sm font-bold text-slate-700">${studentMap[g.studentId]?.name || '—'}</td>
                                 <td class="px-4 py-3 text-center"><span class="${gradeColorClass(pct || 0)} font-black text-sm">${pct !== null ? pct + '%' : '—'}</span></td>
                             </tr>`;
                         }).join('') : '<tr><td colspan="4" class="px-4 py-8 text-center text-slate-400 italic">No assignments match filter.</td></tr>'}
@@ -440,14 +508,24 @@ async function saveSubject() {
 // ── 8. PRINT REPORT (PROFESSIONAL TEMPLATE) ─────────────────────────────────
 window.printSubjectReport = function() {
     const semName = document.getElementById('activeSemester').options[document.getElementById('activeSemester').selectedIndex]?.text || '';
-    const fStudent = document.getElementById('spFilterStudent').options[document.getElementById('spFilterStudent').selectedIndex]?.text || 'All Students';
-    const fType = document.getElementById('spFilterType').options[document.getElementById('spFilterType').selectedIndex]?.text || 'All Types';
     
-    const sg = cachedSubjectGrades.filter(g => {
-        if (document.getElementById('spFilterStudent').value && g.studentId !== document.getElementById('spFilterStudent').value) return false;
-        if (document.getElementById('spFilterType').value && g.type !== document.getElementById('spFilterType').value) return false;
-        return true;
-    }).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    // Grab text representations of the current filters
+    const classEl = document.getElementById('spFilterClass');
+    const fClassText = classEl.options[classEl.selectedIndex]?.text || 'All Classes';
+    
+    const stuEl = document.getElementById('spFilterStudent');
+    const fStudentText = stuEl.options[stuEl.selectedIndex]?.text || 'All Students';
+    
+    const stdEl = document.getElementById('spFilterStanding');
+    const fStandingText = stdEl.options[stdEl.selectedIndex]?.text || 'All Standings';
+    
+    const typeEl = document.getElementById('spFilterType');
+    const fTypeText = typeEl.options[typeEl.selectedIndex]?.text || 'All Types';
+    
+    const fTitleText = document.getElementById('spSearchTitle').value || 'None';
+
+    // Retrieve the exact same filtered data that is currently on the screen
+    const { sg } = getFilteredSubjectData();
     
     const classAvgNum = sg.length ? Math.round(sg.reduce((acc, g) => acc + (g.max ? (g.score / g.max) * 100 : 0), 0) / sg.length) : 0;
     
@@ -473,7 +551,7 @@ window.printSubjectReport = function() {
         .header h1 { margin: 0 0 4px 0; font-size: 22px; color: #0d1f35; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 800; }
         .header h2 { margin: 0; font-size: 11px; color: #6b84a0; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; }
         
-        .info-grid { background: #f8fafb; padding: 18px; border-radius: 4px; border: 1px solid #dce3ed; margin-bottom: 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .info-grid { background: #f8fafb; padding: 18px; border-radius: 4px; border: 1px solid #dce3ed; margin-bottom: 30px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
         .info-grid div { font-size: 13px; color: #0d1f35; font-weight: 600; }
         .info-grid strong { font-size: 10px; color: #6b84a0; text-transform: uppercase; letter-spacing: 0.1em; display: block; margin-bottom: 2px; font-weight: 700; }
         
@@ -494,9 +572,11 @@ window.printSubjectReport = function() {
     
     <div class="info-grid">
         <div><strong>Academic Period</strong> ${escHtml(semName)}</div>
-        <div><strong>Student Filter</strong> ${escHtml(fStudent)}</div>
-        <div><strong>Assignment Type</strong> ${escHtml(fType)}</div>
-        <div><strong>Subject Average</strong> ${classAvgNum}% (${letterGrade(classAvgNum)})</div>
+        <div><strong>Class Filter</strong> ${escHtml(fClassText)}</div>
+        <div><strong>Student Filter</strong> ${escHtml(fStudentText)}</div>
+        <div><strong>Standing Filter</strong> ${escHtml(fStandingText)}</div>
+        <div><strong>Assignment Type</strong> ${escHtml(fTypeText)}</div>
+        <div><strong>Assignment Search</strong> ${escHtml(fTitleText)}</div>
     </div>
     
     <table>
@@ -506,6 +586,7 @@ window.printSubjectReport = function() {
                 <th>Assignment</th>
                 <th class="tc">Type</th>
                 <th>Student</th>
+                <th>Class</th>
                 <th class="tc">Score</th>
                 <th class="tc">%</th>
             </tr>
@@ -513,15 +594,19 @@ window.printSubjectReport = function() {
         <tbody>`;
     
     if (!sg.length) {
-        html += `<tr><td colspan="6" class="tc" style="padding:40px;font-style:italic;color:#6b84a0;">No records match the current filters.</td></tr>`;
+        html += `<tr><td colspan="7" class="tc" style="padding:40px;font-style:italic;color:#6b84a0;">No records match the current filters.</td></tr>`;
     } else {
         sg.forEach(g => {
             const pct = g.max ? Math.round(g.score / g.max * 100) : null;
+            const studentName = studentMap[g.studentId]?.name || 'Unknown';
+            const className = studentMap[g.studentId]?.className || '—';
+            
             html += `<tr>
                 <td class="font-mono text-[#6b84a0]">${g.date || '—'}</td>
                 <td>${escHtml(g.title)}</td>
                 <td class="tc" style="color:#6b84a0; font-size:10px; text-transform:uppercase;">${escHtml(g.type)}</td>
-                <td><strong>${escHtml(studentMap[g.studentId] || 'Unknown')}</strong></td>
+                <td><strong>${escHtml(studentName)}</strong></td>
+                <td style="color:#6b84a0; font-size:11px; font-weight:bold;">${escHtml(className)}</td>
                 <td class="tc font-mono">${g.score}/${g.max}</td>
                 <td class="tc font-mono">${pct !== null ? pct + '%' : '—'}</td>
             </tr>`;
