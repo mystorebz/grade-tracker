@@ -24,11 +24,17 @@ const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project'
 
 function genId() { return 'sub_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 5); }
 function getClasses() { return session.teacherData.classes || [session.teacherData.className || '']; }
-function getActiveSubjects() { return (session.teacherData.subjects || []).filter(s => !s.archived); }
 
-// Pulls directly from the saved active array. Falls back to default if never saved.
+// Filters for Active vs Archived
+function getActiveSubjects() { return (session.teacherData.subjects || []).filter(s => !s.archived); }
+function getArchivedSubjects() { return (session.teacherData.subjects || []).filter(s => s.archived); }
+
+// Active vs Archived Grade Types
 function getGradeTypes() { 
     return session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES;
+}
+function getArchivedGradeTypes() {
+    return session.teacherData.archivedGradeTypes || [];
 }
 
 // Escapes HTML to prevent XSS
@@ -193,7 +199,6 @@ async function updateLoginCode() {
     try {
         await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { loginCode: nw });
         session.teacherData.loginCode = nw;
-        
         setSessionData('teacher', session);
         
         toggleSecurityEdit(false);
@@ -221,7 +226,6 @@ async function saveProfile() {
     
     try {
         await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), u);
-        
         Object.assign(session.teacherData, u);
         setSessionData('teacher', session);
         
@@ -272,10 +276,7 @@ async function saveClasses() {
         session.teacherData.classes = selected;
         session.teacherData.className = selected[0];
         
-        // 1. Update Auth Session cleanly
         setSessionData('teacher', session);
-        
-        // 2. Force Cache update for Layout script sync
         localStorage.setItem('connectus_cached_classes', JSON.stringify(selected));
         
         document.getElementById('currentClassesDisplay').textContent = selected.join(', ');
@@ -293,18 +294,41 @@ async function saveClasses() {
     btn.disabled = false;
 }
 
-// ── 6. GRADE TYPES ──────────────────────────────────────────────────────────
+// ── 6. GRADE TYPES (WITH VISIBLE ARCHIVES) ──────────────────────────────────
 function renderGradeTypesList() {
-    const types = getGradeTypes();
-    document.getElementById('gradeTypesList').innerHTML = types.map(t => {
-        return `
+    const active = getGradeTypes();
+    const archived = getArchivedGradeTypes();
+    
+    // Render Active
+    document.getElementById('gradeTypesList').innerHTML = active.map(t => `
         <div class="flex items-center justify-between bg-white border border-[#dce3ed] rounded p-2.5 mb-2 shadow-sm transition hover:border-[#c7d9fd]">
             <span class="font-bold text-[#0d1f35] text-[13px]">${escHtml(t)}</span>
             <button onclick="archiveGradeType('${escHtml(t).replace(/'/g, "\\'")}')" class="text-[#9ab0c6] hover:text-[#b45309] hover:bg-[#fef3c7] p-1.5 rounded transition" title="Archive Type">
                 <i class="fa-solid fa-box-archive text-[11px]"></i>
             </button>
-        </div>`;
-    }).join('');
+        </div>`
+    ).join('') || '<p class="text-[11.5px] text-[#9ab0c6] italic mb-0">No active grade types.</p>';
+
+    // Render Archived (if any)
+    const archivedWrap = document.getElementById('archivedGradeTypesWrap');
+    if (archived.length > 0) {
+        archivedWrap.classList.remove('hidden');
+        document.getElementById('archivedGradeTypesList').innerHTML = archived.map(t => `
+            <div class="flex items-center justify-between bg-[#f8fafb] border border-[#e2e8f0] rounded p-2 mb-2">
+                <span class="font-bold text-[#6b84a0] text-[12px] line-through decoration-[#b8c5d4]">${escHtml(t)}</span>
+                <div class="flex gap-1">
+                    <button onclick="restoreGradeType('${escHtml(t).replace(/'/g, "\\'")}')" class="text-[#9ab0c6] hover:text-[#0ea871] hover:bg-[#edfaf4] p-1 rounded transition" title="Restore">
+                        <i class="fa-solid fa-arrow-rotate-left text-[11px]"></i>
+                    </button>
+                    <button onclick="deleteGradeTypePermanently('${escHtml(t).replace(/'/g, "\\'")}')" class="text-[#9ab0c6] hover:text-[#e31b4a] hover:bg-[#fff0f3] p-1 rounded transition" title="Delete Permanently">
+                        <i class="fa-solid fa-trash-can text-[11px]"></i>
+                    </button>
+                </div>
+            </div>`
+        ).join('');
+    } else {
+        archivedWrap.classList.add('hidden');
+    }
 }
 
 window.addGradeType = async function() {
@@ -313,8 +337,6 @@ window.addGradeType = async function() {
     if (!nt) return;
     
     let activeTypes = getGradeTypes();
-    let archivedTypes = session.teacherData.archivedGradeTypes || [];
-    
     if (activeTypes.map(t => t.toLowerCase()).includes(nt.toLowerCase())) {
         showMsg('gradeTypeMsg', 'This grade type is already active.', true);
         return;
@@ -325,24 +347,11 @@ window.addGradeType = async function() {
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i>`;
     btn.disabled = true;
 
-    // Check if it exists in archives to restore it
-    const archivedIndex = archivedTypes.findIndex(t => t.toLowerCase() === nt.toLowerCase());
-    if (archivedIndex !== -1) {
-        const restoredName = archivedTypes[archivedIndex];
-        archivedTypes.splice(archivedIndex, 1);
-        activeTypes.push(restoredName);
-    } else {
-        activeTypes.push(nt);
-    }
+    activeTypes.push(nt);
 
     try {
-        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { 
-            customGradeTypes: activeTypes,
-            archivedGradeTypes: archivedTypes
-        });
-        
+        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { customGradeTypes: activeTypes });
         session.teacherData.customGradeTypes = activeTypes;
-        session.teacherData.archivedGradeTypes = archivedTypes;
         setSessionData('teacher', session);
         
         input.value = '';
@@ -357,18 +366,14 @@ window.addGradeType = async function() {
 };
 
 window.archiveGradeType = async function(type) {
-    if (!confirm(`Are you sure you want to archive the "${type}" category? It will be removed from your active dropdowns.`)) return;
-    
-    // Completely slice it out of the active array
     let activeTypes = getGradeTypes().filter(t => t !== type);
-    let archivedTypes = session.teacherData.archivedGradeTypes || [];
+    let archivedTypes = getArchivedGradeTypes();
     
     if (!archivedTypes.includes(type)) {
         archivedTypes.push(type);
     }
     
     try {
-        // Save BOTH to firestore so it is actively removed
         await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { 
             customGradeTypes: activeTypes,
             archivedGradeTypes: archivedTypes
@@ -379,35 +384,104 @@ window.archiveGradeType = async function(type) {
         setSessionData('teacher', session);
         
         renderGradeTypesList();
-        showMsg('gradeTypeMsg', 'Grade type archived successfully.', false);
+        showMsg('gradeTypeMsg', `Archived "${type}".`, false);
     } catch (e) {
-        showMsg('gradeTypeMsg', 'Error archiving type. Please try again.', true);
+        showMsg('gradeTypeMsg', 'Error archiving type.', true);
     }
 };
 
-// ── 7. SUBJECTS MANAGEMENT ──────────────────────────────────────────────────
+window.restoreGradeType = async function(type) {
+    let archivedTypes = getArchivedGradeTypes().filter(t => t !== type);
+    let activeTypes = getGradeTypes();
+    
+    if (!activeTypes.includes(type)) {
+        activeTypes.push(type);
+    }
+
+    try {
+        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { 
+            customGradeTypes: activeTypes,
+            archivedGradeTypes: archivedTypes
+        });
+        
+        session.teacherData.customGradeTypes = activeTypes;
+        session.teacherData.archivedGradeTypes = archivedTypes;
+        setSessionData('teacher', session);
+        
+        renderGradeTypesList();
+        showMsg('gradeTypeMsg', `Restored "${type}".`, false);
+    } catch (e) {
+        showMsg('gradeTypeMsg', 'Error restoring type.', true);
+    }
+};
+
+window.deleteGradeTypePermanently = async function(type) {
+    if (!confirm(`Are you sure you want to permanently delete "${type}"?\nThis cannot be undone.`)) return;
+    
+    let archivedTypes = getArchivedGradeTypes().filter(t => t !== type);
+
+    try {
+        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { 
+            archivedGradeTypes: archivedTypes
+        });
+        
+        session.teacherData.archivedGradeTypes = archivedTypes;
+        setSessionData('teacher', session);
+        
+        renderGradeTypesList();
+        showMsg('gradeTypeMsg', `Permanently deleted "${type}".`, false);
+    } catch (e) {
+        showMsg('gradeTypeMsg', 'Error deleting type.', true);
+    }
+};
+
+// ── 7. SUBJECTS MANAGEMENT (WITH VISIBLE ARCHIVES) ──────────────────────────
 function renderSubjectsInSettings() {
     const active = getActiveSubjects();
-    const container = document.getElementById('activeSubjectsList');
+    const archived = getArchivedSubjects();
     
+    const activeContainer = document.getElementById('activeSubjectsList');
+    const archivedWrap = document.getElementById('archivedSubjectsWrap');
+    const archivedContainer = document.getElementById('archivedSubjectsList');
+    
+    // Render Active Subjects
     if (!active.length) {
-        container.innerHTML = '<div class="col-span-1 md:col-span-2 xl:col-span-3 text-center py-10 bg-[#f8fafb] rounded border border-dashed border-[#b8c5d4]"><div class="w-10 h-10 bg-white text-[#9ab0c6] border border-[#dce3ed] rounded-full flex items-center justify-center mx-auto mb-3"><i class="fa-solid fa-book-open"></i></div><p class="text-[13px] font-bold text-[#374f6b] m-0">No active subjects</p><p class="text-[11.5px] text-[#6b84a0] m-0 mt-1">Add your first subject to build your curriculum.</p></div>';
-        return;
+        activeContainer.innerHTML = '<div class="col-span-1 md:col-span-2 xl:col-span-3 text-center py-10 bg-[#f8fafb] rounded border border-dashed border-[#b8c5d4]"><div class="w-10 h-10 bg-white text-[#9ab0c6] border border-[#dce3ed] rounded-full flex items-center justify-center mx-auto mb-3"><i class="fa-solid fa-book-open"></i></div><p class="text-[13px] font-bold text-[#374f6b] m-0">No active subjects</p><p class="text-[11.5px] text-[#6b84a0] m-0 mt-1">Add your first subject to build your curriculum.</p></div>';
+    } else {
+        activeContainer.innerHTML = active.map(s => `
+            <div class="bg-white border border-[#dce3ed] hover:border-[#0d1f35] rounded p-4 shadow-sm transition flex flex-col group">
+                <div class="w-full flex justify-between items-start mb-2">
+                    <div class="flex-1 min-w-0 pr-2">
+                        <p class="font-bold text-[#0d1f35] text-[14px] m-0 truncate">${escHtml(s.name)}</p>
+                    </div>
+                    <div class="flex items-center gap-1.5 flex-shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                        <button onclick="openSubjectFormModal('${s.id}')" class="h-7 w-7 bg-white border border-[#c5d0db] text-[#374f6b] hover:bg-[#0d1f35] hover:text-white rounded flex items-center justify-center transition" title="Edit Subject"><i class="fa-solid fa-pen text-[10px]"></i></button>
+                        <button onclick="archiveSubject('${s.id}', '${escHtml(s.name).replace(/'/g, "\\'")}')" class="h-7 w-7 bg-white border border-[#fde68a] text-[#b45309] hover:bg-[#f59e0b] hover:text-white rounded flex items-center justify-center transition" title="Archive Subject"><i class="fa-solid fa-box-archive text-[10px]"></i></button>
+                    </div>
+                </div>
+                ${s.description ? `<p class="text-[11.5px] text-[#6b84a0] font-medium leading-relaxed line-clamp-2 m-0">${escHtml(s.description)}</p>` : `<p class="text-[11.5px] text-[#9ab0c6] italic m-0">No description provided</p>`}
+            </div>`).join('');
     }
-    
-    container.innerHTML = active.map(s => `
-        <div class="bg-white border border-[#dce3ed] hover:border-[#0d1f35] rounded p-4 shadow-sm transition flex flex-col group">
-            <div class="w-full flex justify-between items-start mb-2">
-                <div class="flex-1 min-w-0 pr-2">
-                    <p class="font-bold text-[#0d1f35] text-[14px] m-0 truncate">${escHtml(s.name)}</p>
+
+    // Render Archived Subjects
+    if (archived.length > 0) {
+        archivedWrap.classList.remove('hidden');
+        archivedContainer.innerHTML = archived.map(s => `
+            <div class="bg-[#f8fafb] border border-[#e2e8f0] rounded p-4 flex flex-col opacity-75 hover:opacity-100 transition">
+                <div class="w-full flex justify-between items-start mb-2">
+                    <div class="flex-1 min-w-0 pr-2">
+                        <p class="font-bold text-[#6b84a0] text-[14px] m-0 line-through decoration-[#b8c5d4] truncate">${escHtml(s.name)}</p>
+                    </div>
+                    <div class="flex items-center gap-1.5 flex-shrink-0">
+                        <button onclick="restoreSubject('${s.id}', '${escHtml(s.name).replace(/'/g, "\\'")}')" class="h-7 w-7 bg-white border border-[#c6f0db] text-[#0ea871] hover:bg-[#0ea871] hover:text-white rounded flex items-center justify-center transition" title="Restore Subject"><i class="fa-solid fa-arrow-rotate-left text-[10px]"></i></button>
+                        <button onclick="deleteSubjectPermanently('${s.id}', '${escHtml(s.name).replace(/'/g, "\\'")}')" class="h-7 w-7 bg-white border border-[#fecaca] text-[#e31b4a] hover:bg-[#e31b4a] hover:text-white rounded flex items-center justify-center transition" title="Delete Permanently"><i class="fa-solid fa-trash-can text-[10px]"></i></button>
+                    </div>
                 </div>
-                <div class="flex items-center gap-1.5 flex-shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                    <button onclick="openSubjectFormModal('${s.id}')" class="h-7 w-7 bg-white border border-[#c5d0db] text-[#374f6b] hover:bg-[#0d1f35] hover:text-white rounded flex items-center justify-center transition" title="Edit Subject"><i class="fa-solid fa-pen text-[10px]"></i></button>
-                    <button onclick="archiveSubject('${s.id}')" class="h-7 w-7 bg-white border border-[#fde68a] text-[#b45309] hover:bg-[#f59e0b] hover:text-white rounded flex items-center justify-center transition" title="Archive Subject"><i class="fa-solid fa-box-archive text-[10px]"></i></button>
-                </div>
-            </div>
-            ${s.description ? `<p class="text-[11.5px] text-[#6b84a0] font-medium leading-relaxed line-clamp-2 m-0">${escHtml(s.description)}</p>` : `<p class="text-[11.5px] text-[#9ab0c6] italic m-0">No description provided</p>`}
-        </div>`).join('');
+                <p class="text-[10px] text-[#9ab0c6] font-bold uppercase tracking-widest m-0">Archived: ${s.archivedAt ? new Date(s.archivedAt).toLocaleDateString() : 'Unknown'}</p>
+            </div>`).join('');
+    } else {
+        archivedWrap.classList.add('hidden');
+    }
 }
 
 window.openSubjectFormModal = function(subjectId = null) {
@@ -492,17 +566,16 @@ async function saveSubject() {
         
         closeSubjectFormModal();
         renderSubjectsInSettings();
+        showMsg('subjectsMsg', 'Curriculum updated!', false);
     } catch (e) {
-        showMsg('subjectFormMsg', 'Error saving subject. Please try again.', true);
+        showMsg('subjectFormMsg', 'Error saving subject.', true);
     }
     btn.innerHTML = originalText;
     btn.disabled = false;
 }
 
-window.archiveSubject = async function(subjectId) {
-    const sub = (session.teacherData.subjects || []).find(s => s.id === subjectId);
-    if (!sub) return;
-    if (!confirm(`Are you sure you want to archive "${sub.name}"?\n\nExisting student grades under this subject will remain safe, but it will be moved to your Archives and removed from active dropdowns.`)) return;
+window.archiveSubject = async function(subjectId, subjectName) {
+    if (!confirm(`Archive "${subjectName}"?\n\nIt will be moved to the Archived Subjects section below.`)) return;
     
     try {
         const newSubs = session.teacherData.subjects.map(s => s.id === subjectId ? { ...s, archived: true, archivedAt: new Date().toISOString() } : s);
@@ -512,7 +585,37 @@ window.archiveSubject = async function(subjectId) {
         setSessionData('teacher', session);
         renderSubjectsInSettings();
     } catch (e) {
-        alert('Failed to archive subject. Please check your connection and try again.');
+        alert('Failed to archive subject.');
+    }
+};
+
+window.restoreSubject = async function(subjectId, subjectName) {
+    if (!confirm(`Restore "${subjectName}" back to active subjects?`)) return;
+    
+    try {
+        const newSubs = session.teacherData.subjects.map(s => s.id === subjectId ? { ...s, archived: false, archivedAt: null } : s);
+        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { subjects: newSubs });
+        
+        session.teacherData.subjects = newSubs;
+        setSessionData('teacher', session);
+        renderSubjectsInSettings();
+    } catch (e) {
+        alert('Failed to restore subject.');
+    }
+};
+
+window.deleteSubjectPermanently = async function(subjectId, subjectName) {
+    if (!confirm(`Are you absolutely sure you want to permanently delete "${subjectName}"?\n\nWARNING: If you have existing grades tied to this subject, they will lose their category association. This cannot be undone.`)) return;
+    
+    try {
+        const newSubs = session.teacherData.subjects.filter(s => s.id !== subjectId);
+        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { subjects: newSubs });
+        
+        session.teacherData.subjects = newSubs;
+        setSessionData('teacher', session);
+        renderSubjectsInSettings();
+    } catch (e) {
+        alert('Failed to delete subject.');
     }
 };
 
