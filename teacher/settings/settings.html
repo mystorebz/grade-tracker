@@ -53,13 +53,26 @@
                             </button>
                         </div>
                         <div class="p-5 flex-1 flex flex-col gap-4">
-                            <div>
-                                <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Full Name</label>
-                                <input type="text" id="profileName" disabled class="form-input w-full p-2.5 border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] font-semibold bg-[#f8fafb]">
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="col-span-2 sm:col-span-1">
+                                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Official ID</label>
+                                    <input type="text" id="profileIdNum" disabled class="form-input w-full p-2.5 border border-[#e2e8f0] rounded text-[13px] text-[#6b84a0] font-mono font-bold bg-[#f1f5f9] cursor-not-allowed" title="Contact an administrator to change your ID">
+                                </div>
+                                <div class="col-span-2 sm:col-span-1">
+                                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Full Name</label>
+                                    <input type="text" id="profileName" disabled class="form-input w-full p-2.5 border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] font-semibold bg-[#f8fafb]">
+                                </div>
                             </div>
-                            <div>
-                                <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Phone Number</label>
-                                <input type="tel" id="profilePhone" disabled placeholder="e.g. 555-1234" class="form-input w-full p-2.5 border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] font-semibold bg-[#f8fafb]">
+                            
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="col-span-2 sm:col-span-1">
+                                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Email Address</label>
+                                    <input type="email" id="profileEmail" disabled placeholder="e.g. teacher@school.edu" class="form-input w-full p-2.5 border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] font-semibold bg-[#f8fafb]">
+                                </div>
+                                <div class="col-span-2 sm:col-span-1">
+                                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Phone Number</label>
+                                    <input type="tel" id="profilePhone" disabled placeholder="e.g. 555-1234" class="form-input w-full p-2.5 border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] font-semibold bg-[#f8fafb]">
+                                </div>
                             </div>
                             
                             <div id="profileActionBtns" class="hidden flex gap-2 mt-auto pt-2">
