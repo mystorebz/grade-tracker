@@ -54,47 +54,49 @@
         .cls-cb-item label { font-weight: 800; font-size: 0.88rem; color: #1e293b; cursor: pointer; flex: 1; }
     </style>
 </head>
-<body id="loginScreen" class="min-h-screen flex flex-col items-center justify-center p-4 overflow-y-auto relative">
+<body class="min-h-screen flex flex-col items-center justify-center p-4 overflow-y-auto relative">
 
     <div class="orb orb-1"></div>
     <div class="orb orb-2"></div>
     <div class="orb orb-3"></div>
 
-    <div class="relative z-10 mb-5 w-full max-w-md">
-        <a href="../" class="back-btn text-white/80 hover:text-white transition"><i class="fa-solid fa-arrow-left text-xs"></i> Back to Main Site</a>
-    </div>
+    <div id="loginScreen" class="w-full flex flex-col items-center justify-center relative z-10">
+        <div class="mb-5 w-full max-w-md text-left">
+            <a href="../" class="back-btn text-white/80 hover:text-white transition"><i class="fa-solid fa-arrow-left text-xs"></i> Back to Main Site</a>
+        </div>
 
-    <div class="login-card relative z-10 bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden">
-        <div class="h-2 bg-gradient-to-r from-emerald-600 via-teal-400 to-emerald-500"></div>
-        <div class="pt-8 pb-6 px-10 text-center border-b border-slate-100">
-            <div class="logo-bob inline-block mb-3">
-                <div class="logo-glow inline-block">
-                    <img src="../assets/images/logo.png" alt="ConnectUs" class="h-24 w-auto mx-auto">
+        <div class="login-card bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden">
+            <div class="h-2 bg-gradient-to-r from-emerald-600 via-teal-400 to-emerald-500"></div>
+            <div class="pt-8 pb-6 px-10 text-center border-b border-slate-100">
+                <div class="logo-bob inline-block mb-3">
+                    <div class="logo-glow inline-block">
+                        <img src="../assets/images/logo.png" alt="ConnectUs" class="h-24 w-auto mx-auto">
+                    </div>
+                </div>
+                <h1 class="text-2xl font-black text-slate-800 tracking-tight">Teacher Portal</h1>
+                <p class="text-slate-500 text-sm mt-1 font-semibold">Your classroom command center</p>
+                <div class="flex items-center justify-center gap-2 mt-4 flex-wrap">
+                    <span class="bg-emerald-50 text-emerald-700 text-[11px] font-black px-3 py-1 rounded-full border border-emerald-100"><i class="fa-solid fa-book mr-1"></i>Gradebook</span>
+                    <span class="bg-teal-50 text-teal-700 text-[11px] font-black px-3 py-1 rounded-full border border-teal-100"><i class="fa-solid fa-users mr-1"></i>Roster</span>
                 </div>
             </div>
-            <h1 class="text-2xl font-black text-slate-800 tracking-tight">Teacher Portal</h1>
-            <p class="text-slate-500 text-sm mt-1 font-semibold">Your classroom command center</p>
-            <div class="flex items-center justify-center gap-2 mt-4 flex-wrap">
-                <span class="bg-emerald-50 text-emerald-700 text-[11px] font-black px-3 py-1 rounded-full border border-emerald-100"><i class="fa-solid fa-book mr-1"></i>Gradebook</span>
-                <span class="bg-teal-50 text-teal-700 text-[11px] font-black px-3 py-1 rounded-full border border-teal-100"><i class="fa-solid fa-users mr-1"></i>Roster</span>
+            <div class="p-8 space-y-5">
+                <div>
+                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2"><i class="fa-solid fa-school mr-1.5 text-emerald-500"></i>School ID</label>
+                    <input type="text" id="loginSchoolId" placeholder="e.g. LA1234" class="login-input">
+                </div>
+                <div>
+                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2"><i class="fa-solid fa-key mr-1.5 text-emerald-500"></i>Teacher Code</label>
+                    <input type="password" id="loginTeacherCode" placeholder="Your login code" class="login-input uppercase font-mono tracking-widest">
+                </div>
+                <button id="loginBtn" class="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-black py-4 rounded-2xl transition shadow-lg shadow-emerald-500/25 text-base flex justify-center items-center gap-2">
+                    <i class="fa-solid fa-arrow-right-to-bracket"></i> Access Portal
+                </button>
+                <p id="loginMsg" class="text-sm text-center font-bold hidden text-red-600 bg-red-50 p-3 rounded-xl border border-red-100"></p>
             </div>
-        </div>
-        <div class="p-8 space-y-5">
-            <div>
-                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2"><i class="fa-solid fa-school mr-1.5 text-emerald-500"></i>School ID</label>
-                <input type="text" id="loginSchoolId" placeholder="e.g. LA1234" class="login-input">
+            <div class="px-8 pb-7 text-center">
+                <p class="text-xs text-slate-400 font-semibold">© 2026 ConnectUs · Powered by Kismet Code Digital</p>
             </div>
-            <div>
-                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2"><i class="fa-solid fa-key mr-1.5 text-emerald-500"></i>Teacher Code</label>
-                <input type="password" id="loginTeacherCode" placeholder="Your login code" class="login-input uppercase font-mono tracking-widest">
-            </div>
-            <button id="loginBtn" class="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-black py-4 rounded-2xl transition shadow-lg shadow-emerald-500/25 text-base flex justify-center items-center gap-2">
-                <i class="fa-solid fa-arrow-right-to-bracket"></i> Access Portal
-            </button>
-            <p id="loginMsg" class="text-sm text-center font-bold hidden text-red-600 bg-red-50 p-3 rounded-xl border border-red-100"></p>
-        </div>
-        <div class="px-8 pb-7 text-center">
-            <p class="text-xs text-slate-400 font-semibold">© 2026 ConnectUs · Powered by Kismet Code Digital</p>
         </div>
     </div>
 
