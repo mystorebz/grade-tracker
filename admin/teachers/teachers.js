@@ -133,6 +133,17 @@ document.getElementById('saveTeacherBtn').addEventListener('click', async () => 
             subjects: [],
             classes: [],
             className: '',
+            // Added default customGradeTypes to ensure Grade Form has data immediately
+            customGradeTypes: [
+                "Test",
+                "Quiz",
+                "Assignment",
+                "Homework",
+                "Project",
+                "Midterm Exam",
+                "Final Exam",
+                "Independent Work"
+            ],
             archived: false,
             archivedAt: null,
             requiresPinReset: true,
