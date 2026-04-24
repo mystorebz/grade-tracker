@@ -4,135 +4,145 @@ import { requireAuth } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { gradeColorClass } from '../../assets/js/utils.js';
 
-// ── 1. AUTHENTICATION & LAYOUT ──────────────────────────────────────────────
+// ── 1. AUTH & LAYOUT ─────────────────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
 if (session) {
-    // Inject Sidebar & Topbar (Page ID: 'overview', Title: 'Overview', Subtitle, Search: false)
     injectTeacherLayout('overview', 'Overview', 'Classroom dashboard', false);
 }
 
-// ── 2. STATE VARIABLES ──────────────────────────────────────────────────────
+// ── 2. STATE ─────────────────────────────────────────────────────────────────
 let allStudents = [];
-let studentMap = {};
-let allGrades = [];
+let studentMap  = {};
+let allGrades   = [];
 
-// ── 3. INITIALIZATION ───────────────────────────────────────────────────────
+// ── 3. INIT ───────────────────────────────────────────────────────────────────
 async function init() {
     if (!session) return;
 
-    // Populate Sidebar Details specific to this Teacher
+    // Personalise the greeting with the teacher's actual name
+    const greeting = document.querySelector('.page-header-greeting');
+    if (greeting) {
+        const hour = new Date().getHours();
+        const salutation = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+        const firstName  = session.teacherData.name.split(' ')[0];
+        greeting.textContent = `${salutation}, ${firstName}.`;
+    }
+
+    // Populate sidebar teacher info
     document.getElementById('displayTeacherName').textContent = session.teacherData.name;
-    document.getElementById('teacherAvatar').textContent = session.teacherData.name.charAt(0).toUpperCase();
-    document.getElementById('sidebarSchoolId').textContent = session.schoolId;
+    document.getElementById('teacherAvatar').textContent      = session.teacherData.name.charAt(0).toUpperCase();
+    document.getElementById('sidebarSchoolId').textContent    = session.schoolId;
 
     const classes = session.teacherData.classes || [session.teacherData.className || ''];
-    document.getElementById('displayTeacherClasses').innerHTML = classes.map(c => `<span class="class-pill">${c}</span>`).join('');
+    document.getElementById('displayTeacherClasses').innerHTML =
+        classes.filter(Boolean).map(c => `<span class="class-pill">${c}</span>`).join('');
 
     await loadSemesters();
     await fetchMetrics();
 }
 
-// ── 4. LOAD SEMESTERS (WITH CACHING FOR SPEED) ──────────────────────────────
+// ── 4. SEMESTERS (cached in localStorage to avoid repeat Firestore reads) ──────
 async function loadSemesters() {
     try {
         let rawSemesters = [];
-        const cachedSemesters = sessionStorage.getItem('connectUs_semesters');
+        const cacheKey   = `connectus_semesters_${session.schoolId}`;
+        const cached     = localStorage.getItem(cacheKey);
 
-        // Check if we already have it saved in the browser memory
-        if (cachedSemesters) {
-            rawSemesters = JSON.parse(cachedSemesters);
+        if (cached) {
+            rawSemesters = JSON.parse(cached);
         } else {
-            // Otherwise, fetch from Firebase and save for next time
             const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
-            rawSemesters = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
-            sessionStorage.setItem('connectUs_semesters', JSON.stringify(rawSemesters));
+            rawSemesters  = semSnap.docs
+                .map(d => ({ id: d.id, ...d.data() }))
+                .sort((a, b) => (a.order || 0) - (b.order || 0));
+            localStorage.setItem(cacheKey, JSON.stringify(rawSemesters));
         }
 
         const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
-        const activeId = schoolSnap.data()?.activeSemesterId || '';
+        const activeId   = schoolSnap.data()?.activeSemesterId || '';
 
         const semSel = document.getElementById('activeSemester');
         if (semSel) {
             semSel.innerHTML = '';
             rawSemesters.forEach(s => {
-                semSel.innerHTML += `<option value="${s.id}"${s.id === activeId ? ' selected' : ''}>${s.name}</option>`;
+                const opt      = document.createElement('option');
+                opt.value      = s.id;
+                opt.textContent = s.name;
+                if (s.id === activeId) opt.selected = true;
+                semSel.appendChild(opt);
             });
-
-            // Re-fetch metrics if the teacher switches the period from the Topbar
-            semSel.addEventListener('change', () => {
-                fetchMetrics();
-            });
+            semSel.addEventListener('change', fetchMetrics);
         }
     } catch (e) {
-        console.error("Error loading semesters:", e);
+        console.error('[Overview] loadSemesters:', e);
     }
 }
 
-// ── 5. FETCH & RENDER DASHBOARD DATA ───────────────────────────────────────
+// ── 5. FETCH & RENDER DASHBOARD DATA ─────────────────────────────────────────
 async function fetchMetrics() {
     try {
-        const semSel = document.getElementById('activeSemester');
-        const semId = semSel ? semSel.value : null;
+        const semSel  = document.getElementById('activeSemester');
+        const semId   = semSel ? semSel.value : null;
         const semName = semSel ? semSel.options[semSel.selectedIndex]?.text : '—';
 
-        // Update sidebar period readout
+        // Update sidebar period display
         const sbPeriod = document.getElementById('sb-period');
         if (sbPeriod) sbPeriod.textContent = semName;
 
-        // 5a. Get Active Students assigned to this Teacher
+        // ── 5a. Students ────────────────────────────────────────────────────
         const stuQuery = query(
             collection(db, 'schools', session.schoolId, 'students'),
-            where('archived', '==', false),
-            where('teacherId', '==', session.teacherId)
+            where('archived',   '==', false),
+            where('teacherId',  '==', session.teacherId)
         );
-        const stuSnap = await getDocs(stuQuery);
-        allStudents = stuSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-        studentMap = {};
+        const stuSnap   = await getDocs(stuQuery);
+        allStudents     = stuSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        studentMap      = {};
         allStudents.forEach(s => { studentMap[s.id] = s.name; });
 
-        // Render Student Counts
+        // Update stat cards + sidebar
         document.getElementById('stat-students').textContent = allStudents.length;
         const sbStudents = document.getElementById('sb-students');
         if (sbStudents) sbStudents.textContent = allStudents.length;
 
-        // Bail out early if no students or no active semester
+        // Early exit if nothing to show
         if (!semId || !allStudents.length) {
             document.getElementById('stat-grades').textContent = '0';
-            document.getElementById('stat-risk').textContent = '0';
+            document.getElementById('stat-risk').textContent   = '0';
             const sbRisk = document.getElementById('sb-risk');
             if (sbRisk) sbRisk.textContent = '0';
-            
-            document.getElementById('recentActivityList').innerHTML = '<div class="flex items-center justify-center h-full text-slate-400 italic text-sm">No recent grades logged.</div>';
-            document.getElementById('needsAttentionList').innerHTML = '<div class="flex items-center justify-center h-full text-slate-400 italic text-sm">No at-risk students found.</div>';
+            renderEmptyActivity();
+            renderEmptyRisk();
             return;
         }
 
-        // 5b. Fetch Grades for the Active Semester
+        // ── 5b. Grades (one query per student, run in parallel) ─────────────
         allGrades = [];
         await Promise.all(allStudents.map(async s => {
             try {
-                const gQuery = query(collection(db, 'schools', session.schoolId, 'students', s.id, 'grades'), where('semesterId', '==', semId));
+                const gQuery = query(
+                    collection(db, 'schools', session.schoolId, 'students', s.id, 'grades'),
+                    where('semesterId', '==', semId)
+                );
                 const gSnap = await getDocs(gQuery);
                 gSnap.forEach(d => allGrades.push({ id: d.id, studentId: s.id, studentName: s.name, ...d.data() }));
             } catch (e) {
-                console.error(`Failed to fetch grades for ${s.id}:`, e);
+                console.error(`[Overview] grades for ${s.id}:`, e);
             }
         }));
 
         document.getElementById('stat-grades').textContent = allGrades.length;
 
-        // 5c. Calculate Needs Attention / At Risk Data (< 65%)
+        // ── 5c. At-Risk calculation (avg < 65%) ─────────────────────────────
         const stuG = {};
         allGrades.forEach(g => {
             if (!stuG[g.studentId]) stuG[g.studentId] = { total: 0, count: 0 };
-            stuG[g.studentId].total += (g.max ? (g.score / g.max) * 100 : 0);
+            stuG[g.studentId].total += g.max ? (g.score / g.max) * 100 : 0;
             stuG[g.studentId].count++;
         });
 
-        let riskStudents = [];
-        Object.keys(stuG).forEach(sid => {
-            const sg = stuG[sid];
+        const riskStudents = [];
+        Object.entries(stuG).forEach(([sid, sg]) => {
             if (sg.count > 0) {
                 const avg = Math.round(sg.total / sg.count);
                 if (avg < 65) riskStudents.push({ sid, name: studentMap[sid] || 'Unknown', avg });
@@ -142,46 +152,194 @@ async function fetchMetrics() {
         const riskCount = riskStudents.length;
         document.getElementById('stat-risk').textContent = riskCount;
         const sbRisk = document.getElementById('sb-risk');
-        if (sbRisk) sbRisk.textContent = riskCount;
-
-        if (riskCount > 0) {
-            document.getElementById('atRiskBanner').classList.remove('hidden');
-            document.getElementById('atRiskMsg').textContent = `${riskCount} student${riskCount > 1 ? 's are' : ' is'} at risk (below 65%) this period.`;
-            document.getElementById('needsAttentionList').innerHTML = riskStudents.sort((a, b) => a.avg - b.avg).map(s => `
-                <a href="../roster/roster.html#${s.sid}" class="flex items-center justify-between bg-white border border-rose-100 rounded-xl p-3 shadow-sm hover:shadow transition cursor-pointer block">
-                    <div class="flex items-center gap-2"><div class="w-8 h-8 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center font-black text-xs">${s.name.charAt(0)}</div><span class="font-bold text-slate-700 text-sm">${s.name}</span></div>
-                    <span class="font-black text-rose-600">${s.avg}%</span>
-                </a>`).join('');
-        } else {
-            document.getElementById('atRiskBanner').classList.add('hidden');
-            document.getElementById('needsAttentionList').innerHTML = '<div class="flex items-center justify-center h-full text-slate-400 italic text-sm">No at-risk students found!</div>';
+        if (sbRisk) {
+            sbRisk.textContent = riskCount;
+            // Add visual indicator on the sidebar pill when there are at-risk students
+            sbRisk.classList.toggle('is-risk', riskCount > 0);
         }
 
-        // 5d. Recent Activity (last 5 grades)
-        const recentGrades = [...allGrades].sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()).slice(0, 5);
-
-        if (recentGrades.length > 0) {
-            document.getElementById('recentActivityList').innerHTML = recentGrades.map(g => {
-                const pct = g.max ? Math.round(g.score / g.max * 100) : 0;
-                const colorClass = gradeColorClass(pct);
-                return `
-                    <a href="../gradebook/gradebook.html" class="flex items-start gap-3 p-3 hover:bg-slate-50 rounded-xl transition cursor-pointer border-b border-slate-50 last:border-0 block">
-                        <div class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center text-xs flex-shrink-0 mt-0.5"><i class="fa-solid fa-plus"></i></div>
-                        <div class="flex-1 min-w-0">
-                            <p class="text-sm font-bold text-slate-700 truncate">Logged <span class="text-emerald-600">${g.score}/${g.max}</span> for ${g.studentName}</p>
-                            <p class="text-xs text-slate-400 font-semibold truncate">${g.subject} · ${g.title}</p>
-                        </div>
-                        <span class="${colorClass} font-black text-xs flex-shrink-0">${pct}%</span>
-                    </a>`;
-            }).join('');
+        // ── 5d. At-Risk banner ───────────────────────────────────────────────
+        const banner = document.getElementById('atRiskBanner');
+        const msg    = document.getElementById('atRiskMsg');
+        if (riskCount > 0) {
+            banner.classList.remove('hidden');
+            msg.textContent = `${riskCount} student${riskCount !== 1 ? 's are' : ' is'} averaging below 65% this period.`;
         } else {
-            document.getElementById('recentActivityList').innerHTML = '<div class="flex items-center justify-center h-full text-slate-400 italic text-sm">No recent grades logged.</div>';
+            banner.classList.add('hidden');
+        }
+
+        // ── 5e. Needs Attention list ─────────────────────────────────────────
+        if (riskCount > 0) {
+            document.getElementById('needsAttentionList').innerHTML =
+                riskStudents
+                    .sort((a, b) => a.avg - b.avg)
+                    .map(s => renderRiskItem(s))
+                    .join('');
+        } else {
+            renderEmptyRisk();
+        }
+
+        // ── 5f. Recent Activity (last 8, table rows) ─────────────────────────
+        const recent = [...allGrades]
+            .sort((a, b) => new Date(b.createdAt || b.date || 0) - new Date(a.createdAt || a.date || 0))
+            .slice(0, 8);
+
+        if (recent.length > 0) {
+            document.getElementById('recentActivityList').innerHTML =
+                recent.map(g => renderActivityRow(g)).join('');
+        } else {
+            renderEmptyActivity();
         }
 
     } catch (e) {
-        console.error("Error fetching dashboard metrics:", e);
+        console.error('[Overview] fetchMetrics:', e);
     }
 }
 
-// Fire it up
+// ── 6. RENDER HELPERS ─────────────────────────────────────────────────────────
+
+/**
+ * Renders a single recent-activity row as a 5-column table-style flex row.
+ * Columns: Student & Assignment | Subject | Type | Score | Grade %
+ */
+function renderActivityRow(g) {
+    const pct        = g.max ? Math.round((g.score / g.max) * 100) : 0;
+    const colorClass = gradeColorClass(pct);
+
+    // Grade badge colours
+    const badgeStyle = pct >= 90 ? 'background:#dcfce7;color:#166534;border:1px solid #bbf7d0;'
+                     : pct >= 80 ? 'background:#dbeafe;color:#1e40af;border:1px solid #bfdbfe;'
+                     : pct >= 70 ? 'background:#ccfbf1;color:#115e59;border:1px solid #99f6e4;'
+                     : pct >= 65 ? 'background:#fef3c7;color:#92400e;border:1px solid #fde68a;'
+                     :             'background:#fee2e2;color:#991b1b;border:1px solid #fecaca;';
+
+    // Friendly date
+    let dateStr = '—';
+    if (g.createdAt || g.date) {
+        try {
+            dateStr = new Date(g.createdAt || g.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        } catch (_) { /* ignore */ }
+    }
+
+    const initial = (g.studentName || '?').charAt(0).toUpperCase();
+
+    return `
+    <a href="../gradebook/gradebook.html"
+       style="display:grid;grid-template-columns:1fr 100px 80px 64px 80px;
+              align-items:center;padding:11px 20px;border-bottom:1px solid #f0f4f9;
+              text-decoration:none;transition:background 0.12s;cursor:pointer;"
+       onmouseover="this.style.background='#f8fafc'"
+       onmouseout="this.style.background=''">
+
+      <!-- Student & Assignment -->
+      <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+        <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#0ea871,#053d29);
+                    color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;
+                    justify-content:center;flex-shrink:0;">${initial}</div>
+        <div style="min-width:0;">
+          <p style="font-size:12.5px;font-weight:600;color:#0d1f35;margin:0;
+                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            ${escHtml(g.studentName || 'Unknown')}
+          </p>
+          <p style="font-size:11px;color:#9ab0c6;font-weight:400;margin:0;
+                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            ${escHtml(g.title || 'Assessment')} · ${dateStr}
+          </p>
+        </div>
+      </div>
+
+      <!-- Subject -->
+      <div style="font-size:12px;font-weight:500;color:#374f6b;
+                  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+        ${escHtml(g.subject || '—')}
+      </div>
+
+      <!-- Type -->
+      <div style="font-size:11px;color:#9ab0c6;font-weight:400;">
+        ${escHtml(g.type || '—')}
+      </div>
+
+      <!-- Score -->
+      <div style="font-size:12px;font-weight:600;color:#374f6b;text-align:right;
+                  font-family:'DM Mono',monospace;">
+        ${g.score}/${g.max || '?'}
+      </div>
+
+      <!-- Grade % badge -->
+      <div style="text-align:right;">
+        <span style="${badgeStyle}padding:2px 8px;border-radius:99px;
+                     font-size:11px;font-weight:700;font-family:'DM Mono',monospace;">
+          ${pct}%
+        </span>
+      </div>
+
+    </a>`;
+}
+
+/**
+ * Renders a single at-risk student card in the Needs Attention panel.
+ */
+function renderRiskItem(s) {
+    const initial = (s.name || '?').charAt(0).toUpperCase();
+    return `
+    <a href="../roster/roster.html#${escHtml(s.sid)}"
+       style="display:flex;align-items:center;justify-content:space-between;
+              background:#fff;border:1px solid #ffd6de;border-radius:10px;
+              padding:10px 12px;text-decoration:none;
+              transition:box-shadow 0.15s;cursor:pointer;"
+       onmouseover="this.style.boxShadow='0 2px 8px rgba(220,38,38,0.1)'"
+       onmouseout="this.style.boxShadow=''">
+      <div style="display:flex;align-items:center;gap:9px;">
+        <div style="width:30px;height:30px;border-radius:8px;background:#fee2e2;
+                    color:#dc2626;font-size:12px;font-weight:700;
+                    display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          ${initial}
+        </div>
+        <span style="font-size:13px;font-weight:600;color:#0d1f35;">
+          ${escHtml(s.name)}
+        </span>
+      </div>
+      <span style="font-size:12px;font-weight:700;color:#be123c;
+                   background:#fee2e2;padding:2px 9px;border-radius:99px;
+                   border:1px solid #fecaca;font-family:'DM Mono',monospace;">
+        ${s.avg}%
+      </span>
+    </a>`;
+}
+
+function renderEmptyActivity() {
+    document.getElementById('recentActivityList').innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+                    padding:48px 20px;gap:8px;color:#9ab0c6;">
+            <i class="fa-solid fa-inbox" style="font-size:22px;"></i>
+            <p style="font-size:12.5px;margin:0;font-weight:400;">No grades logged yet this period.</p>
+            <a href="../grade_form/grade_form.html"
+               style="font-size:12px;font-weight:600;color:#0b8f5e;text-decoration:none;margin-top:4px;">
+               + Enter your first grade →
+            </a>
+        </div>`;
+}
+
+function renderEmptyRisk() {
+    document.getElementById('needsAttentionList').innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+                    padding:40px 20px;gap:8px;color:#9ab0c6;">
+            <i class="fa-solid fa-circle-check" style="font-size:22px;color:#0ea871;"></i>
+            <p style="font-size:12.5px;margin:0;font-weight:400;text-align:center;">
+                All students on track!
+            </p>
+        </div>`;
+}
+
+/** Escapes HTML special characters to prevent XSS in rendered student data. */
+function escHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+// ── 7. FIRE ───────────────────────────────────────────────────────────────────
 init();
