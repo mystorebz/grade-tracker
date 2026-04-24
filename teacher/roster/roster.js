@@ -203,6 +203,9 @@ async function loadStudents() {
             // Make sure risk shows 0, not the loading placeholder
             const sbRisk0 = document.getElementById('sb-risk');
             if (sbRisk0) { sbRisk0.textContent = '0'; sbRisk0.classList.remove('is-risk'); }
+            
+            // CACHE STATS GLOBALLY
+            localStorage.setItem('connectus_sidebar_stats', JSON.stringify({ students: 0, risk: 0 }));
             return;
         }
 
@@ -267,6 +270,9 @@ async function loadStudents() {
             sbRisk.classList.toggle('is-risk', riskCount > 0);
         }
 
+        // CACHE STATS GLOBALLY
+        localStorage.setItem('connectus_sidebar_stats', JSON.stringify({ students: allStudentsCache.length, risk: riskCount }));
+
         applyRosterFilters();
 
     } catch (e) {
@@ -282,6 +288,9 @@ async function loadStudents() {
         if (sbStudentsErr) sbStudentsErr.textContent = allStudentsCache.length || '0';
         const sbRiskErr = document.getElementById('sb-risk');
         if (sbRiskErr) { sbRiskErr.textContent = '0'; sbRiskErr.classList.remove('is-risk'); }
+
+        // CACHE STATS GLOBALLY ON ERROR
+        localStorage.setItem('connectus_sidebar_stats', JSON.stringify({ students: allStudentsCache.length || 0, risk: 0 }));
     }
 }
 
