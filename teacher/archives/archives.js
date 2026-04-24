@@ -25,6 +25,13 @@ function escHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
+// ── HELPER: resolve correct teacher document path (global vs legacy) ──────────
+function getTeacherRef() {
+    return /^T\d{2}-[A-Z0-9]{5}$/i.test(session.teacherId)
+        ? doc(db, 'teachers', session.teacherId)
+        : doc(db, 'schools', session.schoolId, 'teachers', session.teacherId);
+}
+
 // ── 3. INITIALIZATION ───────────────────────────────────────────────────────
 async function init() {
     if (!session) return;
@@ -103,9 +110,11 @@ async function loadArchivesTab() {
     subjectListEl.innerHTML = '<div class="text-center py-10 text-[#9ab0c6] text-[13px] font-bold"><i class="fa-solid fa-spinner fa-spin text-[#2563eb] text-2xl mb-3 block"></i>Loading archived subjects...</div>';
 
     try {
+        // CHANGED: query global /students for non-active students at this school
         const q = query(
-            collection(db, 'schools', session.schoolId, 'students'),
-            where('archived', '==', true)
+            collection(db, 'students'),
+            where('currentSchoolId', '==', session.schoolId),
+            where('enrollmentStatus', 'in', ['Archived', 'Graduated', 'Expelled', 'Dropped Out'])
         );
         const snap = await getDocs(q);
         
@@ -175,10 +184,11 @@ window.filterArchivedStudents = function() {
 // ── 5. STUDENT ACTIONS ──────────────────────────────────────────────────────
 window.restoreStudent = async function(id) {
     try {
-        await updateDoc(doc(db, 'schools', session.schoolId, 'students', id), {
-            archived: false,
-            archivedAt: null,
-            teacherId: session.teacherId 
+        // CHANGED: update global student doc
+        await updateDoc(doc(db, 'students', id), {
+            enrollmentStatus: 'Active',
+            currentSchoolId:  session.schoolId,
+            teacherId:        session.teacherId
         });
         loadArchivesTab(); 
     } catch (e) {
@@ -191,15 +201,13 @@ window.permanentDeleteStudent = async function(id, studentName) {
     if (!confirm(`Permanently delete ${studentName} and ALL their grades?\n\nWARNING: This action CANNOT be undone.`)) return;
     
     try {
+        // Grades still at siloed path; student doc now global
         const gradesSnap = await getDocs(collection(db, 'schools', session.schoolId, 'students', id, 'grades'));
         const batch = writeBatch(db);
-        
         gradesSnap.forEach(d => batch.delete(d.ref));
-        if (!gradesSnap.empty) {
-            await batch.commit();
-        }
-        
-        await deleteDoc(doc(db, 'schools', session.schoolId, 'students', id));
+        if (!gradesSnap.empty) { await batch.commit(); }
+        // CHANGED: delete from global /students
+        await deleteDoc(doc(db, 'students', id));
         loadArchivesTab(); 
     } catch (e) {
         console.error('[Archives] Deletion error:', e);
@@ -214,7 +222,8 @@ window.restoreSubject = async function(subjectId) {
     );
     
     try {
-        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { subjects: newSubs });
+        // CHANGED: use getTeacherRef() for global/legacy compatibility
+        await updateDoc(getTeacherRef(), { subjects: newSubs });
         session.teacherData.subjects = newSubs;
         setSessionData('teacher', session);
         loadArchivesTab();
@@ -232,7 +241,7 @@ window.permanentDeleteSubject = async function(subjectId, subjectName) {
     
     const newSubs = session.teacherData.subjects.filter(s => s.id !== subjectId);
     try {
-        await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', session.teacherId), { subjects: newSubs });
+        await updateDoc(getTeacherRef(), { subjects: newSubs });
         session.teacherData.subjects = newSubs;
         setSessionData('teacher', session);
         loadArchivesTab();
@@ -259,11 +268,9 @@ window.executeStudentPrint = async function() {
     const studentId = currentStudentId;
     
     try {
-        const sDoc = await getDoc(doc(db, 'schools', session.schoolId, 'students', studentId));
-        if (!sDoc.exists()) {
-            alert('Student not found.');
-            return;
-        }
+        // CHANGED: student doc from global /students
+        const sDoc = await getDoc(doc(db, 'students', studentId));
+        if (!sDoc.exists()) { alert('Student not found.'); return; }
         
         const s = sDoc.data();
         const gradesSnap = await getDocs(collection(db, 'schools', session.schoolId, 'students', studentId, 'grades'));
