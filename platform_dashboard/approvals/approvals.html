@@ -11,14 +11,12 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body class="bg-slate-900 text-slate-300 font-sans antialiased min-h-screen flex overflow-hidden">
 
     <aside class="w-64 bg-slate-950 border-r border-slate-800 flex flex-col h-screen flex-shrink-0 relative z-20">
         <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-400 to-teal-600"></div>
-        
         <div class="h-20 flex flex-row items-center gap-3 px-6 border-b border-slate-800/50">
             <img src="../../assets/images/logo.png" alt="ConnectUs" class="h-8 w-auto drop-shadow-md">
             <div>
@@ -40,11 +38,7 @@
             <a href="../organizations/organizations.html" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition">
                 <i class="fa-solid fa-sitemap w-5 text-center"></i> Organizations
             </a>
-            
-            <div class="pt-6 pb-2">
-                <p class="px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest">Platform Settings</p>
-            </div>
-            
+            <div class="pt-6 pb-2"><p class="px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest">Platform Settings</p></div>
             <a href="../team/team.html" id="navTeamBtn" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition">
                 <i class="fa-solid fa-user-shield w-5 text-center"></i> HQ Team
             </a>
@@ -56,9 +50,7 @@
                     <p id="hqAdminName" class="text-xs font-bold text-white leading-tight truncate">Admin</p>
                     <p id="hqAdminId" class="text-[10px] text-slate-500 font-mono mt-0.5">HQ-XXXXX</p>
                 </div>
-                <button id="logoutBtn" class="text-slate-400 hover:text-red-400 transition ml-2" title="Logout">
-                    <i class="fa-solid fa-power-off"></i>
-                </button>
+                <button id="logoutBtn" class="text-slate-400 hover:text-red-400 transition ml-2" title="Logout"><i class="fa-solid fa-power-off"></i></button>
             </div>
         </div>
     </aside>
@@ -67,7 +59,7 @@
         <header class="h-20 flex items-center justify-between px-8 border-b border-slate-800 bg-slate-900/50 backdrop-blur-md flex-shrink-0">
             <div>
                 <h2 class="text-xl font-black text-white tracking-wide">Approvals & Quotes</h2>
-                <p class="text-xs text-slate-400 font-semibold mt-1">Process payments and initialize school environments.</p>
+                <p class="text-xs text-slate-400 font-semibold mt-1">Review school requests, log payments, and initialize access.</p>
             </div>
         </header>
 
@@ -97,48 +89,97 @@
         </div>
     </main>
 
-    <div id="paymentModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
-        <div class="bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 max-w-md w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden" id="paymentModalInner">
-            <div class="h-1.5 bg-gradient-to-r from-blue-500 to-emerald-400"></div>
-            <div class="p-8">
+    <div id="paymentModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300 overflow-y-auto py-10">
+        <div class="bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 w-full max-w-5xl m-4 transform scale-95 transition-transform duration-300 overflow-hidden flex flex-col md:flex-row" id="paymentModalInner">
+            
+            <div class="md:w-2/3 p-8 border-b md:border-b-0 md:border-r border-slate-700 bg-slate-800/50">
                 <div class="flex justify-between items-start mb-6">
                     <div>
-                        <h3 class="font-black text-xl text-white">Approve & Send Link</h3>
-                        <p id="modalSchoolName" class="text-xs font-bold text-emerald-400 mt-1 uppercase tracking-widest"></p>
+                        <h3 class="font-black text-2xl text-white">Quote Request Details</h3>
+                        <p id="vReqId" class="text-xs font-mono font-bold text-blue-400 mt-1 uppercase tracking-widest"></p>
                     </div>
-                    <button id="closeModalBtn" class="text-slate-500 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+                    <button id="closeModalBtnMobile" class="md:hidden text-slate-500 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
                 </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div class="bg-slate-900 border border-slate-700 rounded-xl p-5">
+                        <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 border-b border-slate-800 pb-2"><i class="fa-solid fa-user mr-1"></i> Contact Info</p>
+                        <p class="text-sm font-bold text-white mb-1" id="vName">-</p>
+                        <p class="text-xs text-slate-400 mb-3" id="vRole">-</p>
+                        <p class="text-xs text-slate-300 mb-1"><i class="fa-solid fa-envelope w-4 text-slate-500"></i> <span id="vEmail">-</span></p>
+                        <p class="text-xs text-slate-300"><i class="fa-solid fa-phone w-4 text-slate-500"></i> <span id="vPhone">-</span></p>
+                    </div>
+
+                    <div class="bg-slate-900 border border-slate-700 rounded-xl p-5">
+                        <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 border-b border-slate-800 pb-2"><i class="fa-solid fa-school mr-1"></i> School Info</p>
+                        <p class="text-sm font-bold text-white mb-1" id="vSchoolName">-</p>
+                        <p class="text-xs text-slate-400 mb-3" id="vSchoolType">-</p>
+                        <p class="text-xs text-slate-300 mb-1"><i class="fa-solid fa-location-dot w-4 text-slate-500"></i> <span id="vLocation">-</span></p>
+                        <div class="flex gap-4 mt-3">
+                            <div class="bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700">
+                                <span class="text-[9px] block text-slate-500 uppercase font-bold">Students</span>
+                                <span class="text-sm font-black text-white" id="vStudents">-</span>
+                            </div>
+                            <div class="bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700">
+                                <span class="text-[9px] block text-slate-500 uppercase font-bold">Teachers</span>
+                                <span class="text-sm font-black text-white" id="vTeachers">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-700 rounded-xl p-5 mb-6">
+                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 border-b border-slate-800 pb-2"><i class="fa-solid fa-file-contract mr-1"></i> Contract Details</p>
+                    <p class="text-sm font-bold text-white mb-1" id="vContractTerm">-</p>
+                    <p class="text-xs text-slate-400" id="vContractDuration">-</p>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-700 rounded-xl p-5">
+                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 border-b border-slate-800 pb-2"><i class="fa-solid fa-comment-dots mr-1"></i> Notes & Source</p>
+                    <p class="text-xs text-slate-400 font-bold mb-2">Source: <span class="text-slate-300 font-normal" id="vSource">-</span></p>
+                    <div class="bg-slate-800 p-3 rounded-lg text-sm text-slate-300 italic border border-slate-700" id="vMessage">No additional message provided.</div>
+                </div>
+            </div>
+
+            <div class="md:w-1/3 bg-slate-900 p-8 relative flex flex-col justify-between">
+                <button id="closeModalBtnDesktop" class="hidden md:block absolute top-6 right-6 text-slate-500 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
                 
-                <div class="space-y-4">
-                    <p class="text-sm text-slate-400 font-semibold mb-4">Logging payment will verify the account and instantly email the secure onboarding link to <span id="modalContactEmail" class="text-white font-bold"></span>.</p>
+                <div>
+                    <h3 class="font-black text-lg text-emerald-400 border-b border-emerald-900/50 pb-3 mb-6"><i class="fa-solid fa-money-check-dollar mr-2"></i> Log Payment & Activate</h3>
                     
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="space-y-5">
                         <div>
                             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Amount Paid (BZD)</label>
-                            <input type="number" id="payAmount" placeholder="e.g. 500" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition">
+                            <input type="number" id="payAmount" placeholder="e.g. 500" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition">
                         </div>
+                        
                         <div>
                             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Billing Cycle</label>
-                            <select id="payCycle" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition">
+                            <select id="payCycle" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition">
                                 <option value="Monthly">Monthly</option>
                                 <option value="Yearly">Yearly</option>
                             </select>
                         </div>
-                    </div>
 
-                    <div class="pt-2">
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Attach Proof of Payment (Optional)</label>
-                        <div class="relative">
-                            <input type="file" id="payReceipt" accept="image/*,.pdf" class="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-emerald-900/30 file:text-emerald-400 hover:file:bg-emerald-900/50 transition outline-none cursor-pointer">
+                        <div class="pt-2 border-t border-slate-800">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Attach Bank Receipt / Invoice</label>
+                            <div class="relative">
+                                <input type="file" id="payReceipt" accept="image/*,.pdf" class="w-full p-2 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-400 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:uppercase file:tracking-wider file:bg-emerald-900/30 file:text-emerald-400 hover:file:bg-emerald-900/50 transition outline-none cursor-pointer">
+                            </div>
+                            <p class="text-[10px] font-semibold text-slate-500 mt-2 leading-relaxed">This file will be uploaded to the cloud and attached to the invoice record.</p>
                         </div>
                     </div>
                 </div>
 
-                <p id="paymentErrorMsg" class="text-xs font-bold text-red-400 bg-red-900/30 border border-red-800/50 p-3 rounded-lg text-center hidden mt-5"></p>
-                <button id="confirmApproveBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-xl transition shadow-lg shadow-emerald-900/50 text-sm tracking-wide mt-6">
-                    <i class="fa-solid fa-paper-plane mr-2"></i> Log Payment & Email Link
-                </button>
+                <div class="mt-8">
+                    <p id="paymentErrorMsg" class="text-xs font-bold text-red-400 bg-red-900/30 border border-red-800/50 p-3 rounded-lg text-center hidden mb-4"></p>
+                    <button id="confirmApproveBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-xl transition shadow-lg shadow-emerald-900/50 text-sm tracking-wide">
+                        Mark as Paid & Approve <i class="fa-solid fa-arrow-right ml-1"></i>
+                    </button>
+                    <p class="text-[10px] text-center font-bold text-emerald-500 mt-3">This automatically emails the onboarding link to the school.</p>
+                </div>
             </div>
+
         </div>
     </div>
 
