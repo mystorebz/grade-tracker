@@ -1,5 +1,5 @@
 import { db, storage } from '../../assets/js/firebase-init.js';
-import { collection, getDocs, doc, updateDoc, setDoc, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, getDocs, doc, updateDoc, setDoc, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
 // ── Boot Sequence: Security Check & Setup ──────────────────────────────────
@@ -23,9 +23,54 @@ let allSchools = [];
 let currentSchool = null;
 let availablePlans = [];
 
+// ── Hashing & ID Helpers ───────────────────────────────────────────────────
+async function sha256(text) {
+    const normalized  = text.toLowerCase().trim();
+    const encoded     = new TextEncoder().encode(normalized);
+    const hashBuffer  = await crypto.subtle.digest('SHA-256', encoded);
+    return Array.from(new Uint8Array(hashBuffer))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+}
+
+function generateSchoolId() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let rand = '';
+    for (let i = 0; i < 5; i++) rand += chars.charAt(Math.floor(Math.random() * chars.length));
+    return `SCH-${rand}`;
+}
+
+function generateAdminId() {
+    const year  = new Date().getFullYear().toString().slice(-2);
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let rand = '';
+    for (let i = 0; i < 5; i++) rand += chars.charAt(Math.floor(Math.random() * chars.length));
+    return `A${year}-${rand}`;
+}
+
+function calculateNewRenewalDate(cycleType, currentExpirationString) {
+    if (cycleType === 'No Extension') return currentExpirationString; 
+
+    const now = new Date();
+    let baseDate = currentExpirationString ? new Date(currentExpirationString) : now;
+    if (baseDate < now) baseDate = now; 
+
+    if (cycleType === 'Monthly') {
+        baseDate.setMonth(baseDate.getMonth() + 1);
+    } else if (cycleType === 'Annual') {
+        baseDate.setFullYear(baseDate.getFullYear() + 1);
+    } else if (cycleType === 'Multi-Year') {
+        baseDate.setFullYear(baseDate.getFullYear() + 2);
+    } else {
+        baseDate.setFullYear(baseDate.getFullYear() + 1); 
+    }
+    return baseDate.toISOString();
+}
+
 // ── Load Subscription Plans ──────────────────────────────────────────────
 async function loadSubscriptionPlans() {
-    const planSelect = document.getElementById('renPlan');
+    const renSelect = document.getElementById('renPlan');
+    const depSelect = document.getElementById('depPlan');
     try {
         const snap = await getDocs(collection(db, 'subscriptionPlans'));
         availablePlans = [];
@@ -37,23 +82,32 @@ async function loadSubscriptionPlans() {
             availablePlans.push(data);
             options += `<option value="${data.id}">${data.name}</option>`;
         });
-        planSelect.innerHTML = options;
+        
+        if(renSelect) renSelect.innerHTML = options;
+        if(depSelect) depSelect.innerHTML = options;
     } catch (e) {
         console.error("Failed to load subscription plans:", e);
-        planSelect.innerHTML = '<option value="">Error loading plans. Check Firebase rules.</option>';
+        if(renSelect) renSelect.innerHTML = '<option value="">Error loading plans. Check Firebase rules.</option>';
+        if(depSelect) depSelect.innerHTML = '<option value="">Error loading plans. Check Firebase rules.</option>';
     }
 }
 
 document.getElementById('renPlan').addEventListener('change', (e) => {
     const display = document.getElementById('renPlanLimitsDisplay');
     const selected = availablePlans.find(p => p.id === e.target.value);
-    
     if (selected) {
         display.innerHTML = `<i class="fa-solid fa-circle-check mr-1"></i> Limits: ${selected.studentLimit} Students | ${selected.teacherLimit} Teachers | ${selected.adminLimit} Admins`;
         display.classList.remove('hidden');
-    } else {
-        display.classList.add('hidden');
-    }
+    } else display.classList.add('hidden');
+});
+
+document.getElementById('depPlan').addEventListener('change', (e) => {
+    const display = document.getElementById('depPlanLimitsDisplay');
+    const selected = availablePlans.find(p => p.id === e.target.value);
+    if (selected) {
+        display.innerHTML = `<i class="fa-solid fa-circle-check mr-1"></i> Limits: ${selected.studentLimit} Students | ${selected.teacherLimit} Teachers | ${selected.adminLimit} Admins`;
+        display.classList.remove('hidden');
+    } else display.classList.add('hidden');
 });
 
 // ── Load Schools ───────────────────────────────────────────────────────────
@@ -142,23 +196,18 @@ async function loadSchoolLedger(school) {
     try {
         const payments = [];
         
-        // 1. Fetch Post-Setup Payments (Renewals, Add-ons logged with schoolId)
         const q1 = query(collection(db, 'payments'), where('schoolId', '==', school.id));
         const snap1 = await getDocs(q1);
         snap1.forEach(d => payments.push({ id: d.id, ...d.data() }));
 
-        // 2. Fetch Initial Setup Payment (Logged via Quote reqId during approval)
         if (school.originalQuoteId) {
             const q2 = query(collection(db, 'payments'), where('reqId', '==', school.originalQuoteId));
             const snap2 = await getDocs(q2);
             snap2.forEach(d => {
-                if (!payments.some(p => p.id === d.id)) {
-                    payments.push({ id: d.id, ...d.data() });
-                }
+                if (!payments.some(p => p.id === d.id)) payments.push({ id: d.id, ...d.data() });
             });
         }
 
-        // Sort by timestamp (newest first)
         payments.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
         if (payments.length === 0) {
@@ -191,7 +240,6 @@ async function loadSchoolLedger(school) {
     }
 }
 
-
 // ── Manage Node Modal ─────────────────────────────────────────────────────
 window.openSchoolModal = (schoolId) => {
     currentSchool = allSchools.find(s => s.id === schoolId);
@@ -208,7 +256,6 @@ window.openSchoolModal = (schoolId) => {
         ? new Date(currentSchool.nextRenewalDate).toLocaleDateString() 
         : 'Not Set';
 
-    // Populate Limits
     const limits = currentSchool.limits || {};
     document.getElementById('manageLimitStudents').textContent = limits.studentLimit || '0';
     document.getElementById('manageLimitTeachers').textContent = limits.teacherLimit || '0';
@@ -226,7 +273,6 @@ window.openSchoolModal = (schoolId) => {
         toggleText.textContent = "Suspend Platform Access";
     }
     
-    // Fetch and populate transaction ledger
     loadSchoolLedger(currentSchool);
 
     const modal = document.getElementById('schoolManageModal');
@@ -273,7 +319,6 @@ document.getElementById('confirmLimitsBtn').addEventListener('click', async () =
     const newStudents = parseInt(document.getElementById('ovStudents').value);
     const newTeachers = parseInt(document.getElementById('ovTeachers').value);
     const newAdmins = parseInt(document.getElementById('ovAdmins').value);
-    
     const amountPaid = document.getElementById('ovAmount').value;
     const internalNote = document.getElementById('ovNotes').value.trim();
     const receiptFile = document.getElementById('ovReceipt').files[0]; 
@@ -290,7 +335,6 @@ document.getElementById('confirmLimitsBtn').addEventListener('click', async () =
     try {
         const timestamp = new Date().toISOString();
         
-        // 1. Log Payment if an amount was entered
         if (amountPaid && amountPaid > 0) {
             btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Logging Payment...';
             const paymentId = `PAY-${Date.now()}`;
@@ -324,7 +368,6 @@ document.getElementById('confirmLimitsBtn').addEventListener('click', async () =
 
         btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Saving Overrides...';
 
-        // 2. Update the School Document Limits
         await updateDoc(doc(db, 'schools', currentSchool.id), {
             limits: {
                 studentLimit: newStudents,
@@ -333,7 +376,6 @@ document.getElementById('confirmLimitsBtn').addEventListener('click', async () =
             }
         });
 
-        // 3. Cleanup
         document.getElementById('closeLimitsBtn').click();
         document.getElementById('closeSchoolBtn').click(); 
         loadSchools(); 
@@ -343,7 +385,6 @@ document.getElementById('confirmLimitsBtn').addEventListener('click', async () =
         errorMsg.textContent = "An error occurred. Check console for details.";
         errorMsg.classList.remove('hidden');
     }
-
     btn.disabled = false;
     btn.innerHTML = 'Save Overrides & Log Payment <i class="fa-solid fa-check ml-1"></i>';
 });
@@ -358,11 +399,8 @@ document.getElementById('renCycle').addEventListener('change', (e) => {
 
 document.getElementById('openRenewalBtn').addEventListener('click', () => {
     document.getElementById('renSchoolName').textContent = currentSchool.schoolName;
-    
     document.getElementById('renPlan').value = currentSchool.subscriptionPlanId || '';
-    if(currentSchool.subscriptionPlanId) {
-        document.getElementById('renPlan').dispatchEvent(new Event('change')); 
-    }
+    if(currentSchool.subscriptionPlanId) document.getElementById('renPlan').dispatchEvent(new Event('change')); 
     
     document.getElementById('renAmount').value = '';
     document.getElementById('renCycle').value = 'No Extension'; 
@@ -385,25 +423,6 @@ const closeRenewalModal = () => {
     setTimeout(() => modal.classList.add('hidden'), 300);
 };
 document.getElementById('closeRenewalBtn').addEventListener('click', closeRenewalModal);
-
-function calculateNewRenewalDate(cycleType, currentExpirationString) {
-    if (cycleType === 'No Extension') return currentExpirationString; 
-
-    const now = new Date();
-    let baseDate = currentExpirationString ? new Date(currentExpirationString) : now;
-    if (baseDate < now) baseDate = now; 
-
-    if (cycleType === 'Monthly') {
-        baseDate.setMonth(baseDate.getMonth() + 1);
-    } else if (cycleType === 'Annual') {
-        baseDate.setFullYear(baseDate.getFullYear() + 1);
-    } else if (cycleType === 'Multi-Year') {
-        baseDate.setFullYear(baseDate.getFullYear() + 2);
-    } else {
-        baseDate.setFullYear(baseDate.getFullYear() + 1); 
-    }
-    return baseDate.toISOString();
-}
 
 document.getElementById('confirmRenewalBtn').addEventListener('click', async () => {
     const planId = document.getElementById('renPlan').value;
@@ -488,9 +507,193 @@ document.getElementById('confirmRenewalBtn').addEventListener('click', async () 
         errorMsg.textContent = "An error occurred during update. Check console for details.";
         errorMsg.classList.remove('hidden');
     }
-
     btn.disabled = false;
     btn.innerHTML = 'Update Subscription & Log Ledger <i class="fa-solid fa-arrow-rotate-right ml-1"></i>';
+});
+
+// ── Manual Deploy Logic ───────────────────────────────────────────────────
+document.getElementById('openDeployModalBtn').addEventListener('click', () => {
+    document.getElementById('depSchoolName').value = '';
+    document.getElementById('depDistrict').value = 'Belize';
+    document.getElementById('depSchoolType').value = 'Primary';
+    document.getElementById('depEmail').value = '';
+    document.getElementById('depPin').value = '';
+    
+    document.getElementById('depPlan').value = '';
+    document.getElementById('depPlanLimitsDisplay').classList.add('hidden');
+    document.getElementById('depAmount').value = '';
+    document.getElementById('depCycle').value = 'Monthly';
+    document.getElementById('depCustomCycleWrap').classList.add('hidden');
+    document.getElementById('depCustomCycle').value = '';
+    document.getElementById('depNotes').value = '';
+    document.getElementById('depReceipt').value = '';
+    document.getElementById('deployErrorMsg').classList.add('hidden');
+
+    const modal = document.getElementById('deployModal');
+    const inner = document.getElementById('deployModalInner');
+    modal.classList.remove('hidden');
+    setTimeout(() => { modal.classList.remove('opacity-0'); inner.classList.remove('scale-95'); }, 10);
+});
+
+const closeDeployModal = () => {
+    const modal = document.getElementById('deployModal');
+    const inner = document.getElementById('deployModalInner');
+    modal.classList.add('opacity-0'); inner.classList.add('scale-95');
+    setTimeout(() => modal.classList.add('hidden'), 300);
+};
+document.getElementById('closeDeployBtnDesktop').addEventListener('click', closeDeployModal);
+document.getElementById('closeDeployBtnMobile').addEventListener('click', closeDeployModal);
+
+document.getElementById('depCycle').addEventListener('change', (e) => {
+    const customWrap = document.getElementById('depCustomCycleWrap');
+    if (e.target.value === 'Other') customWrap.classList.remove('hidden');
+    else customWrap.classList.add('hidden');
+});
+
+document.getElementById('executeDeployBtn').addEventListener('click', async () => {
+    const schoolName = document.getElementById('depSchoolName').value.trim();
+    const district   = document.getElementById('depDistrict').value;
+    const schoolType = document.getElementById('depSchoolType').value;
+    const email      = document.getElementById('depEmail').value.trim();
+    const pin        = document.getElementById('depPin').value;
+    
+    const planId       = document.getElementById('depPlan').value;
+    const amount       = document.getElementById('depAmount').value;
+    const cycleSelect  = document.getElementById('depCycle').value;
+    const customCycle  = document.getElementById('depCustomCycle').value;
+    const internalNote = document.getElementById('depNotes').value.trim();
+    const receiptFile  = document.getElementById('depReceipt').files[0]; 
+    const errorMsg     = document.getElementById('deployErrorMsg');
+
+    if (!schoolName || !email || !pin || !planId || !amount) {
+        errorMsg.textContent = "Please fill in all required fields (*).";
+        errorMsg.classList.remove('hidden'); return;
+    }
+    if (pin.length < 6) {
+        errorMsg.textContent = "Admin PIN must be at least 6 characters.";
+        errorMsg.classList.remove('hidden'); return;
+    }
+
+    const selectedPlan = availablePlans.find(p => p.id === planId);
+    const actualCycle = cycleSelect === 'Other' ? (customCycle || 'Custom') : cycleSelect;
+    const btn = document.getElementById('executeDeployBtn');
+    btn.disabled = true;
+
+    try {
+        const timestamp = new Date().toISOString();
+        const hashedPin = await sha256(pin);
+        const newSchoolId = generateSchoolId();
+        const newSuperAdminId = generateAdminId();
+        const paymentId = `PAY-${Date.now()}`;
+        
+        let receiptUrl = null;
+
+        if (receiptFile) {
+            btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up fa-spin mr-2"></i> Uploading Receipt...';
+            const storageRef = ref(storage, `receipts/${paymentId}_${receiptFile.name}`);
+            await uploadBytes(storageRef, receiptFile);
+            receiptUrl = await getDownloadURL(storageRef);
+        }
+
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Deploying Infrastructure...';
+
+        const notesArray = internalNote ? [{
+            note: internalNote,
+            timestamp: timestamp,
+            loggedBy: session.id,
+            loggedByName: session.name
+        }] : [];
+
+        // Manual deploy starts clock from today
+        let nextRenewalDate = new Date();
+        if (cycleSelect === 'Monthly') nextRenewalDate.setMonth(nextRenewalDate.getMonth() + 1);
+        else if (cycleSelect === 'Annual') nextRenewalDate.setFullYear(nextRenewalDate.getFullYear() + 1);
+        else if (cycleSelect === 'Multi-Year') nextRenewalDate.setFullYear(nextRenewalDate.getFullYear() + 2);
+        else nextRenewalDate.setFullYear(nextRenewalDate.getFullYear() + 1);
+
+        const batch = writeBatch(db);
+
+        // A. Log Payment (Directly attached to the new schoolId)
+        const paymentRef = doc(db, 'payments', paymentId);
+        batch.set(paymentRef, {
+            schoolId: newSchoolId,
+            schoolName: schoolName,
+            paymentType: 'Manual Deployment Setup',
+            amount: parseFloat(amount),
+            billingCycle: actualCycle,
+            subscriptionPlanId: selectedPlan.id,
+            receiptUrl: receiptUrl, 
+            internalNotes: notesArray,
+            loggedBy: session.id,
+            timestamp: timestamp
+        });
+
+        // B. Create School Document
+        const schoolRef = doc(db, 'schools', newSchoolId);
+        batch.set(schoolRef, {
+            schoolName,
+            district,
+            schoolType,
+            superAdminId:         newSuperAdminId, 
+            adminCode:            hashedPin,      
+            securityQuestionsSet: false, // Force them to set security questions on first login           
+            isSuperAdmin:         true,            
+            isVerified:           true,
+            requiresPinReset:     false,
+            
+            subscriptionPlanId:   selectedPlan.id,
+            subscriptionName:     selectedPlan.name,
+            billingCycle:         actualCycle,
+            nextRenewalDate:      nextRenewalDate.toISOString(),
+            subscriptionStatus:   'Active',
+            limits: {
+                adminLimit: selectedPlan.adminLimit,
+                studentLimit: selectedPlan.studentLimit,
+                teacherLimit: selectedPlan.teacherLimit
+            },
+
+            activeSemesterId:     'sem_1',
+            contactEmail:         email,
+            contactName:          'System Admin',
+            phone:                '',
+            createdAt:            timestamp
+        });
+
+        // C. Create Default Semesters
+        const sems = [
+            { id: 'sem_1', name: 'Term 1', order: 1 },
+            { id: 'sem_2', name: 'Term 2', order: 2 },
+            { id: 'sem_3', name: 'Term 3', order: 3 }
+        ];
+
+        sems.forEach(sem => {
+            const semRef = doc(collection(db, 'schools', newSchoolId, 'semesters'), sem.id);
+            batch.set(semRef, {
+                name:      sem.name,
+                order:     sem.order,
+                startDate: '',
+                endDate:   '',
+                archived:  false,
+                isLocked:  false
+            });
+        });
+
+        await batch.commit();
+
+        closeDeployModal();
+        loadSchools();
+        
+        // Notify HQ of successful manual deploy
+        alert(`Deployment Successful!\n\nSchool Name: ${schoolName}\nSchool ID: ${newSchoolId}\nAdmin ID: ${newSuperAdminId}\n\nMake sure to provide these credentials to the school administrator.`);
+
+    } catch (e) {
+        console.error("Manual Deploy Failed:", e);
+        errorMsg.textContent = "Failed to deploy infrastructure. Check console.";
+        errorMsg.classList.remove('hidden');
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-server mr-2"></i> Deploy Infrastructure';
 });
 
 // ── Toggle Suspension (Kill Switch) ───────────────────────────────────────
