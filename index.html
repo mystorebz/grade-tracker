@@ -17,6 +17,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
+
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+    <script type="text/javascript">
+        (function() {
+            emailjs.init({
+              publicKey: "YOUR_PUBLIC_KEY",
+            });
+        })();
+    </script>
 </head>
 <body class="min-h-screen flex flex-col text-slate-800 antialiased">
 
@@ -202,7 +211,6 @@
         </div>
     </section>
 
-    <!-- ── QUOTE REQUEST FORM ── -->
     <section id="register" class="py-20 px-4 bg-blue-50">
         <div class="max-w-2xl mx-auto">
             <div class="text-center mb-8">
@@ -218,7 +226,6 @@
 
                 <div id="registrationFormContainer" class="space-y-5 mt-3">
 
-                    <!-- ── Contact Information ── -->
                     <p class="form-section no-border">
                         <i class="fa-solid fa-address-card"></i> Your Contact Information
                     </p>
@@ -259,7 +266,6 @@
                         </div>
                     </div>
 
-                    <!-- ── School Information ── -->
                     <p class="form-section">
                         <i class="fa-solid fa-school"></i> School Information
                     </p>
@@ -314,7 +320,6 @@
                         </div>
                     </div>
 
-                    <!-- ── School Size ── -->
                     <p class="form-section">
                         <i class="fa-solid fa-users"></i> School Size
                     </p>
@@ -330,7 +335,6 @@
                         </div>
                     </div>
 
-                    <!-- ── Contract Term ── -->
                     <p class="form-section">
                         <i class="fa-solid fa-file-contract"></i> Preferred Contract Term
                     </p>
@@ -345,14 +349,12 @@
                         </select>
                     </div>
 
-                    <!-- Monthly follow-up — hidden by default -->
                     <div id="contractMonthsWrap" class="hidden">
                         <label class="form-label">How many months are you looking to start with? *</label>
                         <input type="number" id="contractMonths" placeholder="e.g. 3" min="1" max="11" class="form-input">
                         <p class="text-xs text-slate-400 font-semibold mt-1.5">This is just an estimate — not a binding commitment.</p>
                     </div>
 
-                    <!-- Multi-year follow-up — hidden by default -->
                     <div id="contractYearsWrap" class="hidden">
                         <label class="form-label">How many years? *</label>
                         <select id="contractYears" class="form-input">
@@ -363,7 +365,6 @@
                         <p class="text-xs text-slate-400 font-semibold mt-1.5">Multi-year contracts may qualify for a discounted rate — we will include this in your quote.</p>
                     </div>
 
-                    <!-- ── Additional Info ── -->
                     <p class="form-section">
                         <i class="fa-solid fa-circle-info"></i> Additional Information
                     </p>
@@ -393,7 +394,6 @@
                     <p id="regMessage" class="text-sm text-center font-bold hidden mt-2"></p>
                 </div>
 
-                <!-- ── Success Screen ── -->
                 <div id="successScreen" class="hidden text-center py-8">
                     <div class="text-7xl mb-4">🎉</div>
                     <h2 class="text-2xl font-black text-slate-800 mb-2">Request Received!</h2>
