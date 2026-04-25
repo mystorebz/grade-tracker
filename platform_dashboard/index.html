@@ -79,32 +79,30 @@
         </header>
 
         <div class="flex-1 overflow-y-auto p-8" id="mainContent">
-            
             <div id="view-overview" class="view-section">
                 <div class="grid grid-cols-4 gap-6 mb-8">
                     <div class="bg-slate-800 border border-slate-700 p-6 rounded-2xl">
                         <i class="fa-solid fa-school text-emerald-400 text-2xl mb-3"></i>
                         <p class="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Active Schools</p>
-                        <p class="text-3xl font-black text-white">0</p>
+                        <p id="metricSchools" class="text-3xl font-black text-white"><i class="fa-solid fa-circle-notch fa-spin text-lg text-slate-600"></i></p>
                     </div>
                     <div class="bg-slate-800 border border-slate-700 p-6 rounded-2xl">
                         <i class="fa-solid fa-chalkboard-user text-blue-400 text-2xl mb-3"></i>
                         <p class="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Total Teachers</p>
-                        <p class="text-3xl font-black text-white">0</p>
+                        <p id="metricTeachers" class="text-3xl font-black text-white"><i class="fa-solid fa-circle-notch fa-spin text-lg text-slate-600"></i></p>
                     </div>
                     <div class="bg-slate-800 border border-slate-700 p-6 rounded-2xl">
                         <i class="fa-solid fa-graduation-cap text-indigo-400 text-2xl mb-3"></i>
                         <p class="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Total Students</p>
-                        <p class="text-3xl font-black text-white">0</p>
+                        <p id="metricStudents" class="text-3xl font-black text-white"><i class="fa-solid fa-circle-notch fa-spin text-lg text-slate-600"></i></p>
                     </div>
-                    <div class="bg-slate-800 border border-slate-700 p-6 rounded-2xl">
+                    <div class="bg-slate-800 border border-slate-700 p-6 rounded-2xl border-l-4 border-l-amber-500">
                         <i class="fa-solid fa-file-invoice-dollar text-amber-400 text-2xl mb-3"></i>
                         <p class="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Pending Quotes</p>
-                        <p class="text-3xl font-black text-white">0</p>
+                        <p id="metricQuotes" class="text-3xl font-black text-amber-400"><i class="fa-solid fa-circle-notch fa-spin text-lg text-amber-600/50"></i></p>
                     </div>
                 </div>
             </div>
-
         </div>
     </main>
 
