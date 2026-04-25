@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Evaluations | ConnectUs Admin</title>
+
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/admin.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body class="flex w-full h-screen overflow-hidden">
+
+    <div id="layout-sidebar-container" class="flex-shrink-0 h-full z-20"></div>
+
+    <main class="flex-1 flex flex-col h-full overflow-hidden min-w-0">
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <div class="flex-1 overflow-y-auto p-8 view-section">
+            <div class="max-w-5xl mx-auto space-y-6">
+
+                <!-- ── PAGE HEADER ───────────────────────────────────────── -->
+                <div class="flex items-end justify-between border-b-2 border-[#0d1f35] pb-4">
+                    <div>
+                        <h1 class="text-xl font-bold text-[#0d1f35] tracking-tight mb-1">Teacher Evaluations</h1>
+                        <p class="text-xs text-[#6b84a0]">Performance reviews and professional assessments for your teaching staff.</p>
+                    </div>
+                    <button onclick="window.openNewEvalModal()" class="flex items-center gap-2 bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold px-5 py-2.5 rounded shadow-md transition text-[13px]">
+                        <i class="fa-solid fa-plus"></i> New Evaluation
+                    </button>
+                </div>
+
+                <!-- ── SUMMARY CARDS ─────────────────────────────────────── -->
+                <div class="grid grid-cols-3 gap-4" id="summaryCards">
+                    <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm animate-pulse h-20"></div>
+                    <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm animate-pulse h-20"></div>
+                    <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm animate-pulse h-20"></div>
+                </div>
+
+                <!-- ── TEACHER EVAL TABLE ────────────────────────────────── -->
+                <div class="bg-white rounded-xl shadow-sm border border-[#dce3ed] overflow-hidden">
+                    <div class="px-6 py-4 border-b border-[#f0f4f8] flex items-center justify-between bg-[#f8fafb]">
+                        <h3 class="text-[13px] font-bold text-[#0d1f35]">Staff Evaluation Summary</h3>
+                        <div class="flex items-center gap-2 bg-white border border-[#dce3ed] rounded px-3 py-1.5">
+                            <i class="fa-solid fa-magnifying-glass text-[#9ab0c6] text-[11px]"></i>
+                            <input type="text" id="evalSearchInput" placeholder="Filter teachers..." class="text-[12px] outline-none font-semibold text-[#374f6b] w-36 bg-transparent" oninput="window.filterEvalTable(this.value)">
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-[13px] text-[#374f6b]">
+                            <thead class="bg-[#f8fafb] text-[#6b84a0] text-[10px] uppercase tracking-widest font-bold border-b-2 border-[#dce3ed]">
+                                <tr>
+                                    <th class="px-6 py-4">Teacher</th>
+                                    <th class="px-6 py-4 text-center">Evaluations</th>
+                                    <th class="px-6 py-4 text-center">Avg Overall</th>
+                                    <th class="px-6 py-4 text-center">Last Evaluated</th>
+                                    <th class="px-6 py-4 text-center">Recommendation</th>
+                                    <th class="px-6 py-4 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="evalTableBody" class="divide-y divide-[#f0f4f8]">
+                                <tr><td colspan="6" class="px-6 py-16 text-center text-[#9ab0c6] italic">
+                                    <i class="fa-solid fa-spinner fa-spin mr-2 text-[#2563eb]"></i>Loading teachers...
+                                </td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         MODAL: NEW EVALUATION
+    ══════════════════════════════════════════════════════════════════ -->
+    <div id="newEvalModal" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200 max-h-[90vh] flex flex-col" id="newEvalModalInner">
+            <div class="h-1 bg-[#2563eb] flex-shrink-0"></div>
+            <div class="px-7 py-5 border-b border-[#f0f4f8] flex justify-between items-center bg-[#f8fafb] flex-shrink-0">
+                <h3 class="font-bold text-lg text-[#0d1f35]">New Evaluation</h3>
+                <button onclick="window.closeNewEvalModal()" class="text-[#9ab0c6] hover:text-[#e31b4a] transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="p-7 space-y-5 overflow-y-auto">
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="col-span-2">
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Teacher <span class="text-[#e31b4a]">*</span></label>
+                        <select id="evalTeacherId" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none">
+                            <option value="">Select teacher...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Evaluation Date <span class="text-[#e31b4a]">*</span></label>
+                        <input type="date" id="evalDate" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Recommended Action</label>
+                        <select id="evalAction" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none">
+                            <option value="None">No Action Required</option>
+                            <option value="Commendation">Commendation</option>
+                            <option value="Professional Development">Professional Development</option>
+                            <option value="Formal Warning">Formal Warning</option>
+                            <option value="Performance Plan">Performance Improvement Plan</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Star Ratings -->
+                <div>
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Performance Ratings <span class="text-[#e31b4a]">*</span></label>
+                    <div class="space-y-3 bg-[#f8fafb] border border-[#dce3ed] rounded-lg p-4">
+                        <div class="rating-row" data-field="overallRating">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[12px] font-bold text-[#0d1f35]">Overall Performance</span>
+                                <div class="star-group flex gap-1"></div>
+                            </div>
+                        </div>
+                        <div class="rating-row" data-field="classroomManagement">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[12px] font-semibold text-[#374f6b]">Classroom Management</span>
+                                <div class="star-group flex gap-1"></div>
+                            </div>
+                        </div>
+                        <div class="rating-row" data-field="curriculumDelivery">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[12px] font-semibold text-[#374f6b]">Curriculum Delivery</span>
+                                <div class="star-group flex gap-1"></div>
+                            </div>
+                        </div>
+                        <div class="rating-row" data-field="studentEngagement">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[12px] font-semibold text-[#374f6b]">Student Engagement</span>
+                                <div class="star-group flex gap-1"></div>
+                            </div>
+                        </div>
+                        <div class="rating-row" data-field="professionalConduct">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[12px] font-semibold text-[#374f6b]">Professional Conduct</span>
+                                <div class="star-group flex gap-1"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Strengths</label>
+                    <textarea id="evalStrengths" rows="3" placeholder="What does this teacher do particularly well?" class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded text-[13px] resize-none outline-none"></textarea>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Areas for Improvement</label>
+                    <textarea id="evalImprovements" rows="3" placeholder="What areas need development or support?" class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded text-[13px] resize-none outline-none"></textarea>
+                </div>
+
+                <p id="evalMsg" class="text-[12px] font-bold hidden p-3 rounded bg-red-50 text-red-600 border border-red-100"></p>
+                <button id="submitEvalBtn" class="w-full bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-3.5 rounded transition text-[13px] uppercase tracking-widest">
+                    <i class="fa-solid fa-file-circle-check mr-2"></i>Submit Evaluation
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         SIDE PANEL: TEACHER EVALUATION HISTORY
+    ══════════════════════════════════════════════════════════════════ -->
+    <div id="evalHistoryPanel" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-40 flex justify-end hidden opacity-0 transition-opacity">
+        <div id="evalHistoryPanelInner" class="side-panel bg-white w-full max-w-xl h-full shadow-2xl flex flex-col translate-x-full transition-transform">
+            <div class="h-1 bg-[#2563eb] flex-shrink-0"></div>
+            <div class="px-7 py-5 border-b border-[#f0f4f8] flex justify-between items-center bg-[#f8fafb] flex-shrink-0">
+                <div>
+                    <h3 id="evalPanelName" class="font-bold text-xl text-[#0d1f35]">Teacher Name</h3>
+                    <p class="text-xs text-[#6b84a0] font-semibold mt-0.5">Evaluation History</p>
+                </div>
+                <button onclick="window.closeEvalPanel()" class="text-[#9ab0c6] hover:text-[#e31b4a] h-9 w-9 rounded-full flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <div id="evalPanelBody" class="flex-1 overflow-y-auto p-6 bg-[#f4f7fb] space-y-4">
+                <div class="flex justify-center py-10"><i class="fa-solid fa-spinner fa-spin text-2xl text-[#2563eb]"></i></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="evaluations.js"></script>
+</body>
+</html>
