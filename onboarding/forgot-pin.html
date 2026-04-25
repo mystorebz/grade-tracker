@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forgot PIN | ConnectUs</title>
+
+    <link rel="stylesheet" href="../assets/css/global.css">
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/images/favicon-32x32.png">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+
+    <!-- EmailJS
+         Required template variables: {{to_email}}, {{user_name}}, {{role_label}}, {{reset_link}}
+         Template ID configured below as EMAILJS_TEMPLATE_ID -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-[#f8faff] to-[#eef2ff] antialiased">
+
+    <div class="max-w-md w-full">
+        <div class="text-center mb-8">
+            <img src="../assets/images/logo.png" alt="ConnectUs" class="h-14 w-auto mx-auto mb-4 drop-shadow-md">
+            <h1 class="text-2xl font-black text-blue-900 tracking-tight">Forgot Your PIN?</h1>
+            <p class="text-slate-500 font-semibold mt-2 text-sm">We'll verify your identity and send a secure reset link.</p>
+        </div>
+
+        <div class="bg-white rounded-3xl shadow-xl border border-blue-100 overflow-hidden relative">
+            <div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-600"></div>
+
+            <!-- ── Step 1: Role + Identity ────────────────────────────── -->
+            <div id="step1" class="p-8 space-y-5">
+                <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl flex items-start gap-3">
+                    <i class="fa-solid fa-magnifying-glass text-blue-500 mt-0.5"></i>
+                    <div>
+                        <h4 class="font-black text-blue-900 text-sm">Step 1 of 2 — Find Your Account</h4>
+                        <p class="text-xs text-slate-500 font-semibold mt-1">Select your role, then enter your ID and email address.</p>
+                    </div>
+                </div>
+
+                <!-- Role Selector -->
+                <div>
+                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">I am a... *</label>
+                    <div class="grid grid-cols-3 gap-2" id="roleSelector">
+                        <button data-role="admin"
+                            class="role-btn flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-slate-200 hover:border-blue-400 transition text-center"
+                            onclick="selectRole('admin')">
+                            <i class="fa-solid fa-user-shield text-slate-400 text-xl"></i>
+                            <span class="text-[11px] font-black text-slate-600 uppercase tracking-wide">Admin</span>
+                        </button>
+                        <button data-role="teacher"
+                            class="role-btn flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-slate-200 hover:border-blue-400 transition text-center"
+                            onclick="selectRole('teacher')">
+                            <i class="fa-solid fa-chalkboard-user text-slate-400 text-xl"></i>
+                            <span class="text-[11px] font-black text-slate-600 uppercase tracking-wide">Teacher</span>
+                        </button>
+                        <button data-role="student"
+                            class="role-btn flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-slate-200 hover:border-blue-400 transition text-center"
+                            onclick="selectRole('student')">
+                            <i class="fa-solid fa-graduation-cap text-slate-400 text-xl"></i>
+                            <span class="text-[11px] font-black text-slate-600 uppercase tracking-wide">Student</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Dynamic ID Field -->
+                <div id="idFieldWrap" class="hidden">
+                    <label id="idFieldLabel" class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">ID *</label>
+                    <input type="text" id="fpUserId"
+                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition uppercase"
+                        placeholder="">
+                    <p id="idFieldHint" class="text-[10px] text-slate-400 font-semibold mt-1.5"></p>
+                </div>
+
+                <div id="emailFieldWrap" class="hidden">
+                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Email Address *</label>
+                    <input type="email" id="fpEmail"
+                        placeholder="email address on file"
+                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
+                </div>
+
+                <p id="step1Error" class="text-xs font-bold text-red-600 bg-red-50 border border-red-100 p-3 rounded-lg text-center hidden"></p>
+
+                <button id="findAccountBtn"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl transition shadow-lg shadow-blue-500/30 text-sm tracking-wide hidden"
+                    onclick="findAccount()">
+                    Find My Account →
+                </button>
+
+                <p class="text-center text-xs text-slate-400 font-semibold">
+                    Remembered it? <a href="../admin/login.html" class="text-blue-600 hover:underline font-black">Back to Login</a>
+                </p>
+            </div>
+
+            <!-- ── Step 2: Security Questions ────────────────────────── -->
+            <div id="step2" class="p-8 space-y-5 hidden">
+                <div id="accountBadge" class="bg-green-50 border border-green-200 p-3 rounded-xl flex items-center gap-3">
+                    <i id="accountBadgeIcon" class="fa-solid fa-user-shield text-green-600"></i>
+                    <div>
+                        <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Account Found</p>
+                        <p id="foundAccountName" class="text-sm font-black text-slate-800"></p>
+                        <p id="foundAccountSub" class="text-[10px] text-slate-500 font-semibold"></p>
+                    </div>
+                </div>
+
+                <div class="bg-amber-50 border border-amber-100 p-4 rounded-xl flex items-start gap-3">
+                    <i class="fa-solid fa-key text-amber-500 mt-0.5"></i>
+                    <div>
+                        <h4 class="font-black text-amber-900 text-sm">Step 2 of 2 — Verify Your Identity</h4>
+                        <p class="text-xs text-slate-500 font-semibold mt-1">Answer both security questions you set during setup.</p>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Question 1</label>
+                    <p id="displayQ1" class="text-sm font-bold text-slate-700 mb-2 bg-slate-50 border border-slate-200 p-3 rounded-xl"></p>
+                    <input type="text" id="fpSecA1" placeholder="Your answer"
+                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Question 2</label>
+                    <p id="displayQ2" class="text-sm font-bold text-slate-700 mb-2 bg-slate-50 border border-slate-200 p-3 rounded-xl"></p>
+                    <input type="text" id="fpSecA2" placeholder="Your answer"
+                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
+                </div>
+
+                <p id="step2Error" class="text-xs font-bold text-red-600 bg-red-50 border border-red-100 p-3 rounded-lg text-center hidden"></p>
+
+                <button id="verifyBtn"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl transition shadow-lg shadow-blue-500/30 text-sm tracking-wide"
+                    onclick="verifyAndSend()">
+                    Verify & Send Reset Link →
+                </button>
+
+                <button onclick="backToStep1()"
+                    class="w-full text-slate-500 hover:text-slate-700 font-bold py-2 text-xs transition">
+                    ← Search with different details
+                </button>
+            </div>
+
+            <!-- ── Success ─────────────────────────────────────────────── -->
+            <div id="successScreen" class="p-10 text-center hidden">
+                <div class="w-20 h-20 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-5">
+                    <i class="fa-solid fa-envelope-circle-check"></i>
+                </div>
+                <h3 class="font-black text-2xl text-slate-800 mb-2">Reset Link Sent!</h3>
+                <p class="text-sm text-slate-500 font-semibold mb-1">A secure reset link has been emailed to your registered address.</p>
+                <p class="text-xs text-slate-400 font-semibold mb-6">The link expires in <span class="font-black text-slate-600">15 minutes</span>. Check your spam folder if needed.</p>
+                <a href="../admin/login.html" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-black py-3 px-8 rounded-xl transition shadow-lg shadow-blue-500/30 text-sm">
+                    Back to Login
+                </a>
+            </div>
+        </div>
+    </div>
+
+<style>
+    .role-btn.active {
+        border-color: #2563eb;
+        background: #eff6ff;
+    }
+    .role-btn.active i { color: #2563eb; }
+    .role-btn.active span { color: #1e40af; }
+</style>
+
+<script type="module">
+import { db } from '../assets/js/firebase-init.js';
+import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+// ── EmailJS Config ────────────────────────────────────────────────────────────
+const EMAILJS_PUBLIC_KEY  = '0J9RlI4x1fQ8P9IG9';
+const EMAILJS_SERVICE_ID  = 'service_kgk97jd';
+const EMAILJS_TEMPLATE_ID = 'template_reset_pin'; // Must have: {{to_email}}, {{user_name}}, {{role_label}}, {{reset_link}}
+
+emailjs.init(EMAILJS_PUBLIC_KEY);
+
+// ── Role Config ───────────────────────────────────────────────────────────────
+// Defines per-role: which Firestore collection, ID format, field names
+const ROLE_CONFIG = {
+    admin: {
+        label:       'School Admin',
+        icon:        'fa-user-shield',
+        collection:  'schools',
+        idLabel:     'School ID',
+        idPlaceholder: 'e.g. SCH-8B2X9',
+        idHint:      'Your School ID was shown at the end of onboarding.',
+        idPattern:   /^SCH-[A-Z0-9]{5}$/,
+        emailField:  'contactEmail',   // field name in Firestore doc
+        nameField:   'schoolName',
+        subField:    null
+    },
+    teacher: {
+        label:       'Teacher',
+        icon:        'fa-chalkboard-user',
+        collection:  'teachers',
+        idLabel:     'Teacher ID',
+        idPlaceholder: 'e.g. T24-AB3X7',
+        idHint:      'Your Teacher ID is on your credential slip.',
+        idPattern:   /^T\d{2}-[A-Z0-9]{5}$/,
+        emailField:  'email',
+        nameField:   'name',
+        subField:    'currentSchoolId'
+    },
+    student: {
+        label:       'Student',
+        icon:        'fa-graduation-cap',
+        collection:  'students',
+        idLabel:     'Student ID',
+        idPlaceholder: 'e.g. S24-XK9P2',
+        idHint:      'Your Student ID is on your credential slip or report card.',
+        idPattern:   /^S\d{2}-[A-Z0-9]{5}$/,
+        emailField:  'email',
+        nameField:   'name',
+        subField:    'currentSchoolId'
+    }
+};
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let selectedRole   = null;
+let foundDoc       = null;
+let foundDocId     = null;
+
+// ── SHA-256 (same normalization as onboarding.js) ─────────────────────────────
+async function sha256(text) {
+    const encoded = new TextEncoder().encode(text.toLowerCase().trim());
+    const buffer  = await crypto.subtle.digest('SHA-256', encoded);
+    return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ── Generate 32-char token ────────────────────────────────────────────────────
+function generateToken() {
+    const arr = new Uint8Array(16);
+    crypto.getRandomValues(arr);
+    return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ── Role Selection ────────────────────────────────────────────────────────────
+window.selectRole = function(role) {
+    selectedRole = role;
+    const cfg    = ROLE_CONFIG[role];
+
+    // Update button styles
+    document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector(`[data-role="${role}"]`).classList.add('active');
+
+    // Show ID field
+    document.getElementById('idFieldLabel').textContent      = cfg.idLabel + ' *';
+    document.getElementById('fpUserId').placeholder          = cfg.idPlaceholder;
+    document.getElementById('idFieldHint').textContent       = cfg.idHint;
+    document.getElementById('fpUserId').value                = '';
+    document.getElementById('fpEmail').value                 = '';
+    document.getElementById('step1Error').classList.add('hidden');
+
+    document.getElementById('idFieldWrap').classList.remove('hidden');
+    document.getElementById('emailFieldWrap').classList.remove('hidden');
+    document.getElementById('findAccountBtn').classList.remove('hidden');
+};
+
+// ── Step 1: Find Account ──────────────────────────────────────────────────────
+window.findAccount = async function() {
+    if (!selectedRole) { showError('step1Error', 'Please select your role first.'); return; }
+
+    const cfg      = ROLE_CONFIG[selectedRole];
+    const rawId    = document.getElementById('fpUserId').value.trim().toUpperCase();
+    const email    = document.getElementById('fpEmail').value.trim().toLowerCase();
+    const errEl    = document.getElementById('step1Error');
+    errEl.classList.add('hidden');
+
+    if (!rawId || !email) {
+        showError('step1Error', 'Both fields are required.'); return;
+    }
+    if (!cfg.idPattern.test(rawId)) {
+        showError('step1Error', `Invalid ${cfg.idLabel} format. It should look like "${cfg.idPlaceholder.replace('e.g. ', '')}".`);
+        return;
+    }
+
+    const btn = document.getElementById('findAccountBtn');
+    setLoading(btn, true, 'Find My Account →');
+
+    try {
+        const snap = await getDoc(doc(db, cfg.collection, rawId));
+
+        // Generic error — don't reveal whether ID or email was wrong
+        if (!snap.exists()) {
+            showError('step1Error', 'No account found matching those details. Please check and try again.');
+            setLoading(btn, false, 'Find My Account →'); return;
+        }
+
+        const data = snap.data();
+
+        if ((data[cfg.emailField] || '').toLowerCase() !== email) {
+            showError('step1Error', 'No account found matching those details. Please check and try again.');
+            setLoading(btn, false, 'Find My Account →'); return;
+        }
+
+        // Check that security questions have been set
+        if (!data.securityQ1 || !data.securityQ2) {
+            showError('step1Error',
+                'Security questions have not been set on this account yet. ' +
+                'Please log in and complete your profile setup first, or contact your administrator.');
+            setLoading(btn, false, 'Find My Account →'); return;
+        }
+
+        // ── Account found — move to step 2 ────────────────────────────────
+        foundDoc   = data;
+        foundDocId = rawId;
+
+        const cfg2 = ROLE_CONFIG[selectedRole];
+        document.getElementById('accountBadgeIcon').className = `fa-solid ${cfg2.icon} text-green-600`;
+        document.getElementById('foundAccountName').textContent =
+            data[cfg2.nameField] || rawId;
+        document.getElementById('foundAccountSub').textContent =
+            cfg2.subField && data[cfg2.subField]
+                ? `School: ${data[cfg2.subField]}`
+                : cfg2.label;
+
+        document.getElementById('displayQ1').textContent = data.securityQ1;
+        document.getElementById('displayQ2').textContent = data.securityQ2;
+
+        document.getElementById('step1').classList.add('hidden');
+        document.getElementById('step2').classList.remove('hidden');
+
+    } catch (err) {
+        console.error('[ForgotPin] findAccount:', err);
+        showError('step1Error', 'A connection error occurred. Please refresh and try again.');
+    }
+
+    setLoading(btn, false, 'Find My Account →');
+};
+
+// ── Step 2: Verify & Send ─────────────────────────────────────────────────────
+window.verifyAndSend = async function() {
+    const a1  = document.getElementById('fpSecA1').value.trim();
+    const a2  = document.getElementById('fpSecA2').value.trim();
+    document.getElementById('step2Error').classList.add('hidden');
+
+    if (!a1 || !a2) {
+        showError('step2Error', 'Please answer both security questions.'); return;
+    }
+
+    const btn = document.getElementById('verifyBtn');
+    setLoading(btn, true, 'Verify & Send Reset Link →');
+
+    try {
+        const [h1, h2] = await Promise.all([sha256(a1), sha256(a2)]);
+
+        if (h1 !== foundDoc.securityA1 || h2 !== foundDoc.securityA2) {
+            showError('step2Error', 'One or both answers are incorrect. Please try again.');
+            setLoading(btn, false, 'Verify & Send Reset Link →'); return;
+        }
+
+        // ── Generate reset token ───────────────────────────────────────────
+        const token     = generateToken();
+        const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+        const cfg       = ROLE_CONFIG[selectedRole];
+
+        // reset_vault stores userType + targetId so reset-pin.html knows
+        // exactly which collection and document to update
+        await setDoc(doc(db, 'reset_vault', token), {
+            userType:  selectedRole,           // 'admin' | 'teacher' | 'student'
+            targetId:  foundDocId,             // schoolId | teacherId | studentId
+            expiresAt,
+            createdAt: new Date().toISOString()
+        });
+
+        // ── Send reset email ───────────────────────────────────────────────
+        const resetLink = `https://connectusonline.org/onboarding/reset-pin.html?token=${token}`;
+        const toEmail   = (foundDoc[cfg.emailField] || '').toLowerCase();
+        const userName  = foundDoc[cfg.nameField] || foundDocId;
+
+        await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+            to_email:   toEmail,
+            user_name:  userName,
+            role_label: cfg.label,
+            reset_link: resetLink
+        });
+
+        document.getElementById('step2').classList.add('hidden');
+        document.getElementById('successScreen').classList.remove('hidden');
+
+    } catch (err) {
+        console.error('[ForgotPin] verifyAndSend:', err);
+        showError('step2Error', 'Failed to send reset email. Please try again.');
+    }
+
+    setLoading(btn, false, 'Verify & Send Reset Link →');
+};
+
+// ── Back to Step 1 ────────────────────────────────────────────────────────────
+window.backToStep1 = function() {
+    foundDoc   = null;
+    foundDocId = null;
+    document.getElementById('fpSecA1').value = '';
+    document.getElementById('fpSecA2').value = '';
+    document.getElementById('step2Error').classList.add('hidden');
+    document.getElementById('step2').classList.add('hidden');
+    document.getElementById('step1').classList.remove('hidden');
+};
+
+// ── UI Helpers ────────────────────────────────────────────────────────────────
+function showError(elId, msg) {
+    const el = document.getElementById(elId);
+    el.textContent = msg;
+    el.classList.remove('hidden');
+}
+
+function setLoading(btn, loading, resetLabel) {
+    btn.disabled   = loading;
+    btn.innerHTML  = loading
+        ? '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Please wait...'
+        : resetLabel;
+}
+</script>
+</body>
+</html>
