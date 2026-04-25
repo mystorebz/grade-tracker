@@ -37,47 +37,58 @@
                 <button class="bg-rose-600 hover:bg-rose-700 text-white text-xs font-black px-4 py-2.5 rounded-xl transition shadow-md whitespace-nowrap"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i> Contact to Upgrade</button>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
-                
-                <div class="stat-card bg-gradient-to-br from-blue-600 to-blue-700 p-6 rounded-2xl shadow-lg shadow-blue-500/20 text-white border border-blue-500/30">
-                    <div class="flex items-center justify-between mb-3">
-                        <div class="bg-white/20 h-12 w-12 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-chalkboard-user"></i></div>
-                        <span class="text-blue-200 text-xs font-black uppercase tracking-wider">Staff</span>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+
+                <!-- Teachers stat -->
+                <div class="stat-card p-5 flex items-center gap-4">
+                    <div style="width:48px;height:48px;border-radius:var(--r-md);background:var(--blue-50);border:1px solid var(--blue-100);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                        <i class="fa-solid fa-chalkboard-user" style="color:var(--blue-500);font-size:20px"></i>
                     </div>
-                    <h3 id="stat-teachers" class="text-5xl font-black">0</h3>
-                    <p class="text-blue-100 text-sm font-bold mt-1">Active Teachers</p>
-                </div>
-                
-                <div class="stat-card bg-gradient-to-br from-emerald-500 to-teal-600 p-6 rounded-2xl shadow-lg shadow-emerald-500/20 text-white border border-emerald-400/30 flex flex-col justify-between">
-                    <div class="flex items-center justify-between mb-2">
-                        <div class="bg-white/20 h-10 w-10 rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-user-graduate"></i></div>
-                        <span id="planNameDisplay" class="text-emerald-100 text-[10px] font-black uppercase tracking-wider bg-black/10 px-3 py-1 rounded-full border border-white/10 shadow-inner">Loading Plan...</span>
-                    </div>
-                    <div>
-                        <h3 class="text-4xl font-black leading-none mt-2">
-                            <span id="stat-students">0</span>
-                            <span class="text-xl text-emerald-200 font-bold"> / <span id="stat-limit">0</span></span>
-                        </h3>
-                        <p class="text-emerald-100 text-xs font-bold mt-1">Active Students</p>
-                    </div>
-                    <div class="mt-3">
-                        <div class="h-1.5 w-full bg-black/20 rounded-full overflow-hidden">
-                            <div id="capacityBar" class="h-full bg-white rounded-full" style="width: 0%; transition: width 0.5s ease, background-color 0.3s ease;"></div>
+                    <div style="flex:1;min-width:0">
+                        <div style="display:flex;align-items:baseline;gap:4px">
+                            <h3 id="stat-teachers" style="font-size:30px;font-weight:700;color:var(--text-primary);letter-spacing:-0.8px;margin:0;line-height:1">0</h3>
                         </div>
+                        <p style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin:5px 0 0">Active Teachers</p>
+                    </div>
+                    <span style="font-size:10px;font-weight:700;color:var(--blue-500);background:var(--blue-50);border:1px solid var(--blue-100);padding:3px 8px;border-radius:99px;text-transform:uppercase;letter-spacing:0.08em;white-space:nowrap">Staff</span>
+                </div>
+
+                <!-- Students stat -->
+                <div class="stat-card p-5">
+                    <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px">
+                        <div style="width:48px;height:48px;border-radius:var(--r-md);background:var(--green-50);border:1px solid var(--green-100);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                            <i class="fa-solid fa-user-graduate" style="color:var(--green-500);font-size:20px"></i>
+                        </div>
+                        <div style="flex:1;min-width:0">
+                            <div style="display:flex;align-items:baseline;gap:5px">
+                                <h3 id="stat-students" style="font-size:30px;font-weight:700;color:var(--text-primary);letter-spacing:-0.8px;margin:0;line-height:1">0</h3>
+                                <span style="font-size:14px;color:var(--text-muted);font-weight:500">/ <span id="stat-limit">0</span></span>
+                            </div>
+                            <p style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin:5px 0 0">Active Students</p>
+                        </div>
+                        <span id="planNameDisplay" style="font-size:10px;font-weight:700;color:var(--green-700);background:var(--green-50);border:1px solid var(--green-100);padding:3px 8px;border-radius:99px;text-transform:uppercase;letter-spacing:0.08em;white-space:nowrap">Loading...</span>
+                    </div>
+                    <div style="height:4px;background:var(--border);border-radius:99px;overflow:hidden">
+                        <div id="capacityBar" class="bg-white" style="height:100%;width:0%;background:var(--green-500);border-radius:99px;transition:width 0.5s ease,background 0.3s ease"></div>
                     </div>
                 </div>
 
-                <div class="stat-card bg-gradient-to-br from-amber-500 to-orange-500 p-6 rounded-2xl shadow-lg shadow-amber-500/20 text-white border border-amber-400/30">
-                    <div class="flex items-center justify-between mb-3">
-                        <div class="bg-white/20 h-12 w-12 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-calendar-check"></i></div>
-                        <span class="text-amber-100 text-xs font-black uppercase tracking-wider">Current</span>
+                <!-- Active grading period -->
+                <div class="stat-card p-5 flex items-start gap-4">
+                    <div style="width:48px;height:48px;border-radius:var(--r-md);background:var(--amber-50);border:1px solid var(--amber-100);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px">
+                        <i class="fa-solid fa-calendar-check" style="color:var(--amber-500);font-size:20px"></i>
                     </div>
-                    <p class="text-amber-100 text-xs font-black uppercase tracking-wider mb-2">Active Grading Period</p>
-                    <select id="activePeriodSelect" class="w-full text-white font-black bg-transparent border-0 border-b-2 border-white/40 focus:border-white outline-none cursor-pointer pb-0.5 text-base">
-                        <option class="text-slate-800" disabled>Loading...</option>
-                    </select>
-                    <p id="activePeriodSaved" class="text-xs text-white/80 font-bold mt-2 hidden"><i class="fa-solid fa-circle-check mr-1"></i>Saved for all users</p>
+                    <div style="flex:1;min-width:0">
+                        <p style="font-size:10.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.1em;margin:0 0 8px">Active Grading Period</p>
+                        <select id="activePeriodSelect" class="form-input w-full p-2" style="font-size:13px;font-weight:600;color:var(--text-primary)">
+                            <option disabled>Loading...</option>
+                        </select>
+                        <p id="activePeriodSaved" class="hidden" style="font-size:11px;color:var(--green-600);font-weight:600;margin-top:6px;display:flex;align-items:center;gap:4px">
+                            <i class="fa-solid fa-circle-check" style="font-size:10px"></i> Saved for all users
+                        </p>
+                    </div>
                 </div>
+
             </div>
 
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
