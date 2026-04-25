@@ -19,7 +19,7 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
 
 // ── EmailJS Setup ────────────────────────────────────────────────────────
 const EMAILJS_PUBLIC_KEY  = 'XfaGXU_eFA9dph-5G';
-const EMAILJS_SERVICE_ID  = 'service_m4aki55'; 
+const EMAILJS_SERVICE_ID  = 'service_s5qvpzh'; 
 const EMAILJS_TEMPLATE_ID = 'template_school_approved';
 emailjs.init(EMAILJS_PUBLIC_KEY);
 
@@ -44,6 +44,7 @@ async function loadQuotes() {
             data.id = docSnap.id; 
             allQuotes.push(data); 
 
+            // If the school has actually finished the onboarding flow, hide them from Approvals
             if (data.fulfilled) return; 
 
             pendingCount++;
@@ -51,12 +52,11 @@ async function loadQuotes() {
             const isApproved = data.paymentCleared;
             
             const statusBadge = isApproved 
-                ? `<span class="bg-emerald-900/40 text-emerald-400 border border-emerald-800 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider">Link Sent</span>`
+                ? `<span class="bg-blue-900/40 text-blue-400 border border-blue-800 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider">Link Sent</span>`
                 : `<span class="bg-amber-900/40 text-amber-400 border border-amber-800 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider">Pending Payment</span>`;
 
-            const actionBtn = isApproved
-                ? `<button class="text-slate-500 font-bold text-xs cursor-not-allowed" disabled>Waiting on School</button>`
-                : `<button onclick="window.openApprovalModal('${data.id}')" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition border border-slate-600 shadow-md">View</button>`;
+            // The button always says Manage now, but the modal changes depending on isApproved
+            const actionBtn = `<button onclick="window.openApprovalModal('${data.id}')" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition border border-slate-600 shadow-md">Manage</button>`;
 
             rows += `
                 <tr class="border-b border-slate-800 hover:bg-slate-800/50 transition">
@@ -82,11 +82,8 @@ async function loadQuotes() {
 // ── Form Interactions ────────────────────────────────────────────────────
 document.getElementById('payCycle').addEventListener('change', (e) => {
     const customWrap = document.getElementById('customCycleWrap');
-    if (e.target.value === 'Other') {
-        customWrap.classList.remove('hidden');
-    } else {
-        customWrap.classList.add('hidden');
-    }
+    if (e.target.value === 'Other') customWrap.classList.remove('hidden');
+    else customWrap.classList.add('hidden');
 });
 
 // ── Modal Handlers (View & Populate Details) ─────────────────────────────
@@ -94,7 +91,7 @@ window.openApprovalModal = (reqId) => {
     currentQuote = allQuotes.find(q => q.id === reqId);
     if (!currentQuote) return;
 
-    // Populate UI - Left Side
+    // 1. Populate UI - Left Side
     document.getElementById('vReqId').textContent = currentQuote.id;
     document.getElementById('vName').textContent = `${currentQuote.firstName} ${currentQuote.lastName}`;
     document.getElementById('vRole').textContent = currentQuote.jobTitle || 'N/A';
@@ -120,22 +117,34 @@ window.openApprovalModal = (reqId) => {
     document.getElementById('vSource').textContent = currentQuote.hearAboutUs || 'N/A';
     document.getElementById('vMessage').textContent = currentQuote.message || 'No additional message provided.';
 
-    // Reset Inputs - Right Side
-    document.getElementById('payAmount').value = '';
+    // 2. Logic Switch: Which right-side panel do we show?
+    if (currentQuote.paymentCleared) {
+        // ALREADY APPROVED -> Show Manage Link Panel
+        document.getElementById('paymentFormContainer').classList.add('hidden');
+        document.getElementById('manageLinkContainer').classList.remove('hidden');
+        
+        // Populate the editable email box
+        document.getElementById('editEmailInput').value = currentQuote.workEmail;
+    } else {
+        // NOT APPROVED -> Show Log Payment Panel
+        document.getElementById('paymentFormContainer').classList.remove('hidden');
+        document.getElementById('manageLinkContainer').classList.add('hidden');
+        
+        // Reset Inputs
+        document.getElementById('payAmount').value = '';
+        const cycleSelect = document.getElementById('payCycle');
+        if (currentQuote.contractTerm === 'Annual') cycleSelect.value = 'Annual';
+        else if (currentQuote.contractTerm === 'Multi-Year') cycleSelect.value = 'Multi-Year';
+        else cycleSelect.value = 'Monthly';
+        
+        document.getElementById('customCycleWrap').classList.add('hidden');
+        document.getElementById('payCustomCycle').value = ''; 
+        document.getElementById('payNotes').value = ''; 
+        document.getElementById('payReceipt').value = ''; 
+        document.getElementById('paymentErrorMsg').classList.add('hidden');
+    }
     
-    // Smart default for Billing Cycle
-    const cycleSelect = document.getElementById('payCycle');
-    if (currentQuote.contractTerm === 'Annual') cycleSelect.value = 'Annual';
-    else if (currentQuote.contractTerm === 'Multi-Year') cycleSelect.value = 'Multi-Year';
-    else cycleSelect.value = 'Monthly';
-    
-    document.getElementById('customCycleWrap').classList.add('hidden');
-    document.getElementById('payCustomCycle').value = ''; 
-    document.getElementById('payNotes').value = ''; 
-    document.getElementById('payReceipt').value = ''; 
-    document.getElementById('paymentErrorMsg').classList.add('hidden');
-    
-    // Show Modal
+    // 3. Show Modal
     const modal = document.getElementById('paymentModal');
     const inner = document.getElementById('paymentModalInner');
     modal.classList.remove('hidden');
@@ -163,13 +172,12 @@ function calculateRenewalDate(cycleType) {
         const years = currentQuote.contractYears ? parseInt(currentQuote.contractYears) : 2;
         date.setFullYear(date.getFullYear() + years);
     } else {
-        // Fallback for custom 'Other' inputs: Default to 1 year, admin can edit later if needed
         date.setFullYear(date.getFullYear() + 1);
     }
     return date.toISOString();
 }
 
-// ── Process Approval, Log Payment & Send Email ────────────────────────
+// ── LOGIC A: Process Initial Approval ─────────────────────────────────────
 document.getElementById('confirmApproveBtn').addEventListener('click', async () => {
     const amount = document.getElementById('payAmount').value;
     const cycleSelect = document.getElementById('payCycle').value;
@@ -184,7 +192,6 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
     }
 
     const actualCycle = cycleSelect === 'Other' ? (customCycle || 'Custom') : cycleSelect;
-
     const btn = document.getElementById('confirmApproveBtn');
     btn.disabled = true;
 
@@ -193,7 +200,6 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
         const timestamp = new Date().toISOString();
         let receiptUrl = null;
 
-        // 1. Upload File to Firebase Storage
         if (receiptFile) {
             btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up fa-spin mr-2"></i> Uploading Receipt...';
             const storageRef = ref(storage, `receipts/${paymentId}_${receiptFile.name}`);
@@ -203,7 +209,6 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
 
         btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Logging Invoice...';
 
-        // 2. Prepare Timestamped Note Array
         const notesArray = internalNote ? [{
             note: internalNote,
             timestamp: timestamp,
@@ -211,10 +216,8 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
             loggedByName: session.name
         }] : [];
 
-        // 3. Calculate Expiration Clock
         const nextRenewalDate = calculateRenewalDate(cycleSelect);
 
-        // 4. Create Master Ledger Payment Record
         await setDoc(doc(db, 'payments', paymentId), {
             reqId: currentQuote.id,
             schoolName: currentQuote.schoolName,
@@ -227,7 +230,6 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
             timestamp: timestamp
         });
 
-        // 5. Update Quote Request (Embeds the cycle and renewal date for onboarding to grab)
         await updateDoc(doc(db, 'quote_requests', currentQuote.id), {
             paymentCleared: true,
             clearedAt: timestamp,
@@ -235,7 +237,6 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
             calculatedRenewalDate: nextRenewalDate
         });
 
-        // 6. Send EmailJS Link
         btn.innerHTML = '<i class="fa-solid fa-envelope fa-spin mr-2"></i> Emailing School...';
         const onboardingLink = `https://connectusonline.org/onboarding/onboarding.html?req=${currentQuote.id}`;
         
@@ -246,7 +247,6 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
             onboarding_link: onboardingLink
         });
 
-        // 7. Cleanup
         closePaymentModal();
         loadQuotes(); 
 
@@ -258,6 +258,75 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
 
     btn.disabled = false;
     btn.innerHTML = 'Mark as Paid & Approve <i class="fa-solid fa-arrow-right ml-1"></i>';
+});
+
+// ── LOGIC B: Manage Sent Links ────────────────────────────────────────────
+
+// 1. Update Email Address
+document.getElementById('saveEmailBtn').addEventListener('click', async () => {
+    const newEmail = document.getElementById('editEmailInput').value.trim();
+    if(!newEmail) return;
+    
+    const btn = document.getElementById('saveEmailBtn');
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    
+    try {
+        await updateDoc(doc(db, 'quote_requests', currentQuote.id), { workEmail: newEmail });
+        currentQuote.workEmail = newEmail; 
+        document.getElementById('vEmail').textContent = newEmail; // Update left panel instantly
+        
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> Saved';
+        setTimeout(() => btn.innerHTML = 'Save', 2000);
+    } catch(e) {
+        console.error("Email update failed:", e);
+        btn.innerHTML = 'Error';
+        setTimeout(() => btn.innerHTML = 'Save', 2000);
+    }
+});
+
+// 2. Resend Email
+document.getElementById('resendLinkBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('resendLinkBtn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Sending...';
+    
+    try {
+        const onboardingLink = `https://connectusonline.org/onboarding/onboarding.html?req=${currentQuote.id}`;
+        await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+            to_email: currentQuote.workEmail, // Uses updated email if changed
+            contact_name: currentQuote.firstName,
+            school_name: currentQuote.schoolName,
+            onboarding_link: onboardingLink
+        });
+        
+        btn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Email Sent!';
+        setTimeout(() => btn.innerHTML = originalText, 3000);
+    } catch(e) {
+        console.error(e);
+        alert("Failed to resend the email. Please check console.");
+        btn.innerHTML = originalText;
+    }
+});
+
+// 3. Revoke Approval / Cancel Link
+document.getElementById('revokeLinkBtn').addEventListener('click', async () => {
+    if(!confirm("Are you sure you want to revoke this approval? The onboarding link in their email will no longer work.")) return;
+    
+    const btn = document.getElementById('revokeLinkBtn');
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Revoking...';
+    
+    try {
+        // By setting paymentCleared back to false, the system locks them out of onboarding 
+        // and pushes them back into your "Pending Payment" queue
+        await updateDoc(doc(db, 'quote_requests', currentQuote.id), { paymentCleared: false });
+        
+        closePaymentModal();
+        loadQuotes(); // Will refresh and show them as pending again
+    } catch(e) {
+        console.error(e);
+        alert("Failed to revoke approval.");
+        btn.innerHTML = '<i class="fa-solid fa-ban mr-2"></i> Revoke Approval (Cancel Link)';
+    }
 });
 
 document.getElementById('refreshQuotesBtn').addEventListener('click', loadQuotes);
