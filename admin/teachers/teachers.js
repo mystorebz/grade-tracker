@@ -2,7 +2,8 @@ import { db } from '../../assets/js/firebase-init.js';
 import {
     collection, query, where,
     getDocs, getDoc, doc,
-    setDoc, updateDoc, writeBatch, arrayUnion
+    setDoc, updateDoc, writeBatch,
+    arrayUnion, addDoc
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
@@ -23,7 +24,7 @@ const tbody = document.getElementById('teachersTableBody');
 // ── 3. HELPERS ────────────────────────────────────────────────────────────
 function generateTeacherId() {
     const year  = new Date().getFullYear().toString().slice(-2);
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No ambiguous chars
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let rand = '';
     for (let i = 0; i < 5; i++) rand += chars.charAt(Math.floor(Math.random() * chars.length));
     return `T${year}-${rand}`;
@@ -57,14 +58,11 @@ async function loadTeachers() {
     </td></tr>`;
 
     try {
-        // Pull teachers from the global collection scoped to this school
         const [tSnap, sSnap] = await Promise.all([
             getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId))),
-            // Pull students from global collection to count roster per teacher
             getDocs(query(collection(db, 'students'), where('currentSchoolId', '==', session.schoolId)))
         ]);
 
-        // Build per-teacher student count in memory — no extra queries needed
         const studentCount = {};
         sSnap.forEach(d => {
             const data = d.data();
@@ -167,7 +165,7 @@ window.closeAddTeacherModal = () => {
 
 // ── LOOK UP EXISTING TEACHER ──
 document.getElementById('lookupTeacherBtn').addEventListener('click', async () => {
-    const rawId  = document.getElementById('tGlobalId').value.trim().toUpperCase();
+    const rawId   = document.getElementById('tGlobalId').value.trim().toUpperCase();
     const preview = document.getElementById('claimTeacherPreview');
     const error   = document.getElementById('claimTeacherError');
     preview.classList.add('hidden');
@@ -193,9 +191,20 @@ document.getElementById('lookupTeacherBtn').addEventListener('click', async () =
                 error.classList.remove('hidden');
                 claimedTeacherDoc = null;
             } else {
-                document.getElementById('claimTeacherName').textContent  = d.name || 'Unknown';
-                document.getElementById('claimTeacherSchool').textContent = d.currentSchoolId
-                    ? `Currently at: ${d.currentSchoolId}` : 'Not currently assigned to a school';
+                document.getElementById('claimTeacherName').textContent = d.name || 'Unknown';
+
+                // Show school info + email warning if email is missing
+                // A missing email means the teacher cannot use Forgot PIN until they add one on first login
+                document.getElementById('claimTeacherSchool').innerHTML =
+                    (d.currentSchoolId ? `Currently at: ${d.currentSchoolId}` : 'Not currently assigned to a school') +
+                    (!d.email
+                        ? `<br><span style="color:#d97706;font-size:10.5px;font-weight:700;">
+                              ⚠ No email on file — teacher must add one during first login setup.
+                           </span>`
+                        : `<br><span style="color:#059669;font-size:10.5px;font-weight:600;">
+                              ✓ Email on file: ${escHtml(d.email)}
+                           </span>`);
+
                 preview.classList.remove('hidden');
                 document.getElementById('saveTeacherBtn').textContent = `Claim ${d.name} to This School`;
             }
@@ -218,7 +227,7 @@ document.getElementById('saveTeacherBtn').addEventListener('click', async () => 
     try {
         if (claimedTeacherDoc) {
             // ── CLAIM WORKFLOW ────────────────────────────────────────────
-            const tRef  = doc(db, 'teachers', claimedTeacherDoc.id);
+            const tRef    = doc(db, 'teachers', claimedTeacherDoc.id);
             const updates = { currentSchoolId: session.schoolId };
             if (claimedTeacherDoc.currentSchoolId && claimedTeacherDoc.currentSchoolId !== '') {
                 updates.archivedSchoolIds = arrayUnion(claimedTeacherDoc.currentSchoolId);
@@ -227,9 +236,25 @@ document.getElementById('saveTeacherBtn').addEventListener('click', async () => 
 
         } else {
             // ── CREATE WORKFLOW ───────────────────────────────────────────
-            const name = document.getElementById('tName').value.trim();
+            const name  = document.getElementById('tName').value.trim();
+            const email = document.getElementById('tEmail').value.trim();
+            const phone = document.getElementById('tPhone').value.trim();
+
+            // ── Validation ────────────────────────────────────────────────
             if (!name) {
                 alert('Teacher name is required to create a new profile.');
+                btn.disabled = false;
+                btn.textContent = 'Register to National Registry';
+                return;
+            }
+            if (!email) {
+                alert('Email address is required. The teacher needs it to recover their PIN if forgotten.');
+                btn.disabled = false;
+                btn.textContent = 'Register to National Registry';
+                return;
+            }
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                alert('Please enter a valid email address for this teacher.');
                 btn.disabled = false;
                 btn.textContent = 'Register to National Registry';
                 return;
@@ -238,16 +263,16 @@ document.getElementById('saveTeacherBtn').addEventListener('click', async () => 
             const newId = generateTeacherId();
             await setDoc(doc(db, 'teachers', newId), {
                 name,
-                email:             document.getElementById('tEmail').value.trim(),
-                phone:             document.getElementById('tPhone').value.trim(),
+                email,
+                phone,
                 pin:               generatePin(),
                 currentSchoolId:   session.schoolId,
                 archivedSchoolIds: [],
-                profileComplete:   false,  // Gate: teacher must complete address on first login
+                profileComplete:   false,
                 subjects: [
-                    { id: `sub_${Date.now()}_1`, name: 'Mathematics',        archived: false, description: '' },
+                    { id: `sub_${Date.now()}_1`, name: 'Mathematics',           archived: false, description: '' },
                     { id: `sub_${Date.now()}_2`, name: 'English Language Arts', archived: false, description: '' },
-                    { id: `sub_${Date.now()}_3`, name: 'Science',            archived: false, description: '' }
+                    { id: `sub_${Date.now()}_3`, name: 'Science',               archived: false, description: '' }
                 ],
                 classes:            [],
                 className:          '',
@@ -291,10 +316,12 @@ window.openTeacherPanel = async (teacherId) => {
         document.getElementById('tPanelClass').textContent = classes.length ? classes.join(' · ') : 'No class assigned';
 
         document.getElementById('tInfoGrid').innerHTML = [
-            ['National ID',  `<span class="font-mono tracking-widest">${t.id}</span>`],
-            ['Email',        escHtml(t.email)  || '—'],
-            ['Phone',        escHtml(t.phone)  || '—'],
-            ['Profile',      t.profileComplete ? '<span class="text-green-600 font-black">Complete</span>' : '<span class="text-amber-500 font-black">Pending Setup</span>']
+            ['National ID', `<span class="font-mono tracking-widest">${t.id}</span>`],
+            ['Email',       escHtml(t.email) || '<span class="text-amber-500 font-black text-[11px]">⚠ Not set — required for PIN recovery</span>'],
+            ['Phone',       escHtml(t.phone) || '—'],
+            ['Profile',     t.profileComplete
+                ? '<span class="text-green-600 font-black">Complete</span>'
+                : '<span class="text-amber-500 font-black">Pending Setup</span>']
         ].map(([l, v]) => `
             <div class="bg-white border border-[#dce3ed] rounded-lg p-3">
                 <p class="text-[9px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">${l}</p>
@@ -309,11 +336,9 @@ window.openTeacherPanel = async (teacherId) => {
             ? subNames.map(s => `<span class="bg-[#f8fafb] text-[#374f6b] border border-[#dce3ed] font-bold text-[11px] px-3 py-1 rounded">${escHtml(s)}</span>`).join('')
             : '<span class="text-[11px] text-[#9ab0c6] font-semibold italic">No subjects recorded yet.</span>';
 
-        // Credential slip
         document.getElementById('tSlipId').textContent  = t.id;
         document.getElementById('tSlipPin').textContent = t.pin;
 
-        // Prefill edit fields
         document.getElementById('editTName').value  = t.name  || '';
         document.getElementById('editTEmail').value = t.email || '';
         document.getElementById('editTPhone').value = t.phone || '';
@@ -338,14 +363,32 @@ window.editTeacherToggle = (show) => {
 };
 
 document.getElementById('saveTeacherEditBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('saveTeacherEditBtn');
+    const btn   = document.getElementById('saveTeacherEditBtn');
+    const email = document.getElementById('editTEmail').value.trim();
+
+    // Validate email in edit panel as well
+    if (!email) {
+        const msg = document.getElementById('editTeacherMsg');
+        msg.textContent = 'Email address is required for PIN recovery.';
+        msg.className   = 'text-[11px] font-bold p-3 rounded mt-3 text-center text-red-600 bg-red-50 border border-red-100';
+        msg.classList.remove('hidden');
+        return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        const msg = document.getElementById('editTeacherMsg');
+        msg.textContent = 'Please enter a valid email address.';
+        msg.className   = 'text-[11px] font-bold p-3 rounded mt-3 text-center text-red-600 bg-red-50 border border-red-100';
+        msg.classList.remove('hidden');
+        return;
+    }
+
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...`;
     btn.disabled  = true;
 
     try {
         await updateDoc(doc(db, 'teachers', currentTeacherId), {
             name:  document.getElementById('editTName').value.trim(),
-            email: document.getElementById('editTEmail').value.trim(),
+            email,
             phone: document.getElementById('editTPhone').value.trim()
         });
         window.editTeacherToggle(false);
@@ -365,8 +408,8 @@ document.getElementById('saveTeacherEditBtn').addEventListener('click', async ()
 
 // ── 8. CREDENTIAL SLIP PRINT ──────────────────────────────────────────────
 window.printTeacherSlip = () => {
-    const id  = document.getElementById('tSlipId').textContent;
-    const pin = document.getElementById('tSlipPin').textContent;
+    const id   = document.getElementById('tSlipId').textContent;
+    const pin  = document.getElementById('tSlipPin').textContent;
     const name = document.getElementById('tPanelName').textContent;
 
     const html = `<html><head><title>Teacher Credential Slip</title>
@@ -425,13 +468,11 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
         const tRef    = doc(db, 'teachers', currentTeacherId);
         const evalRef = doc(collection(db, 'teachers', currentTeacherId, 'evaluations'));
 
-        // Command 1: Sever active school link on the global teacher doc
         batch.update(tRef, {
             currentSchoolId:   '',
             archivedSchoolIds: arrayUnion(session.schoolId)
         });
 
-        // Command 2: Write the permanent exit evaluation to the subcollection
         batch.set(evalRef, {
             evaluatorId:      session.adminId || 'Admin',
             schoolId:         session.schoolId,
@@ -462,7 +503,7 @@ document.getElementById('exportCsvBtn').addEventListener('click', () => {
         ['Global ID','Name','Email','Phone','Classes','Subjects','Students','PIN'],
         ...allTeachersCache.map(t => [
             t.id,
-            t.name || '',
+            t.name  || '',
             t.email || '',
             t.phone || '',
             getTeacherClasses(t).join(' | '),
