@@ -45,6 +45,7 @@
             <div class="pt-6 pb-2">
                 <p class="px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest">Platform Settings</p>
             </div>
+            
             <button data-tab="team" id="navTeamBtn" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition">
                 <i class="fa-solid fa-user-shield w-5 text-center"></i> HQ Team
             </button>
@@ -82,7 +83,28 @@
         <div class="flex-1 overflow-y-auto p-8" id="mainContent">
             
             <div id="view-overview" class="view-section">
-                <p class="text-slate-400 italic">Global metrics will load here.</p>
+                <div class="grid grid-cols-4 gap-6 mb-8">
+                    <div class="bg-slate-800 border border-slate-700 p-6 rounded-2xl">
+                        <i class="fa-solid fa-school text-emerald-400 text-2xl mb-3"></i>
+                        <p class="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Active Schools</p>
+                        <p class="text-3xl font-black text-white">0</p>
+                    </div>
+                    <div class="bg-slate-800 border border-slate-700 p-6 rounded-2xl">
+                        <i class="fa-solid fa-chalkboard-user text-blue-400 text-2xl mb-3"></i>
+                        <p class="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Total Teachers</p>
+                        <p class="text-3xl font-black text-white">0</p>
+                    </div>
+                    <div class="bg-slate-800 border border-slate-700 p-6 rounded-2xl">
+                        <i class="fa-solid fa-graduation-cap text-indigo-400 text-2xl mb-3"></i>
+                        <p class="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Total Students</p>
+                        <p class="text-3xl font-black text-white">0</p>
+                    </div>
+                    <div class="bg-slate-800 border border-slate-700 p-6 rounded-2xl">
+                        <i class="fa-solid fa-file-invoice-dollar text-amber-400 text-2xl mb-3"></i>
+                        <p class="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Pending Quotes</p>
+                        <p class="text-3xl font-black text-white">0</p>
+                    </div>
+                </div>
             </div>
 
             <div id="view-approvals" class="view-section hidden">
@@ -104,24 +126,93 @@
                                     <th class="p-4 font-black text-right">Action</th>
                                 </tr>
                             </thead>
-                            <tbody id="quotesTableBody" class="text-sm">
-                                <tr>
-                                    <td colspan="5" class="p-8 text-center text-slate-500 font-semibold italic">Loading pending requests...</td>
-                                </tr>
-                            </tbody>
+                            <tbody id="quotesTableBody" class="text-sm"></tbody>
                         </table>
                     </div>
                 </div>
             </div>
 
-            <div id="view-schools" class="view-section hidden"><p class="text-slate-400">Loading School Directory...</p></div>
-            <div id="view-organizations" class="view-section hidden"><p class="text-slate-400">Loading Organizations...</p></div>
-            <div id="view-team" class="view-section hidden"><p class="text-slate-400">Loading Team Roster...</p></div>
+            <div id="view-schools" class="view-section hidden">
+                <div class="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden shadow-xl">
+                    <div class="p-6 border-b border-slate-700 flex justify-between items-center bg-slate-900/50">
+                        <h3 class="font-black text-white text-lg">Active School Nodes</h3>
+                        <div class="flex gap-3">
+                            <div class="relative">
+                                <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-500 text-xs"></i>
+                                <input type="text" id="searchSchools" placeholder="Search schools..." class="bg-slate-900 border border-slate-700 text-white text-xs font-bold rounded-lg pl-8 pr-4 py-2 outline-none focus:border-emerald-500 transition">
+                            </div>
+                            <button id="refreshSchoolsBtn" class="text-xs font-bold text-emerald-400 hover:text-emerald-300 transition flex items-center gap-2 border border-emerald-900 bg-emerald-900/20 px-3 py-1.5 rounded-lg">
+                                <i class="fa-solid fa-rotate-right"></i> Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-900/80 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-700">
+                                    <th class="p-4 font-black">School Name</th>
+                                    <th class="p-4 font-black">District</th>
+                                    <th class="p-4 font-black">Super Admin ID</th>
+                                    <th class="p-4 font-black">Status</th>
+                                    <th class="p-4 font-black text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="schoolsTableBody" class="text-sm"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-organizations" class="view-section hidden">
+                <div class="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden shadow-xl">
+                    <div class="p-6 border-b border-slate-700 flex justify-between items-center bg-slate-900/50">
+                        <h3 class="font-black text-white text-lg">Partner Organizations</h3>
+                        <button onclick="window.openAddOrgModal()" class="text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 transition px-4 py-2 rounded-lg shadow-md border border-blue-500">
+                            <i class="fa-solid fa-plus mr-1"></i> Add Organization
+                        </button>
+                    </div>
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-900/80 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-700">
+                                <th class="p-4 font-black">Org Name</th>
+                                <th class="p-4 font-black">Type</th>
+                                <th class="p-4 font-black">Contact Email</th>
+                                <th class="p-4 font-black">Status</th>
+                                <th class="p-4 font-black text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="orgsTableBody" class="text-sm"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="view-team" class="view-section hidden">
+                <div class="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden shadow-xl">
+                    <div class="p-6 border-b border-slate-700 flex justify-between items-center bg-slate-900/50">
+                        <h3 class="font-black text-white text-lg">HQ Team Roster</h3>
+                        <button onclick="window.openAddTeamModal()" class="text-xs font-bold text-white bg-teal-600 hover:bg-teal-500 transition px-4 py-2 rounded-lg shadow-md border border-teal-500">
+                            <i class="fa-solid fa-user-plus mr-1"></i> Add Member
+                        </button>
+                    </div>
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-900/80 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-700">
+                                <th class="p-4 font-black">Staff Member</th>
+                                <th class="p-4 font-black">Email</th>
+                                <th class="p-4 font-black">Role</th>
+                                <th class="p-4 font-black">Status</th>
+                                <th class="p-4 font-black text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="teamTableBody" class="text-sm"></tbody>
+                    </table>
+                </div>
+            </div>
 
         </div>
     </main>
 
-    <div id="paymentModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+    <div id="paymentModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
         <div class="bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 max-w-md w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden" id="paymentModalInner">
             <div class="h-1.5 bg-gradient-to-r from-blue-500 to-emerald-400"></div>
             <div class="p-8">
@@ -130,12 +221,10 @@
                         <h3 class="font-black text-xl text-white">Approve & Send Link</h3>
                         <p id="modalSchoolName" class="text-xs font-bold text-emerald-400 mt-1 uppercase tracking-widest"></p>
                     </div>
-                    <button onclick="closePaymentModal()" class="text-slate-500 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+                    <button onclick="window.closePaymentModal()" class="text-slate-500 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
                 </div>
-                
                 <div class="space-y-4">
                     <p class="text-sm text-slate-400 font-semibold mb-4">Logging payment will verify the account and instantly email the secure onboarding link to <span id="modalContactEmail" class="text-white font-bold"></span>.</p>
-                    
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Amount Paid (BZD)</label>
@@ -150,9 +239,7 @@
                         </div>
                     </div>
                 </div>
-
                 <p id="paymentErrorMsg" class="text-xs font-bold text-red-400 bg-red-900/30 border border-red-800/50 p-3 rounded-lg text-center hidden mt-5"></p>
-
                 <button id="confirmApproveBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-xl transition shadow-lg shadow-emerald-900/50 text-sm tracking-wide mt-6">
                     <i class="fa-solid fa-paper-plane mr-2"></i> Log Payment & Email Link
                 </button>
@@ -160,7 +247,107 @@
         </div>
     </div>
 
-    <script type="module" src="hq-core.js"></script>
-    <script type="module" src="hq-approvals.js"></script>
+    <div id="schoolManageModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 max-w-md w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden" id="schoolManageModalInner">
+            <div class="h-1.5 bg-gradient-to-r from-indigo-500 to-purple-500"></div>
+            <div class="p-8">
+                <div class="flex justify-between items-start mb-6">
+                    <div>
+                        <h3 class="font-black text-xl text-white">Manage Node</h3>
+                        <p id="manageSchoolName" class="text-xs font-bold text-indigo-400 mt-1 uppercase tracking-widest"></p>
+                    </div>
+                    <button onclick="window.closeSchoolModal()" class="text-slate-500 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+                </div>
+                <div class="bg-slate-900 border border-slate-700 rounded-xl p-4 mb-6">
+                    <div class="flex justify-between mb-2">
+                        <span class="text-[10px] font-black text-slate-500 uppercase tracking-widest">School ID</span>
+                        <span id="manageSchoolId" class="text-xs font-mono font-bold text-white"></span>
+                    </div>
+                    <div class="flex justify-between mb-2">
+                        <span class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Super Admin ID</span>
+                        <span id="manageAdminId" class="text-xs font-mono font-bold text-white"></span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Contact Email</span>
+                        <span id="manageEmail" class="text-xs font-bold text-slate-300"></span>
+                    </div>
+                </div>
+                <div class="space-y-3">
+                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Danger Zone</p>
+                    <button id="toggleStatusBtn" class="w-full bg-red-900/20 border border-red-900/50 hover:bg-red-900/40 text-red-400 font-black py-4 rounded-xl transition text-sm tracking-wide flex justify-center items-center gap-2">
+                        <i class="fa-solid fa-power-off"></i> <span id="toggleStatusText">Suspend Platform Access</span>
+                    </button>
+                    <p class="text-[10px] text-slate-500 font-semibold text-center">Suspending access immediately logs out all associated teachers, students, and admins.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="addOrgModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 max-w-sm w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden" id="addOrgModalInner">
+            <div class="p-8">
+                <h3 class="font-black text-xl text-white mb-6">Add Organization</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Org Name</label>
+                        <input type="text" id="orgName" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:border-blue-500 transition">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Contact Email</label>
+                        <input type="email" id="orgEmail" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:border-blue-500 transition">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Type</label>
+                        <select id="orgType" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:border-blue-500 transition">
+                            <option value="Ministry">Ministry</option>
+                            <option value="District">District</option>
+                            <option value="Partner">Partner</option>
+                        </select>
+                    </div>
+                </div>
+                <p id="orgErrorMsg" class="text-xs text-red-400 font-bold mt-4 hidden"></p>
+                <div class="flex gap-3 mt-6">
+                    <button onclick="window.closeAddOrgModal()" class="flex-1 py-3 text-slate-400 font-bold text-sm hover:text-white transition">Cancel</button>
+                    <button id="saveOrgBtn" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition">Create</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="addTeamModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 max-w-sm w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden" id="addTeamModalInner">
+            <div class="p-8">
+                <h3 class="font-black text-xl text-white mb-6">Add Team Member</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Name</label>
+                        <input type="text" id="teamName" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:border-teal-500 transition">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Email</label>
+                        <input type="email" id="teamEmail" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:border-teal-500 transition">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Initial PIN</label>
+                        <input type="password" id="teamPin" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:border-teal-500 transition">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Role</label>
+                        <select id="teamRole" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:border-teal-500 transition">
+                            <option value="Support">Support</option>
+                            <option value="Admin">Admin</option>
+                        </select>
+                    </div>
+                </div>
+                <p id="teamErrorMsg" class="text-xs text-red-400 font-bold mt-4 hidden"></p>
+                <div class="flex gap-3 mt-6">
+                    <button onclick="window.closeAddTeamModal()" class="flex-1 py-3 text-slate-400 font-bold text-sm hover:text-white transition">Cancel</button>
+                    <button id="saveTeamBtn" class="flex-1 bg-teal-600 hover:bg-teal-500 text-white font-bold py-3 rounded-xl transition">Add Member</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="core/hq-core.js"></script>
 </body>
 </html>
