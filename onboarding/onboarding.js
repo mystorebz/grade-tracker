@@ -1,5 +1,5 @@
 import { db } from '../assets/js/firebase-init.js';
-import { doc, getDoc, setDoc, updateDoc, writeBatch, collection } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { doc, getDoc, updateDoc, writeBatch, collection } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // DOM Elements
 const loadingState  = document.getElementById('loadingState');
@@ -13,7 +13,7 @@ let requestData = null;
 const urlParams = new URLSearchParams(window.location.search);
 const reqId     = urlParams.get('req');
 
-// ─── Helper: SHA-256 Hash ─────────────────────────────────────────────────────
+// ── SHA-256 Hash ──────────────────────────────────────────────────────────────
 // Normalizes to lowercase + trimmed before hashing so answers are case-insensitive.
 async function sha256(text) {
     const normalized  = text.toLowerCase().trim();
@@ -24,7 +24,7 @@ async function sha256(text) {
         .join('');
 }
 
-// ─── Helper: Generate School ID (e.g., SCH-8B2X9) ────────────────────────────
+// ── Generate School ID (e.g., SCH-8B2X9) ─────────────────────────────────────
 function generateSchoolId() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let rand = '';
@@ -32,7 +32,7 @@ function generateSchoolId() {
     return `SCH-${rand}`;
 }
 
-// ─── 1. Boot Sequence: Verify Request ID ─────────────────────────────────────
+// ── 1. Boot Sequence: Verify Request ID ───────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
     if (!reqId) {
         showError("Invalid or missing invitation link. Please check your email.");
@@ -71,7 +71,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-// ─── 2. Initialize School Infrastructure ─────────────────────────────────────
+// ── 2. Initialize School Infrastructure ───────────────────────────────────────
 initializeBtn.addEventListener('click', async () => {
     const schoolName = document.getElementById('obSchoolName').value.trim();
     const district   = document.getElementById('obDistrict').value;
@@ -131,6 +131,7 @@ initializeBtn.addEventListener('click', async () => {
             securityQ2:           secQ2,        // Question text (not sensitive)
             securityA2:           hashedA2,     // SHA-256 hash
             securityQuestionsSet: true,         // Enables forgot-pin flow immediately
+            isSuperAdmin:         true,         // This account is the school's super admin
             isVerified:           true,
             requiresPinReset:     false,
             subscriptionPlan:     'pro',
@@ -180,7 +181,7 @@ initializeBtn.addEventListener('click', async () => {
     }
 });
 
-// ─── UI Helpers ───────────────────────────────────────────────────────────────
+// ── UI Helpers ────────────────────────────────────────────────────────────────
 function showError(msg) {
     loadingState.innerHTML = `
         <i class="fa-solid fa-triangle-exclamation text-4xl text-red-500 mb-4"></i>
