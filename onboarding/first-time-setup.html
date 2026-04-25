@@ -14,7 +14,7 @@
 </head>
 <body class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-[#f8faff] to-[#eef2ff] antialiased">
 
-    <!-- ── Loading state ─────────────────────────────────────────────────── -->
+    <!-- ── Loading ───────────────────────────────────────────────────────── -->
     <div id="loadingState" class="max-w-md w-full">
         <div class="bg-white rounded-3xl shadow-xl border border-blue-100 p-12 text-center">
             <i class="fa-solid fa-circle-notch fa-spin text-4xl text-blue-500 mb-4"></i>
@@ -22,7 +22,7 @@
         </div>
     </div>
 
-    <!-- ── Setup form ────────────────────────────────────────────────────── -->
+    <!-- ── Setup Form ────────────────────────────────────────────────────── -->
     <div id="setupContainer" class="max-w-md w-full hidden">
         <div class="text-center mb-8">
             <img src="../assets/images/logo.png" alt="ConnectUs" class="h-14 w-auto mx-auto mb-4 drop-shadow-md">
@@ -37,37 +37,36 @@
 
                 <!-- Account badge -->
                 <div id="accountBadge" class="p-3 rounded-xl flex items-center gap-3 border bg-blue-50 border-blue-200">
-                    <i id="badgeIcon" class="fa-solid fa-chalkboard-user text-blue-500 text-xl"></i>
+                    <i id="badgeIcon" class="fa-solid fa-user-shield text-blue-500 text-xl"></i>
                     <div>
-                        <p id="badgeRole" class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Teacher Account</p>
+                        <p id="badgeRole" class="text-[10px] text-slate-500 font-bold uppercase tracking-widest"></p>
                         <p id="badgeName" class="text-sm font-black text-slate-800"></p>
-                        <p id="badgeSub" class="text-[10px] text-slate-400 font-semibold"></p>
+                        <p id="badgeSub"  class="text-[10px] text-slate-400 font-semibold"></p>
                     </div>
                 </div>
 
-                <!-- Step indicator -->
+                <!-- Info banner -->
                 <div class="bg-amber-50 border border-amber-100 p-3 rounded-xl flex items-start gap-3">
                     <i class="fa-solid fa-circle-info text-amber-500 mt-0.5 text-sm"></i>
                     <p class="text-xs text-slate-600 font-semibold">
-                        Set up your security questions below. These are used to verify your identity if you ever forget your PIN. Your answers are <span class="font-black text-slate-800">not case-sensitive</span>.
+                        Set up your security questions below. These are used to verify your identity if you ever forget your PIN.
+                        Your answers are <span class="font-black text-slate-800">not case-sensitive</span>.
                     </p>
                 </div>
 
-                <!-- ── Email field (shown only if missing) ─────────────── -->
+                <!-- ── Email (shown only if missing) ──────────────────────── -->
                 <div id="emailSection" class="hidden">
                     <div class="pb-5 border-b border-slate-100">
-                        <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">
-                            Email Address *
-                        </label>
+                        <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Email Address *</label>
                         <p class="text-xs text-slate-400 font-semibold mb-2">
-                            Used to send you a reset link if you forget your PIN.
+                            Used to send you a reset link if you ever forget your PIN.
                         </p>
                         <input type="email" id="setupEmail" placeholder="your@email.com"
                             class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
                     </div>
                 </div>
 
-                <!-- ── Security Question 1 ─────────────────────────────── -->
+                <!-- ── Security Question 1 ────────────────────────────────── -->
                 <div>
                     <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Security Question 1 *</label>
                     <select id="setupSecQ1"
@@ -88,7 +87,7 @@
                         class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
                 </div>
 
-                <!-- ── Security Question 2 ─────────────────────────────── -->
+                <!-- ── Security Question 2 ────────────────────────────────── -->
                 <div>
                     <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Security Question 2 *</label>
                     <select id="setupSecQ2"
@@ -128,35 +127,58 @@ import { db } from '../assets/js/firebase-init.js';
 import { doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../assets/js/auth.js';
 
-// ── Role config ───────────────────────────────────────────────────────────────
+// ── Role Config ───────────────────────────────────────────────────────────────
+// Each role defines:
+//   collection  — which Firestore collection to update
+//   getId       — how to extract the document ID from the session
+//   getName     — display name for the account badge
+//   getEmail    — current email (determines if email field is shown)
+//   dashPath    — where to go after setup completes
+//
+// NOTE: admin session contains contactEmail (added to setSessionData in login.js).
+// teacher session contains teacherData.email.
+// student session contains studentData.email (new field, often empty on first login).
+
 const ROLE_CONFIG = {
+    admin: {
+        icon:       'fa-solid fa-user-shield',
+        badgeClass: 'bg-blue-50 border-blue-200',
+        badgeRole:  'Admin Account',
+        collection: 'schools',
+        getId:      (s) => s.schoolId,
+        getName:    (s) => s.schoolName   || s.schoolId,
+        getEmail:   (s) => s.contactEmail || '',
+        getSub:     (s) => `School ID: ${s.schoolId}`,
+        loginPath:  '../admin/login.html',
+        dashPath:   '../admin/home/home.html'
+    },
     teacher: {
-        icon:        'fa-solid fa-chalkboard-user',
-        badgeClass:  'bg-blue-50 border-blue-200',
-        badgeRole:   'Teacher Account',
-        collection:  'teachers',
-        getId:       (s) => s.teacherId,
-        getName:     (s) => s.teacherData?.name  || '',
-        getEmail:    (s) => s.teacherData?.email || '',
-        getSub:      (s) => s.schoolId ? `School: ${s.schoolId}` : '',
-        loginPath:   '../teacher/login.html',
-        dashPath:    '../teacher/home/home.html'
+        icon:       'fa-solid fa-chalkboard-user',
+        badgeClass: 'bg-emerald-50 border-emerald-200',
+        badgeRole:  'Teacher Account',
+        collection: 'teachers',
+        getId:      (s) => s.teacherId,
+        getName:    (s) => s.teacherData?.name  || '',
+        getEmail:   (s) => s.teacherData?.email || '',
+        getSub:     (s) => s.schoolId ? `School: ${s.schoolId}` : '',
+        loginPath:  '../teacher/login.html',
+        dashPath:   '../teacher/home/home.html'
     },
     student: {
-        icon:        'fa-solid fa-graduation-cap',
-        badgeClass:  'bg-indigo-50 border-indigo-200',
-        badgeRole:   'Student Account',
-        collection:  'students',
-        getId:       (s) => s.studentId,
-        getName:     (s) => s.studentData?.name  || '',
-        getEmail:    (s) => s.studentData?.email || '',
-        getSub:      (s) => s.schoolId ? `School: ${s.schoolId}` : '',
-        loginPath:   '../student/login.html',
-        dashPath:    '../student/home/home.html'
+        icon:       'fa-solid fa-graduation-cap',
+        badgeClass: 'bg-indigo-50 border-indigo-200',
+        badgeRole:  'Student Account',
+        collection: 'students',
+        getId:      (s) => s.studentId,
+        getName:    (s) => s.studentData?.name  || '',
+        getEmail:   (s) => s.studentData?.email || '',
+        getSub:     (s) => s.schoolId ? `School: ${s.schoolId}` : '',
+        loginPath:  '../student/login.html',
+        dashPath:   '../student/home/home.html'
     }
 };
 
-// ── SHA-256 (same normalization as all other files) ───────────────────────────
+// ── SHA-256 (same normalization as all other ConnectUs auth files) ────────────
 async function sha256(text) {
     const encoded = new TextEncoder().encode(text.toLowerCase().trim());
     const buffer  = await crypto.subtle.digest('SHA-256', encoded);
@@ -168,16 +190,15 @@ const role = new URLSearchParams(window.location.search).get('role');
 const cfg  = ROLE_CONFIG[role];
 
 if (!cfg) {
-    // Unknown role — send home
     window.location.replace('../index.html');
 }
 
-// requireAuth reads the session set by the login page.
-// If no session exists it redirects to login automatically.
+// requireAuth reads the session already set by the login page.
+// Redirects to loginPath automatically if no valid session exists.
 const session = requireAuth(role, cfg.loginPath);
 
 if (session) {
-    // ── Populate account badge ─────────────────────────────────────────────
+    // ── Populate badge ─────────────────────────────────────────────────────
     const badgeEl = document.getElementById('accountBadge');
     badgeEl.className = `p-3 rounded-xl flex items-center gap-3 border ${cfg.badgeClass}`;
     document.getElementById('badgeIcon').className  = `${cfg.icon} text-xl`;
@@ -185,7 +206,7 @@ if (session) {
     document.getElementById('badgeName').textContent = cfg.getName(session);
     document.getElementById('badgeSub').textContent  = cfg.getSub(session);
 
-    // ── Show email section only if email is missing ────────────────────────
+    // ── Show email field only if it's missing from the account ────────────
     if (!cfg.getEmail(session)) {
         document.getElementById('emailSection').classList.remove('hidden');
     }
@@ -196,17 +217,17 @@ if (session) {
 
 // ── Submit ────────────────────────────────────────────────────────────────────
 document.getElementById('setupBtn').addEventListener('click', async () => {
-    const q1  = document.getElementById('setupSecQ1').value;
-    const a1  = document.getElementById('setupSecA1').value.trim();
-    const q2  = document.getElementById('setupSecQ2').value;
-    const a2  = document.getElementById('setupSecA2').value.trim();
+    const q1    = document.getElementById('setupSecQ1').value;
+    const a1    = document.getElementById('setupSecA1').value.trim();
+    const q2    = document.getElementById('setupSecQ2').value;
+    const a2    = document.getElementById('setupSecA2').value.trim();
     const email = document.getElementById('setupEmail').value.trim();
-    const errEl = document.getElementById('setupError');
-    errEl.classList.add('hidden');
 
-    // ── Validation ─────────────────────────────────────────────────────────
+    document.getElementById('setupError').classList.add('hidden');
+
     const emailRequired = !cfg.getEmail(session);
 
+    // ── Validation ─────────────────────────────────────────────────────────
     if (emailRequired && !email) {
         showError('Please enter your email address.'); return;
     }
@@ -238,15 +259,13 @@ document.getElementById('setupBtn').addEventListener('click', async () => {
             securityQuestionsSet: true
         };
 
-        // Add email only if it was missing and user provided it
         if (emailRequired && email) {
-            updates.email = email.toLowerCase();
+            // For admin this maps to contactEmail, for teacher/student to email
+            updates[role === 'admin' ? 'contactEmail' : 'email'] = email.toLowerCase();
         }
 
-        const docId = cfg.getId(session);
-        await updateDoc(doc(db, cfg.collection, docId), updates);
+        await updateDoc(doc(db, cfg.collection, cfg.getId(session)), updates);
 
-        // ── Redirect to dashboard ──────────────────────────────────────────
         window.location.replace(cfg.dashPath);
 
     } catch (err) {
