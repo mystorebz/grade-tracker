@@ -3,8 +3,8 @@ import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-
 import { setSessionData } from '../assets/js/auth.js';
 
 // ── ELEMENTS ──────────────────────────────────────────────────────────────────
-const loginBtn  = document.getElementById('loginBtn');
-const msgEl     = document.getElementById('loginMsg');
+const loginBtn = document.getElementById('loginBtn');
+const msgEl    = document.getElementById('loginMsg');
 
 function showError(text) {
     msgEl.textContent = text;
@@ -25,7 +25,6 @@ function setLoading(loading) {
 // ── LOGIN HANDLER ─────────────────────────────────────────────────────────────
 loginBtn.addEventListener('click', handleLogin);
 
-// Allow Enter key on both fields
 ['loginStudentId', 'loginPin'].forEach(id => {
     document.getElementById(id)?.addEventListener('keydown', e => {
         if (e.key === 'Enter') handleLogin();
@@ -43,7 +42,6 @@ async function handleLogin() {
         return;
     }
 
-    // Basic format validation
     if (!/^S\d{2}-[A-Z0-9]{5}$/.test(rawId)) {
         showError('Invalid Student ID format. It should look like S26-XXXXX.');
         return;
@@ -52,7 +50,6 @@ async function handleLogin() {
     setLoading(true);
 
     try {
-        // ── Look up student in global /students collection by document ID ──
         const studentSnap = await getDoc(doc(db, 'students', rawId));
 
         if (!studentSnap.exists()) {
@@ -70,20 +67,23 @@ async function handleLogin() {
             return;
         }
 
-        // ── Check enrollment status ───────────────────────────────────────
-        // Students can log in regardless of status to view their academic history.
-        // Only 'Active' students have a currentSchoolId to load live data from.
-
-        // ── Save session ──────────────────────────────────────────────────
-        // Include schoolId so existing student portal pages (grades, reports)
-        // can still read from their siloed grade data during the transition.
+        // ── Save session — must happen BEFORE any gate redirect ───────────
         setSessionData('student', {
             studentId:   studentData.id,
             schoolId:    studentData.currentSchoolId || '',
             studentData: studentData
         });
 
-        // ── Redirect to student home ──────────────────────────────────────
+        // ── Gate: Security questions not yet set ──────────────────────────
+        // Triggers on first login for all students in the global system.
+        // Covers both: new students and existing students who never had email
+        // or security questions (they will be prompted to add them here).
+        if (!studentData.securityQuestionsSet) {
+            window.location.replace('../onboarding/first-time-setup.html?role=student');
+            return;
+        }
+
+        // ── All gates passed — go to dashboard ────────────────────────────
         window.location.replace('home/home.html');
 
     } catch (e) {
