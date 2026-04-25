@@ -85,7 +85,7 @@
                             <tr class="bg-slate-900/80 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-700">
                                 <th class="p-4 font-black">School Name</th>
                                 <th class="p-4 font-black">Contact</th>
-                                <th class="p-4 font-black">Renewal Date</th>
+                                <th class="p-4 font-black">Tier / Renewal</th>
                                 <th class="p-4 font-black">Status</th>
                                 <th class="p-4 font-black text-right">Action</th>
                             </tr>
@@ -97,8 +97,8 @@
         </div>
     </main>
 
-    <div id="schoolManageModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[50] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
-        <div class="bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 max-w-lg w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden" id="schoolManageModalInner">
+    <div id="schoolManageModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[50] flex items-center justify-center hidden opacity-0 transition-opacity duration-300 py-10 overflow-y-auto">
+        <div class="bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 max-w-2xl w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden" id="schoolManageModalInner">
             <div class="h-1.5 bg-gradient-to-r from-indigo-500 to-purple-500"></div>
             <div class="p-8">
                 <div class="flex justify-between items-start mb-6">
@@ -128,6 +128,11 @@
 
                     <div class="bg-slate-900 border border-slate-700 rounded-xl p-4">
                         <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 border-b border-slate-800 pb-2">Billing & Renewals</p>
+                        
+                        <div class="flex justify-between mb-2">
+                            <span class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Current Tier</span>
+                            <span id="manageTier" class="text-xs font-black text-indigo-400"></span>
+                        </div>
                         <div class="flex justify-between mb-2">
                             <span class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Current Term</span>
                             <span id="manageBillingCycle" class="text-xs font-bold text-white"></span>
@@ -136,9 +141,47 @@
                             <span class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Expiration</span>
                             <span id="manageExpiration" class="text-xs font-black text-emerald-400"></span>
                         </div>
-                        <button id="openRenewalBtn" class="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-2 rounded-lg transition text-xs border border-slate-600">
-                            <i class="fa-solid fa-file-invoice-dollar mr-1"></i> Log Renewal Payment
+
+                        <div class="bg-slate-800 rounded-lg p-2 mb-2 border border-slate-700 flex justify-between text-center divide-x divide-slate-700">
+                            <div class="flex-1">
+                                <span class="block text-[8px] font-black text-slate-500 uppercase tracking-widest">Students</span>
+                                <span id="manageLimitStudents" class="text-xs font-bold text-white">-</span>
+                            </div>
+                            <div class="flex-1">
+                                <span class="block text-[8px] font-black text-slate-500 uppercase tracking-widest">Teachers</span>
+                                <span id="manageLimitTeachers" class="text-xs font-bold text-white">-</span>
+                            </div>
+                            <div class="flex-1">
+                                <span class="block text-[8px] font-black text-slate-500 uppercase tracking-widest">Admins</span>
+                                <span id="manageLimitAdmins" class="text-xs font-bold text-white">-</span>
+                            </div>
+                        </div>
+                        <button id="openLimitsModalBtn" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-1.5 rounded-lg transition text-[10px] uppercase tracking-widest border border-slate-600 mb-4">
+                            <i class="fa-solid fa-sliders mr-1"></i> Override Limits
                         </button>
+
+                        <button id="openRenewalBtn" class="w-full bg-emerald-900/20 border border-emerald-900/50 hover:bg-emerald-900/40 text-emerald-400 font-bold py-2 rounded-lg transition text-xs">
+                            <i class="fa-solid fa-file-invoice-dollar mr-1"></i> Update Plan / Renew
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mb-6">
+                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Transaction Ledger</p>
+                    <div class="bg-slate-900 border border-slate-700 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead class="bg-slate-800 sticky top-0 z-10">
+                                <tr class="text-[9px] uppercase tracking-widest text-slate-500 border-b border-slate-700">
+                                    <th class="p-2 pl-4">Date</th>
+                                    <th class="p-2">Type</th>
+                                    <th class="p-2">Amount</th>
+                                    <th class="p-2">Notes</th>
+                                    <th class="p-2 text-right pr-4">Receipt</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ledgerTableBody">
+                                </tbody>
+                        </table>
                     </div>
                 </div>
 
@@ -153,19 +196,83 @@
         </div>
     </div>
 
+    <div id="limitsModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[70] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 max-w-md w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden" id="limitsModalInner">
+            <div class="h-1.5 bg-gradient-to-r from-blue-500 to-cyan-400"></div>
+            <div class="p-8">
+                <div class="flex justify-between items-start mb-6">
+                    <div>
+                        <h3 class="font-black text-xl text-white">Override Seat Limits</h3>
+                        <p id="limSchoolName" class="text-xs font-bold text-cyan-400 mt-1 uppercase tracking-widest"></p>
+                    </div>
+                    <button id="closeLimitsBtn" class="text-slate-500 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+                </div>
+
+                <p class="text-xs text-slate-400 font-semibold mb-6">Modify these numbers manually to provide add-on seats without changing their base subscription plan.</p>
+                
+                <div class="grid grid-cols-3 gap-3 mb-6">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Students</label>
+                        <input type="number" id="ovStudents" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-center font-black text-white outline-none focus:border-cyan-500 transition">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Teachers</label>
+                        <input type="number" id="ovTeachers" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-center font-black text-white outline-none focus:border-cyan-500 transition">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Admins</label>
+                        <input type="number" id="ovAdmins" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-center font-black text-white outline-none focus:border-cyan-500 transition">
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-700 p-5 rounded-xl space-y-4">
+                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 pb-2">Log Add-On Payment (Optional)</p>
+                    
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Amount Paid (BZD)</label>
+                        <input type="number" id="ovAmount" placeholder="e.g. 150 for 5 seats" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-cyan-500 transition">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Internal Note</label>
+                        <input type="text" id="ovNotes" placeholder="e.g. Purchased 5 additional teacher seats" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-cyan-500 transition">
+                    </div>
+
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Attach Receipt</label>
+                        <input type="file" id="ovReceipt" accept="image/*,.pdf" class="w-full p-2 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-400 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:uppercase file:tracking-wider file:bg-cyan-900/30 file:text-cyan-400 hover:file:bg-cyan-900/50 transition outline-none cursor-pointer">
+                    </div>
+                </div>
+
+                <p id="limitsErrorMsg" class="text-xs font-bold text-red-400 bg-red-900/30 border border-red-800/50 p-3 rounded-lg text-center hidden mt-5"></p>
+                <button id="confirmLimitsBtn" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-black py-4 rounded-xl transition shadow-lg shadow-cyan-900/50 text-sm tracking-wide mt-6">
+                    Save Overrides & Log Payment <i class="fa-solid fa-check ml-1"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div id="renewalModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[70] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
         <div class="bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 max-w-md w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden" id="renewalModalInner">
             <div class="h-1.5 bg-gradient-to-r from-emerald-500 to-teal-400"></div>
             <div class="p-8">
                 <div class="flex justify-between items-start mb-6">
                     <div>
-                        <h3 class="font-black text-xl text-white">Log Renewal Payment</h3>
+                        <h3 class="font-black text-xl text-white">Update Subscription</h3>
                         <p id="renSchoolName" class="text-xs font-bold text-emerald-400 mt-1 uppercase tracking-widest"></p>
                     </div>
                     <button id="closeRenewalBtn" class="text-slate-500 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
                 </div>
                 
                 <div class="space-y-4">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 text-indigo-400">Subscription Tier</label>
+                        <select id="renPlan" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-indigo-500 transition">
+                            <option value="">Loading plans...</option>
+                        </select>
+                        <p id="renPlanLimitsDisplay" class="text-[10px] font-bold text-indigo-400 mt-2 hidden"></p>
+                    </div>
+
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Amount Paid (BZD)</label>
@@ -178,6 +285,7 @@
                                 <option value="Annual">1 Year</option>
                                 <option value="Multi-Year">Multi-Year</option>
                                 <option value="Other">Other (Custom)</option>
+                                <option value="No Extension">Do Not Extend Clock (Upgrade Only)</option>
                             </select>
                         </div>
                     </div>
@@ -189,7 +297,7 @@
 
                     <div>
                         <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Internal Notes (Optional)</label>
-                        <textarea id="renNotes" placeholder="e.g. Check #1234 cleared, renewed early..." class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition resize-none h-16"></textarea>
+                        <textarea id="renNotes" placeholder="e.g. Upgraded to Pro, paid difference..." class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition resize-none h-16"></textarea>
                     </div>
 
                     <div class="pt-2 border-t border-slate-800">
