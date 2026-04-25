@@ -1,1 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HQ Initialization | ConnectUs</title>
+    
+    <link rel="stylesheet" href="../assets/css/global.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="min-h-screen flex items-center justify-center p-4 bg-slate-900 antialiased">
 
+    <div class="max-w-xl w-full">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-black text-white tracking-widest uppercase">ConnectUs <span class="text-emerald-400">HQ</span></h1>
+            <p class="text-slate-400 font-semibold mt-2 text-xs tracking-widest uppercase">Genesis Node Initialization</p>
+        </div>
+
+        <div class="bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 overflow-hidden relative">
+            <div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-emerald-400 to-teal-600"></div>
+            
+            <div id="loadingState" class="p-12 text-center">
+                <i class="fa-solid fa-circle-notch fa-spin text-4xl text-emerald-400 mb-4"></i>
+                <p class="font-bold text-slate-300 tracking-wide">Verifying node integrity...</p>
+            </div>
+
+            <div id="lockoutScreen" class="p-12 text-center hidden">
+                <i class="fa-solid fa-shield-halved text-5xl text-red-500 mb-4"></i>
+                <h3 class="font-black text-2xl text-white mb-2">Access Denied</h3>
+                <p class="font-semibold text-slate-400 text-sm">The Genesis Owner account has already been initialized. This setup page is permanently locked.</p>
+                <a href="hq-login.html" class="inline-block mt-6 bg-slate-700 hover:bg-slate-600 text-white font-black py-3 px-8 rounded-xl transition text-sm">Go to HQ Login</a>
+            </div>
+
+            <div id="setupForm" class="p-8 space-y-6 hidden">
+                <div class="bg-slate-900 border border-slate-700 p-4 rounded-xl flex items-start gap-3">
+                    <i class="fa-solid fa-triangle-exclamation text-amber-500 mt-0.5 text-lg"></i>
+                    <div>
+                        <h4 class="font-black text-white text-sm">Critical Security Notice</h4>
+                        <p class="text-xs text-slate-400 font-semibold mt-1">You are establishing the Master Owner account. Do not lose your PIN. This form will lock permanently after submission.</p>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Full Name *</label>
+                            <input type="text" id="hqName" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Master Email *</label>
+                            <input type="email" id="hqEmail" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Master PIN *</label>
+                            <input type="password" id="hqPin" placeholder="Min 6 chars" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Confirm PIN *</label>
+                            <input type="password" id="hqPinConfirm" placeholder="Confirm PIN" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition">
+                        </div>
+                    </div>
+                </div>
+
+                <p id="setupErrorMsg" class="text-xs font-bold text-red-400 bg-red-900/30 border border-red-800/50 p-3 rounded-lg text-center hidden"></p>
+
+                <button id="initializeBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-xl transition shadow-lg shadow-emerald-900/50 text-sm tracking-wide">
+                    Initialize HQ & Lock Protocol →
+                </button>
+            </div>
+
+            <div id="successScreen" class="p-10 text-center hidden">
+                <div class="w-20 h-20 bg-emerald-900/50 text-emerald-400 border border-emerald-500/30 rounded-full flex items-center justify-center text-4xl mx-auto mb-5">
+                    <i class="fa-solid fa-fingerprint"></i>
+                </div>
+                <h3 class="font-black text-2xl text-white mb-2">HQ Activated</h3>
+                <p class="text-sm text-slate-400 font-semibold mb-6">Your Master Account is live. This page is now locked. Save your ID below to access the command center.</p>
+                
+                <div class="bg-slate-900 rounded-2xl p-6 mb-8 border border-slate-700 inline-block w-full max-w-sm text-left">
+                    <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Your HQ Authorization ID</p>
+                    <p id="finalHqId" class="text-3xl font-mono font-black text-emerald-400 tracking-widest"></p>
+                </div>
+
+                <a href="hq-login.html" class="inline-block bg-slate-700 hover:bg-slate-600 text-white font-black py-3 px-8 rounded-xl transition text-sm">
+                    Enter Headquarters
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="hq-setup.js"></script>
+</body>
+</html>
