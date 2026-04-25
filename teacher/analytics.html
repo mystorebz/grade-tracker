@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Evaluations | ConnectUs Teacher</title>
+
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/teachers.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body class="flex w-full h-screen overflow-hidden bg-[#f4f7fb] font-['DM_Sans']">
+
+    <div id="layout-sidebar-container" class="flex-shrink-0 h-full z-20"></div>
+
+    <main class="flex-1 flex flex-col h-full overflow-hidden min-w-0">
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <div class="flex-1 overflow-y-auto p-8 view-section">
+            <div class="max-w-4xl mx-auto space-y-6">
+
+                <!-- ── PAGE HEADER ───────────────────────────────────────── -->
+                <div class="border-b-2 border-[#0d1f35] pb-4">
+                    <h1 class="text-xl font-bold text-[#0d1f35] tracking-tight mb-1">My Evaluations</h1>
+                    <p class="text-xs text-[#6b84a0]">Performance reviews and assessments filed by your school's administration.</p>
+                </div>
+
+                <!-- ── KPI CARDS ─────────────────────────────────────────── -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="evalKpiCards">
+                    <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm animate-pulse h-20"></div>
+                    <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm animate-pulse h-20"></div>
+                    <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm animate-pulse h-20"></div>
+                    <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm animate-pulse h-20"></div>
+                </div>
+
+                <!-- ── CATEGORY PERFORMANCE ──────────────────────────────── -->
+                <div id="categorySection" class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm hidden">
+                    <h3 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-4">Category Performance</h3>
+                    <div id="categoryBars" class="space-y-3"></div>
+                </div>
+
+                <!-- ── EVALUATION LIST ───────────────────────────────────── -->
+                <div class="bg-white border border-[#dce3ed] rounded-xl shadow-sm overflow-hidden">
+                    <div class="px-6 py-4 border-b border-[#f0f4f8] bg-[#f8fafb] flex items-center justify-between">
+                        <h3 class="text-[13px] font-bold text-[#0d1f35]">Evaluation History</h3>
+                        <span id="evalCountBadge" class="text-[11px] font-bold text-[#6b84a0] bg-[#f4f7fb] border border-[#dce3ed] px-3 py-1 rounded-full"></span>
+                    </div>
+                    <div id="evalList" class="divide-y divide-[#f0f4f8]">
+                        <div class="flex justify-center py-12">
+                            <i class="fa-solid fa-spinner fa-spin text-xl text-[#2563eb]"></i>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <script type="module" src="analytics.js"></script>
+</body>
+</html>
