@@ -19,7 +19,7 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
 
 // ── EmailJS Setup ────────────────────────────────────────────────────────
 const EMAILJS_PUBLIC_KEY  = 'XfaGXU_eFA9dph-5G';
-const EMAILJS_SERVICE_ID  = 'service_s5qvpzh'; 
+const EMAILJS_SERVICE_ID  = 'service_m4aki55'; 
 const EMAILJS_TEMPLATE_ID = 'template_school_approved';
 emailjs.init(EMAILJS_PUBLIC_KEY);
 
