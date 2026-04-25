@@ -6,7 +6,6 @@
     <title>HQ Team | ConnectUs HQ</title>
     
     <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
-    
     <link rel="stylesheet" href="../../assets/css/global.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -58,7 +57,7 @@
         <header class="h-20 flex items-center justify-between px-8 border-b border-slate-800 bg-slate-900/50 backdrop-blur-md flex-shrink-0">
             <div>
                 <h2 class="text-xl font-black text-white tracking-wide">HQ Team</h2>
-                <p class="text-xs text-slate-400 font-semibold mt-1">Manage platform support staff and permissions.</p>
+                <p class="text-xs text-slate-400 font-semibold mt-1">Manage platform support staff and security access.</p>
             </div>
         </header>
 
@@ -66,7 +65,7 @@
             <div class="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden shadow-xl">
                 <div class="p-6 border-b border-slate-700 flex justify-between items-center bg-slate-900/50">
                     <h3 class="font-black text-white text-lg">HQ Team Roster</h3>
-                    <button onclick="window.openAddTeamModal()" class="text-xs font-bold text-white bg-teal-600 hover:bg-teal-500 transition px-4 py-2 rounded-lg shadow-md border border-teal-500">
+                    <button onclick="window.openAddTeamModal()" class="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 rounded-lg shadow-md border border-emerald-500">
                         <i class="fa-solid fa-user-plus mr-1"></i> Add Member
                     </button>
                 </div>
@@ -89,17 +88,17 @@
     </main>
 
     <div id="addTeamModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
-        <div class="bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 max-w-sm w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden" id="addTeamModalInner">
-            <div class="h-1.5 bg-gradient-to-r from-teal-500 to-teal-400"></div>
+        <div class="bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 max-w-sm w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden">
+            <div class="h-1.5 bg-gradient-to-r from-emerald-500 to-teal-400"></div>
             <div class="p-8">
                 <h3 class="font-black text-xl text-white mb-6">Add Team Member</h3>
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Name</label>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Full Name</label>
                         <input type="text" id="teamName" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:border-teal-500 transition outline-none">
                     </div>
                     <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Email</label>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Work Email</label>
                         <input type="email" id="teamEmail" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:border-teal-500 transition outline-none">
                     </div>
                     <div>
@@ -109,15 +108,54 @@
                     <div>
                         <label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Role</label>
                         <select id="teamRole" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:border-teal-500 transition outline-none">
-                            <option value="Support">Support</option>
-                            <option value="Admin">Admin</option>
+                            <option value="Support">Support Staff</option>
+                            <option value="Admin">Platform Admin</option>
                         </select>
                     </div>
                 </div>
                 <p id="teamErrorMsg" class="text-xs text-red-400 font-bold mt-4 hidden"></p>
                 <div class="flex gap-3 mt-6">
                     <button onclick="window.closeAddTeamModal()" class="flex-1 py-3 text-slate-400 font-bold text-sm hover:text-white transition">Cancel</button>
-                    <button id="saveTeamBtn" class="flex-1 bg-teal-600 hover:bg-teal-500 text-white font-bold py-3 rounded-xl transition">Add Member</button>
+                    <button id="saveTeamBtn" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition">Deploy Staff</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="editTeamModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[70] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 max-w-sm w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden" id="editTeamModalInner">
+            <div class="h-1.5 bg-indigo-500"></div>
+            <div class="p-8">
+                <div class="flex justify-between items-start mb-6">
+                    <div>
+                        <h3 class="font-black text-xl text-white">Manage Staff</h3>
+                        <p id="editStaffId" class="text-[10px] font-mono text-indigo-400 font-bold uppercase tracking-widest mt-1"></p>
+                    </div>
+                    <button onclick="window.closeEditModal()" class="text-slate-500 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+                </div>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Name</label>
+                        <input type="text" id="editName" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:border-indigo-500 transition outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Email</label>
+                        <input type="email" id="editEmail" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:border-indigo-500 transition outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Reset PIN (Leave blank to keep current)</label>
+                        <input type="password" id="editPin" placeholder="New 6-digit PIN" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:border-indigo-500 transition outline-none">
+                    </div>
+                    
+                    <div class="pt-4 border-t border-slate-700 space-y-3">
+                        <button id="updateStaffBtn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-3 rounded-xl transition text-sm">Save Changes</button>
+                        
+                        <div class="flex gap-2">
+                            <button id="toggleActiveBtn" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 rounded-lg text-xs transition">Suspend</button>
+                            <button id="deleteStaffBtn" class="flex-1 bg-red-900/20 border border-red-900/50 hover:bg-red-900/40 text-red-400 font-bold py-2 rounded-lg text-xs transition">Delete</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
