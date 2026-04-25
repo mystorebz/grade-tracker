@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>School Setup | ConnectUs</title>
+    
+    <link rel="stylesheet" href="../assets/css/global.css">
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/images/favicon-32x32.png">
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-[#f8faff] to-[#eef2ff] antialiased">
+
+    <div class="max-w-xl w-full">
+        <div class="text-center mb-8">
+            <img src="../assets/images/logo.png" alt="ConnectUs" class="h-16 w-auto mx-auto mb-4 drop-shadow-md">
+            <h1 class="text-3xl font-black text-blue-900 tracking-tight">Welcome to ConnectUs</h1>
+            <p class="text-slate-500 font-semibold mt-2">Let's configure your school's secure cloud environment.</p>
+        </div>
+
+        <div class="bg-white rounded-3xl shadow-xl border border-blue-100 overflow-hidden relative">
+            <div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-600"></div>
+            
+            <div id="loadingState" class="p-12 text-center">
+                <i class="fa-solid fa-circle-notch fa-spin text-4xl text-blue-500 mb-4"></i>
+                <p class="font-bold text-slate-600">Verifying your invitation link...</p>
+            </div>
+
+            <div id="setupForm" class="p-8 space-y-6 hidden">
+                <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl flex items-start gap-3">
+                    <i class="fa-solid fa-shield-check text-blue-600 mt-0.5 text-lg"></i>
+                    <div>
+                        <h4 class="font-black text-blue-900 text-sm">Secure Initialization</h4>
+                        <p class="text-xs text-slate-600 font-semibold mt-1">This will generate your isolated database and permanent School ID.</p>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Official School Name *</label>
+                        <input type="text" id="obSchoolName" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">District *</label>
+                            <select id="obDistrict" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 transition">
+                                <option value="">Select District</option>
+                                <option value="Belize">Belize</option>
+                                <option value="Cayo">Cayo</option>
+                                <option value="Corozal">Corozal</option>
+                                <option value="Orange Walk">Orange Walk</option>
+                                <option value="Stann Creek">Stann Creek</option>
+                                <option value="Toledo">Toledo</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">School Type *</label>
+                            <select id="obSchoolType" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 transition">
+                                <option value="">Select Type</option>
+                                <option value="Primary">Primary</option>
+                                <option value="High School">High School</option>
+                                <option value="Junior College">Junior College</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="pt-4 border-t border-slate-100">
+                        <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Master Admin Code *</label>
+                        <p class="text-xs text-slate-400 font-semibold mb-2">This is the master password you will use to log into the Admin Dashboard.</p>
+                        <input type="password" id="obAdminCode" placeholder="Min. 6 characters" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 transition mb-3">
+                        <input type="password" id="obAdminCodeConfirm" placeholder="Confirm Admin Code" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 transition">
+                    </div>
+                </div>
+
+                <p id="obErrorMsg" class="text-xs font-bold text-red-600 bg-red-50 border border-red-100 p-3 rounded-lg text-center hidden"></p>
+
+                <button id="initializeBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl transition shadow-lg shadow-blue-500/30 text-sm tracking-wide">
+                    Initialize Infrastructure →
+                </button>
+            </div>
+
+            <div id="successScreen" class="p-10 text-center hidden">
+                <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-5">
+                    <i class="fa-solid fa-check"></i>
+                </div>
+                <h3 class="font-black text-2xl text-slate-800 mb-2">School Activated!</h3>
+                <p class="text-sm text-slate-500 font-semibold mb-6">Your cloud infrastructure is live. Please save your official School ID below—your teachers and parents will need this to log in.</p>
+                
+                <div class="bg-slate-900 rounded-2xl p-6 mb-8 shadow-inner inline-block w-full max-w-sm">
+                    <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Your Official School ID</p>
+                    <p id="finalSchoolId" class="text-3xl font-mono font-black text-white tracking-widest"></p>
+                </div>
+
+                <a href="../admin/login.html" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-black py-3 px-8 rounded-xl transition shadow-lg shadow-blue-500/30">
+                    Go to Admin Login
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="onboarding.js"></script>
+</body>
+</html>
