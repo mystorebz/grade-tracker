@@ -1,6 +1,6 @@
 import { db } from '../../assets/js/firebase-init.js';
 import {
-    doc, getDoc, collection, getDocs, query, where, orderBy
+    doc, getDoc, collection, getDocs
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
@@ -8,7 +8,7 @@ import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 // ── 1. INIT ───────────────────────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
 if (session) {
-    injectTeacherLayout('analytics', 'My Evaluations', 'Performance reviews filed by your school', false);
+    injectTeacherLayout('analytics', 'My Evaluations', 'Full career record — performance reviews across all schools', false);
 }
 
 function escHtml(s) {
@@ -33,11 +33,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!session) return;
 
     try {
-        // Fetch evaluations filed by this school for this teacher
-        const snap = await getDocs(query(
-            collection(db, 'teachers', session.teacherId, 'evaluations'),
-            where('schoolId', '==', session.schoolId)
-        ));
+        // Fetch ALL evaluations across every school — career-wide record
+        const snap = await getDocs(
+            collection(db, 'teachers', session.teacherId, 'evaluations')
+        );
 
         const evals = snap.docs
             .map(d => ({ id: d.id, ...d.data() }))
@@ -56,12 +55,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // ── 3. KPI CARDS ──────────────────────────────────────────────────────────
 function renderKpis(evals) {
-    const count   = evals.length;
-    const avg     = count ? (evals.reduce((s, e) => s + (e.overallRating || 0), 0) / count).toFixed(1) : null;
-    const last    = count ? evals[0] : null;
-    const lastStr = last?.date
+    const count      = evals.length;
+    const avg        = count ? (evals.reduce((s, e) => s + (e.overallRating || 0), 0) / count).toFixed(1) : null;
+    const last       = count ? evals[0] : null;
+    const lastStr    = last?.date
         ? new Date(last.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
         : null;
+    const schoolsCount = new Set(evals.map(e => e.schoolId).filter(Boolean)).size;
 
     // Latest recommendation
     const latestRec = last?.recommendedAction && last.recommendedAction !== 'None' ? last.recommendedAction : '—';
@@ -81,12 +81,10 @@ function renderKpis(evals) {
             lbl: 'Total Evaluations'
         },
         {
-            icon: 'fa-calendar-check', iconBg: '#edfaf4', iconColor: '#0b8f5e',
-            val: lastStr
-                ? `<span style="font-size:14px;font-weight:700;color:#0d1f35">${lastStr}</span>`
-                : '<span style="color:#9ab0c6;font-size:14px">—</span>',
-            sub: '',
-            lbl: 'Last Evaluated'
+            icon: 'fa-school', iconBg: '#edfaf4', iconColor: '#0b8f5e',
+            val: `<span style="font-size:22px;font-weight:700;color:#0d1f35">${schoolsCount}</span>`,
+            sub: `<span style="font-size:11px;color:#6b84a0;font-weight:500">school${schoolsCount !== 1 ? 's' : ''} on record</span>`,
+            lbl: 'Schools Evaluated At'
         },
         {
             icon: 'fa-clipboard-check', iconBg: rc.bg, iconColor: rc.text,
@@ -189,10 +187,14 @@ function renderList(evals) {
                         ${stars(e.overallRating || 0)}
                         <span style="font-size:16px;font-weight:700;color:#0d1f35">${(e.overallRating || 0).toFixed(1)}</span>
                     </div>
-                    <p style="font-size:12px;font-weight:500;color:#6b84a0;margin:0">
+                    <p style="font-size:12px;font-weight:500;color:#6b84a0;margin:2px 0 0">
                         ${dateStr}
                         <span style="margin:0 6px;color:#dce3ed">·</span>
                         Evaluated by <strong style="color:#374f6b">${escHtml(e.evaluatorName || 'Administrator')}</strong>
+                        <span style="margin:0 6px;color:#dce3ed">·</span>
+                        <span style="font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:99px;${e.schoolId === session.schoolId ? 'background:#edfaf4;color:#0b8f5e;border:1px solid #c6f0db' : 'background:#f4f7fb;color:#6b84a0;border:1px solid #dce3ed'}">
+                            ${e.schoolId === session.schoolId ? 'Current school' : escHtml(e.schoolId || 'Previous school')}
+                        </span>
                     </p>
                 </div>
                 ${e.recommendedAction && e.recommendedAction !== 'None'
