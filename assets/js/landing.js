@@ -1,5 +1,5 @@
 import { db } from './firebase-init.js';
-import { collection, addDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { doc, setDoc, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // ── NAVBAR SCROLL EFFECT ──
 const nav = document.getElementById('navbar');
@@ -84,8 +84,15 @@ if (registerBtn) {
         if (contractTerm === 'Multi-Year') contractSummary = `Multi-Year Contract (${contractYears} Years)`;
 
         try {
-            // ── Write 1: quoteRequests collection ──
-            await addDoc(collection(db, 'quoteRequests'), {
+            // Generate Request ID (e.g. REQ-9A2B4) to match the onboarding flow
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let rand = '';
+            for (let i = 0; i < 5; i++) rand += chars.charAt(Math.floor(Math.random() * chars.length));
+            const reqId = `REQ-${rand}`;
+
+            // ── Write 1: quote_requests collection ──
+            await setDoc(doc(db, 'quote_requests', reqId), {
+                requestId:      reqId,
                 firstName,
                 lastName,
                 fullName,
@@ -104,7 +111,8 @@ if (registerBtn) {
                 contractYears:  contractTerm === 'Multi-Year'  ? parseInt(contractYears)  : null,
                 hearAboutUs:    hearAboutUs || null,
                 message:        message || null,
-                status:         'new',
+                status:         'Pending',
+                fulfilled:      false,
                 createdAt:      timestamp,
             });
 
@@ -122,6 +130,7 @@ if (registerBtn) {
                             <div style="background:#f0f5ff;border:1px solid #dbeafe;border-radius:12px;padding:20px;margin:24px 0;">
                                 <p style="font-size:13px;font-weight:700;color:#1e3a8a;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;">Your Submitted Details</p>
                                 <table style="width:100%;font-size:14px;color:#334155;border-collapse:collapse;">
+                                    <tr><td style="padding:6px 0;font-weight:700;width:40%;">Request ID</td><td style="font-family:monospace;font-weight:bold;">${reqId}</td></tr>
                                     <tr><td style="padding:6px 0;font-weight:700;width:40%;">Name</td><td>${fullName}</td></tr>
                                     <tr><td style="padding:6px 0;font-weight:700;">Title</td><td>${jobTitle}</td></tr>
                                     <tr><td style="padding:6px 0;font-weight:700;">School</td><td>${schoolName}</td></tr>
@@ -145,65 +154,69 @@ if (registerBtn) {
             await addDoc(collection(db, 'mail'), {
                 to: 'info@connectusonline.org',
                 message: {
-                    subject: `New Quote Request — ${schoolName} (${country})`,
+                    subject: `New Quote Request [${reqId}] — ${schoolName} (${country})`,
                     html: `
                         <div style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;padding:40px 20px;color:#1e293b;">
                             <h2 style="font-size:20px;font-weight:900;color:#1e3a8a;margin-bottom:4px;">New Quote Request Received</h2>
                             <p style="font-size:13px;color:#64748b;margin-bottom:24px;">Submitted on ${new Date().toLocaleString()}</p>
                             <table style="width:100%;font-size:14px;color:#334155;border-collapse:collapse;border:1px solid #e2e8f0;overflow:hidden;">
                                 <tr style="background:#f8fafc;">
+                                    <td style="padding:10px 16px;font-weight:700;border-bottom:1px solid #e2e8f0;width:35%;">Request ID</td>
+                                    <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;font-family:monospace;font-weight:bold;">${reqId}</td>
+                                </tr>
+                                <tr>
                                     <td style="padding:10px 16px;font-weight:700;border-bottom:1px solid #e2e8f0;width:35%;">Full Name</td>
                                     <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;">${fullName}</td>
                                 </tr>
-                                <tr>
+                                <tr style="background:#f8fafc;">
                                     <td style="padding:10px 16px;font-weight:700;border-bottom:1px solid #e2e8f0;">Job Title</td>
                                     <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;">${jobTitle}</td>
                                 </tr>
-                                <tr style="background:#f8fafc;">
+                                <tr>
                                     <td style="padding:10px 16px;font-weight:700;border-bottom:1px solid #e2e8f0;">Email</td>
                                     <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;"><a href="mailto:${workEmail}" style="color:#2563eb;">${workEmail}</a></td>
                                 </tr>
-                                <tr>
+                                <tr style="background:#f8fafc;">
                                     <td style="padding:10px 16px;font-weight:700;border-bottom:1px solid #e2e8f0;">Phone</td>
                                     <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;">${phone}</td>
                                 </tr>
-                                <tr style="background:#f8fafc;">
+                                <tr>
                                     <td style="padding:10px 16px;font-weight:700;border-bottom:1px solid #e2e8f0;">School Name</td>
                                     <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;">${schoolName}</td>
                                 </tr>
-                                <tr>
+                                <tr style="background:#f8fafc;">
                                     <td style="padding:10px 16px;font-weight:700;border-bottom:1px solid #e2e8f0;">School Type</td>
                                     <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;">${schoolType}</td>
                                 </tr>
-                                <tr style="background:#f8fafc;">
+                                <tr>
                                     <td style="padding:10px 16px;font-weight:700;border-bottom:1px solid #e2e8f0;">Country</td>
                                     <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;">${country}</td>
                                 </tr>
-                                <tr>
+                                <tr style="background:#f8fafc;">
                                     <td style="padding:10px 16px;font-weight:700;border-bottom:1px solid #e2e8f0;">City</td>
                                     <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;">${city}</td>
                                 </tr>
-                                <tr style="background:#f8fafc;">
+                                <tr>
                                     <td style="padding:10px 16px;font-weight:700;border-bottom:1px solid #e2e8f0;">State / Province</td>
                                     <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;">${stateProvince || '—'}</td>
                                 </tr>
-                                <tr>
+                                <tr style="background:#f8fafc;">
                                     <td style="padding:10px 16px;font-weight:700;border-bottom:1px solid #e2e8f0;">Est. Students</td>
                                     <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;">${studentsCount}</td>
                                 </tr>
-                                <tr style="background:#f8fafc;">
+                                <tr>
                                     <td style="padding:10px 16px;font-weight:700;border-bottom:1px solid #e2e8f0;">Est. Teachers</td>
                                     <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;">${teachersCount}</td>
                                 </tr>
-                                <tr>
+                                <tr style="background:#f8fafc;">
                                     <td style="padding:10px 16px;font-weight:700;border-bottom:1px solid #e2e8f0;">Contract Term</td>
                                     <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;"><strong>${contractSummary}</strong></td>
                                 </tr>
-                                <tr style="background:#f8fafc;">
+                                <tr>
                                     <td style="padding:10px 16px;font-weight:700;border-bottom:1px solid #e2e8f0;">Heard About Us</td>
                                     <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;">${hearAboutUs || '—'}</td>
                                 </tr>
-                                <tr>
+                                <tr style="background:#f8fafc;">
                                     <td style="padding:10px 16px;font-weight:700;">Message</td>
                                     <td style="padding:10px 16px;">${message || '—'}</td>
                                 </tr>
@@ -216,6 +229,7 @@ if (registerBtn) {
             // Show success screen
             document.getElementById('registrationFormContainer').classList.add('hidden');
             document.getElementById('successScreen').classList.remove('hidden');
+            document.getElementById('successScreen').scrollIntoView({ behavior: 'smooth', block: 'center' });
 
         } catch (error) {
             console.error("Quote submission error:", error);
@@ -231,13 +245,13 @@ function btnLoadingState(isLoading) {
     const msgEl = document.getElementById('regMessage');
     if (isLoading) {
         btn.disabled = true;
-        btn.textContent = "Submitting...";
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Submitting...';
         btn.classList.add("opacity-75", "cursor-not-allowed");
         msgEl.textContent = "Sending your request...";
         msgEl.className = "text-sm text-center font-bold mt-2 text-blue-600 block";
     } else {
         btn.disabled = false;
-        btn.textContent = "Request a Quote →";
+        btn.innerHTML = "Request a Quote →";
         btn.classList.remove("opacity-75", "cursor-not-allowed");
     }
 }
