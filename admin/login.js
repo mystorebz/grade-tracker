@@ -3,101 +3,136 @@ import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.
 import { setSessionData } from '../assets/js/auth.js';
 
 // Elements
-const loginBtn = document.getElementById('loginBtn');
-const loginMsg = document.getElementById('loginMsg');
+const loginBtn        = document.getElementById('loginBtn');
+const loginMsg        = document.getElementById('loginMsg');
 const forceResetModal = document.getElementById('forceResetModal');
 const saveForceCodeBtn = document.getElementById('saveForceCodeBtn');
-const forceResetMsg = document.getElementById('forceResetMsg');
+const forceResetMsg   = document.getElementById('forceResetMsg');
 
-// State variables to hold school data during the forced reset flow
-let tempSchoolId = null;
+// State
+let tempSchoolId   = null;
 let tempSchoolData = null;
 
-// ── DYNAMIC LIMITS FETCHING ───────────────────────────────────────────────
+// ── SHA-256 Hash ───────────────────────────────────────────────────────────
+// Same normalization (lowercase + trim) used across all ConnectUs auth flows.
+async function sha256(text) {
+    const normalized  = text.toLowerCase().trim();
+    const encoded     = new TextEncoder().encode(normalized);
+    const hashBuffer  = await crypto.subtle.digest('SHA-256', encoded);
+    return Array.from(new Uint8Array(hashBuffer))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+}
+
+// ── DYNAMIC LIMITS FETCHING ────────────────────────────────────────────────
 async function fetchPlanDetails(planId) {
     try {
         const planSnap = await getDoc(doc(db, 'subscriptionPlans', planId || 'starter'));
         if (planSnap.exists()) {
             return { limit: planSnap.data().limit, name: planSnap.data().name };
         }
-    } catch (e) { 
-        console.error("Error fetching plan details:", e); 
+    } catch (e) {
+        console.error("Error fetching plan details:", e);
     }
-    return { limit: 50, name: 'Starter Plan' }; // Fallback
+    return { limit: 50, name: 'Starter Plan' };
 }
 
-// ── LAUNCH DASHBOARD (SESSION SET) ────────────────────────────────────────
+// ── LAUNCH DASHBOARD ───────────────────────────────────────────────────────
+// Sets session data first, then runs gate checks before final redirect.
 function launchDashboard(schoolId, data) {
-    // Store necessary admin data in sessionStorage via auth.js
+    // Session must be set BEFORE any gate redirect so first-time-setup
+    // can read it via requireAuth on the other side.
     setSessionData('admin', {
-        schoolId: schoolId,
-        adminId: schoolId,
-        schoolName: data.schoolName,
-        logoUrl: data.logoUrl || '',
+        schoolId,
+        adminId:          schoolId,
+        schoolName:       data.schoolName,
+        contactEmail:     data.contactEmail    || '',
+        logoUrl:          data.logoUrl         || '',
         activeSemesterId: data.activeSemesterId || '',
-        schoolType: data.schoolType || 'Primary',
-        planLimit: data.planLimit,
-        planName: data.planName
+        schoolType:       data.schoolType      || 'Primary',
+        planLimit:        data.planLimit,
+        planName:         data.planName
     });
 
-    // Redirect to the newly separated dashboard page
+    // Gate: security questions not set (legacy admins initialized before
+    // the security questions feature was added, or any edge case).
+    // New admins have securityQuestionsSet: true written by onboarding.js.
+    if (!data.securityQuestionsSet) {
+        window.location.href = '../onboarding/first-time-setup.html?role=admin';
+        return;
+    }
+
     window.location.href = './home/home.html';
 }
 
-// ── LOGIN HANDLER ─────────────────────────────────────────────────────────
+// ── LOGIN HANDLER ──────────────────────────────────────────────────────────
 loginBtn.addEventListener('click', async () => {
-    const rawId = document.getElementById('loginSchoolId').value.trim();
+    const rawId  = document.getElementById('loginSchoolId').value.trim();
     const codeIn = document.getElementById('loginAdminCode').value.trim();
-    
+
     loginMsg.classList.add('hidden');
-    
+
     if (!rawId || !codeIn) {
         loginMsg.textContent = 'Please enter both fields.';
         loginMsg.classList.remove('hidden');
         return;
     }
-    
+
     loginBtn.disabled = true;
     loginBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Authenticating...`;
-    
+
     try {
         let snap;
-        // Check exact match, upper case, and lower case to be flexible
         for (const id of [rawId.toUpperCase(), rawId.toLowerCase(), rawId]) {
             snap = await getDoc(doc(db, 'schools', id));
             if (snap.exists()) break;
         }
-        
+
         if (!snap || !snap.exists()) {
             loginMsg.textContent = 'School ID not found.';
             loginMsg.classList.remove('hidden');
         } else {
             const data = snap.data();
-            
+
             if (data.isVerified !== true) {
                 loginMsg.textContent = 'Account pending approval. Contact ConnectUs.';
                 loginMsg.classList.remove('hidden');
-            } else if (codeIn !== (data.adminCode || 'ADMIN2024')) {
-                loginMsg.textContent = 'Incorrect Admin Code.';
-                loginMsg.classList.remove('hidden');
             } else {
-                tempSchoolId = snap.id;
-                tempSchoolData = data;
+                // ── Hash-aware comparison ──────────────────────────────────
+                // New accounts (post-update onboarding.js): adminCode is SHA-256 hash.
+                // Legacy accounts: adminCode is plain text — auto-upgrade on match
+                // so the account silently migrates without requiring user action.
+                const hashedInput = await sha256(codeIn);
+                let authSuccess   = false;
 
-                // Fetch Dynamic Plan Limits before redirecting
-                const planDetails = await fetchPlanDetails(data.subscriptionPlan);
-                tempSchoolData.planLimit = planDetails.limit;
-                tempSchoolData.planName = planDetails.name;
+                if (hashedInput === data.adminCode) {
+                    // New hashed flow — standard path
+                    authSuccess = true;
 
-                // Check if they need to update the default admin code
-                if (data.requiresPinReset) {
-                    forceResetModal.classList.remove('hidden');
-                    // Slight delay to allow display block to register before animating opacity
-                    requestAnimationFrame(() => {
-                        forceResetModal.classList.remove('opacity-0');
-                    });
+                } else if (codeIn === (data.adminCode || 'ADMIN2024')) {
+                    // Legacy plain-text match — auto-upgrade to hashed
+                    authSuccess = true;
+                    await updateDoc(doc(db, 'schools', snap.id), { adminCode: hashedInput });
+                    data.adminCode = hashedInput;
+                }
+
+                if (!authSuccess) {
+                    loginMsg.textContent = 'Incorrect Admin Code.';
+                    loginMsg.classList.remove('hidden');
                 } else {
-                    launchDashboard(tempSchoolId, tempSchoolData);
+                    tempSchoolId   = snap.id;
+                    tempSchoolData = data;
+
+                    const planDetails = await fetchPlanDetails(data.subscriptionPlan);
+                    tempSchoolData.planLimit = planDetails.limit;
+                    tempSchoolData.planName  = planDetails.name;
+
+                    if (data.requiresPinReset) {
+                        forceResetModal.classList.remove('hidden');
+                        requestAnimationFrame(() => forceResetModal.classList.remove('opacity-0'));
+                    } else {
+                        launchDashboard(tempSchoolId, tempSchoolData);
+                    }
                 }
             }
         }
@@ -106,59 +141,47 @@ loginBtn.addEventListener('click', async () => {
         loginMsg.textContent = 'Connection error. Please try again.';
         loginMsg.classList.remove('hidden');
     }
-    
+
     loginBtn.disabled = false;
     loginBtn.innerHTML = `<i class="fa-solid fa-arrow-right-to-bracket"></i> Secure Login`;
 });
 
-// ── FORCE RESET HANDLER ───────────────────────────────────────────────────
+// ── FORCE RESET HANDLER ────────────────────────────────────────────────────
+// Hashes the new code before saving — consistent with onboarding.js.
 saveForceCodeBtn.addEventListener('click', async () => {
     const n = document.getElementById('newForceCode').value.trim();
     const c = document.getElementById('confirmForceCode').value.trim();
-    
+
     forceResetMsg.classList.add('hidden');
-    
-    if (!n || !c) {
-        forceResetMsg.textContent = 'Fill both fields.';
-        forceResetMsg.classList.remove('hidden');
-        return;
-    }
-    if (n !== c) {
-        forceResetMsg.textContent = 'Codes do not match.';
-        forceResetMsg.classList.remove('hidden');
-        return;
-    }
-    if (n.length < 5) {
-        forceResetMsg.textContent = 'Min. 5 characters.';
-        forceResetMsg.classList.remove('hidden');
-        return;
-    }
-    
+
+    if (!n || !c) { forceResetMsg.textContent = 'Fill both fields.';    forceResetMsg.classList.remove('hidden'); return; }
+    if (n !== c)  { forceResetMsg.textContent = 'Codes do not match.'; forceResetMsg.classList.remove('hidden'); return; }
+    if (n.length < 5) { forceResetMsg.textContent = 'Min. 5 characters.'; forceResetMsg.classList.remove('hidden'); return; }
+
     saveForceCodeBtn.disabled = true;
     saveForceCodeBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Updating...`;
-    
+
     try {
-        await updateDoc(doc(db, 'schools', tempSchoolId), { 
-            adminCode: n, 
-            requiresPinReset: false 
+        const hashedNew = await sha256(n);
+
+        await updateDoc(doc(db, 'schools', tempSchoolId), {
+            adminCode:        hashedNew,   // Store as hash
+            requiresPinReset: false
         });
-        
-        // Update local temp data
-        tempSchoolData.adminCode = n;
+
+        tempSchoolData.adminCode        = hashedNew;
         tempSchoolData.requiresPinReset = false;
-        
-        // Hide modal and launch
+
         forceResetModal.classList.add('opacity-0');
         setTimeout(() => {
             forceResetModal.classList.add('hidden');
             launchDashboard(tempSchoolId, tempSchoolData);
         }, 300);
-        
+
     } catch (error) {
-        console.error("Force reset update error: ", error);
+        console.error("Force reset update error:", error);
         forceResetMsg.textContent = 'An error occurred. Please try again.';
         forceResetMsg.classList.remove('hidden');
-        
         saveForceCodeBtn.disabled = false;
         saveForceCodeBtn.innerHTML = `Save & Continue <i class="fa-solid fa-arrow-right"></i>`;
     }
