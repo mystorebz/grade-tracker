@@ -148,19 +148,30 @@
                     <h3 class="font-black text-lg text-emerald-400 border-b border-emerald-900/50 pb-3 mb-6"><i class="fa-solid fa-money-check-dollar mr-2"></i> Log Payment & Activate</h3>
                     
                     <div class="space-y-4">
-                        <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Amount Paid (BZD)</label>
-                            <input type="number" id="payAmount" placeholder="e.g. 500" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition">
-                        </div>
                         
                         <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Billing Cycle / Term</label>
-                            <select id="payCycle" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition">
-                                <option value="Monthly">Monthly</option>
-                                <option value="Annual">Annual Contract</option>
-                                <option value="Multi-Year">Multi-Year Contract</option>
-                                <option value="Other">Other (Custom)</option>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 text-indigo-400">Subscription Tier *</label>
+                            <select id="payPlan" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-indigo-500 transition">
+                                <option value="">Loading plans...</option>
                             </select>
+                            <p id="planLimitsDisplay" class="text-[10px] font-bold text-indigo-400 mt-2 hidden"></p>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Amount (BZD)</label>
+                                <input type="number" id="payAmount" placeholder="e.g. 500" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Billing Term</label>
+                                <select id="payCycle" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition">
+                                    <option value="Monthly">Monthly</option>
+                                    <option value="Annual">Annual Contract</option>
+                                    <option value="Multi-Year">Multi-Year Contract</option>
+                                    <option value="Other">Other (Custom)</option>
+                                </select>
+                            </div>
                         </div>
 
                         <div id="customCycleWrap" class="hidden">
@@ -170,7 +181,7 @@
 
                         <div>
                             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Internal Notes (Optional)</label>
-                            <textarea id="payNotes" placeholder="e.g. Wire transfer cleared, agreed to Net-30..." class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition resize-none h-16"></textarea>
+                            <textarea id="payNotes" placeholder="e.g. Wire transfer cleared..." class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition resize-none h-16"></textarea>
                         </div>
 
                         <div class="pt-2 border-t border-slate-800">
@@ -186,7 +197,7 @@
                         <button id="confirmApproveBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-xl transition shadow-lg shadow-emerald-900/50 text-sm tracking-wide">
                             Mark as Paid & Approve <i class="fa-solid fa-arrow-right ml-1"></i>
                         </button>
-                        <p class="text-[10px] text-center font-bold text-emerald-500 mt-3">This sets the renewal clock and emails the onboarding link.</p>
+                        <p class="text-[10px] text-center font-bold text-emerald-500 mt-3">This locks the tier limits and emails the onboarding link.</p>
                     </div>
                 </div>
 
@@ -217,7 +228,6 @@
                 </div>
 
             </div>
-
         </div>
     </div>
 
