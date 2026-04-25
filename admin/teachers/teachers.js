@@ -3,7 +3,7 @@ import {
     collection, query, where,
     getDocs, getDoc, doc,
     setDoc, updateDoc, writeBatch,
-    arrayUnion, addDoc
+    arrayUnion
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
@@ -17,7 +17,7 @@ injectAdminLayout('teachers', 'Teaching Staff', 'Manage active educators, transf
 let allTeachersCache  = [];
 let currentTeacherId  = null;
 let isEditMode        = false;
-let claimedTeacherDoc = null;   // Temp hold during lookup preview
+let claimedTeacherDoc = null;
 
 const tbody = document.getElementById('teachersTableBody');
 
@@ -31,14 +31,12 @@ function generateTeacherId() {
 }
 
 function generatePin() {
-    return Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit
+    return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
 function escHtml(str) {
     if (!str) return '';
-    return String(str)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function getTeacherClasses(t) {
@@ -51,7 +49,16 @@ function getSubjectNames(subjects) {
     return subjects.filter(s => !s.archived).map(s => s.name);
 }
 
-// ── 4. LOAD TEACHERS — GLOBAL QUERY ───────────────────────────────────────
+// ── Check teacher limit ───────────────────────────────────────────────────
+async function isTeacherLimitReached() {
+    const teacherLimit = session.teacherLimit || 10;
+    const snap = await getDocs(
+        query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId))
+    );
+    return { reached: snap.size >= teacherLimit, current: snap.size, limit: teacherLimit };
+}
+
+// ── 4. LOAD TEACHERS ──────────────────────────────────────────────────────
 async function loadTeachers() {
     tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center text-[#9ab0c6] italic font-semibold">
         <i class="fa-solid fa-spinner fa-spin mr-2 text-[#2563eb]"></i>Syncing with National Registry...
@@ -163,7 +170,7 @@ window.closeAddTeacherModal = () => {
     claimedTeacherDoc = null;
 };
 
-// ── LOOK UP EXISTING TEACHER ──
+// ── Look Up Existing Teacher ──────────────────────────────────────────────
 document.getElementById('lookupTeacherBtn').addEventListener('click', async () => {
     const rawId   = document.getElementById('tGlobalId').value.trim().toUpperCase();
     const preview = document.getElementById('claimTeacherPreview');
@@ -191,20 +198,12 @@ document.getElementById('lookupTeacherBtn').addEventListener('click', async () =
                 error.classList.remove('hidden');
                 claimedTeacherDoc = null;
             } else {
-                document.getElementById('claimTeacherName').textContent = d.name || 'Unknown';
-
-                // Show school info + email warning if email is missing
-                // A missing email means the teacher cannot use Forgot PIN until they add one on first login
-                document.getElementById('claimTeacherSchool').innerHTML =
+                document.getElementById('claimTeacherName').textContent   = d.name || 'Unknown';
+                document.getElementById('claimTeacherSchool').innerHTML   =
                     (d.currentSchoolId ? `Currently at: ${d.currentSchoolId}` : 'Not currently assigned to a school') +
                     (!d.email
-                        ? `<br><span style="color:#d97706;font-size:10.5px;font-weight:700;">
-                              ⚠ No email on file — teacher must add one during first login setup.
-                           </span>`
-                        : `<br><span style="color:#059669;font-size:10.5px;font-weight:600;">
-                              ✓ Email on file: ${escHtml(d.email)}
-                           </span>`);
-
+                        ? `<br><span style="color:#d97706;font-size:10.5px;font-weight:700;">⚠ No email on file — teacher must add one during first login setup.</span>`
+                        : `<br><span style="color:#059669;font-size:10.5px;font-weight:600;">✓ Email on file: ${escHtml(d.email)}</span>`);
                 preview.classList.remove('hidden');
                 document.getElementById('saveTeacherBtn').textContent = `Claim ${d.name} to This School`;
             }
@@ -218,13 +217,22 @@ document.getElementById('lookupTeacherBtn').addEventListener('click', async () =
     btn.disabled = false;
 });
 
-// ── SAVE (CLAIM or CREATE) ──
+// ── Save (Claim or Create) ────────────────────────────────────────────────
 document.getElementById('saveTeacherBtn').addEventListener('click', async () => {
     const btn = document.getElementById('saveTeacherBtn');
     btn.disabled = true;
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processing...`;
 
     try {
+        // ── Check teacher limit before any add action ──────────────────────
+        const limitCheck = await isTeacherLimitReached();
+        if (limitCheck.reached) {
+            alert(`Teacher limit reached (${limitCheck.current} of ${limitCheck.limit}). Contact ConnectUs to upgrade your plan.`);
+            btn.disabled = false;
+            btn.textContent = claimedTeacherDoc ? `Claim ${claimedTeacherDoc.name} to This School` : 'Register to National Registry';
+            return;
+        }
+
         if (claimedTeacherDoc) {
             // ── CLAIM WORKFLOW ────────────────────────────────────────────
             const tRef    = doc(db, 'teachers', claimedTeacherDoc.id);
@@ -240,24 +248,17 @@ document.getElementById('saveTeacherBtn').addEventListener('click', async () => 
             const email = document.getElementById('tEmail').value.trim();
             const phone = document.getElementById('tPhone').value.trim();
 
-            // ── Validation ────────────────────────────────────────────────
             if (!name) {
-                alert('Teacher name is required to create a new profile.');
-                btn.disabled = false;
-                btn.textContent = 'Register to National Registry';
-                return;
+                alert('Teacher name is required.');
+                btn.disabled = false; btn.textContent = 'Register to National Registry'; return;
             }
             if (!email) {
                 alert('Email address is required. The teacher needs it to recover their PIN if forgotten.');
-                btn.disabled = false;
-                btn.textContent = 'Register to National Registry';
-                return;
+                btn.disabled = false; btn.textContent = 'Register to National Registry'; return;
             }
             if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-                alert('Please enter a valid email address for this teacher.');
-                btn.disabled = false;
-                btn.textContent = 'Register to National Registry';
-                return;
+                alert('Please enter a valid email address.');
+                btn.disabled = false; btn.textContent = 'Register to National Registry'; return;
             }
 
             const newId = generateTeacherId();
@@ -269,6 +270,8 @@ document.getElementById('saveTeacherBtn').addEventListener('click', async () => 
                 currentSchoolId:   session.schoolId,
                 archivedSchoolIds: [],
                 profileComplete:   false,
+                securityQuestionsSet: false,
+                requiresPinReset:  false,
                 subjects: [
                     { id: `sub_${Date.now()}_1`, name: 'Mathematics',           archived: false, description: '' },
                     { id: `sub_${Date.now()}_2`, name: 'English Language Arts', archived: false, description: '' },
@@ -321,7 +324,10 @@ window.openTeacherPanel = async (teacherId) => {
             ['Phone',       escHtml(t.phone) || '—'],
             ['Profile',     t.profileComplete
                 ? '<span class="text-green-600 font-black">Complete</span>'
-                : '<span class="text-amber-500 font-black">Pending Setup</span>']
+                : '<span class="text-amber-500 font-black">Pending Setup</span>'],
+            ['Security Q\'s', t.securityQuestionsSet
+                ? '<span class="text-green-600 font-black">Set</span>'
+                : '<span class="text-amber-500 font-black">Not set yet</span>']
         ].map(([l, v]) => `
             <div class="bg-white border border-[#dce3ed] rounded-lg p-3">
                 <p class="text-[9px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">${l}</p>
@@ -366,20 +372,17 @@ document.getElementById('saveTeacherEditBtn').addEventListener('click', async ()
     const btn   = document.getElementById('saveTeacherEditBtn');
     const email = document.getElementById('editTEmail').value.trim();
 
-    // Validate email in edit panel as well
     if (!email) {
         const msg = document.getElementById('editTeacherMsg');
         msg.textContent = 'Email address is required for PIN recovery.';
         msg.className   = 'text-[11px] font-bold p-3 rounded mt-3 text-center text-red-600 bg-red-50 border border-red-100';
-        msg.classList.remove('hidden');
-        return;
+        msg.classList.remove('hidden'); return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         const msg = document.getElementById('editTeacherMsg');
         msg.textContent = 'Please enter a valid email address.';
         msg.className   = 'text-[11px] font-bold p-3 rounded mt-3 text-center text-red-600 bg-red-50 border border-red-100';
-        msg.classList.remove('hidden');
-        return;
+        msg.classList.remove('hidden'); return;
     }
 
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...`;
@@ -414,7 +417,7 @@ window.printTeacherSlip = () => {
 
     const html = `<html><head><title>Teacher Credential Slip</title>
     <style>
-        body { font-family: 'Helvetica Neue', Arial, sans-serif; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; background:#f4f7fb; }
+        body { font-family:'Helvetica Neue',Arial,sans-serif; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; background:#f4f7fb; }
         .slip { background:white; border:2px solid #dce3ed; border-top:4px solid #2563eb; border-radius:12px; padding:32px 40px; max-width:340px; text-align:center; }
         .logo { font-size:11px; font-weight:900; letter-spacing:0.3em; color:#6b84a0; text-transform:uppercase; margin-bottom:20px; }
         h2 { font-size:16px; color:#0d1f35; font-weight:900; margin:0 0 4px 0; }
@@ -426,13 +429,10 @@ window.printTeacherSlip = () => {
     <div class="slip">
         <div class="logo">ConnectUs National Registry</div>
         <h2>${name}</h2>
-        <p class="label">Global Teacher ID</p>
-        <p class="id">${id}</p>
-        <p class="label">Login PIN</p>
-        <p class="pin">${pin}</p>
+        <p class="label">Global Teacher ID</p><p class="id">${id}</p>
+        <p class="label">Login PIN</p><p class="pin">${pin}</p>
         <p class="footer">Keep this slip confidential.<br>Use these credentials to log into the ConnectUs Teacher Portal.</p>
-    </div>
-    </body></html>`;
+    </div></body></html>`;
 
     const w = window.open('', '_blank');
     w.document.write(html);
@@ -440,7 +440,7 @@ window.printTeacherSlip = () => {
     setTimeout(() => w.print(), 400);
 };
 
-// ── 9. EXIT EVALUATION (Atomic Batch Write) ────────────────────────────────
+// ── 9. EXIT EVALUATION ────────────────────────────────────────────────────
 window.openExitModal = () => {
     document.getElementById('exitTeacherName').textContent = document.getElementById('tPanelName').textContent;
     ['exitReason','exitScore','exitComments'].forEach(id => document.getElementById(id).value = '');
@@ -502,24 +502,18 @@ document.getElementById('exportCsvBtn').addEventListener('click', () => {
     const rows = [
         ['Global ID','Name','Email','Phone','Classes','Subjects','Students','PIN'],
         ...allTeachersCache.map(t => [
-            t.id,
-            t.name  || '',
-            t.email || '',
-            t.phone || '',
+            t.id, t.name || '', t.email || '', t.phone || '',
             getTeacherClasses(t).join(' | '),
             getSubjectNames(t.subjects).join(' | '),
-            t.studentCount || 0,
-            t.pin || ''
+            t.studentCount || 0, t.pin || ''
         ])
     ];
     const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(',')).join('\n');
-    const a   = Object.assign(document.createElement('a'), {
+    const a = Object.assign(document.createElement('a'), {
         href:     URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
         download: `${session.schoolId}_teachers_${new Date().toISOString().slice(0,10)}.csv`
     });
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    document.body.appendChild(a); a.click(); a.remove();
 });
 
 // ── BOOT ──────────────────────────────────────────────────────────────────
