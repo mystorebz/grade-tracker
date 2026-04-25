@@ -106,10 +106,12 @@
                         <h3 class="font-black text-xl text-white">Approve & Send Link</h3>
                         <p id="modalSchoolName" class="text-xs font-bold text-emerald-400 mt-1 uppercase tracking-widest"></p>
                     </div>
-                    <button onclick="window.closePaymentModal()" class="text-slate-500 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+                    <button id="closeModalBtn" class="text-slate-500 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
                 </div>
+                
                 <div class="space-y-4">
                     <p class="text-sm text-slate-400 font-semibold mb-4">Logging payment will verify the account and instantly email the secure onboarding link to <span id="modalContactEmail" class="text-white font-bold"></span>.</p>
+                    
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Amount Paid (BZD)</label>
@@ -123,7 +125,15 @@
                             </select>
                         </div>
                     </div>
+
+                    <div class="pt-2">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Attach Proof of Payment (Optional)</label>
+                        <div class="relative">
+                            <input type="file" id="payReceipt" accept="image/*,.pdf" class="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-emerald-900/30 file:text-emerald-400 hover:file:bg-emerald-900/50 transition outline-none cursor-pointer">
+                        </div>
+                    </div>
                 </div>
+
                 <p id="paymentErrorMsg" class="text-xs font-bold text-red-400 bg-red-900/30 border border-red-800/50 p-3 rounded-lg text-center hidden mt-5"></p>
                 <button id="confirmApproveBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-xl transition shadow-lg shadow-emerald-900/50 text-sm tracking-wide mt-6">
                     <i class="fa-solid fa-paper-plane mr-2"></i> Log Payment & Email Link
