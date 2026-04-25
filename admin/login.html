@@ -4,88 +4,518 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Login | ConnectUs</title>
-    
+
     <link rel="icon" type="image/x-icon" href="../assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="../assets/images/favicon-32x32.png">
-    
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="../assets/css/global.css">
     <link rel="stylesheet" href="../assets/css/admin.css">
-    
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <style>
+        html, body {
+            height: 100%; margin: 0; padding: 0; overflow: hidden;
+            font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .login-shell {
+            display: flex;
+            width: 100%; height: 100vh;
+            background: #071929;
+        }
+
+        /* ── LEFT BRAND PANEL ─────────────────────────────────────── */
+        .brand-panel {
+            width: 52%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 48px 56px;
+            background: #071929;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .brand-panel::before {
+            content: '';
+            position: absolute; inset: 0;
+            background-image: radial-gradient(rgba(255,255,255,0.035) 1px, transparent 1px);
+            background-size: 28px 28px;
+            pointer-events: none;
+        }
+
+        .brand-panel::after {
+            content: '';
+            position: absolute;
+            top: -200px; right: -200px;
+            width: 500px; height: 500px;
+            background: radial-gradient(circle, rgba(37,99,235,0.12) 0%, transparent 65%);
+            pointer-events: none;
+        }
+
+        .brand-logo-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            position: relative; z-index: 1;
+        }
+
+        .brand-logo-mark {
+            width: 38px; height: 38px;
+            border-radius: 10px;
+            overflow: hidden;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        .brand-logo-mark img {
+            width: 100%; height: 100%;
+            object-fit: contain; padding: 5px;
+        }
+
+        .brand-logo-name {
+            font-size: 17px; font-weight: 700;
+            color: #ffffff; letter-spacing: -0.4px;
+        }
+
+        .brand-main {
+            position: relative; z-index: 1;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .brand-eyebrow {
+            font-size: 11px; font-weight: 600;
+            color: var(--sb-accent);
+            text-transform: uppercase; letter-spacing: 0.14em;
+            margin-bottom: 16px;
+        }
+
+        .brand-headline {
+            font-size: 36px; font-weight: 700;
+            color: #ffffff; letter-spacing: -1px;
+            line-height: 1.18;
+            margin: 0 0 16px;
+        }
+
+        .brand-headline span {
+            color: var(--sb-accent);
+        }
+
+        .brand-desc {
+            font-size: 14px; color: rgba(255,255,255,0.52);
+            line-height: 1.7; max-width: 380px;
+            margin: 0 0 40px;
+            font-weight: 400;
+        }
+
+        .brand-features {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .brand-feat {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+        }
+
+        .brand-feat-icon {
+            width: 34px; height: 34px;
+            border-radius: 9px;
+            background: rgba(52,211,153,0.1);
+            border: 1px solid rgba(52,211,153,0.18);
+            color: var(--sb-accent);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px; flex-shrink: 0; margin-top: 1px;
+        }
+
+        .brand-feat-text { flex: 1; }
+
+        .brand-feat-title {
+            font-size: 13px; font-weight: 600;
+            color: rgba(255,255,255,0.88);
+            margin: 0 0 2px;
+        }
+
+        .brand-feat-sub {
+            font-size: 12px; color: rgba(255,255,255,0.40);
+            margin: 0; line-height: 1.5; font-weight: 400;
+        }
+
+        .brand-footer {
+            position: relative; z-index: 1;
+            font-size: 11.5px;
+            color: rgba(255,255,255,0.28);
+            font-weight: 400;
+        }
+
+        /* ── RIGHT FORM PANEL ─────────────────────────────────────── */
+        .form-panel {
+            width: 48%;
+            background: var(--page-bg, #f4f7fb);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 48px 56px;
+            border-left: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .form-card {
+            width: 100%;
+            max-width: 400px;
+            background: #ffffff;
+            border: 1px solid #dce3ed;
+            border-radius: 14px;
+            padding: 36px 36px 32px;
+            box-shadow: 0 1px 3px rgba(13,31,53,0.08), 0 4px 24px rgba(13,31,53,0.05);
+        }
+
+        .form-card-eyebrow {
+            font-size: 10.5px; font-weight: 700;
+            color: var(--text-muted, #6b84a0);
+            text-transform: uppercase; letter-spacing: 0.13em;
+            margin: 0 0 6px;
+        }
+
+        .form-card-title {
+            font-size: 20px; font-weight: 700;
+            color: #0d1f35; letter-spacing: -0.4px;
+            margin: 0 0 6px;
+        }
+
+        .form-card-sub {
+            font-size: 13px; color: #6b84a0;
+            margin: 0 0 28px; font-weight: 400;
+        }
+
+        .form-field { margin-bottom: 18px; }
+
+        .form-label {
+            display: block;
+            font-size: 11.5px; font-weight: 600;
+            color: #374f6b;
+            text-transform: uppercase; letter-spacing: 0.08em;
+            margin-bottom: 7px;
+        }
+
+        .form-input-wrap {
+            position: relative;
+        }
+
+        .form-input-icon {
+            position: absolute; left: 13px; top: 50%;
+            transform: translateY(-50%);
+            font-size: 12px; color: #9ab0c6; pointer-events: none;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px 12px 10px 36px;
+            background: #f4f7fb;
+            border: 1px solid #dce3ed;
+            border-radius: 8px;
+            font-size: 13.5px;
+            font-family: 'DM Sans', inherit;
+            color: #0d1f35; font-weight: 500;
+            outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+        }
+
+        .form-input:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
+            background: #ffffff;
+        }
+
+        .form-input::placeholder { color: #9ab0c6; font-weight: 400; }
+
+        .login-btn {
+            width: 100%;
+            padding: 11px 20px;
+            background: #2563eb;
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px; font-weight: 600;
+            font-family: 'DM Sans', inherit;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            transition: background 0.15s, box-shadow 0.15s, transform 0.12s;
+            margin-top: 24px;
+            box-shadow: 0 1px 2px rgba(37,99,235,0.22);
+        }
+
+        .login-btn:hover { background: #1d4ed8; box-shadow: 0 4px 12px rgba(37,99,235,0.28); transform: translateY(-1px); }
+        .login-btn:active { transform: none; box-shadow: none; }
+        .login-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+        .login-error {
+            display: none;
+            margin-top: 14px;
+            padding: 10px 14px;
+            background: #fff0f3;
+            border: 1px solid #ffd6de;
+            border-radius: 8px;
+            font-size: 13px; font-weight: 500;
+            color: #e31b4a;
+        }
+
+        .login-error.show { display: block; }
+
+        .form-footer {
+            margin-top: 18px;
+            text-align: center;
+            font-size: 12.5px;
+        }
+
+        .form-footer a {
+            color: #2563eb;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.15s;
+        }
+
+        .form-footer a:hover { color: #1d4ed8; }
+
+        .form-panel-back {
+            width: 100%; max-width: 400px;
+            margin-top: 18px;
+            text-align: center;
+        }
+
+        .form-panel-back a {
+            font-size: 12.5px; color: #6b84a0;
+            text-decoration: none; font-weight: 500;
+            transition: color 0.15s;
+            display: inline-flex; align-items: center; gap: 5px;
+        }
+
+        .form-panel-back a:hover { color: #374f6b; }
+
+        /* ── FORCE RESET MODAL ────────────────────────────────────── */
+        .modal-backdrop {
+            position: fixed; inset: 0;
+            background: rgba(7,25,41,0.75);
+            backdrop-filter: blur(4px);
+            z-index: 60;
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.2s;
+        }
+
+        .modal-backdrop.open { opacity: 1; pointer-events: all; }
+
+        .modal-card {
+            background: #ffffff;
+            border: 1px solid #dce3ed;
+            border-radius: 14px;
+            width: 100%; max-width: 420px;
+            margin: 16px;
+            box-shadow: 0 24px 64px rgba(13,31,53,0.22);
+            overflow: hidden;
+            transform: scale(0.97) translateY(8px);
+            transition: transform 0.2s;
+        }
+
+        .modal-backdrop.open .modal-card { transform: scale(1) translateY(0); }
+
+        .modal-header {
+            padding: 24px 28px 20px;
+            border-bottom: 1px solid #f0f4f8;
+        }
+
+        .modal-icon {
+            width: 40px; height: 40px;
+            border-radius: 10px;
+            background: #fffbeb;
+            border: 1px solid #fef3c7;
+            display: flex; align-items: center; justify-content: center;
+            color: #f59e0b; font-size: 16px;
+            margin-bottom: 14px;
+        }
+
+        .modal-title {
+            font-size: 17px; font-weight: 700;
+            color: #0d1f35; margin: 0 0 4px; letter-spacing: -0.3px;
+        }
+
+        .modal-sub {
+            font-size: 13px; color: #6b84a0;
+            margin: 0; font-weight: 400;
+        }
+
+        .modal-body { padding: 24px 28px; }
+
+        .modal-field { margin-bottom: 16px; }
+
+        .modal-btn {
+            width: 100%; padding: 11px 20px;
+            background: #2563eb; color: #ffffff;
+            border: none; border-radius: 8px;
+            font-size: 14px; font-weight: 600;
+            font-family: 'DM Sans', inherit;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            transition: background 0.15s;
+            margin-top: 6px;
+        }
+
+        .modal-btn:hover { background: #1d4ed8; }
+        .modal-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+        .modal-error {
+            display: none; margin-top: 12px;
+            padding: 9px 13px;
+            background: #fff0f3; border: 1px solid #ffd6de;
+            border-radius: 8px;
+            font-size: 13px; font-weight: 500; color: #e31b4a;
+        }
+
+        .modal-error.show { display: block; }
+
+        /* ── RESPONSIVE ───────────────────────────────────────────── */
+        @media (max-width: 768px) {
+            .login-shell   { flex-direction: column; overflow-y: auto; height: auto; min-height: 100vh; }
+            .brand-panel   { width: 100%; padding: 32px 28px; }
+            .brand-headline { font-size: 26px; }
+            .brand-features { display: none; }
+            .form-panel    { width: 100%; padding: 32px 28px; align-items: stretch; }
+            .form-card     { padding: 28px 24px; }
+        }
+    </style>
 </head>
-<body id="loginScreen" class="min-h-screen flex flex-col items-center justify-center p-4 overflow-y-auto">
-    
-    <div class="orb orb-1"></div><div class="orb orb-2"></div><div class="orb orb-3"></div>
-    <div class="orb orb-4"></div><div class="orb orb-5"></div>
+<body>
+<div class="login-shell">
 
-    <div class="relative z-10 mb-5 w-full max-w-md">
-        <a href="../index.html" class="back-btn"><i class="fa-solid fa-arrow-left text-xs"></i> Back to Main Site</a>
-    </div>
+    <!-- ── LEFT: BRAND ─────────────────────────────────────────────────── -->
+    <div class="brand-panel">
 
-    <div class="login-card relative z-10 bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden">
-        <div class="h-2 bg-gradient-to-r from-blue-600 via-cyan-400 to-blue-500"></div>
-        <div class="pt-8 pb-6 px-10 text-center border-b border-slate-100">
-            <div class="logo-bob inline-block mb-3">
-                <div class="logo-glow inline-block">
-                    <img src="../assets/images/logo.png" alt="ConnectUs" class="h-24 w-auto mx-auto">
-                </div>
+        <div class="brand-logo-row">
+            <div class="brand-logo-mark">
+                <img src="../assets/images/logo.png" alt="ConnectUs">
             </div>
-            <h1 class="text-2xl font-black text-slate-800 tracking-tight">Admin Portal</h1>
-            <p class="text-slate-500 text-sm mt-1 font-semibold">Your school's command center</p>
-            <div class="flex items-center justify-center gap-2 mt-4 flex-wrap">
-                <span class="bg-blue-50 text-blue-600 text-[11px] font-black px-3 py-1 rounded-full border border-blue-100"><i class="fa-solid fa-shield-halved mr-1"></i>Secure</span>
-                <span class="bg-cyan-50 text-cyan-600 text-[11px] font-black px-3 py-1 rounded-full border border-cyan-100"><i class="fa-solid fa-cloud mr-1"></i>Cloud-Based</span>
+            <span class="brand-logo-name">ConnectUs</span>
+        </div>
+
+        <div class="brand-main">
+            <p class="brand-eyebrow">School Administration</p>
+            <h1 class="brand-headline">Your school's<br><span>command center.</span></h1>
+            <p class="brand-desc">Manage teachers, students, grading periods, and academic reports — all in one place.</p>
+
+            <div class="brand-features">
+                <div class="brand-feat">
+                    <div class="brand-feat-icon"><i class="fa-solid fa-shield-halved"></i></div>
+                    <div class="brand-feat-text">
+                        <p class="brand-feat-title">Role-based access control</p>
+                        <p class="brand-feat-sub">Super admins and sub-admins with scoped permissions</p>
+                    </div>
+                </div>
+                <div class="brand-feat">
+                    <div class="brand-feat-icon"><i class="fa-solid fa-chart-line"></i></div>
+                    <div class="brand-feat-text">
+                        <p class="brand-feat-title">Live academic reporting</p>
+                        <p class="brand-feat-sub">Grade analytics, pass rates, and at-risk student tracking</p>
+                    </div>
+                </div>
+                <div class="brand-feat">
+                    <div class="brand-feat-icon"><i class="fa-solid fa-cloud"></i></div>
+                    <div class="brand-feat-text">
+                        <p class="brand-feat-title">Cloud-synced in real time</p>
+                        <p class="brand-feat-sub">All data backed by Firebase — always up to date</p>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <div class="p-8 space-y-5">
-            <div>
-                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2"><i class="fa-solid fa-school mr-1.5 text-blue-400"></i>School ID</label>
-                <input type="text" id="loginSchoolId" placeholder="e.g. SCH-8B2X9" class="login-input">
+        <p class="brand-footer">© 2026 ConnectUs &middot; Powered by Kismet Code Digital</p>
+    </div>
+
+    <!-- ── RIGHT: FORM ─────────────────────────────────────────────────── -->
+    <div class="form-panel">
+
+        <div class="form-card">
+            <p class="form-card-eyebrow">Admin Portal</p>
+            <h2 class="form-card-title">Sign in</h2>
+            <p class="form-card-sub">Enter your school credentials to continue.</p>
+
+            <div class="form-field">
+                <label class="form-label" for="loginSchoolId">School ID</label>
+                <div class="form-input-wrap">
+                    <i class="fa-solid fa-school form-input-icon"></i>
+                    <input type="text" id="loginSchoolId" placeholder="e.g. SCH-8B2X9" class="form-input" autocomplete="off" spellcheck="false">
+                </div>
             </div>
-            <div>
-                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2"><i class="fa-solid fa-lock mr-1.5 text-blue-400"></i>Admin Code</label>
-                <input type="password" id="loginAdminCode" placeholder="Your admin code" class="login-input">
+
+            <div class="form-field" style="margin-bottom:0">
+                <label class="form-label" for="loginAdminCode">Admin Code</label>
+                <div class="form-input-wrap">
+                    <i class="fa-solid fa-lock form-input-icon"></i>
+                    <input type="password" id="loginAdminCode" placeholder="Your admin code" class="form-input">
+                </div>
             </div>
-            <button id="loginBtn" class="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-black py-4 rounded-2xl transition shadow-lg shadow-blue-500/30 text-base flex justify-center items-center gap-2">
-                <i class="fa-solid fa-arrow-right-to-bracket"></i> Secure Login
+
+            <button id="loginBtn" class="login-btn">
+                <i class="fa-solid fa-arrow-right-to-bracket"></i> Sign In
             </button>
-            <p id="loginMsg" class="text-sm text-center font-bold hidden p-3 rounded-xl bg-red-50 text-red-600 border border-red-100"></p>
 
-            <!-- ── Forgot PIN link ─────────────────────────────────────── -->
-            <p class="text-center text-xs">
-                <a href="../onboarding/forgot-pin.html"
-                    class="text-blue-500 hover:text-blue-700 font-black transition">
-                    <i class="fa-solid fa-key mr-1"></i>Forgot Admin Code?
+            <p id="loginMsg" class="login-error"></p>
+
+            <div class="form-footer">
+                <a href="../onboarding/forgot-pin.html">
+                    <i class="fa-solid fa-key" style="font-size:11px"></i> Forgot admin code?
                 </a>
-            </p>
-        </div>
-        
-        <div class="px-8 pb-7 text-center">
-            <p class="text-xs text-slate-400 font-semibold">© 2026 ConnectUs · Powered by Kismet Code Digital</p>
-        </div>
-    </div>
-
-    <div id="forceResetModal" class="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
-        <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden" id="forceResetModalInner">
-            <div class="h-1.5 bg-gradient-to-r from-amber-400 to-orange-500"></div>
-            <div class="p-8 text-center">
-                <div class="w-16 h-16 bg-amber-100 rounded-2xl flex items-center justify-center text-amber-500 text-3xl mx-auto mb-4"><i class="fa-solid fa-shield-halved"></i></div>
-                <h3 class="font-black text-2xl text-slate-800 mb-2">Security Update Required</h3>
-                <p class="text-slate-500 text-sm mb-6 font-semibold">You're using a default code. Set a new admin code to continue.</p>
-                <div class="space-y-4 text-left">
-                    <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">New Admin Code</label><input type="password" id="newForceCode" placeholder="Min. 5 characters" class="form-input w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm"></div>
-                    <div><label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Confirm New Code</label><input type="password" id="confirmForceCode" placeholder="Type it again" class="form-input w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm"></div>
-                    <button id="saveForceCodeBtn" class="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white font-black py-3.5 rounded-xl transition shadow-md text-base flex justify-center items-center gap-2">Save & Continue <i class="fa-solid fa-arrow-right"></i></button>
-                    <p id="forceResetMsg" class="text-sm font-bold text-center hidden p-2.5 rounded-xl border bg-red-50 text-red-600 border-red-100"></p>
-                </div>
             </div>
         </div>
+
+        <div class="form-panel-back">
+            <a href="../index.html"><i class="fa-solid fa-arrow-left" style="font-size:10px"></i> Back to main site</a>
+        </div>
+
     </div>
 
-    <script type="module" src="login.js"></script>
+</div>
+
+<!-- ── FORCE RESET MODAL ──────────────────────────────────────────────────── -->
+<div id="forceResetModal" class="modal-backdrop">
+    <div class="modal-card" id="forceResetModalInner">
+        <div class="modal-header">
+            <div class="modal-icon"><i class="fa-solid fa-shield-halved"></i></div>
+            <h3 class="modal-title">Security update required</h3>
+            <p class="modal-sub">You're using a default code. Set a new admin code to continue.</p>
+        </div>
+        <div class="modal-body">
+            <div class="modal-field">
+                <label class="form-label" for="newForceCode">New Admin Code</label>
+                <div class="form-input-wrap">
+                    <i class="fa-solid fa-lock form-input-icon"></i>
+                    <input type="password" id="newForceCode" placeholder="Min. 5 characters" class="form-input">
+                </div>
+            </div>
+            <div class="modal-field">
+                <label class="form-label" for="confirmForceCode">Confirm New Code</label>
+                <div class="form-input-wrap">
+                    <i class="fa-solid fa-lock form-input-icon"></i>
+                    <input type="password" id="confirmForceCode" placeholder="Type it again" class="form-input">
+                </div>
+            </div>
+            <button id="saveForceCodeBtn" class="modal-btn">
+                Save &amp; Continue <i class="fa-solid fa-arrow-right"></i>
+            </button>
+            <p id="forceResetMsg" class="modal-error"></p>
+        </div>
+    </div>
+</div>
+
+<script type="module" src="login.js"></script>
 </body>
 </html>
