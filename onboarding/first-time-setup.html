@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Setup | ConnectUs</title>
+
+    <link rel="stylesheet" href="../assets/css/global.css">
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/images/favicon-32x32.png">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-[#f8faff] to-[#eef2ff] antialiased">
+
+    <!-- ── Loading state ─────────────────────────────────────────────────── -->
+    <div id="loadingState" class="max-w-md w-full">
+        <div class="bg-white rounded-3xl shadow-xl border border-blue-100 p-12 text-center">
+            <i class="fa-solid fa-circle-notch fa-spin text-4xl text-blue-500 mb-4"></i>
+            <p class="font-bold text-slate-600">Loading your account...</p>
+        </div>
+    </div>
+
+    <!-- ── Setup form ────────────────────────────────────────────────────── -->
+    <div id="setupContainer" class="max-w-md w-full hidden">
+        <div class="text-center mb-8">
+            <img src="../assets/images/logo.png" alt="ConnectUs" class="h-14 w-auto mx-auto mb-4 drop-shadow-md">
+            <h1 class="text-2xl font-black text-blue-900 tracking-tight">Secure Your Account</h1>
+            <p class="text-slate-500 font-semibold mt-2 text-sm">This only takes a moment. You'll need these to recover your PIN.</p>
+        </div>
+
+        <div class="bg-white rounded-3xl shadow-xl border border-blue-100 overflow-hidden relative">
+            <div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-600"></div>
+
+            <div class="p-8 space-y-6">
+
+                <!-- Account badge -->
+                <div id="accountBadge" class="p-3 rounded-xl flex items-center gap-3 border bg-blue-50 border-blue-200">
+                    <i id="badgeIcon" class="fa-solid fa-chalkboard-user text-blue-500 text-xl"></i>
+                    <div>
+                        <p id="badgeRole" class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Teacher Account</p>
+                        <p id="badgeName" class="text-sm font-black text-slate-800"></p>
+                        <p id="badgeSub" class="text-[10px] text-slate-400 font-semibold"></p>
+                    </div>
+                </div>
+
+                <!-- Step indicator -->
+                <div class="bg-amber-50 border border-amber-100 p-3 rounded-xl flex items-start gap-3">
+                    <i class="fa-solid fa-circle-info text-amber-500 mt-0.5 text-sm"></i>
+                    <p class="text-xs text-slate-600 font-semibold">
+                        Set up your security questions below. These are used to verify your identity if you ever forget your PIN. Your answers are <span class="font-black text-slate-800">not case-sensitive</span>.
+                    </p>
+                </div>
+
+                <!-- ── Email field (shown only if missing) ─────────────── -->
+                <div id="emailSection" class="hidden">
+                    <div class="pb-5 border-b border-slate-100">
+                        <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">
+                            Email Address *
+                        </label>
+                        <p class="text-xs text-slate-400 font-semibold mb-2">
+                            Used to send you a reset link if you forget your PIN.
+                        </p>
+                        <input type="email" id="setupEmail" placeholder="your@email.com"
+                            class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
+                    </div>
+                </div>
+
+                <!-- ── Security Question 1 ─────────────────────────────── -->
+                <div>
+                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Security Question 1 *</label>
+                    <select id="setupSecQ1"
+                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 transition mb-2">
+                        <option value="">Select a question...</option>
+                        <option value="What was the name of your first pet?">What was the name of your first pet?</option>
+                        <option value="What city were you born in?">What city were you born in?</option>
+                        <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
+                        <option value="What was the name of your primary school?">What was the name of your primary school?</option>
+                        <option value="What is the name of the street you grew up on?">What is the name of the street you grew up on?</option>
+                        <option value="What was your childhood nickname?">What was your childhood nickname?</option>
+                        <option value="What is your oldest sibling's middle name?">What is your oldest sibling's middle name?</option>
+                        <option value="What was the make of your first car?">What was the make of your first car?</option>
+                        <option value="In what village or town did your parents meet?">In what village or town did your parents meet?</option>
+                        <option value="What is the name of your favourite teacher?">What is the name of your favourite teacher?</option>
+                    </select>
+                    <input type="text" id="setupSecA1" placeholder="Your answer"
+                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
+                </div>
+
+                <!-- ── Security Question 2 ─────────────────────────────── -->
+                <div>
+                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Security Question 2 *</label>
+                    <select id="setupSecQ2"
+                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 transition mb-2">
+                        <option value="">Select a question...</option>
+                        <option value="What was the name of your first pet?">What was the name of your first pet?</option>
+                        <option value="What city were you born in?">What city were you born in?</option>
+                        <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
+                        <option value="What was the name of your primary school?">What was the name of your primary school?</option>
+                        <option value="What is the name of the street you grew up on?">What is the name of the street you grew up on?</option>
+                        <option value="What was your childhood nickname?">What was your childhood nickname?</option>
+                        <option value="What is your oldest sibling's middle name?">What is your oldest sibling's middle name?</option>
+                        <option value="What was the make of your first car?">What was the make of your first car?</option>
+                        <option value="In what village or town did your parents meet?">In what village or town did your parents meet?</option>
+                        <option value="What is the name of your favourite teacher?">What is the name of your favourite teacher?</option>
+                    </select>
+                    <input type="text" id="setupSecA2" placeholder="Your answer"
+                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
+                </div>
+
+                <p id="setupError" class="text-xs font-bold text-red-600 bg-red-50 border border-red-100 p-3 rounded-lg text-center hidden"></p>
+
+                <button id="setupBtn"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl transition shadow-lg shadow-blue-500/30 text-sm tracking-wide">
+                    Secure My Account & Continue →
+                </button>
+
+                <p class="text-center text-[10px] text-slate-400 font-semibold">
+                    You can update these answers later from your profile settings.
+                </p>
+            </div>
+        </div>
+    </div>
+
+<script type="module">
+import { db } from '../assets/js/firebase-init.js';
+import { doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { requireAuth } from '../assets/js/auth.js';
+
+// ── Role config ───────────────────────────────────────────────────────────────
+const ROLE_CONFIG = {
+    teacher: {
+        icon:        'fa-solid fa-chalkboard-user',
+        badgeClass:  'bg-blue-50 border-blue-200',
+        badgeRole:   'Teacher Account',
+        collection:  'teachers',
+        getId:       (s) => s.teacherId,
+        getName:     (s) => s.teacherData?.name  || '',
+        getEmail:    (s) => s.teacherData?.email || '',
+        getSub:      (s) => s.schoolId ? `School: ${s.schoolId}` : '',
+        loginPath:   '../teacher/login.html',
+        dashPath:    '../teacher/home/home.html'
+    },
+    student: {
+        icon:        'fa-solid fa-graduation-cap',
+        badgeClass:  'bg-indigo-50 border-indigo-200',
+        badgeRole:   'Student Account',
+        collection:  'students',
+        getId:       (s) => s.studentId,
+        getName:     (s) => s.studentData?.name  || '',
+        getEmail:    (s) => s.studentData?.email || '',
+        getSub:      (s) => s.schoolId ? `School: ${s.schoolId}` : '',
+        loginPath:   '../student/login.html',
+        dashPath:    '../student/home/home.html'
+    }
+};
+
+// ── SHA-256 (same normalization as all other files) ───────────────────────────
+async function sha256(text) {
+    const encoded = new TextEncoder().encode(text.toLowerCase().trim());
+    const buffer  = await crypto.subtle.digest('SHA-256', encoded);
+    return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+const role = new URLSearchParams(window.location.search).get('role');
+const cfg  = ROLE_CONFIG[role];
+
+if (!cfg) {
+    // Unknown role — send home
+    window.location.replace('../index.html');
+}
+
+// requireAuth reads the session set by the login page.
+// If no session exists it redirects to login automatically.
+const session = requireAuth(role, cfg.loginPath);
+
+if (session) {
+    // ── Populate account badge ─────────────────────────────────────────────
+    const badgeEl = document.getElementById('accountBadge');
+    badgeEl.className = `p-3 rounded-xl flex items-center gap-3 border ${cfg.badgeClass}`;
+    document.getElementById('badgeIcon').className  = `${cfg.icon} text-xl`;
+    document.getElementById('badgeRole').textContent = cfg.badgeRole;
+    document.getElementById('badgeName').textContent = cfg.getName(session);
+    document.getElementById('badgeSub').textContent  = cfg.getSub(session);
+
+    // ── Show email section only if email is missing ────────────────────────
+    if (!cfg.getEmail(session)) {
+        document.getElementById('emailSection').classList.remove('hidden');
+    }
+
+    document.getElementById('loadingState').classList.add('hidden');
+    document.getElementById('setupContainer').classList.remove('hidden');
+}
+
+// ── Submit ────────────────────────────────────────────────────────────────────
+document.getElementById('setupBtn').addEventListener('click', async () => {
+    const q1  = document.getElementById('setupSecQ1').value;
+    const a1  = document.getElementById('setupSecA1').value.trim();
+    const q2  = document.getElementById('setupSecQ2').value;
+    const a2  = document.getElementById('setupSecA2').value.trim();
+    const email = document.getElementById('setupEmail').value.trim();
+    const errEl = document.getElementById('setupError');
+    errEl.classList.add('hidden');
+
+    // ── Validation ─────────────────────────────────────────────────────────
+    const emailRequired = !cfg.getEmail(session);
+
+    if (emailRequired && !email) {
+        showError('Please enter your email address.'); return;
+    }
+    if (emailRequired && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        showError('Please enter a valid email address.'); return;
+    }
+    if (!q1 || !a1) {
+        showError('Please select and answer Security Question 1.'); return;
+    }
+    if (!q2 || !a2) {
+        showError('Please select and answer Security Question 2.'); return;
+    }
+    if (q1 === q2) {
+        showError('Please choose two different security questions.'); return;
+    }
+
+    const btn = document.getElementById('setupBtn');
+    btn.disabled  = true;
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Saving...';
+
+    try {
+        const [hashedA1, hashedA2] = await Promise.all([sha256(a1), sha256(a2)]);
+
+        const updates = {
+            securityQ1:           q1,
+            securityA1:           hashedA1,   // SHA-256 hash
+            securityQ2:           q2,
+            securityA2:           hashedA2,   // SHA-256 hash
+            securityQuestionsSet: true
+        };
+
+        // Add email only if it was missing and user provided it
+        if (emailRequired && email) {
+            updates.email = email.toLowerCase();
+        }
+
+        const docId = cfg.getId(session);
+        await updateDoc(doc(db, cfg.collection, docId), updates);
+
+        // ── Redirect to dashboard ──────────────────────────────────────────
+        window.location.replace(cfg.dashPath);
+
+    } catch (err) {
+        console.error('[FirstTimeSetup] save:', err);
+        showError('Failed to save your settings. Please try again.');
+        btn.disabled  = false;
+        btn.innerHTML = 'Secure My Account & Continue →';
+    }
+});
+
+function showError(msg) {
+    const el = document.getElementById('setupError');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+}
+</script>
+</body>
+</html>
