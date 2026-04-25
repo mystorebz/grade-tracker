@@ -1,7 +1,23 @@
-import { db } from '../../assets/js/firebase-init.js';
+import { db, storage } from '../../assets/js/firebase-init.js'; 
 import { collection, query, getDocs, doc, updateDoc, setDoc, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
-// EmailJS Setup
+// ── Boot Sequence: Security Check & Setup ──────────────────────────────────
+const rawSession = localStorage.getItem('connectus_hq_session');
+if (!rawSession) window.location.replace('../core/hq-login.html');
+const session = JSON.parse(rawSession);
+
+document.getElementById('hqAdminName').textContent = session.name;
+document.getElementById('hqAdminId').textContent = session.id;
+document.getElementById('hqAdminBadge').textContent = `Role: ${session.role}`;
+if (session.role !== 'Owner') document.getElementById('navTeamBtn').classList.add('hidden');
+
+document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('connectus_hq_session');
+    window.location.replace('../core/hq-login.html');
+});
+
+// ── EmailJS Setup ────────────────────────────────────────────────────────
 const EMAILJS_PUBLIC_KEY  = 'XfaGXU_eFA9dph-5G';
 const EMAILJS_SERVICE_ID  = 'service_s5qvpzh'; 
 const EMAILJS_TEMPLATE_ID = 'template_school_approved';
@@ -11,7 +27,7 @@ const tbody = document.getElementById('quotesTableBody');
 let currentQuote = null;
 
 // ── Load Quotes ────────────────────────────────────────────────────────────
-export async function loadQuotes() {
+async function loadQuotes() {
     tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-emerald-400 font-semibold"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Scanning pipeline...</td></tr>`;
     
     try {
@@ -23,7 +39,6 @@ export async function loadQuotes() {
 
         snap.forEach(docSnap => {
             const data = docSnap.data();
-            // Only show quotes that haven't fully onboarded yet
             if (data.fulfilled) return; 
 
             pendingCount++;
@@ -59,36 +74,35 @@ export async function loadQuotes() {
     }
 }
 
-// ── Modal Handlers (Attached to Window for HTML access) ───────────────────
+// ── Modal Handlers ───────────────────────────────────────────────────────
 window.openApprovalModal = (reqId, schoolName, email, firstName) => {
     currentQuote = { reqId, schoolName, email, firstName };
     document.getElementById('modalSchoolName').textContent = schoolName;
     document.getElementById('modalContactEmail').textContent = email;
     document.getElementById('payAmount').value = '';
+    document.getElementById('payReceipt').value = ''; // Reset file input
     document.getElementById('paymentErrorMsg').classList.add('hidden');
     
     const modal = document.getElementById('paymentModal');
     const inner = document.getElementById('paymentModalInner');
     modal.classList.remove('hidden');
-    setTimeout(() => {
-        modal.classList.remove('opacity-0');
-        inner.classList.remove('scale-95');
-    }, 10);
+    setTimeout(() => { modal.classList.remove('opacity-0'); inner.classList.remove('scale-95'); }, 10);
 };
 
-window.closePaymentModal = () => {
+const closePaymentModal = () => {
     const modal = document.getElementById('paymentModal');
     const inner = document.getElementById('paymentModalInner');
-    modal.classList.add('opacity-0');
-    inner.classList.add('scale-95');
+    modal.classList.add('opacity-0'); inner.classList.add('scale-95');
     setTimeout(() => modal.classList.add('hidden'), 300);
     currentQuote = null;
 };
+document.getElementById('closeModalBtn').addEventListener('click', closePaymentModal);
 
-// ── Process Approval & Send Email ─────────────────────────────────────────
+// ── Process Approval, Upload Receipt & Send Email ────────────────────────
 document.getElementById('confirmApproveBtn').addEventListener('click', async () => {
     const amount = document.getElementById('payAmount').value;
     const cycle = document.getElementById('payCycle').value;
+    const receiptFile = document.getElementById('payReceipt').files[0]; 
     const errorMsg = document.getElementById('paymentErrorMsg');
 
     if (!amount || amount <= 0) {
@@ -98,30 +112,41 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
 
     const btn = document.getElementById('confirmApproveBtn');
     btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Processing & Emailing...';
 
     try {
-        const session = JSON.parse(localStorage.getItem('connectus_hq_session'));
         const paymentId = `PAY-${Date.now()}`;
         const timestamp = new Date().toISOString();
+        let receiptUrl = null;
 
-        // 1. Create Payment Record
+        // 1. Upload File to Firebase Storage (If attached)
+        if (receiptFile) {
+            btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up fa-spin mr-2"></i> Uploading Receipt...';
+            const storageRef = ref(storage, `receipts/${paymentId}_${receiptFile.name}`);
+            await uploadBytes(storageRef, receiptFile);
+            receiptUrl = await getDownloadURL(storageRef);
+        }
+
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Logging Payment...';
+
+        // 2. Create Payment/Invoice Record
         await setDoc(doc(db, 'payments', paymentId), {
             reqId: currentQuote.reqId,
             schoolName: currentQuote.schoolName,
             amount: parseFloat(amount),
             cycle: cycle,
+            receiptUrl: receiptUrl, 
             loggedBy: session.id,
             timestamp: timestamp
         });
 
-        // 2. Update Quote Status
+        // 3. Update Quote Status
         await updateDoc(doc(db, 'quote_requests', currentQuote.reqId), {
             paymentCleared: true,
             clearedAt: timestamp
         });
 
-        // 3. Send EmailJS Link
+        // 4. Send EmailJS Link
+        btn.innerHTML = '<i class="fa-solid fa-envelope fa-spin mr-2"></i> Sending Email...';
         const onboardingLink = `https://connectusonline.org/onboarding/onboarding.html?req=${currentQuote.reqId}`;
         
         await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
@@ -131,9 +156,10 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
             onboarding_link: onboardingLink
         });
 
-        // 4. Cleanup
-        window.closePaymentModal();
-        loadQuotes(); // Refresh the table
+        // 5. Cleanup
+        document.getElementById('payReceipt').value = ""; 
+        closePaymentModal();
+        loadQuotes(); 
 
     } catch (e) {
         console.error("Approval Failed:", e);
@@ -145,5 +171,5 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
     btn.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i> Log Payment & Email Link';
 });
 
-// Refresh button binding
 document.getElementById('refreshQuotesBtn').addEventListener('click', loadQuotes);
+loadQuotes(); // Init table on load
