@@ -51,7 +51,8 @@ export function injectTeacherLayout(activePageId, pageTitle, pageSub, showSearch
           <a href="../subjects/subjects.html"     id="nav-subjects"      class="nav-item"><i class="fa-solid fa-layer-group"></i><span>Subjects</span></a>
           <a href="../gradebook/gradebook.html"   id="nav-gradebook"     class="nav-item"><i class="fa-solid fa-book"></i><span>Gradebook</span></a>
 
-          <p class="nav-section-label">Records</p>
+          <p class="nav-section-label">Reports & Analytics</p>
+          <a href="../analytics/analytics.html"   id="nav-analytics"     class="nav-item"><i class="fa-solid fa-star-half-stroke"></i><span>My Evaluations</span></a>
           <a href="../archives/archives.html"     id="nav-archives"      class="nav-item"><i class="fa-solid fa-box-archive"></i><span>Archives</span></a>
 
           <p class="nav-section-label">System</p>
