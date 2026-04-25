@@ -14,7 +14,6 @@ const urlParams = new URLSearchParams(window.location.search);
 const reqId     = urlParams.get('req');
 
 // ── SHA-256 Hash ──────────────────────────────────────────────────────────────
-// Normalizes to lowercase + trimmed before hashing so answers are case-insensitive.
 async function sha256(text) {
     const normalized  = text.toLowerCase().trim();
     const encoded     = new TextEncoder().encode(normalized);
@@ -24,7 +23,7 @@ async function sha256(text) {
         .join('');
 }
 
-// ── Generate School ID (e.g., SCH-8B2X9) ─────────────────────────────────────
+// ── Generate School ID ───────────────────────────────────────────────────────
 function generateSchoolId() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let rand = '';
@@ -32,7 +31,7 @@ function generateSchoolId() {
     return `SCH-${rand}`;
 }
 
-// ── Generate Admin ID (e.g., A26-8B2X9) ─────────────────────────────────────
+// ── Generate Admin ID ────────────────────────────────────────────────────────
 function generateAdminId() {
     const year  = new Date().getFullYear().toString().slice(-2);
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -62,7 +61,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        // Pre-fill form
         document.getElementById('obSchoolName').value = requestData.schoolName || '';
         if (requestData.schoolType) {
             const st = document.getElementById('obSchoolType');
@@ -94,7 +92,6 @@ initializeBtn.addEventListener('click', async () => {
 
     obErrorMsg.classList.add('hidden');
 
-    // ── Validation ──
     if (!schoolName || !district || !schoolType || !code) {
         showValidation("All fields are required."); return;
     }
@@ -118,7 +115,6 @@ initializeBtn.addEventListener('click', async () => {
     initializeBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Deploying Infrastructure...';
 
     try {
-        // ── Hash sensitive fields before ANY Firestore write ──
         const [hashedCode, hashedA1, hashedA2] = await Promise.all([
             sha256(code),
             sha256(secA1),
@@ -129,38 +125,41 @@ initializeBtn.addEventListener('click', async () => {
         const newSuperAdminId = generateAdminId();
         const batch       = writeBatch(db);
 
-        // A. Create the core School Document (Phase 2 Updates applied here)
+        // A. Create the core School Document 
         const schoolRef = doc(db, 'schools', newSchoolId);
         batch.set(schoolRef, {
             schoolName,
             district,
             schoolType,
-            superAdminId:         newSuperAdminId, // Added Super Admin ID
-            adminCode:            hashedCode,      // SHA-256 hash
-            securityQ1:           secQ1,           // Question text (not sensitive)
-            securityA1:           hashedA1,        // SHA-256 hash
-            securityQ2:           secQ2,           // Question text (not sensitive)
-            securityA2:           hashedA2,        // SHA-256 hash
-            securityQuestionsSet: true,            // Enables forgot-pin flow immediately
-            isSuperAdmin:         true,            // This account is the school's super admin
+            superAdminId:         newSuperAdminId, 
+            adminCode:            hashedCode,      
+            securityQ1:           secQ1,           
+            securityA1:           hashedA1,        
+            securityQ2:           secQ2,           
+            securityA2:           hashedA2,        
+            securityQuestionsSet: true,            
+            isSuperAdmin:         true,            
             isVerified:           true,
             requiresPinReset:     false,
-            subscriptionPlan:     'pro',
             
-            // ── Phase 2: Subscription & Billing Data ──
+            // Link back to original quote for transaction history
+            originalQuoteId:      reqId, 
+            
+            subscriptionPlanId:   requestData.approvedPlanId || 'Unknown',
+            subscriptionName:     requestData.approvedPlanName || 'Custom Plan',
             billingCycle:         requestData.approvedBillingCycle || 'Not Specified',
             nextRenewalDate:      requestData.calculatedRenewalDate || null,
             subscriptionStatus:   'Active',
-            // ──────────────────────────────────────────
+            limits:               requestData.approvedLimits || { studentLimit: 99999, teacherLimit: 50, adminLimit: 3 },
 
             activeSemesterId:     'sem_1',
-            contactEmail:  requestData.workEmail || '',
-            contactName:   `${requestData.firstName || ''} ${requestData.lastName || ''}`.trim(),
-            phone:         requestData.phone || '',
-            createdAt:     new Date().toISOString()
+            contactEmail:         requestData.workEmail || '',
+            contactName:          `${requestData.firstName || ''} ${requestData.lastName || ''}`.trim(),
+            phone:                requestData.phone || '',
+            createdAt:            new Date().toISOString()
         });
 
-        // B. Generate Default Grading Periods (Semesters)
+        // B. Generate Default Grading Periods
         const sems = [
             { id: 'sem_1', name: 'Term 1', order: 1 },
             { id: 'sem_2', name: 'Term 2', order: 2 },
@@ -183,14 +182,12 @@ initializeBtn.addEventListener('click', async () => {
         const reqRef = doc(db, 'quote_requests', reqId);
         batch.update(reqRef, { fulfilled: true, generatedSchoolId: newSchoolId });
 
-        // Execute all writes atomically
         await batch.commit();
 
-        // D. Show Success
         setupForm.classList.add('hidden');
         successScreen.classList.remove('hidden');
         document.getElementById('finalSchoolId').textContent = newSchoolId;
-        document.getElementById('finalAdminId').textContent = newSuperAdminId; // Displayed on UI
+        document.getElementById('finalAdminId').textContent = newSuperAdminId; 
 
     } catch (error) {
         console.error("Initialization Failed:", error);
@@ -200,7 +197,6 @@ initializeBtn.addEventListener('click', async () => {
     }
 });
 
-// ── UI Helpers ────────────────────────────────────────────────────────────────
 function showError(msg) {
     loadingState.innerHTML = `
         <i class="fa-solid fa-triangle-exclamation text-4xl text-red-500 mb-4"></i>
