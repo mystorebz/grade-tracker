@@ -24,7 +24,7 @@ const EMAILJS_TEMPLATE_ID = 'template_school_approved';
 emailjs.init(EMAILJS_PUBLIC_KEY);
 
 const tbody = document.getElementById('quotesTableBody');
-let allQuotes = []; // Array to store fetched quotes for the View Modal
+let allQuotes = []; 
 let currentQuote = null;
 
 // ── Load Quotes ────────────────────────────────────────────────────────────
@@ -35,14 +35,14 @@ async function loadQuotes() {
         const q = query(collection(db, 'quote_requests'), orderBy('createdAt', 'desc'));
         const snap = await getDocs(q);
         
-        allQuotes = []; // Reset Array
+        allQuotes = []; 
         let rows = '';
         let pendingCount = 0;
 
         snap.forEach(docSnap => {
             const data = docSnap.data();
-            data.id = docSnap.id; // Store ID inside object
-            allQuotes.push(data); // Push to array
+            data.id = docSnap.id; 
+            allQuotes.push(data); 
 
             if (data.fulfilled) return; 
 
@@ -54,7 +54,6 @@ async function loadQuotes() {
                 ? `<span class="bg-emerald-900/40 text-emerald-400 border border-emerald-800 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider">Link Sent</span>`
                 : `<span class="bg-amber-900/40 text-amber-400 border border-amber-800 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider">Pending Payment</span>`;
 
-            // Changed action button to "View"
             const actionBtn = isApproved
                 ? `<button class="text-slate-500 font-bold text-xs cursor-not-allowed" disabled>Waiting on School</button>`
                 : `<button onclick="window.openApprovalModal('${data.id}')" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition border border-slate-600 shadow-md">View</button>`;
@@ -80,9 +79,18 @@ async function loadQuotes() {
     }
 }
 
+// ── Form Interactions ────────────────────────────────────────────────────
+document.getElementById('payCycle').addEventListener('change', (e) => {
+    const customWrap = document.getElementById('customCycleWrap');
+    if (e.target.value === 'Other') {
+        customWrap.classList.remove('hidden');
+    } else {
+        customWrap.classList.add('hidden');
+    }
+});
+
 // ── Modal Handlers (View & Populate Details) ─────────────────────────────
 window.openApprovalModal = (reqId) => {
-    // Find the quote from our array
     currentQuote = allQuotes.find(q => q.id === reqId);
     if (!currentQuote) return;
 
@@ -114,7 +122,16 @@ window.openApprovalModal = (reqId) => {
 
     // Reset Inputs - Right Side
     document.getElementById('payAmount').value = '';
-    document.getElementById('payCycle').value = currentQuote.contractTerm === 'Annual' ? 'Yearly' : 'Monthly'; // Smart default
+    
+    // Smart default for Billing Cycle
+    const cycleSelect = document.getElementById('payCycle');
+    if (currentQuote.contractTerm === 'Annual') cycleSelect.value = 'Annual';
+    else if (currentQuote.contractTerm === 'Multi-Year') cycleSelect.value = 'Multi-Year';
+    else cycleSelect.value = 'Monthly';
+    
+    document.getElementById('customCycleWrap').classList.add('hidden');
+    document.getElementById('payCustomCycle').value = ''; 
+    document.getElementById('payNotes').value = ''; 
     document.getElementById('payReceipt').value = ''; 
     document.getElementById('paymentErrorMsg').classList.add('hidden');
     
@@ -135,10 +152,29 @@ const closePaymentModal = () => {
 document.getElementById('closeModalBtnDesktop').addEventListener('click', closePaymentModal);
 document.getElementById('closeModalBtnMobile').addEventListener('click', closePaymentModal);
 
-// ── Process Approval, Upload Receipt & Send Email ────────────────────────
+// ── Calculate Renewal Date Helper ─────────────────────────────────────────
+function calculateRenewalDate(cycleType) {
+    const date = new Date();
+    if (cycleType === 'Monthly') {
+        date.setMonth(date.getMonth() + 1);
+    } else if (cycleType === 'Annual') {
+        date.setFullYear(date.getFullYear() + 1);
+    } else if (cycleType === 'Multi-Year') {
+        const years = currentQuote.contractYears ? parseInt(currentQuote.contractYears) : 2;
+        date.setFullYear(date.getFullYear() + years);
+    } else {
+        // Fallback for custom 'Other' inputs: Default to 1 year, admin can edit later if needed
+        date.setFullYear(date.getFullYear() + 1);
+    }
+    return date.toISOString();
+}
+
+// ── Process Approval, Log Payment & Send Email ────────────────────────
 document.getElementById('confirmApproveBtn').addEventListener('click', async () => {
     const amount = document.getElementById('payAmount').value;
-    const cycle = document.getElementById('payCycle').value;
+    const cycleSelect = document.getElementById('payCycle').value;
+    const customCycle = document.getElementById('payCustomCycle').value;
+    const internalNote = document.getElementById('payNotes').value.trim();
     const receiptFile = document.getElementById('payReceipt').files[0]; 
     const errorMsg = document.getElementById('paymentErrorMsg');
 
@@ -146,6 +182,8 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
         errorMsg.textContent = "Please enter a valid payment amount.";
         errorMsg.classList.remove('hidden'); return;
     }
+
+    const actualCycle = cycleSelect === 'Other' ? (customCycle || 'Custom') : cycleSelect;
 
     const btn = document.getElementById('confirmApproveBtn');
     btn.disabled = true;
@@ -155,7 +193,7 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
         const timestamp = new Date().toISOString();
         let receiptUrl = null;
 
-        // 1. Upload File to Firebase Storage (If attached)
+        // 1. Upload File to Firebase Storage
         if (receiptFile) {
             btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up fa-spin mr-2"></i> Uploading Receipt...';
             const storageRef = ref(storage, `receipts/${paymentId}_${receiptFile.name}`);
@@ -165,24 +203,39 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
 
         btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Logging Invoice...';
 
-        // 2. Create Payment/Invoice Record
+        // 2. Prepare Timestamped Note Array
+        const notesArray = internalNote ? [{
+            note: internalNote,
+            timestamp: timestamp,
+            loggedBy: session.id,
+            loggedByName: session.name
+        }] : [];
+
+        // 3. Calculate Expiration Clock
+        const nextRenewalDate = calculateRenewalDate(cycleSelect);
+
+        // 4. Create Master Ledger Payment Record
         await setDoc(doc(db, 'payments', paymentId), {
             reqId: currentQuote.id,
             schoolName: currentQuote.schoolName,
+            paymentType: 'Initial Setup',
             amount: parseFloat(amount),
-            cycle: cycle,
-            receiptUrl: receiptUrl, // Store download link
+            billingCycle: actualCycle,
+            receiptUrl: receiptUrl, 
+            internalNotes: notesArray,
             loggedBy: session.id,
             timestamp: timestamp
         });
 
-        // 3. Update Quote Status
+        // 5. Update Quote Request (Embeds the cycle and renewal date for onboarding to grab)
         await updateDoc(doc(db, 'quote_requests', currentQuote.id), {
             paymentCleared: true,
-            clearedAt: timestamp
+            clearedAt: timestamp,
+            approvedBillingCycle: actualCycle,
+            calculatedRenewalDate: nextRenewalDate
         });
 
-        // 4. Send EmailJS Link
+        // 6. Send EmailJS Link
         btn.innerHTML = '<i class="fa-solid fa-envelope fa-spin mr-2"></i> Emailing School...';
         const onboardingLink = `https://connectusonline.org/onboarding/onboarding.html?req=${currentQuote.id}`;
         
@@ -193,13 +246,13 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
             onboarding_link: onboardingLink
         });
 
-        // 5. Cleanup
+        // 7. Cleanup
         closePaymentModal();
         loadQuotes(); 
 
     } catch (e) {
         console.error("Approval Failed:", e);
-        errorMsg.textContent = "An error occurred during approval. Ensure Firebase Storage is initialized and rules allow writes.";
+        errorMsg.textContent = "An error occurred during approval. Check console for details.";
         errorMsg.classList.remove('hidden');
     }
 
