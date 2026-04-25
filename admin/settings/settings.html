@@ -250,9 +250,19 @@
                             <p id="weightTotalMsg" class="text-xs font-semibold mt-2 hidden"></p>
                         </div>
 
-                        <!-- Grade types list -->
+                        <!-- Active grade types list -->
                         <div id="gradeTypesList" class="space-y-2">
                             <div class="flex justify-center py-6"><i class="fa-solid fa-spinner fa-spin text-blue-400 text-xl"></i></div>
+                        </div>
+
+                        <!-- Archived grade types (collapsed by default) -->
+                        <div id="archivedTypesWrap" class="hidden">
+                            <button onclick="document.getElementById('archivedTypesList').classList.toggle('hidden');this.querySelector('i').classList.toggle('fa-rotate-90')"
+                                class="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 w-full text-left">
+                                <i class="fa-solid fa-chevron-right transition-transform" style="font-size:10px"></i>
+                                Archived Grade Types
+                            </button>
+                            <div id="archivedTypesList" class="space-y-2 hidden"></div>
                         </div>
 
                         <!-- Add new type form -->
@@ -280,7 +290,7 @@
 
                         <p class="text-xs text-slate-400 font-semibold bg-amber-50 border border-amber-100 rounded-xl p-3">
                             <i class="fa-solid fa-circle-info text-amber-500 mr-1.5"></i>
-                            Weights must total exactly 100%. These weights apply to all students across all subjects — teachers and admins see weighted averages automatically.
+                            Archiving a type redistributes its weight proportionally to remaining active types. Existing grades keep their data. Archived types can always be restored.
                         </p>
                     </div>
                 </div>
@@ -347,6 +357,37 @@
             </div>
         </div>
     </main>
+
+
+    <!-- ── EDIT GRADE TYPE MODAL ──────────────────────────────────────── -->
+    <div id="editTypeModal" class="overlay fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200" id="editTypeModalInner">
+            <div class="h-1 bg-blue-500"></div>
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+                <h3 class="font-black text-slate-800 text-lg">Edit Grade Type</h3>
+                <button onclick="window.closeEditTypeModal()" class="text-slate-400 hover:text-red-500 transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="p-6 space-y-4">
+                <input type="hidden" id="editTypeId">
+                <div>
+                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Type Name</label>
+                    <input type="text" id="editTypeName" maxlength="40" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Weight (%)</label>
+                    <div class="relative">
+                        <input type="number" id="editTypeWeight" min="1" max="100" class="form-input w-full p-3 pr-8 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
+                        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400 font-bold pointer-events-none">%</span>
+                    </div>
+                    <p class="text-xs text-slate-400 font-semibold mt-1">Changing a weight does not auto-adjust others — verify the total stays at 100%.</p>
+                </div>
+                <button id="saveTypeEditBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3 rounded-xl transition text-sm">
+                    Save Changes
+                </button>
+                <p id="editTypeMsg" class="text-xs font-semibold hidden"></p>
+            </div>
+        </div>
+    </div>
 
     <script type="module" src="settings.js"></script>
 </body>
