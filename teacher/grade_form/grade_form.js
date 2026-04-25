@@ -60,7 +60,7 @@ async function init() {
     // Load Data
     await loadSemestersAndLockStatus();
     populateSubjectDropdown();
-    populateGradeTypeDropdown();
+    await populateGradeTypeDropdown();
     await populateStudentDropdown();
 }
 
@@ -154,10 +154,28 @@ function populateSubjectDropdown() {
     setupSearchableDropdown('eg-subject-search', 'eg-subject', 'eg-subject-list', data, 'eg-type-search');
 }
 
-function populateGradeTypeDropdown() {
-    let types = session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES;
-    const data = types.map(t => ({ value: t, label: t }));
-    setupSearchableDropdown('eg-type-search', 'eg-type', 'eg-type-list', data, 'eg-title');
+async function populateGradeTypeDropdown() {
+    let types = [];
+    try {
+        const cacheKey = 'connectus_gradeTypes_' + session.schoolId;
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+            const parsed = JSON.parse(cached);
+            types = parsed.map(t => ({ value: t.name, label: t.weight ? t.name + ' (' + t.weight + '%)' : t.name }));
+        } else {
+            const snap = await getDocs(collection(db, 'schools', session.schoolId, 'gradeTypes'));
+            const raw  = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order||0) - (b.order||0));
+            if (raw.length) localStorage.setItem(cacheKey, JSON.stringify(raw));
+            types = raw.map(t => ({ value: t.name, label: t.weight ? t.name + ' (' + t.weight + '%)' : t.name }));
+        }
+    } catch (_) {}
+
+    // Fallback to defaults if nothing loaded
+    if (!types.length) {
+        types = DEFAULT_GRADE_TYPES.map(t => ({ value: t, label: t }));
+    }
+
+    setupSearchableDropdown('eg-type-search', 'eg-type', 'eg-type-list', types, 'eg-title');
 }
 
 async function populateStudentDropdown() {
