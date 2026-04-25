@@ -45,19 +45,19 @@
             <!-- ── Reset Form ──────────────────────────────────────────── -->
             <div id="resetForm" class="p-8 space-y-5 hidden">
 
-                <!-- Role badge — shows who this reset is for -->
+                <!-- Role badge -->
                 <div id="roleBadge" class="p-3 rounded-xl flex items-center gap-3 border">
                     <i id="roleBadgeIcon" class="text-blue-500 text-lg"></i>
                     <div>
                         <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Resetting PIN For</p>
                         <p id="roleBadgeName" class="text-sm font-black text-slate-800"></p>
-                        <p id="roleBadgeSub" class="text-[10px] text-slate-500 font-semibold"></p>
+                        <p id="roleBadgeSub"  class="text-[10px] text-slate-500 font-semibold"></p>
                     </div>
                 </div>
 
                 <div>
                     <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">
-                        New <span id="codeLabel">Admin Code</span> *
+                        New <span id="codeLabel">PIN</span> *
                     </label>
                     <p class="text-xs text-slate-400 font-semibold mb-2" id="codeHint">Must be at least 6 characters.</p>
                     <input type="password" id="newCode" placeholder="New PIN / Password"
@@ -66,7 +66,7 @@
                         class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
                 </div>
 
-                <!-- Strength bar (admin only — longer codes warranted) -->
+                <!-- Strength bar (admin + sub_admin) -->
                 <div id="strengthBar" class="hidden">
                     <div class="flex gap-1.5 mb-1">
                         <div id="s1" class="h-1.5 flex-1 rounded-full bg-slate-200 transition-colors duration-300"></div>
@@ -91,7 +91,7 @@
                     <i class="fa-solid fa-shield-check"></i>
                 </div>
                 <h3 class="font-black text-2xl text-slate-800 mb-2">PIN Reset Successful!</h3>
-                <p class="text-sm text-slate-500 font-semibold mb-6">Your new login code is active. You can now sign into your dashboard.</p>
+                <p class="text-sm text-slate-500 font-semibold mb-6">Your new login code is active. You can now sign in.</p>
                 <a id="loginLink" href="../admin/login.html"
                     class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-black py-3 px-8 rounded-xl transition shadow-lg shadow-blue-500/30 text-sm">
                     Go to Login
@@ -104,60 +104,87 @@
 import { db } from '../assets/js/firebase-init.js';
 import { doc, getDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-// ── Role routing config ───────────────────────────────────────────────────────
-// Defines per-role: which collection, which field to update, UI labels, login path
-// NOTE ON HASHING:
-//   admin  → PIN is SHA-256 hashed (matches onboarding.js and admin login)
-//   teacher → PIN is stored plain-text (matches existing teacher login comparison)
-//   student → PIN is stored plain-text (matches existing student login comparison)
-//   When teacher/student login flows are upgraded to hash-compare,
-//   set hashPin: true for those roles and update their login pages accordingly.
+// ── Role Routing ──────────────────────────────────────────────────────────────
+// Each entry defines how to resolve the target document and update the PIN.
+//
+// HASHING NOTE:
+//   admin + sub_admin → SHA-256 hashed (matches login.js comparison)
+//   teacher + student → plain text for now (matches their existing login flows)
+//   When teacher/student login is upgraded to hash-compare, set hashPin: true
+//   and update their login pages — no other changes needed here.
+//
+// sub_admin is special: its document lives at schools/{schoolId}/admins/{adminId}.
+// The vault stores vaultData.schoolId for this case.
 const ROLE_ROUTING = {
     admin: {
-        collection:  'schools',
-        pinField:    'adminCode',
-        hashPin:     true,           // SHA-256 hash before storing
-        minLength:   6,
+        collection:   'schools',
+        pinField:     'adminCode',
+        hashPin:      true,
+        minLength:    6,
         showStrength: true,
-        codeLabel:   'Admin Code',
-        codeHint:    'Must be at least 6 characters.',
-        icon:        'fa-solid fa-user-shield',
-        badgeClass:  'bg-blue-50 border-blue-200',
-        nameField:   'schoolName',
-        subField:    null,
-        loginPath:   '../admin/login.html'
+        codeLabel:    'Admin Code',
+        codeHint:     'Must be at least 6 characters.',
+        icon:         'fa-solid fa-user-shield',
+        badgeClass:   'bg-blue-50 border-blue-200',
+        nameField:    'schoolName',
+        subLabel:     'Super Admin Account',
+        loginPath:    '../admin/login.html',
+        // Resolves the Firestore doc reference
+        getRef: (vaultData) => doc(db, 'schools', vaultData.targetId),
+        // Resolves the display name from doc data
+        getName: (data) => data.schoolName || vaultData?.targetId
+    },
+    sub_admin: {
+        collection:   'schools/{schoolId}/admins',   // informational only
+        pinField:     'adminCode',
+        hashPin:      true,
+        minLength:    6,
+        showStrength: true,
+        codeLabel:    'Admin Code',
+        codeHint:     'Must be at least 6 characters.',
+        icon:         'fa-solid fa-user-tie',
+        badgeClass:   'bg-cyan-50 border-cyan-200',
+        nameField:    'name',
+        subLabel:     'Sub-Admin Account',
+        loginPath:    '../admin/login.html',
+        getRef: (vaultData) => doc(db, 'schools', vaultData.schoolId, 'admins', vaultData.targetId),
+        getName: (data) => data.name || 'Sub-Admin'
     },
     teacher: {
-        collection:  'teachers',
-        pinField:    'pin',
-        hashPin:     false,          // Plain text — update when login hashing is added
-        minLength:   6,
+        collection:   'teachers',
+        pinField:     'pin',
+        hashPin:      false,
+        minLength:    6,
         showStrength: false,
-        codeLabel:   'Teacher PIN',
-        codeHint:    'Must be at least 6 characters.',
-        icon:        'fa-solid fa-chalkboard-user',
-        badgeClass:  'bg-indigo-50 border-indigo-200',
-        nameField:   'name',
-        subField:    'currentSchoolId',
-        loginPath:   '../teacher/login.html'
+        codeLabel:    'Teacher PIN',
+        codeHint:     'Must be at least 6 characters.',
+        icon:         'fa-solid fa-chalkboard-user',
+        badgeClass:   'bg-emerald-50 border-emerald-200',
+        nameField:    'name',
+        subLabel:     'Teacher Account',
+        loginPath:    '../teacher/login.html',
+        getRef: (vaultData) => doc(db, 'teachers', vaultData.targetId),
+        getName: (data) => data.name || 'Teacher'
     },
     student: {
-        collection:  'students',
-        pinField:    'pin',
-        hashPin:     false,          // Plain text — update when login hashing is added
-        minLength:   4,
+        collection:   'students',
+        pinField:     'pin',
+        hashPin:      false,
+        minLength:    4,
         showStrength: false,
-        codeLabel:   'Student PIN',
-        codeHint:    'Must be at least 4 digits.',
-        icon:        'fa-solid fa-graduation-cap',
-        badgeClass:  'bg-green-50 border-green-200',
-        nameField:   'name',
-        subField:    'currentSchoolId',
-        loginPath:   '../student/login.html'
+        codeLabel:    'Student PIN',
+        codeHint:     'Must be at least 4 digits.',
+        icon:         'fa-solid fa-graduation-cap',
+        badgeClass:   'bg-indigo-50 border-indigo-200',
+        nameField:    'name',
+        subLabel:     'Student Account',
+        loginPath:    '../student/login.html',
+        getRef: (vaultData) => doc(db, 'students', vaultData.targetId),
+        getName: (data) => data.name || 'Student'
     }
 };
 
-// ── SHA-256 (only used for admin role) ───────────────────────────────────────
+// ── SHA-256 ───────────────────────────────────────────────────────────────────
 async function sha256(text) {
     const encoded = new TextEncoder().encode(text.toLowerCase().trim());
     const buffer  = await crypto.subtle.digest('SHA-256', encoded);
@@ -173,9 +200,9 @@ const successScr   = document.getElementById('successScreen');
 const resetError   = document.getElementById('resetError');
 
 // ── State ─────────────────────────────────────────────────────────────────────
-const token  = new URLSearchParams(window.location.search).get('token');
-let vaultData   = null;    // reset_vault document data
-let roleRouting = null;    // resolved ROLE_ROUTING entry
+const token = new URLSearchParams(window.location.search).get('token');
+let vaultData   = null;
+let roleRouting = null;
 
 // ── Boot: Validate Token ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -194,22 +221,28 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         vaultData = vaultSnap.data();
 
-        // Check expiry
         if (new Date() > new Date(vaultData.expiresAt)) {
-            await deleteDoc(doc(db, 'reset_vault', token)); // Clean up expired token
+            await deleteDoc(doc(db, 'reset_vault', token));
             showInvalid("This reset link has expired. Reset links are only valid for 15 minutes.");
             return;
         }
 
-        // Resolve role routing
         roleRouting = ROLE_ROUTING[vaultData.userType];
         if (!roleRouting) {
             showInvalid("This link contains an unrecognized account type.");
             return;
         }
 
-        // Fetch the target document to display the account name
-        const targetSnap = await getDoc(doc(db, roleRouting.collection, vaultData.targetId));
+        // ── sub_admin needs schoolId in vault ─────────────────────────────
+        if (vaultData.userType === 'sub_admin' && !vaultData.schoolId) {
+            showInvalid("This reset link is missing required school information.");
+            return;
+        }
+
+        // Fetch target document to display account name
+        const targetRef  = roleRouting.getRef(vaultData);
+        const targetSnap = await getDoc(targetRef);
+
         if (!targetSnap.exists()) {
             showInvalid("The associated account could not be found.");
             return;
@@ -217,26 +250,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const targetData = targetSnap.data();
 
-        // ── Populate role badge ────────────────────────────────────────────
+        // ── Populate badge ─────────────────────────────────────────────────
         const badgeEl = document.getElementById('roleBadge');
         badgeEl.className = `p-3 rounded-xl flex items-center gap-3 border ${roleRouting.badgeClass}`;
         document.getElementById('roleBadgeIcon').className = `${roleRouting.icon} text-lg`;
-        document.getElementById('roleBadgeName').textContent = targetData[roleRouting.nameField] || vaultData.targetId;
-        document.getElementById('roleBadgeSub').textContent  =
-            roleRouting.subField && targetData[roleRouting.subField]
-                ? `School: ${targetData[roleRouting.subField]}`
-                : vaultData.userType.charAt(0).toUpperCase() + vaultData.userType.slice(1) + ' Account';
+        document.getElementById('roleBadgeName').textContent = roleRouting.getName(targetData);
+        document.getElementById('roleBadgeSub').textContent  = roleRouting.subLabel;
 
-        // ── Populate form labels ───────────────────────────────────────────
         document.getElementById('codeLabel').textContent = roleRouting.codeLabel;
         document.getElementById('codeHint').textContent  = roleRouting.codeHint;
 
-        // Show strength bar only for admin
         if (roleRouting.showStrength) {
             document.getElementById('strengthBar').classList.remove('hidden');
         }
 
-        // Update login link on success screen
         document.getElementById('loginLink').href = roleRouting.loginPath;
 
         loadingState.classList.add('hidden');
@@ -248,7 +275,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-// ── Strength Indicator (admin only) ──────────────────────────────────────────
+// ── Strength Indicator ────────────────────────────────────────────────────────
 document.getElementById('newCode').addEventListener('input', (e) => {
     if (!roleRouting?.showStrength) return;
     const val = e.target.value;
@@ -261,8 +288,8 @@ document.getElementById('newCode').addEventListener('input', (e) => {
     if (/[A-Z]/.test(val) && /[0-9]/.test(val)) score++;
     if (/[^A-Za-z0-9]/.test(val)) score++;
 
-    const colors  = ['bg-red-400','bg-orange-400','bg-yellow-400','bg-green-500'];
-    const labels  = ['Weak','Fair','Good','Strong'];
+    const colors = ['bg-red-400','bg-orange-400','bg-yellow-400','bg-green-500'];
+    const labels = ['Weak','Fair','Good','Strong'];
     ['s1','s2','s3','s4'].forEach((id, i) => {
         document.getElementById(id).className =
             `h-1.5 flex-1 rounded-full transition-colors duration-300 ${i < score ? colors[score - 1] : 'bg-slate-200'}`;
@@ -270,7 +297,7 @@ document.getElementById('newCode').addEventListener('input', (e) => {
     document.getElementById('strengthLabel').textContent = score > 0 ? labels[score - 1] : '';
 });
 
-// ── Submit: Save New PIN ──────────────────────────────────────────────────────
+// ── Submit ────────────────────────────────────────────────────────────────────
 document.getElementById('resetBtn').addEventListener('click', async () => {
     const newCode = document.getElementById('newCode').value;
     const confirm = document.getElementById('newCodeConfirm').value;
@@ -291,21 +318,15 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
     btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Saving...';
 
     try {
-        // Hash for admin; plain text for teacher/student (matches their login flows)
-        const finalValue = roleRouting.hashPin
-            ? await sha256(newCode)
-            : newCode;
+        const finalValue = roleRouting.hashPin ? await sha256(newCode) : newCode;
 
-        // Update the correct field in the correct collection
-        const updates = {
+        await updateDoc(roleRouting.getRef(vaultData), {
             [roleRouting.pinField]: finalValue,
             requiresPinReset:       false,
             lastPinResetAt:         new Date().toISOString()
-        };
+        });
 
-        await updateDoc(doc(db, roleRouting.collection, vaultData.targetId), updates);
-
-        // Consume the token — one-time use
+        // Consume token — one-time use
         await deleteDoc(doc(db, 'reset_vault', token));
 
         resetFormEl.classList.add('hidden');
