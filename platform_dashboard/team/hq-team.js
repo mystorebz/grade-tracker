@@ -1,8 +1,17 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { collection, getDocs, doc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+// ── Boot Sequence ──────────────────────────────────────────────────────────
+const rawSession = localStorage.getItem('connectus_hq_session');
+const session = JSON.parse(rawSession);
+
+document.getElementById('hqAdminName').textContent = session.name;
+document.getElementById('hqAdminId').textContent = session.id;
+document.getElementById('hqAdminBadge').textContent = `Role: ${session.role}`;
 
 const tbody = document.getElementById('teamTableBody');
 let allTeam = [];
+let editingMember = null;
 
 // ── SHA-256 Hash ──────────────────────────────────────────────────────────────
 async function sha256(text) {
@@ -19,8 +28,8 @@ function generateHqId() {
 }
 
 // ── Load Team ─────────────────────────────────────────────────────────────
-export async function loadTeam() {
-    tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-teal-400 font-semibold"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading HQ Roster...</td></tr>`;
+async function loadTeam() {
+    tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-emerald-400 font-semibold"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Accessing HQ Vault...</td></tr>`;
     
     try {
         const snap = await getDocs(collection(db, 'platform_admins'));
@@ -28,8 +37,8 @@ export async function loadTeam() {
         snap.forEach(docSnap => allTeam.push({ id: docSnap.id, ...docSnap.data() }));
         renderTeam();
     } catch (e) {
-        console.error("Failed to load team:", e);
-        tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-red-400 font-bold">Failed to load data.</td></tr>`;
+        console.error(e);
+        tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-red-400 font-bold">Failed to load staff roster.</td></tr>`;
     }
 }
 
@@ -39,18 +48,10 @@ function renderTeam() {
             ? `<span class="bg-red-900/40 text-red-400 border border-red-800 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider">Suspended</span>`
             : `<span class="bg-emerald-900/40 text-emerald-400 border border-emerald-800 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider">Active</span>`;
 
-        // Prevent owner from suspending themselves
-        const session = JSON.parse(localStorage.getItem('connectus_hq_session'));
         const isMe = member.id === session.id;
-        
-        let actionBtn = '';
-        if (!isMe) {
-            actionBtn = `<button onclick="window.toggleTeamStatus('${member.id}', ${member.isActive !== false})" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition border border-slate-600">
-                ${member.isActive !== false ? 'Suspend' : 'Restore'}
-            </button>`;
-        } else {
-            actionBtn = `<span class="text-xs text-slate-500 font-bold italic">You</span>`;
-        }
+        const actionBtn = isMe 
+            ? `<span class="text-xs text-slate-500 font-bold italic">You</span>`
+            : `<button onclick="window.openEditModal('${member.id}')" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition border border-slate-600 shadow-sm">Manage</button>`;
 
         return `
             <tr class="border-b border-slate-800 hover:bg-slate-800/50 transition">
@@ -66,73 +67,103 @@ function renderTeam() {
     }).join('');
 }
 
-// ── Add Team Member ───────────────────────────────────────────────────────
+// ── Add Member ───────────────────────────────────────────────────────────
 window.openAddTeamModal = () => {
-    document.getElementById('teamName').value = '';
-    document.getElementById('teamEmail').value = '';
-    document.getElementById('teamPin').value = '';
-    document.getElementById('teamRole').value = 'Support';
-    document.getElementById('teamErrorMsg').classList.add('hidden');
-    
     const modal = document.getElementById('addTeamModal');
-    const inner = document.getElementById('addTeamModalInner');
     modal.classList.remove('hidden');
-    setTimeout(() => { modal.classList.remove('opacity-0'); inner.classList.remove('scale-95'); }, 10);
+    setTimeout(() => modal.classList.remove('opacity-0'), 10);
 };
 
 window.closeAddTeamModal = () => {
     const modal = document.getElementById('addTeamModal');
-    const inner = document.getElementById('addTeamModalInner');
-    modal.classList.add('opacity-0'); inner.classList.add('scale-95');
+    modal.classList.add('opacity-0');
     setTimeout(() => modal.classList.add('hidden'), 300);
 };
 
-document.getElementById('saveTeamBtn')?.addEventListener('click', async () => {
+document.getElementById('saveTeamBtn').addEventListener('click', async () => {
     const name = document.getElementById('teamName').value.trim();
     const email = document.getElementById('teamEmail').value.trim();
     const pin = document.getElementById('teamPin').value;
     const role = document.getElementById('teamRole').value;
-    const errorMsg = document.getElementById('teamErrorMsg');
 
-    if (!name || !email || !pin) {
-        errorMsg.textContent = "All fields are required.";
-        errorMsg.classList.remove('hidden'); return;
-    }
-    if (pin.length < 6) {
-        errorMsg.textContent = "PIN must be at least 6 characters.";
-        errorMsg.classList.remove('hidden'); return;
-    }
-
-    const btn = document.getElementById('saveTeamBtn');
-    btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Saving...';
+    if (!name || !email || !pin) return alert("Fill all fields");
+    
+    const hashedPin = await sha256(pin);
+    const newId = generateHqId();
 
     try {
-        const newId = generateHqId();
-        const hashedPin = await sha256(pin);
-
         await setDoc(doc(db, 'platform_admins', newId), {
             name, email, pin: hashedPin, role, isActive: true, createdAt: new Date().toISOString()
         });
-        
         window.closeAddTeamModal();
         loadTeam();
-        alert(`Team member created! Their ID is: ${newId}\nPlease securely share this with them.`);
-    } catch (e) {
-        console.error("Save Team Error:", e);
-        errorMsg.textContent = "Failed to create team member.";
-        errorMsg.classList.remove('hidden');
-    }
-    btn.disabled = false; btn.innerHTML = 'Add Team Member';
+    } catch (e) { console.error(e); }
 });
 
-// ── Toggle Status ─────────────────────────────────────────────────────────
-window.toggleTeamStatus = async (id, currentStatus) => {
-    if (currentStatus && !confirm("Suspend this team member's access?")) return;
-    try {
-        await updateDoc(doc(db, 'platform_admins', id), { isActive: !currentStatus });
-        loadTeam();
-    } catch (e) {
-        console.error("Toggle Team Error:", e);
-        alert("Failed to update status.");
-    }
+// ── Edit/Manage Member Logic ──────────────────────────────────────────────
+window.openEditModal = (id) => {
+    editingMember = allTeam.find(m => m.id === id);
+    if (!editingMember) return;
+
+    document.getElementById('editStaffId').textContent = editingMember.id;
+    document.getElementById('editName').value = editingMember.name;
+    document.getElementById('editEmail').value = editingMember.email;
+    document.getElementById('editPin').value = '';
+    
+    const activeBtn = document.getElementById('toggleActiveBtn');
+    activeBtn.textContent = editingMember.isActive === false ? 'Restore Access' : 'Suspend Access';
+    activeBtn.className = editingMember.isActive === false 
+        ? "flex-1 bg-emerald-700 hover:bg-emerald-600 text-white font-bold py-2 rounded-lg text-xs transition"
+        : "flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 rounded-lg text-xs transition";
+
+    const modal = document.getElementById('editTeamModal');
+    modal.classList.remove('hidden');
+    setTimeout(() => modal.classList.remove('opacity-0'), 10);
 };
+
+window.closeEditModal = () => {
+    const modal = document.getElementById('editTeamModal');
+    modal.classList.add('opacity-0');
+    setTimeout(() => modal.classList.add('hidden'), 300);
+    editingMember = null;
+};
+
+// Update Info / Reset PIN
+document.getElementById('updateStaffBtn').addEventListener('click', async () => {
+    const name = document.getElementById('editName').value.trim();
+    const email = document.getElementById('editEmail').value.trim();
+    const newPin = document.getElementById('editPin').value;
+
+    const updates = { name, email };
+    if (newPin.length >= 6) {
+        updates.pin = await sha256(newPin);
+    }
+
+    try {
+        await updateDoc(doc(db, 'platform_admins', editingMember.id), updates);
+        window.closeEditModal();
+        loadTeam();
+    } catch (e) { console.error(e); }
+});
+
+// Toggle Active/Inactive
+document.getElementById('toggleActiveBtn').addEventListener('click', async () => {
+    const newStatus = editingMember.isActive === false;
+    try {
+        await updateDoc(doc(db, 'platform_admins', editingMember.id), { isActive: newStatus });
+        window.closeEditModal();
+        loadTeam();
+    } catch (e) { console.error(e); }
+});
+
+// Delete Staff Member
+document.getElementById('deleteStaffBtn').addEventListener('click', async () => {
+    if (!confirm(`Permanently remove ${editingMember.name} from HQ? This cannot be undone.`)) return;
+    try {
+        await deleteDoc(doc(db, 'platform_admins', editingMember.id));
+        window.closeEditModal();
+        loadTeam();
+    } catch (e) { console.error(e); }
+});
+
+loadTeam();
