@@ -129,7 +129,7 @@ initializeBtn.addEventListener('click', async () => {
         const newSuperAdminId = generateAdminId();
         const batch       = writeBatch(db);
 
-        // A. Create the core School Document
+        // A. Create the core School Document (Phase 2 Updates applied here)
         const schoolRef = doc(db, 'schools', newSchoolId);
         batch.set(schoolRef, {
             schoolName,
@@ -146,6 +146,13 @@ initializeBtn.addEventListener('click', async () => {
             isVerified:           true,
             requiresPinReset:     false,
             subscriptionPlan:     'pro',
+            
+            // ── Phase 2: Subscription & Billing Data ──
+            billingCycle:         requestData.approvedBillingCycle || 'Not Specified',
+            nextRenewalDate:      requestData.calculatedRenewalDate || null,
+            subscriptionStatus:   'Active',
+            // ──────────────────────────────────────────
+
             activeSemesterId:     'sem_1',
             contactEmail:  requestData.workEmail || '',
             contactName:   `${requestData.firstName || ''} ${requestData.lastName || ''}`.trim(),
