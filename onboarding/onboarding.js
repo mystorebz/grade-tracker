@@ -2,23 +2,23 @@ import { db } from '../assets/js/firebase-init.js';
 import { doc, getDoc, setDoc, updateDoc, writeBatch, collection } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // DOM Elements
-const loadingState = document.getElementById('loadingState');
-const setupForm = document.getElementById('setupForm');
+const loadingState  = document.getElementById('loadingState');
+const setupForm     = document.getElementById('setupForm');
 const successScreen = document.getElementById('successScreen');
-const obErrorMsg = document.getElementById('obErrorMsg');
+const obErrorMsg    = document.getElementById('obErrorMsg');
 const initializeBtn = document.getElementById('initializeBtn');
 
 // State
 let requestData = null;
 const urlParams = new URLSearchParams(window.location.search);
-const reqId = urlParams.get('req');
+const reqId     = urlParams.get('req');
 
 // ─── Helper: SHA-256 Hash ─────────────────────────────────────────────────────
 // Normalizes to lowercase + trimmed before hashing so answers are case-insensitive.
 async function sha256(text) {
-    const normalized = text.toLowerCase().trim();
-    const encoded = new TextEncoder().encode(normalized);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
+    const normalized  = text.toLowerCase().trim();
+    const encoded     = new TextEncoder().encode(normalized);
+    const hashBuffer  = await crypto.subtle.digest('SHA-256', encoded);
     return Array.from(new Uint8Array(hashBuffer))
         .map(b => b.toString(16).padStart(2, '0'))
         .join('');
@@ -117,23 +117,24 @@ initializeBtn.addEventListener('click', async () => {
         ]);
 
         const newSchoolId = generateSchoolId();
-        const batch = writeBatch(db);
+        const batch       = writeBatch(db);
 
-        // A. Create the core School Document — no plain-text passwords
+        // A. Create the core School Document
         const schoolRef = doc(db, 'schools', newSchoolId);
         batch.set(schoolRef, {
             schoolName,
             district,
             schoolType,
-            adminCode:    hashedCode,   // SHA-256 hash
-            securityQ1:   secQ1,        // Question text (not sensitive)
-            securityA1:   hashedA1,     // SHA-256 hash
-            securityQ2:   secQ2,        // Question text (not sensitive)
-            securityA2:   hashedA2,     // SHA-256 hash
-            isVerified:          true,
-            requiresPinReset:    false,
-            subscriptionPlan:    'pro',
-            activeSemesterId:    'sem_1',
+            adminCode:            hashedCode,   // SHA-256 hash
+            securityQ1:           secQ1,        // Question text (not sensitive)
+            securityA1:           hashedA1,     // SHA-256 hash
+            securityQ2:           secQ2,        // Question text (not sensitive)
+            securityA2:           hashedA2,     // SHA-256 hash
+            securityQuestionsSet: true,         // Enables forgot-pin flow immediately
+            isVerified:           true,
+            requiresPinReset:     false,
+            subscriptionPlan:     'pro',
+            activeSemesterId:     'sem_1',
             contactEmail:  requestData.workEmail || '',
             contactName:   `${requestData.firstName || ''} ${requestData.lastName || ''}`.trim(),
             phone:         requestData.phone || '',
