@@ -58,25 +58,34 @@
         <header class="h-20 flex items-center justify-between px-8 border-b border-slate-800 bg-slate-900/50 backdrop-blur-md flex-shrink-0">
             <div>
                 <h2 class="text-xl font-black text-white tracking-wide">Organizations</h2>
-                <p class="text-xs text-slate-400 font-semibold mt-1">Manage Ministry and District level access.</p>
+                <p class="text-xs text-slate-400 font-semibold mt-1">Manage oversight bodies, districts, and non-school entities.</p>
             </div>
+            <button id="openAddOrgBtn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 py-2 rounded-xl text-sm transition shadow-lg shadow-indigo-900/50 flex items-center gap-2">
+                <i class="fa-solid fa-plus"></i> Deploy Organization
+            </button>
         </header>
 
         <div class="flex-1 overflow-y-auto p-8">
             <div class="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden shadow-xl">
                 <div class="p-6 border-b border-slate-700 flex justify-between items-center bg-slate-900/50">
-                    <h3 class="font-black text-white text-lg">Partner Organizations</h3>
-                    <button onclick="window.openAddOrgModal()" class="text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 transition px-4 py-2 rounded-lg shadow-md border border-blue-500">
-                        <i class="fa-solid fa-plus mr-1"></i> Add Organization
-                    </button>
+                    <h3 class="font-black text-white text-lg">Active Organizations</h3>
+                    <div class="flex gap-3">
+                        <div class="relative">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-500 text-xs"></i>
+                            <input type="text" id="searchOrgs" placeholder="Search orgs..." class="bg-slate-900 border border-slate-700 text-white text-xs font-bold rounded-lg pl-8 pr-4 py-2 outline-none focus:border-indigo-500 transition">
+                        </div>
+                        <button id="refreshOrgsBtn" class="text-xs font-bold text-indigo-400 hover:text-indigo-300 transition flex items-center gap-2 border border-indigo-900 bg-indigo-900/20 px-3 py-1.5 rounded-lg">
+                            <i class="fa-solid fa-rotate-right"></i> Refresh
+                        </button>
+                    </div>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
                         <thead>
                             <tr class="bg-slate-900/80 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-700">
-                                <th class="p-4 font-black">Org Name</th>
+                                <th class="p-4 font-black">Organization Name</th>
                                 <th class="p-4 font-black">Type</th>
-                                <th class="p-4 font-black">Contact Email</th>
+                                <th class="p-4 font-black">Point of Contact</th>
                                 <th class="p-4 font-black">Status</th>
                                 <th class="p-4 font-black text-right">Action</th>
                             </tr>
@@ -88,33 +97,87 @@
         </div>
     </main>
 
-    <div id="addOrgModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
-        <div class="bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 max-w-sm w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden" id="addOrgModalInner">
-            <div class="h-1.5 bg-gradient-to-r from-blue-500 to-blue-400"></div>
-            <div class="p-8">
-                <h3 class="font-black text-xl text-white mb-6">Add Organization</h3>
+    <div id="addOrgModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300 py-10 overflow-y-auto">
+        <div class="bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 max-w-4xl w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden flex flex-col md:flex-row" id="addOrgModalInner">
+            
+            <div class="md:w-1/2 p-8 border-b md:border-b-0 md:border-r border-slate-700 bg-slate-800/50">
+                <div class="flex justify-between items-start mb-6">
+                    <div>
+                        <h3 class="font-black text-xl text-white">Deploy Organization</h3>
+                        <p class="text-xs font-bold text-indigo-400 mt-1 uppercase tracking-widest">Profile & Legal Details</p>
+                    </div>
+                    <button id="closeOrgBtnMobile" class="md:hidden text-slate-500 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+                </div>
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Org Name</label>
-                        <input type="text" id="orgName" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:border-blue-500 transition outline-none">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Organization Name *</label>
+                        <input type="text" id="orgName" placeholder="e.g. Ministry of Education" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-indigo-500 transition">
                     </div>
+                    
                     <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Contact Email</label>
-                        <input type="email" id="orgEmail" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:border-blue-500 transition outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Type</label>
-                        <select id="orgType" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:border-blue-500 transition outline-none">
-                            <option value="Ministry">Ministry</option>
-                            <option value="District">District</option>
-                            <option value="Partner">Partner</option>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Organization Type *</label>
+                        <select id="orgType" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-indigo-500 transition">
+                            <option value="Government Ministry">Government Ministry</option>
+                            <option value="District Education Center">District Education Center</option>
+                            <option value="Diocesan / Religious Board">Diocesan / Religious Board</option>
+                            <option value="NGO / Non-Profit">NGO / Non-Profit</option>
+                            <option value="Other">Other (Custom)</option>
                         </select>
                     </div>
+
+                    <div id="orgCustomTypeWrap" class="hidden">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Specify Custom Type *</label>
+                        <input type="text" id="orgCustomType" placeholder="e.g. Charter Management" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-indigo-500 transition">
+                    </div>
+
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Licensing / Registration No. (Optional)</label>
+                        <input type="text" id="orgLicense" placeholder="e.g. REG-90210" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-indigo-500 transition">
+                    </div>
+
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Physical Address / Headquarters</label>
+                        <textarea id="orgAddress" placeholder="Street Address, City, Country" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-indigo-500 transition resize-none h-16"></textarea>
+                    </div>
                 </div>
-                <p id="orgErrorMsg" class="text-xs text-red-400 font-bold mt-4 hidden"></p>
-                <div class="flex gap-3 mt-6">
-                    <button onclick="window.closeAddOrgModal()" class="flex-1 py-3 text-slate-400 font-bold text-sm hover:text-white transition">Cancel</button>
-                    <button id="saveOrgBtn" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition">Create</button>
+            </div>
+
+            <div class="md:w-1/2 p-8 relative flex flex-col justify-between bg-slate-900">
+                <button id="closeOrgBtnDesktop" class="hidden md:block absolute top-6 right-6 text-slate-500 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+                
+                <div class="space-y-4 mt-8 md:mt-0">
+                    <h3 class="font-black text-sm text-slate-400 border-b border-slate-700 pb-2 mb-4 uppercase tracking-widest"><i class="fa-solid fa-address-card mr-2"></i> Point of Contact</h3>
+                    
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Full Name *</label>
+                        <input type="text" id="orgContactName" placeholder="e.g. Dr. Sarah Jenkins" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-indigo-500 transition">
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Email Address *</label>
+                            <input type="email" id="orgContactEmail" placeholder="admin@org.org" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-indigo-500 transition">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Phone Number</label>
+                            <input type="text" id="orgContactPhone" placeholder="+501 123-4567" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-indigo-500 transition">
+                        </div>
+                    </div>
+
+                    <h3 class="font-black text-sm text-slate-400 border-b border-slate-700 pb-2 mt-6 mb-4 uppercase tracking-widest"><i class="fa-solid fa-shield-halved mr-2"></i> Security Credentials</h3>
+
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Initial Super Admin PIN *</label>
+                        <input type="password" id="orgAdminPin" placeholder="At least 6 characters" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-indigo-500 transition">
+                        <p class="text-[9px] text-slate-500 font-bold mt-1.5 leading-relaxed">This PIN will be cryptographically hashed. Provide this PIN to the Point of Contact so they can log in and manage the organization.</p>
+                    </div>
+                </div>
+
+                <div class="mt-6">
+                    <p id="orgErrorMsg" class="text-xs font-bold text-red-400 bg-red-900/30 border border-red-800/50 p-3 rounded-lg text-center hidden mb-4"></p>
+                    <button id="executeOrgDeployBtn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-4 rounded-xl transition shadow-lg shadow-indigo-900/50 text-sm tracking-wide">
+                        <i class="fa-solid fa-server mr-2"></i> Deploy Organization
+                    </button>
                 </div>
             </div>
         </div>
