@@ -226,6 +226,65 @@
                     </div>
                 </div>
 
+
+                <!-- ── Grade Types & Weights ──────────────────────────── -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-blue-50/40">
+                        <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-weight-scale"></i></div>
+                        <div>
+                            <h3 class="font-black text-slate-800">Grade Types &amp; Weights</h3>
+                            <p class="text-xs text-slate-400 font-semibold">Define how each assessment type contributes to the final grade</p>
+                        </div>
+                    </div>
+                    <div class="p-6 space-y-5">
+
+                        <!-- Total weight indicator -->
+                        <div id="weightTotalBar" class="rounded-xl border p-4 hidden">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Weight Allocated</span>
+                                <span id="weightTotalVal" class="text-sm font-black">0%</span>
+                            </div>
+                            <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <div id="weightTotalFill" class="h-full rounded-full transition-all duration-300" style="width:0%"></div>
+                            </div>
+                            <p id="weightTotalMsg" class="text-xs font-semibold mt-2 hidden"></p>
+                        </div>
+
+                        <!-- Grade types list -->
+                        <div id="gradeTypesList" class="space-y-2">
+                            <div class="flex justify-center py-6"><i class="fa-solid fa-spinner fa-spin text-blue-400 text-xl"></i></div>
+                        </div>
+
+                        <!-- Add new type form -->
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                            <h4 class="text-xs font-black text-slate-500 uppercase tracking-wider mb-3">Add New Grade Type</h4>
+                            <div class="flex gap-3">
+                                <div class="flex-1">
+                                    <input type="text" id="newTypeName" placeholder="e.g. Lab Report" maxlength="40"
+                                        class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none">
+                                </div>
+                                <div style="width:110px">
+                                    <div class="relative">
+                                        <input type="number" id="newTypeWeight" placeholder="0" min="1" max="100"
+                                            class="form-input w-full p-2.5 pr-8 bg-white border border-slate-200 rounded-xl text-sm outline-none">
+                                        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold pointer-events-none">%</span>
+                                    </div>
+                                </div>
+                                <button id="addTypeBtn"
+                                    class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-black text-sm shadow-sm transition">
+                                    <i class="fa-solid fa-plus"></i> Add
+                                </button>
+                            </div>
+                            <p id="gradeTypeMsg" class="text-xs font-semibold mt-2 hidden"></p>
+                        </div>
+
+                        <p class="text-xs text-slate-400 font-semibold bg-amber-50 border border-amber-100 rounded-xl p-3">
+                            <i class="fa-solid fa-circle-info text-amber-500 mr-1.5"></i>
+                            Weights must total exactly 100%. These weights apply to all students across all subjects — teachers and admins see weighted averages automatically.
+                        </p>
+                    </div>
+                </div>
+
                 <!-- ── Archive Management ──────────────────────────────── -->
                 <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                     <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-amber-50/40">
