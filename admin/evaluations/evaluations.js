@@ -222,7 +222,7 @@ window.openEvalPanel = async function(teacherId, teacherName) {
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
                     <span style="font-size:28px;font-weight:700;color:#0d1f35;letter-spacing:-1px">${overallAvg}</span>
                     <div>
-                        <div style="display:flex;gap:2px">${[1,2,3,4,5].map(n => `<span style="color:${n<=Math.round(parseFloat(overallAvg))?'#f59e0b':'#dce3ed';font-size:16px}">★</span>`).join('')}</div>
+                        <div style="display:flex;gap:2px">${[1,2,3,4,5].map(n => `<span style="color:${n<=Math.round(parseFloat(overallAvg))?'#f59e0b':'#dce3ed'};font-size:16px">★</span>`).join('')}</div>
                         <p style="font-size:11px;color:#6b84a0;font-weight:600;margin:2px 0 0">${evals.length} evaluation${evals.length!==1?'s':''}</p>
                     </div>
                 </div>
