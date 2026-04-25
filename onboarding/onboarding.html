@@ -68,7 +68,6 @@
                         </div>
                     </div>
 
-                    <!-- Master Admin Code -->
                     <div class="pt-4 border-t border-slate-100">
                         <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Master Admin Code *</label>
                         <p class="text-xs text-slate-400 font-semibold mb-2">This is the master password you will use to log into the Admin Dashboard.</p>
@@ -76,7 +75,6 @@
                         <input type="password" id="obAdminCodeConfirm" placeholder="Confirm Admin Code" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 transition">
                     </div>
 
-                    <!-- Security Questions -->
                     <div class="pt-4 border-t border-slate-100">
                         <div class="bg-amber-50 border border-amber-100 p-3 rounded-xl flex items-start gap-3 mb-4">
                             <i class="fa-solid fa-key text-amber-500 mt-0.5 text-base"></i>
@@ -86,7 +84,6 @@
                             </div>
                         </div>
 
-                        <!-- Question 1 -->
                         <div class="mb-4">
                             <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Security Question 1 *</label>
                             <select id="obSecQ1" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 transition mb-2">
@@ -105,7 +102,6 @@
                             <input type="text" id="obSecA1" placeholder="Your answer" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
                         </div>
 
-                        <!-- Question 2 -->
                         <div>
                             <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Security Question 2 *</label>
                             <select id="obSecQ2" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 transition mb-2">
@@ -138,11 +134,17 @@
                     <i class="fa-solid fa-check"></i>
                 </div>
                 <h3 class="font-black text-2xl text-slate-800 mb-2">School Activated!</h3>
-                <p class="text-sm text-slate-500 font-semibold mb-6">Your cloud infrastructure is live. Please save your official School ID below—your teachers and parents will need this to log in.</p>
+                <p class="text-sm text-slate-500 font-semibold mb-6">Your cloud infrastructure is live. Please save your official IDs below—you will need them to log in.</p>
                 
-                <div class="bg-slate-900 rounded-2xl p-6 mb-8 shadow-inner inline-block w-full max-w-sm">
-                    <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Your Official School ID</p>
-                    <p id="finalSchoolId" class="text-3xl font-mono font-black text-white tracking-widest"></p>
+                <div class="bg-slate-900 rounded-2xl p-6 mb-8 shadow-inner inline-block w-full max-w-sm text-left">
+                    <div class="mb-4 border-b border-slate-700 pb-4">
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Your School ID</p>
+                        <p id="finalSchoolId" class="text-2xl font-mono font-black text-white tracking-widest"></p>
+                    </div>
+                    <div>
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Your Super Admin ID</p>
+                        <p id="finalAdminId" class="text-2xl font-mono font-black text-emerald-400 tracking-widest"></p>
+                    </div>
                 </div>
 
                 <a href="../admin/login.html" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-black py-3 px-8 rounded-xl transition shadow-lg shadow-blue-500/30">
