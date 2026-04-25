@@ -1,241 +1,39 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { collection, query, where, getDocs, getDoc, doc, addDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { doc, getDoc, getDocs, addDoc, collection } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
-import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
-import { gradeFill, letterGrade } from '../../assets/js/utils.js';
+import { injectAdminLayout } from '../../assets/js/layout-admin.js';
+import { letterGrade, gradeFill } from '../../assets/js/utils.js';
 
-// ── 1. AUTHENTICATION & LAYOUT ──────────────────────────────────────────────
-const session = requireAuth('teacher', '../login.html');
-if (session) {
-    injectTeacherLayout('enter-grade', 'Enter Grade', 'Log a new assignment or assessment into the system', false);
-}
+// ── 1. AUTH & LAYOUT ──────────────────────────────────────────────────────
+const session = requireAuth('admin', '../login.html');
+injectAdminLayout('grade-entry', 'Enter Grade', 'Admin and sub-admin grade entry for any student at this school', false, false);
 
-// ── 2. STATE VARIABLES ──────────────────────────────────────────────────────
-const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
-let isSemesterLocked = false;
-let rawSemesters = [];
+// ── 2. STATE ──────────────────────────────────────────────────────────────
+let foundStudent  = null; 
+let rawSemesters  = [];
 
-// Escapes HTML to prevent XSS
-function escHtml(str) {
-    if (!str) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-}
-
-// ── 3. INITIALIZATION ───────────────────────────────────────────────────────
-async function init() {
-    if (!session) return;
-
-    document.getElementById('eg-date').valueAsDate = new Date();
-
-    // Attach Event Listeners for UI
-    const scoreInput = document.getElementById('eg-score');
-    const maxInput = document.getElementById('eg-max');
-
-    // Run validation on input to prevent bad keystrokes
-    scoreInput.addEventListener('input', validateAndPreview);
-    maxInput.addEventListener('input', validateAndPreview);
-
-    // Prevent non-numeric characters (like 'e', '+', '-') from being typed
-    scoreInput.addEventListener('keydown', restrictNumeric);
-    maxInput.addEventListener('keydown', restrictNumeric);
-    
-    // Allow pressing "Enter" on the score box to trigger save
-    scoreInput.addEventListener('keypress', function (e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            saveGrade();
-        }
-    });
-
+// ── 3. INIT ───────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+    document.getElementById('agDate').valueAsDate = new Date();
+    await loadSemesters();
+    await loadGradeTypes();
+    document.getElementById('lookupBtn').addEventListener('click', lookupStudent);
+    document.getElementById('lookupId').addEventListener('keydown', e => { if (e.key === 'Enter') lookupStudent(); });
+    document.getElementById('agScore').addEventListener('input', updatePreview);
+    document.getElementById('agMax').addEventListener('input', updatePreview);
     document.getElementById('saveGradeBtn').addEventListener('click', saveGrade);
-    document.getElementById('closeBannerBtn').addEventListener('click', () => {
-        document.getElementById('gradeSavedBanner').classList.add('hidden');
-    });
+});
 
-    // Load Data
-    await loadSemestersAndLockStatus();
-    populateSubjectDropdown();
-    await populateGradeTypeDropdown();
-    await populateStudentDropdown();
-}
-
-// ── 4. INTELLIGENT COMBOBOX ENGINE ──────────────────────────────────────────
-function setupSearchableDropdown(inputId, hiddenId, listId, dataArray, nextFocusId = null) {
-    const inputEl = document.getElementById(inputId);
-    const hiddenEl = document.getElementById(hiddenId);
-    const listEl = document.getElementById(listId);
-
-    function renderList(filterText = '') {
-        const filtered = dataArray.filter(item => item.label.toLowerCase().includes(filterText.toLowerCase()));
-        listEl.innerHTML = '';
-        
-        if (filtered.length === 0) {
-            listEl.innerHTML = `<li class="p-2.5 text-[12px] text-[#9ab0c6] italic text-center">No matches found</li>`;
-            return;
-        }
-
-        filtered.forEach((item) => {
-            const li = document.createElement('li');
-            li.className = 'p-2.5 text-[13px] text-[#0d1f35] hover:bg-[#eef4ff] hover:text-[#2563eb] cursor-pointer transition-colors border-b border-[#f0f4f8] last:border-0 font-bold';
-            
-            // Highlight matching text
-            if (filterText) {
-                const regex = new RegExp(`(${filterText})`, "gi");
-                li.innerHTML = item.label.replace(regex, `<span class="text-[#2563eb] bg-[#eef4ff]">$1</span>`);
-            } else {
-                li.innerHTML = item.label;
-            }
-            
-            li.addEventListener('mousedown', (e) => {
-                e.preventDefault(); 
-                selectItem(item);
-            });
-            listEl.appendChild(li);
-        });
-    }
-
-    function selectItem(item) {
-        inputEl.value = item.label;
-        hiddenEl.value = item.value;
-        listEl.classList.add('hidden');
-        
-        if(nextFocusId) {
-            document.getElementById(nextFocusId).focus();
-        }
-    }
-
-    // Combobox Behavior: Click or Focus opens the full list
-    inputEl.addEventListener('click', () => {
-        listEl.classList.remove('hidden');
-        renderList(''); // Show all
-        inputEl.select();
-    });
-
-    inputEl.addEventListener('focus', () => {
-        listEl.classList.remove('hidden');
-        renderList(''); // Show all
-        inputEl.select();
-    });
-
-    inputEl.addEventListener('input', (e) => {
-        hiddenEl.value = ''; 
-        listEl.classList.remove('hidden');
-        renderList(e.target.value);
-    });
-
-    inputEl.addEventListener('blur', () => {
-        const match = dataArray.find(i => i.label.toLowerCase() === inputEl.value.toLowerCase().trim());
-        if(match) {
-             hiddenEl.value = match.value;
-             inputEl.value = match.label;
-        } else {
-             inputEl.value = '';
-             hiddenEl.value = '';
-        }
-        listEl.classList.add('hidden');
-    });
-
-    document.addEventListener('click', (e) => {
-        if(!inputEl.contains(e.target) && !listEl.contains(e.target)) {
-            listEl.classList.add('hidden');
-        }
-    });
-}
-
-// ── 5. POPULATE DROPDOWNS ───────────────────────────────────────────────────
-function populateSubjectDropdown() {
-    const activeSubjects = (session.teacherData.subjects || []).filter(s => !s.archived);
-    const data = activeSubjects.map(s => ({ value: s.name, label: s.name }));
-    setupSearchableDropdown('eg-subject-search', 'eg-subject', 'eg-subject-list', data, 'eg-type-search');
-}
-
-async function populateGradeTypeDropdown() {
-    let types = [];
-    try {
-        const cacheKey = 'connectus_gradeTypes_' + session.schoolId;
-        const cached = localStorage.getItem(cacheKey);
-        if (cached) {
-            const parsed = JSON.parse(cached);
-            types = parsed.map(t => ({ value: t.name, label: t.weight ? t.name + ' (' + t.weight + '%)' : t.name }));
-        } else {
-            const snap = await getDocs(collection(db, 'schools', session.schoolId, 'gradeTypes'));
-            const raw  = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order||0) - (b.order||0));
-            if (raw.length) localStorage.setItem(cacheKey, JSON.stringify(raw));
-            types = raw.map(t => ({ value: t.name, label: t.weight ? t.name + ' (' + t.weight + '%)' : t.name }));
-        }
-    } catch (_) {}
-
-    // Fallback to defaults if nothing loaded
-    if (!types.length) {
-        types = DEFAULT_GRADE_TYPES.map(t => ({ value: t, label: t }));
-    }
-
-    setupSearchableDropdown('eg-type-search', 'eg-type', 'eg-type-list', types, 'eg-title');
-}
-
-async function populateStudentDropdown() {
-    const inputEl = document.getElementById('eg-student-search');
-    inputEl.placeholder = "Loading database...";
-    inputEl.disabled = true;
-
-    try {
-        // CHANGED: query global /students, filter teacherId in memory
-        const stuSnap = await getDocs(query(
-            collection(db, 'students'),
-            where('currentSchoolId', '==', session.schoolId),
-            where('enrollmentStatus', '==', 'Active')
-        ));
-        
-        if (!stuSnap.docs.length) {
-            inputEl.placeholder = "No active students found";
-            return;
-        }
-
-        const students = stuSnap.docs
-            .filter(d => d.data().teacherId === session.teacherId)
-            .map(d => ({ value: d.id, label: d.data().name }));
-        students.sort((a, b) => a.label.localeCompare(b.label));
-
-        inputEl.placeholder = "Select student...";
-        inputEl.disabled = false;
-        
-        setupSearchableDropdown('eg-student-search', 'eg-student', 'eg-student-list', students, 'eg-score');
-        handleQuickGrade(students);
-
-    } catch (e) {
-        console.error("[Grade Form] Error loading students:", e);
-        inputEl.placeholder = "System error loading students";
-    }
-}
-
-function handleQuickGrade(studentsData) {
-    const quickGradeStudentId = sessionStorage.getItem('connectus_quick_grade_student');
-    if (quickGradeStudentId) {
-        const student = studentsData.find(s => s.value === quickGradeStudentId);
-        if(student) {
-            document.getElementById('eg-student').value = student.value;
-            document.getElementById('eg-student-search').value = student.label;
-            sessionStorage.removeItem('connectus_quick_grade_student'); 
-        }
-    }
-}
-
-// ── 6. STANDARDIZED SEMESTER & LOCK STATUS ──────────────────────────────────
-async function loadSemestersAndLockStatus() {
+// ── 4. LOAD SEMESTERS ─────────────────────────────────────────────────────
+async function loadSemesters() {
     try {
         const cacheKey = `connectus_semesters_${session.schoolId}`;
-        const cached = localStorage.getItem(cacheKey);
+        const cached   = localStorage.getItem(cacheKey);
 
-        if (cached) {
-            rawSemesters = JSON.parse(cached);
-        } else {
-            const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
-            rawSemesters = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
+        if (cached) rawSemesters = JSON.parse(cached);
+        else {
+            const snap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
+            rawSemesters = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
             localStorage.setItem(cacheKey, JSON.stringify(rawSemesters));
         }
 
@@ -245,202 +43,173 @@ async function loadSemestersAndLockStatus() {
             activeId = schoolSnap.data()?.activeSemesterId || '';
         } catch(e) {}
 
-        const topSemSel = document.getElementById('activeSemester');
-        const sbPeriod = document.getElementById('sb-period');
+        const sel = document.getElementById('agSemester');
+        sel.innerHTML = '';
+        rawSemesters.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s.id; opt.textContent = s.name;
+            if (s.id === activeId) opt.selected = true;
+            sel.appendChild(opt);
+        });
+    } catch (e) { console.error('[AdminGradeEntry] loadSemesters:', e); }
+}
+
+// ── 5. LOAD GRADE TYPES ───────────────────────────────────────────────────
+async function loadGradeTypes() {
+    const sel = document.getElementById('agType');
+    try {
+        const cacheKey = 'connectus_gradeTypes_' + session.schoolId;
+        let types = null;
+        const cached = localStorage.getItem(cacheKey);
         
-        if (topSemSel) {
-            topSemSel.innerHTML = '';
-            rawSemesters.forEach(s => {
-                const opt = document.createElement('option');
-                opt.value = s.id;
-                opt.textContent = s.name;
-                if (s.id === activeId) opt.selected = true;
-                topSemSel.appendChild(opt);
-            });
-            
-            if (sbPeriod) sbPeriod.textContent = topSemSel.options[topSemSel.selectedIndex]?.text || '—';
-            
-            checkLockStatus(rawSemesters);
-
-            topSemSel.addEventListener('change', () => {
-                if (sbPeriod) sbPeriod.textContent = topSemSel.options[topSemSel.selectedIndex]?.text || '—';
-                checkLockStatus(rawSemesters);
-            });
+        if (cached) types = JSON.parse(cached);
+        else {
+            const snap = await getDocs(collection(db, 'schools', session.schoolId, 'gradeTypes'));
+            types = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
+            if (types.length) localStorage.setItem(cacheKey, JSON.stringify(types));
         }
+
+        if (!types || !types.length) types = [{ name: 'Test' }, { name: 'Quiz' }, { name: 'Assignment' }, { name: 'Homework' }, { name: 'Project' }, { name: 'Final Exam' }];
+        sel.innerHTML = '<option value="">Select type...</option>' + types.map(t => '<option value="' + t.name + '">' + t.name + (t.weight ? ' (' + t.weight + '%)' : '') + '</option>').join('');
     } catch (e) {
-        console.error("[Grade Form] Error loading semesters:", e);
+        sel.innerHTML = '<option value="">Test</option><option>Quiz</option><option>Assignment</option><option>Project</option><option>Final Exam</option>';
     }
 }
 
-function checkLockStatus(semestersArray) {
-    const semSel = document.getElementById('activeSemester');
-    if(!semSel) return;
-    
-    const semId = semSel.value;
-    const activeSem = semestersArray.find(s => s.id === semId);
-    isSemesterLocked = activeSem ? !!activeSem.isLocked : false;
-    
-    const badge = document.getElementById('topbarLockedBadge');
-    const gradeBtn = document.getElementById('saveGradeBtn');
-    const formWrap = document.getElementById('enterGradeFormWrap');
-    const lockedNotice = document.getElementById('lockedGradeNotice');
+// ── 6. STUDENT LOOKUP ─────────────────────────────────────────────────────
+async function lookupStudent() {
+    const rawId = document.getElementById('lookupId').value.trim().toUpperCase();
+    const msgEl = document.getElementById('lookupMsg');
+    const badge = document.getElementById('studentBadge');
+    const form  = document.getElementById('gradeFormSection');
+    msgEl.classList.add('hidden');
 
-    if (isSemesterLocked) {
-        if(badge) { badge.classList.remove('hidden'); badge.classList.add('flex'); }
-        gradeBtn.disabled = true; 
-        gradeBtn.classList.add('opacity-50', 'cursor-not-allowed');
-        formWrap.classList.add('opacity-50', 'pointer-events-none', 'grayscale'); 
-        lockedNotice.classList.remove('hidden');
-    } else {
-        if(badge) { badge.classList.add('hidden'); badge.classList.remove('flex'); }
-        gradeBtn.disabled = false; 
-        gradeBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-        formWrap.classList.remove('opacity-50', 'pointer-events-none', 'grayscale'); 
-        lockedNotice.classList.add('hidden');
-    }
+    if (!rawId) { showLookupMsg('Please enter a Student Global ID.'); return; }
+    if (!/^S\d{2}-[A-Z0-9]{5}$/.test(rawId)) { showLookupMsg('Invalid format. Student ID should look like S26-XXXXX.'); return; }
+
+    const btn = document.getElementById('lookupBtn');
+    btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+    try {
+        const snap = await getDoc(doc(db, 'students', rawId));
+        if (!snap.exists()) { showLookupMsg('No student found with that ID.'); btn.disabled = false; btn.innerHTML = 'Look Up'; return; }
+
+        const data = snap.data();
+        if (data.currentSchoolId !== session.schoolId) {
+            showLookupMsg(data.currentSchoolId && data.currentSchoolId !== '' ? 'This student is enrolled at a different school.' : 'This student is not currently enrolled at your school.');
+            btn.disabled = false; btn.innerHTML = 'Look Up'; return;
+        }
+
+        if (data.enrollmentStatus !== 'Active') {
+            showLookupMsg(`This student's enrollment status is "${data.enrollmentStatus}". Only Active students can receive grades.`);
+            btn.disabled = false; btn.innerHTML = 'Look Up'; return;
+        }
+
+        foundStudent = { id: snap.id, ...data };
+        document.getElementById('badgeInitial').textContent = (data.name || '?').charAt(0).toUpperCase();
+        document.getElementById('badgeName').textContent    = data.name || 'Unknown';
+        document.getElementById('badgeMeta').textContent    = [data.className || 'Unassigned class', data.dob ? `DOB: ${data.dob}` : ''].filter(Boolean).join(' · ');
+        document.getElementById('badgeId').textContent      = snap.id;
+
+        badge.classList.remove('hidden'); form.classList.remove('hidden');
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    } catch (e) { showLookupMsg('Connection error. Please try again.'); }
+
+    btn.disabled = false; btn.innerHTML = 'Look Up';
 }
 
-// ── 7. UI PREVIEW & MATH VALIDATION ─────────────────────────────────────────
+function showLookupMsg(msg) { const el = document.getElementById('lookupMsg'); el.textContent = msg; el.classList.remove('hidden'); }
 
-// Helper to block keyboard inputs like 'e' and '-' in the number field
-function restrictNumeric(e) {
-    if (['e', 'E', '+', '-'].includes(e.key)) {
-        e.preventDefault();
-    }
-}
+window.resetLookup = function() {
+    foundStudent = null; document.getElementById('lookupId').value = '';
+    document.getElementById('studentBadge').classList.add('hidden'); document.getElementById('gradeFormSection').classList.add('hidden');
+    document.getElementById('lookupMsg').classList.add('hidden'); document.getElementById('gradeSavedBanner').classList.add('hidden');
+};
 
-function validateAndPreview() {
-    const scoreInput = document.getElementById('eg-score');
-    const maxInput = document.getElementById('eg-max');
+// ── 7. LIVE PREVIEW ───────────────────────────────────────────────────────
+function updatePreview() {
+    const score = parseFloat(document.getElementById('agScore').value);
+    const max   = parseFloat(document.getElementById('agMax').value);
+    const prev  = document.getElementById('gradePreview');
 
-    // Parse current values
-    let score = parseFloat(scoreInput.value);
-    let max = parseFloat(maxInput.value);
-
-    // Default max to 1 if it's wiped out so we don't divide by zero
-    if (isNaN(max) || max <= 0) {
-        max = 1;
-    }
-
-    // 1. Enforce Minimums (No negatives)
-    if (score < 0) {
-        score = 0;
-        scoreInput.value = score;
-    }
-
-    // 2. Enforce Maximums (Cannot exceed Max possible points)
-    if (score > max) {
-        score = max;
-        scoreInput.value = score;
-    }
-
-    // Pass the clean, validated numbers to the visual preview engine
-    updateLivePreviewUI(score, max);
-}
-
-
-function updateLivePreviewUI(score, max) {
     if (!isNaN(score) && !isNaN(max) && max > 0 && score >= 0) {
         const pct = Math.round((score / max) * 100);
-        const fill = gradeFill(pct);
-        
-        const color = pct >= 90 ? 'text-[#0ea871]' : pct >= 80 ? 'text-[#2563eb]' : pct >= 70 ? 'text-[#0891b2]' : pct >= 65 ? 'text-[#b45309]' : 'text-[#e31b4a]';
-        const lbg = pct >= 90 ? 'bg-[#edfaf4] border-[#c6f0db] text-[#0ea871]' : pct >= 80 ? 'bg-[#eef4ff] border-[#c7d9fd] text-[#2563eb]' : pct >= 70 ? 'bg-[#ecfeff] border-[#a5f3fc] text-[#0891b2]' : pct >= 65 ? 'bg-[#fffbeb] border-[#fde68a] text-[#b45309]' : 'bg-[#fff0f3] border-[#fecaca] text-[#e31b4a]';
+        const color = pct >= 90 ? 'text-emerald-600' : pct >= 80 ? 'text-blue-600' : pct >= 70 ? 'text-teal-600' : pct >= 65 ? 'text-amber-600' : 'text-red-600';
+        const lbg = pct >= 90 ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : pct >= 80 ? 'bg-blue-50 border-blue-200 text-blue-600' : pct >= 70 ? 'bg-teal-50 border-teal-200 text-teal-600' : pct >= 65 ? 'bg-amber-50 border-amber-200 text-amber-600' : 'bg-red-50 border-red-200 text-red-600';
         const lbl = pct >= 90 ? 'Excelling' : pct >= 80 ? 'Good Standing' : pct >= 70 ? 'On Track' : pct >= 65 ? 'Needs Attention' : 'At Risk';
-        
-        document.getElementById('prev-pct').textContent = pct + '%';
-        document.getElementById('prev-pct').className = `text-3xl font-mono font-bold tracking-tight ${color}`;
-        
-        document.getElementById('prev-letter').textContent = letterGrade(pct);
-        document.getElementById('prev-letter').className = `text-xl font-black px-4 py-1.5 rounded-sm border text-center min-w-[56px] ${lbg}`;
-        
-        document.getElementById('prev-bar').style.width = Math.min(pct, 100) + '%';
-        document.getElementById('prev-bar').style.background = fill;
-        
-        document.getElementById('prev-label').textContent = lbl;
-        document.getElementById('prev-label').className = `text-[10px] font-bold uppercase tracking-widest mt-2 ${color}`;
-    } else {
-        document.getElementById('prev-pct').textContent = '—';
-        document.getElementById('prev-pct').className = 'text-3xl font-mono font-bold text-[#c5d0db]';
-        document.getElementById('prev-letter').textContent = '—';
-        document.getElementById('prev-letter').className = 'text-xl font-black px-4 py-1.5 rounded-sm border border-[#dce3ed] bg-[#f8fafb] text-[#9ab0c6] text-center min-w-[56px]';
-        document.getElementById('prev-bar').style.width = '0%';
-        document.getElementById('prev-label').textContent = 'Awaiting Input';
-        document.getElementById('prev-label').className = 'text-[10px] font-bold uppercase tracking-widest mt-2 text-[#9ab0c6] m-0';
-    }
+
+        prev.classList.remove('hidden');
+        document.getElementById('prevPct').textContent = `${pct}%`; document.getElementById('prevPct').className = `text-3xl font-black font-mono ${color}`;
+        document.getElementById('prevLetter').textContent = letterGrade(pct); document.getElementById('prevLetter').className = `text-xl font-black px-4 py-1.5 rounded-lg border ${lbg}`;
+        document.getElementById('prevLabel').textContent = lbl; document.getElementById('prevLabel').className = `text-xs font-bold uppercase tracking-widest mt-2 ${color}`;
+    } else { prev.classList.add('hidden'); }
 }
 
-// ── 8. SAVE GRADE LOGIC (STACK OF PAPERS WORKFLOW) ──────────────────────────
+// ── 8. SAVE GRADE ─────────────────────────────────────────────────────────
 async function saveGrade() {
-    if (isSemesterLocked) return;
+    if (!foundStudent) { alert('Please look up a student first.'); return; }
 
-    // Call the validation one final time just in case
-    validateAndPreview();
+    const subject = document.getElementById('agSubject').value.trim();
+    const type    = document.getElementById('agType').value;
+    const title   = document.getElementById('agTitle').value.trim();
+    const score   = parseFloat(document.getElementById('agScore').value);
+    const max     = parseFloat(document.getElementById('agMax').value);
+    const semId   = document.getElementById('agSemester').value;
+    const date    = document.getElementById('agDate').value;
+    const notes   = document.getElementById('agNotes').value.trim();
 
-    const studentId = document.getElementById('eg-student').value;
-    const subj = document.getElementById('eg-subject').value;
-    const type = document.getElementById('eg-type').value;
-    
-    const title = document.getElementById('eg-title').value.trim();
-    const score = parseFloat(document.getElementById('eg-score').value);
-    const max = parseFloat(document.getElementById('eg-max').value);
-    const semId = document.getElementById('activeSemester') ? document.getElementById('activeSemester').value : '';
-    const gdate = document.getElementById('eg-date').value;
-    const tNotes = document.getElementById('eg-notes').value.trim();
-    
-    if (!studentId || !title || !subj || !type || isNaN(score) || isNaN(max)) {
-        alert('Please fill all required fields (Student, Subject, Type, Title, Score, and Max).');
-        return;
+    if (!subject || !type || !title) {
+        document.getElementById('gradeMsg').textContent = 'Subject, grade type, and title are required.';
+        document.getElementById('gradeMsg').className = 'text-sm font-bold p-3 rounded-xl text-red-600 bg-red-50 border border-red-100';
+        document.getElementById('gradeMsg').classList.remove('hidden'); return;
     }
-    
+    if (isNaN(score) || isNaN(max) || max <= 0 || score < 0 || score > max) {
+        document.getElementById('gradeMsg').textContent = 'Please enter valid score and max values.';
+        document.getElementById('gradeMsg').className = 'text-sm font-bold p-3 rounded-xl text-red-600 bg-red-50 border border-red-100';
+        document.getElementById('gradeMsg').classList.remove('hidden'); return;
+    }
+
+    document.getElementById('gradeMsg').classList.add('hidden');
+
     const btn = document.getElementById('saveGradeBtn');
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Committing Record...`;
-    btn.disabled = true;
-    
-    try {
-        const noteFormatted = tNotes ? `[${new Date().toLocaleDateString()}] ${tNotes}` : '';
-        
-        await addDoc(collection(db, 'schools', session.schoolId, 'students', studentId, 'grades'), {
-            teacherId: session.teacherId,
-            semesterId: semId,
-            subject: subj,
-            type: type,
-            date: gdate,
-            title: title,
-            score: score,
-            max: max,
-            notes: noteFormatted,
-            historyLogs: [],
-            createdAt: new Date().toISOString()
-        });
-        
-        // ── STACK OF PAPERS RESET ──
-        // Clear ONLY Student, Score, and Notes. Keep the rest for the next paper in the stack.
-        document.getElementById('eg-student-search').value = '';
-        document.getElementById('eg-student').value = '';
-        document.getElementById('eg-score').value = '';
-        document.getElementById('eg-notes').value = '';
-        
-        validateAndPreview();
-        
-        const banner = document.getElementById('gradeSavedBanner');
-        if (banner) {
-            banner.classList.remove('hidden');
-            setTimeout(() => banner.classList.add('hidden'), 5000); 
-        }
-        
-        // Auto-focus back to student search for keyboard-only speed entry
-        const stuSearch = document.getElementById('eg-student-search');
-        stuSearch.focus();
-        
-    } catch (e) {
-        console.error(e);
-        alert('System Error: Could not commit record.');
-    }
-    
-    btn.innerHTML = `<i class="fa-solid fa-database text-[11px]"></i> Commit Record`;
-    btn.disabled = false;
-}
+    btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Committing...';
 
-// Fire it up
-init();
+    try {
+        const adminDisplayName = session.isSuperAdmin ? (session.schoolName || 'Super Admin') : (session.adminName || 'Sub-Admin');
+
+        // ADDED: Write to global student passport path
+        await addDoc(collection(db, 'students', foundStudent.id, 'grades'), {
+            schoolId:        session.schoolId, // Ensures it can be grouped correctly
+            teacherId:       foundStudent.teacherId || '',  
+            semesterId:      semId,
+            subject,
+            type,
+            date,
+            title,
+            score,
+            max,
+            notes:           notes ? `[Admin] ${notes}` : '',
+            historyLogs:     [],
+            createdAt:       new Date().toISOString(),
+            enteredByAdmin:  true,
+            adminId:         session.adminId || session.schoolId,
+            adminName:       adminDisplayName,
+            adminRole:       session.isSuperAdmin ? 'super_admin' : 'sub_admin'
+        });
+
+        document.getElementById('agScore').value = '';
+        document.getElementById('agNotes').value = '';
+        updatePreview();
+
+        document.getElementById('gradeSavedBanner').classList.remove('hidden');
+        document.getElementById('agSubject').focus();
+
+    } catch (e) {
+        document.getElementById('gradeMsg').textContent = 'System error. Could not commit record.';
+        document.getElementById('gradeMsg').className = 'text-sm font-bold p-3 rounded-xl text-red-600 bg-red-50 border border-red-100';
+        document.getElementById('gradeMsg').classList.remove('hidden');
+    }
+
+    btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-database mr-2 text-xs"></i>Commit Grade Record';
+}
