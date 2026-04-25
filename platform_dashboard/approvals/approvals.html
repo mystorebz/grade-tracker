@@ -147,18 +147,30 @@
                 <div>
                     <h3 class="font-black text-lg text-emerald-400 border-b border-emerald-900/50 pb-3 mb-6"><i class="fa-solid fa-money-check-dollar mr-2"></i> Log Payment & Activate</h3>
                     
-                    <div class="space-y-5">
+                    <div class="space-y-4">
                         <div>
                             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Amount Paid (BZD)</label>
                             <input type="number" id="payAmount" placeholder="e.g. 500" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition">
                         </div>
                         
                         <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Billing Cycle</label>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Billing Cycle / Term</label>
                             <select id="payCycle" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition">
                                 <option value="Monthly">Monthly</option>
-                                <option value="Yearly">Yearly</option>
+                                <option value="Annual">Annual Contract</option>
+                                <option value="Multi-Year">Multi-Year Contract</option>
+                                <option value="Other">Other (Custom)</option>
                             </select>
+                        </div>
+
+                        <div id="customCycleWrap" class="hidden">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Specify Custom Term</label>
+                            <input type="text" id="payCustomCycle" placeholder="e.g. 6 Months" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition">
+                        </div>
+
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Internal Notes (Optional)</label>
+                            <textarea id="payNotes" placeholder="e.g. Wire transfer cleared, agreed to Net-30..." class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition resize-none h-16"></textarea>
                         </div>
 
                         <div class="pt-2 border-t border-slate-800">
@@ -166,17 +178,16 @@
                             <div class="relative">
                                 <input type="file" id="payReceipt" accept="image/*,.pdf" class="w-full p-2 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-400 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:uppercase file:tracking-wider file:bg-emerald-900/30 file:text-emerald-400 hover:file:bg-emerald-900/50 transition outline-none cursor-pointer">
                             </div>
-                            <p class="text-[10px] font-semibold text-slate-500 mt-2 leading-relaxed">This file will be uploaded to the cloud and attached to the invoice record.</p>
                         </div>
                     </div>
                 </div>
 
-                <div class="mt-8">
+                <div class="mt-6">
                     <p id="paymentErrorMsg" class="text-xs font-bold text-red-400 bg-red-900/30 border border-red-800/50 p-3 rounded-lg text-center hidden mb-4"></p>
                     <button id="confirmApproveBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-xl transition shadow-lg shadow-emerald-900/50 text-sm tracking-wide">
                         Mark as Paid & Approve <i class="fa-solid fa-arrow-right ml-1"></i>
                     </button>
-                    <p class="text-[10px] text-center font-bold text-emerald-500 mt-3">This automatically emails the onboarding link to the school.</p>
+                    <p class="text-[10px] text-center font-bold text-emerald-500 mt-3">This sets the renewal clock and emails the onboarding link.</p>
                 </div>
             </div>
 
