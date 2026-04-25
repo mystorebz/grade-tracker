@@ -1,4 +1,4 @@
-import { db } from '../assets/js/firebase-init.js';
+import { db } from '../../assets/js/firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const authBtn  = document.getElementById('authBtn');
