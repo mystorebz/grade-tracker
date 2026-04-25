@@ -3,144 +3,245 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Executive Reports | ConnectUs Admin</title>
-    
+    <title>Reports & Analytics | ConnectUs Admin</title>
+
     <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
-    
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="../../assets/css/global.css">
     <link rel="stylesheet" href="../../assets/css/admin.css">
-    
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <style>
+        @media print {
+            .no-print { display: none !important; }
+            body { background: #fff !important; overflow: auto !important; }
+            #layout-sidebar-container, #layout-topbar-container { display: none !important; }
+            main { height: auto !important; overflow: visible !important; }
+            .overflow-y-auto { overflow: visible !important; height: auto !important; }
+            #liveKpiSection, #reportBuilder { display: none !important; }
+            #reportResults { display: block !important; opacity: 1 !important; }
+        }
+
+        .kpi-card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); padding:20px 22px; display:flex; align-items:center; gap:16px; box-shadow:var(--shadow-sm); }
+        .kpi-icon { width:42px; height:42px; border-radius:var(--r-md); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+        .kpi-val  { font-size:26px; font-weight:700; color:var(--text-primary); letter-spacing:-0.8px; line-height:1; }
+        .kpi-lbl  { font-size:11px; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:0.08em; margin-top:4px; }
+
+        .report-section { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); overflow:hidden; box-shadow:var(--shadow-sm); }
+        .report-section-header { padding:14px 20px; border-bottom:1px solid var(--border); background:#f8fafb; display:flex; align-items:center; gap:8px; }
+        .report-section-title { font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.1em; }
+
+        .dist-seg { display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:#fff; transition:width 0.4s ease; min-width:2px; }
+
+        .at-risk-row { display:flex; align-items:center; justify-content:space-between; padding:10px 16px; border-bottom:1px solid var(--border); }
+        .at-risk-row:last-child { border-bottom:none; }
+    </style>
 </head>
 <body class="flex w-full h-screen overflow-hidden">
 
     <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
 
     <main class="flex-1 flex flex-col h-full overflow-hidden">
-        
         <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
 
         <div class="flex-1 overflow-y-auto p-7">
-            
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-6">
-                <div class="p-6 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-indigo-50/40">
-                    <div class="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-chart-line"></i></div>
-                    <div>
-                        <h3 class="font-black text-xl text-slate-800">Executive Report Builder</h3>
-                        <p class="text-sm text-slate-400 font-semibold">Generate high-level analytics and comparison data</p>
+            <div class="max-w-5xl mx-auto space-y-6">
+
+                <!-- ── LIVE KPI DASHBOARD ────────────────────────────────── -->
+                <div id="liveKpiSection">
+                    <div class="flex items-center justify-between mb-3">
+                        <div>
+                            <h2 class="text-[15px] font-bold text-[#0d1f35] tracking-tight">School Dashboard</h2>
+                            <p class="text-[11px] text-[#6b84a0] font-semibold mt-0.5">Live snapshot · Active grading period</p>
+                        </div>
+                        <span id="kpiPeriodLabel" class="text-[11px] font-bold text-[#2563eb] bg-[#eef4ff] border border-[#c7d9fd] px-3 py-1 rounded-full"></span>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="kpiCards">
+                        <div class="kpi-card animate-pulse h-20"></div>
+                        <div class="kpi-card animate-pulse h-20"></div>
+                        <div class="kpi-card animate-pulse h-20"></div>
+                        <div class="kpi-card animate-pulse h-20"></div>
                     </div>
                 </div>
-                <div class="p-6 bg-slate-50/50">
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        
-                        <div>
-                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Period</label>
-                            <select id="reportPeriod" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none font-bold text-indigo-700">
-                                <option value="all">All Academic Year</option>
-                            </select>
-                        </div>
-                        
-                        <div>
-                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Scope</label>
-                            <select id="reportScope" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none">
-                                <option value="school">School-Wide</option>
-                                <option value="teacher">By Teacher</option>
-                                <option value="class">By Class</option>
-                                <option value="student">Individual Student</option>
-                            </select>
-                        </div>
-                        
-                        <div id="targetContainer" class="hidden opacity-50 transition-opacity duration-300">
-                            <label id="targetLabel" class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Target</label>
-                            <select id="reportTarget" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none">
-                                <option value="">Select Target...</option>
-                            </select>
-                        </div>
 
-                        <div>
-                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Subject</label>
-                            <select id="reportSubject" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none">
-                                <option value="all">All Subjects</option>
+                <!-- ── REPORT BUILDER ────────────────────────────────────── -->
+                <div id="reportBuilder" class="report-section">
+                    <div class="report-section-header">
+                        <i class="fa-solid fa-wand-magic-sparkles text-[#2563eb]" style="font-size:12px"></i>
+                        <span class="report-section-title">Report Builder</span>
+                    </div>
+                    <div class="p-5">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div>
+                                <label class="block text-[10.5px] font-bold text-[#6b84a0] uppercase tracking-wider mb-1.5">Period</label>
+                                <select id="reportPeriod" class="form-input w-full p-2.5 bg-[#f4f7fb] border border-[#dce3ed] rounded-[var(--r-md)] text-[13px] outline-none font-semibold">
+                                    <option value="all">All Academic Year</option>
                                 </select>
+                            </div>
+                            <div>
+                                <label class="block text-[10.5px] font-bold text-[#6b84a0] uppercase tracking-wider mb-1.5">Scope</label>
+                                <select id="reportScope" class="form-input w-full p-2.5 bg-[#f4f7fb] border border-[#dce3ed] rounded-[var(--r-md)] text-[13px] outline-none">
+                                    <option value="school">School-Wide</option>
+                                    <option value="teacher">By Teacher</option>
+                                    <option value="class">By Class</option>
+                                    <option value="student">Individual Student</option>
+                                </select>
+                            </div>
+                            <div id="targetContainer" class="hidden">
+                                <label id="targetLabel" class="block text-[10.5px] font-bold text-[#6b84a0] uppercase tracking-wider mb-1.5">Target</label>
+                                <select id="reportTarget" class="form-input w-full p-2.5 bg-[#f4f7fb] border border-[#dce3ed] rounded-[var(--r-md)] text-[13px] outline-none">
+                                    <option value="">Select target...</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[10.5px] font-bold text-[#6b84a0] uppercase tracking-wider mb-1.5">Subject</label>
+                                <select id="reportSubject" class="form-input w-full p-2.5 bg-[#f4f7fb] border border-[#dce3ed] rounded-[var(--r-md)] text-[13px] outline-none">
+                                    <option value="all">All Subjects</option>
+                                </select>
+                            </div>
                         </div>
-
-                    </div>
-                    
-                    <div class="mt-5 pt-5 border-t border-slate-200 flex items-center justify-between">
-                        <p class="text-xs text-slate-400 font-semibold"><i class="fa-solid fa-circle-info mr-1"></i> Large reports may take a moment to compile.</p>
-                        <button id="generateBtn" class="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-black px-8 py-3 rounded-xl shadow-md transition shadow-indigo-500/20 flex items-center gap-2">
-                            <i class="fa-solid fa-wand-magic-sparkles"></i> Generate Report
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div id="reportLoader" class="hidden flex-col items-center justify-center py-20">
-                <i class="fa-solid fa-circle-notch fa-spin text-5xl text-indigo-500 mb-4"></i>
-                <h3 class="font-black text-slate-700 text-lg">Crunching Data...</h3>
-                <p class="text-slate-400 font-semibold text-sm">Aggregating records across the school.</p>
-            </div>
-
-            <div id="reportResults" class="hidden space-y-6 opacity-0 transition-opacity duration-500">
-                
-                <div class="flex items-center justify-between">
-                    <h2 id="reportTitle" class="font-black text-2xl text-slate-800">School-Wide Report</h2>
-                    <div class="flex gap-2">
-                        <button id="exportCsvBtn" class="no-print bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold px-4 py-2 rounded-xl text-sm transition flex items-center gap-2 shadow-sm"><i class="fa-solid fa-file-csv text-emerald-600"></i> Export Data</button>
-                        <button id="printReportBtn" class="no-print bg-slate-800 hover:bg-slate-900 text-white font-bold px-4 py-2 rounded-xl text-sm transition flex items-center gap-2 shadow-sm"><i class="fa-solid fa-print"></i> Official Print</button>
+                        <div class="mt-4 pt-4 border-t border-[#f0f4f8] flex items-center justify-between">
+                            <p class="text-[11.5px] text-[#9ab0c6] font-semibold"><i class="fa-solid fa-circle-info mr-1"></i> Large reports may take a moment to compile.</p>
+                            <button id="generateBtn" class="flex items-center gap-2 bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold px-6 py-2.5 rounded-[var(--r-md)] text-[13px] transition shadow-sm">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> Generate Report
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                    <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm text-center">
-                        <p class="text-xs font-black text-slate-400 uppercase tracking-wider mb-1">Target GPA</p>
-                        <p id="pulseGpa" class="text-4xl font-black text-indigo-600">—</p>
-                    </div>
-                    <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm text-center">
-                        <p class="text-xs font-black text-slate-400 uppercase tracking-wider mb-1">Staff Engagement</p>
-                        <p id="pulseEngagement" class="text-4xl font-black text-slate-700">—</p>
-                        <p class="text-[10px] font-bold text-slate-400 mt-1 uppercase">Active 7 Days</p>
-                    </div>
-                    <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm text-center">
-                        <p class="text-xs font-black text-slate-400 uppercase tracking-wider mb-1">At-Risk Count</p>
-                        <p id="pulseAtRisk" class="text-4xl font-black text-rose-500">—</p>
-                        <p class="text-[10px] font-bold text-slate-400 mt-1 uppercase">Below 65%</p>
-                    </div>
-                    <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm text-center">
-                        <p class="text-xs font-black text-slate-400 uppercase tracking-wider mb-1">Grade Volume</p>
-                        <p id="pulseVolume" class="text-4xl font-black text-slate-700">—</p>
-                        <p class="text-[10px] font-bold text-slate-400 mt-1 uppercase">Assignments</p>
-                    </div>
+                <!-- ── LOADER ─────────────────────────────────────────────── -->
+                <div id="reportLoader" class="hidden flex-col items-center justify-center py-20">
+                    <i class="fa-solid fa-circle-notch fa-spin text-4xl text-[#2563eb] mb-4"></i>
+                    <p class="font-bold text-[#374f6b]">Compiling report...</p>
+                    <p class="text-[12px] text-[#9ab0c6] font-semibold mt-1">Aggregating records across the school.</p>
                 </div>
 
-                <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                    <h4 class="text-xs font-black text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2"><i class="fa-solid fa-chart-bar"></i> Performance Distribution</h4>
-                    <div id="distBar" class="dist-bar bg-slate-100">
-                        <div class="dist-seg bg-slate-300" style="width:100%">No Data</div>
-                    </div>
-                    <div id="distLabels" class="flex gap-4 mt-4 flex-wrap justify-center"></div>
-                </div>
+                <!-- ── GENERATED REPORT ───────────────────────────────────── -->
+                <div id="reportResults" class="hidden space-y-5 opacity-0 transition-opacity duration-500">
 
-                <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                    <div class="px-6 py-5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-                        <h4 id="tableTitle" class="font-black text-slate-700 text-sm uppercase tracking-wider">Comparison Data</h4>
+                    <!-- Report header -->
+                    <div class="flex items-center justify-between no-print">
+                        <div>
+                            <h2 id="reportTitle" class="text-xl font-bold text-[#0d1f35] tracking-tight">Report</h2>
+                            <p id="reportSubtitle" class="text-[11.5px] text-[#6b84a0] font-semibold mt-0.5"></p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="exportCsvBtn" class="flex items-center gap-2 bg-white border border-[#dce3ed] hover:border-[#b8c5d4] text-[#374f6b] font-bold px-4 py-2 rounded-[var(--r-md)] text-[12.5px] transition shadow-sm">
+                                <i class="fa-solid fa-file-csv text-[#0ea871]"></i> Export CSV
+                            </button>
+                            <button id="printReportBtn" class="flex items-center gap-2 bg-[#0d1f35] hover:bg-[#1d4ed8] text-white font-bold px-4 py-2 rounded-[var(--r-md)] text-[12.5px] transition shadow-sm">
+                                <i class="fa-solid fa-print"></i> Print Report
+                            </button>
+                        </div>
                     </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left text-sm">
-                            <thead id="reportTableHead" class="bg-slate-800 text-slate-200 text-xs uppercase tracking-wider">
+
+                    <!-- KPI summary row -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="kpi-card">
+                            <div class="kpi-icon" style="background:#eef4ff"><i class="fa-solid fa-graduation-cap" style="color:#2563eb;font-size:16px"></i></div>
+                            <div><div class="kpi-val" id="rMeanAvg">—</div><div class="kpi-lbl">Mean Average</div></div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-icon" style="background:#edfaf4"><i class="fa-solid fa-check-circle" style="color:#0ea871;font-size:16px"></i></div>
+                            <div><div class="kpi-val" id="rPassRate">—</div><div class="kpi-lbl">Pass Rate</div></div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-icon" style="background:#fff0f3"><i class="fa-solid fa-triangle-exclamation" style="color:#e31b4a;font-size:16px"></i></div>
+                            <div><div class="kpi-val" id="rAtRisk">—</div><div class="kpi-lbl">At Risk (&lt;60%)</div></div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-icon" style="background:#fffbeb"><i class="fa-solid fa-pen-to-square" style="color:#f59e0b;font-size:16px"></i></div>
+                            <div><div class="kpi-val" id="rVolume">—</div><div class="kpi-lbl">Assessments</div></div>
+                        </div>
+                    </div>
+
+                    <!-- Grade distribution -->
+                    <div class="report-section">
+                        <div class="report-section-header">
+                            <i class="fa-solid fa-chart-bar text-[#2563eb]" style="font-size:11px"></i>
+                            <span class="report-section-title">Grade Distribution</span>
+                        </div>
+                        <div class="p-5">
+                            <div id="distBar" class="dist-bar bg-[#f0f4f8]" style="height:28px;border-radius:var(--r-md)">
+                                <div class="dist-seg" style="width:100%;background:#e2e8f0;color:#9ab0c6">No Data</div>
+                            </div>
+                            <div id="distLabels" class="flex gap-5 mt-4 flex-wrap"></div>
+                        </div>
+                    </div>
+
+                    <!-- Pass / Fail breakdown -->
+                    <div class="report-section" id="passFailSection">
+                        <div class="report-section-header">
+                            <i class="fa-solid fa-scale-balanced text-[#2563eb]" style="font-size:11px"></i>
+                            <span class="report-section-title">Pass / Fail Breakdown</span>
+                        </div>
+                        <div class="p-5" id="passFailBody"></div>
+                    </div>
+
+                    <!-- Subject performance -->
+                    <div class="report-section" id="subjectSection">
+                        <div class="report-section-header">
+                            <i class="fa-solid fa-book text-[#2563eb]" style="font-size:11px"></i>
+                            <span class="report-section-title">Subject Performance</span>
+                        </div>
+                        <div id="subjectBody"></div>
+                    </div>
+
+                    <!-- Comparison table (class/teacher/student view) -->
+                    <div class="report-section" id="comparisonSection">
+                        <div class="report-section-header">
+                            <i class="fa-solid fa-table text-[#2563eb]" style="font-size:11px"></i>
+                            <span class="report-section-title" id="tableTitle">Comparison Data</span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-[13px]">
+                                <thead id="reportTableHead" class="bg-[#0d1f35] text-slate-200 text-[10px] uppercase tracking-wider"></thead>
+                                <tbody id="reportTableBody" class="divide-y divide-[#f0f4f8]"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- At-risk roster -->
+                    <div class="report-section" id="atRiskSection">
+                        <div class="report-section-header" style="justify-content:space-between">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-user-xmark text-[#e31b4a]" style="font-size:11px"></i>
+                                <span class="report-section-title">At-Risk Students</span>
+                            </div>
+                            <span id="atRiskCount" class="text-[11px] font-bold text-[#e31b4a] bg-[#fff0f3] border border-[#ffd6de] px-3 py-1 rounded-full"></span>
+                        </div>
+                        <div id="atRiskBody"></div>
+                    </div>
+
+                    <!-- Teacher performance (school-wide only) -->
+                    <div class="report-section" id="teacherPerfSection">
+                        <div class="report-section-header">
+                            <i class="fa-solid fa-chalkboard-user text-[#2563eb]" style="font-size:11px"></i>
+                            <span class="report-section-title">Teacher Performance</span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-[13px]">
+                                <thead class="bg-[#f8fafb] text-[#6b84a0] text-[10px] uppercase tracking-widest border-b border-[#dce3ed]">
+                                    <tr>
+                                        <th class="px-5 py-3">Teacher</th>
+                                        <th class="px-5 py-3 text-center">Students</th>
+                                        <th class="px-5 py-3 text-center">Mean Avg</th>
+                                        <th class="px-5 py-3 text-center">Pass Rate</th>
+                                        <th class="px-5 py-3 text-center">At Risk</th>
+                                    </tr>
                                 </thead>
-                            <tbody id="reportTableBody" class="divide-y divide-slate-100">
-                                </tbody>
-                        </table>
+                                <tbody id="teacherPerfBody" class="divide-y divide-[#f0f4f8]"></tbody>
+                            </table>
+                        </div>
                     </div>
+
                 </div>
 
             </div>
-
         </div>
     </main>
 
