@@ -1,6 +1,6 @@
 import { db } from '../../assets/js/firebase-init.js';
 import {
-    doc, getDoc, getDocs, setDoc, updateDoc,
+    doc, getDoc, getDocs, setDoc, updateDoc, addDoc,
     collection, query, where, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
@@ -80,6 +80,9 @@ async function loadSettingsData() {
             const danger = document.querySelector('.danger-zone');
             if (danger) danger.classList.add('hidden');
         }
+
+        // ── Grade types ───────────────────────────────────────────────────────
+        loadGradeTypes();
 
         // ── Scroll to #admins anchor if navigated from sidebar ────────────
         if (window.location.hash === '#admins' && session.isSuperAdmin) {
@@ -542,3 +545,148 @@ window.endOfYearReset = async function() {
 
 // ── INIT ──────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', loadSettingsData);
+
+// ── 10. GRADE TYPES & WEIGHTS ─────────────────────────────────────────────
+
+const DEFAULT_GRADE_TYPES = [
+    { name: 'Test',       weight: 30, order: 1 },
+    { name: 'Quiz',       weight: 15, order: 2 },
+    { name: 'Assignment', weight: 15, order: 3 },
+    { name: 'Homework',   weight: 10, order: 4 },
+    { name: 'Project',    weight: 15, order: 5 },
+    { name: 'Final Exam', weight: 15, order: 6 }
+];
+
+async function loadGradeTypes() {
+    const listEl = document.getElementById('gradeTypesList');
+    const barEl  = document.getElementById('weightTotalBar');
+    const fillEl = document.getElementById('weightTotalFill');
+    const valEl  = document.getElementById('weightTotalVal');
+    const msgEl  = document.getElementById('weightTotalMsg');
+
+    if (!listEl) return;
+
+    try {
+        const snap = await getDocs(collection(db, 'schools', session.schoolId, 'gradeTypes'));
+
+        // Seed defaults on first use
+        if (snap.empty) {
+            const batch = writeBatch(db);
+            DEFAULT_GRADE_TYPES.forEach(t => {
+                const ref = doc(collection(db, 'schools', session.schoolId, 'gradeTypes'));
+                batch.set(ref, { ...t, createdAt: new Date().toISOString() });
+            });
+            await batch.commit();
+            return loadGradeTypes();
+        }
+
+        const types = snap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+        localStorage.setItem(`connectus_gradeTypes_${session.schoolId}`, JSON.stringify(types));
+
+        const total = types.reduce((s, t) => s + (t.weight || 0), 0);
+
+        listEl.innerHTML = types.length
+            ? types.map(t => `
+        <div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid var(--border);border-radius:var(--r-md);padding:12px 16px;">
+            <div style="display:flex;align-items:center;gap:12px">
+                <div style="width:8px;height:8px;border-radius:50%;background:var(--blue-500);flex-shrink:0"></div>
+                <span style="font-size:14px;font-weight:600;color:var(--text-primary)">${escHtml(t.name)}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+                <span style="font-size:13px;font-weight:700;color:var(--blue-600);background:var(--blue-50);border:1px solid var(--blue-100);padding:3px 10px;border-radius:99px">${t.weight}%</span>
+                <button onclick="window.removeGradeType('${t.id}','${escHtml(t.name)}')"
+                    style="width:28px;height:28px;border-radius:var(--r-sm);border:1px solid var(--border);background:transparent;cursor:pointer;color:var(--text-faint);display:flex;align-items:center;justify-content:center;font-size:11px;font-family:inherit"
+                    onmouseover="this.style.background='#fff0f3';this.style.color='#e31b4a'"
+                    onmouseout="this.style.background='transparent';this.style.color='var(--text-faint)'">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+            </div>
+        </div>`).join('')
+            : '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:16px">No grade types configured.</p>';
+
+        if (barEl) {
+            barEl.classList.remove('hidden');
+            const pct   = Math.min(total, 100);
+            const over  = total > 100;
+            const exact = total === 100;
+
+            fillEl.style.width      = pct + '%';
+            fillEl.style.background = over ? '#e31b4a' : exact ? '#0ea871' : '#f59e0b';
+            valEl.textContent       = total + '%';
+            valEl.style.color       = over ? '#e31b4a' : exact ? '#0ea871' : '#f59e0b';
+            barEl.style.borderColor = over ? '#ffd6de' : exact ? 'var(--green-100)' : '#fef3c7';
+            barEl.style.background  = over ? '#fff0f3'  : exact ? 'var(--green-50)'  : '#fffbeb';
+
+            if (msgEl) {
+                msgEl.classList.remove('hidden');
+                if (exact) {
+                    msgEl.textContent = '✓ Weights are balanced — weighted averages will calculate correctly.';
+                    msgEl.style.color = 'var(--green-700)';
+                } else if (over) {
+                    msgEl.textContent = `⚠ Total exceeds 100% by ${total - 100}%. Reduce some weights.`;
+                    msgEl.style.color = '#e31b4a';
+                } else {
+                    msgEl.textContent = `${100 - total}% remaining. Grades will normalize until total reaches 100%.`;
+                    msgEl.style.color = '#b45309';
+                }
+            }
+        }
+    } catch (e) {
+        console.error('[Settings] loadGradeTypes:', e);
+        if (listEl) listEl.innerHTML = '<p style="color:#e31b4a;font-size:13px;font-weight:600">Error loading grade types.</p>';
+    }
+}
+
+window.removeGradeType = async function(id, name) {
+    if (!confirm(`Remove "${name}" from grade types? Grades recorded as this type keep their data but won't be weighted.`)) return;
+    try {
+        const { deleteDoc: delDoc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+        await delDoc(doc(db, 'schools', session.schoolId, 'gradeTypes', id));
+        localStorage.removeItem(`connectus_gradeTypes_${session.schoolId}`);
+        loadGradeTypes();
+    } catch (e) {
+        alert('Failed to remove grade type.');
+    }
+};
+
+document.getElementById('addTypeBtn')?.addEventListener('click', async () => {
+    const name   = document.getElementById('newTypeName').value.trim();
+    const weight = parseInt(document.getElementById('newTypeWeight').value, 10);
+    const msgEl  = document.getElementById('gradeTypeMsg');
+    msgEl.classList.add('hidden');
+
+    if (!name)                        { showTypeMsg('Name is required.', true);          return; }
+    if (isNaN(weight) || weight < 1)  { showTypeMsg('Weight must be at least 1%.', true); return; }
+    if (weight > 100)                 { showTypeMsg('Weight cannot exceed 100%.', true);  return; }
+
+    const btn = document.getElementById('addTypeBtn');
+    btn.disabled  = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+    try {
+        const existSnap = await getDocs(collection(db, 'schools', session.schoolId, 'gradeTypes'));
+        await addDoc(collection(db, 'schools', session.schoolId, 'gradeTypes'), {
+            name, weight, order: existSnap.size + 1, createdAt: new Date().toISOString()
+        });
+        localStorage.removeItem(`connectus_gradeTypes_${session.schoolId}`);
+        document.getElementById('newTypeName').value   = '';
+        document.getElementById('newTypeWeight').value = '';
+        loadGradeTypes();
+        showTypeMsg(`"${name}" added.`, false);
+    } catch (e) {
+        showTypeMsg('Failed to add grade type.', true);
+    }
+
+    btn.disabled  = false;
+    btn.innerHTML = '<i class="fa-solid fa-plus"></i> Add';
+});
+
+function showTypeMsg(msg, isError) {
+    const el       = document.getElementById('gradeTypeMsg');
+    el.textContent = msg;
+    el.style.color = isError ? '#e31b4a' : 'var(--green-700)';
+    el.classList.remove('hidden');
+}
