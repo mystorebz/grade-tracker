@@ -54,19 +54,17 @@
                     </p>
                 </div>
 
-                <!-- ── Email (shown only if missing) ──────────────────────── -->
+                <!-- Email (shown only if missing from session) -->
                 <div id="emailSection" class="hidden">
                     <div class="pb-5 border-b border-slate-100">
                         <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Email Address *</label>
-                        <p class="text-xs text-slate-400 font-semibold mb-2">
-                            Used to send you a reset link if you ever forget your PIN.
-                        </p>
+                        <p class="text-xs text-slate-400 font-semibold mb-2">Used to send you a reset link if you ever forget your PIN.</p>
                         <input type="email" id="setupEmail" placeholder="your@email.com"
                             class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
                     </div>
                 </div>
 
-                <!-- ── Security Question 1 ────────────────────────────────── -->
+                <!-- Security Question 1 -->
                 <div>
                     <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Security Question 1 *</label>
                     <select id="setupSecQ1"
@@ -87,7 +85,7 @@
                         class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
                 </div>
 
-                <!-- ── Security Question 2 ────────────────────────────────── -->
+                <!-- Security Question 2 -->
                 <div>
                     <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Security Question 2 *</label>
                     <select id="setupSecQ2"
@@ -128,57 +126,63 @@ import { doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/fireba
 import { requireAuth } from '../assets/js/auth.js';
 
 // ── Role Config ───────────────────────────────────────────────────────────────
-// Each role defines:
-//   collection  — which Firestore collection to update
-//   getId       — how to extract the document ID from the session
-//   getName     — display name for the account badge
-//   getEmail    — current email (determines if email field is shown)
-//   dashPath    — where to go after setup completes
-//
-// NOTE: admin session contains contactEmail (added to setSessionData in login.js).
-// teacher session contains teacherData.email.
-// student session contains studentData.email (new field, often empty on first login).
-
+// sub_admin is special: its document lives at schools/{schoolId}/admins/{adminId}.
+// The session for sub_admin has: schoolId + adminId (the sub-admin doc ID).
+// Email field name differs per role — admin uses 'contactEmail', others use 'email'.
 const ROLE_CONFIG = {
     admin: {
-        icon:       'fa-solid fa-user-shield',
-        badgeClass: 'bg-blue-50 border-blue-200',
-        badgeRole:  'Admin Account',
-        collection: 'schools',
-        getId:      (s) => s.schoolId,
-        getName:    (s) => s.schoolName   || s.schoolId,
-        getEmail:   (s) => s.contactEmail || '',
-        getSub:     (s) => `School ID: ${s.schoolId}`,
-        loginPath:  '../admin/login.html',
-        dashPath:   '../admin/home/home.html'
+        icon:        'fa-solid fa-user-shield',
+        badgeClass:  'bg-blue-50 border-blue-200',
+        badgeRole:   'Super Admin Account',
+        getName:     (s) => s.schoolName   || s.schoolId,
+        getEmail:    (s) => s.contactEmail || '',
+        getSub:      (s) => `School ID: ${s.schoolId}`,
+        getDocRef:   (s) => doc(db, 'schools', s.schoolId),
+        emailKey:    'contactEmail',
+        loginPath:   '../admin/login.html',
+        dashPath:    '../admin/home/home.html'
+    },
+    sub_admin: {
+        icon:        'fa-solid fa-user-tie',
+        badgeClass:  'bg-cyan-50 border-cyan-200',
+        badgeRole:   'Sub-Admin Account',
+        getName:     (s) => s.adminName  || s.adminId,
+        getEmail:    (s) => s.adminEmail || '',
+        getSub:      (s) => `School: ${s.schoolId}`,
+        // Sub-admin doc lives in the school's admins subcollection
+        // session.adminId is the sub-admin's document ID
+        getDocRef:   (s) => doc(db, 'schools', s.schoolId, 'admins', s.adminId),
+        emailKey:    'email',
+        loginPath:   '../admin/login.html',
+        dashPath:    '../admin/home/home.html'
     },
     teacher: {
-        icon:       'fa-solid fa-chalkboard-user',
-        badgeClass: 'bg-emerald-50 border-emerald-200',
-        badgeRole:  'Teacher Account',
-        collection: 'teachers',
-        getId:      (s) => s.teacherId,
-        getName:    (s) => s.teacherData?.name  || '',
-        getEmail:   (s) => s.teacherData?.email || '',
-        getSub:     (s) => s.schoolId ? `School: ${s.schoolId}` : '',
-        loginPath:  '../teacher/login.html',
-        dashPath:   '../teacher/home/home.html'
+        icon:        'fa-solid fa-chalkboard-user',
+        badgeClass:  'bg-emerald-50 border-emerald-200',
+        badgeRole:   'Teacher Account',
+        getName:     (s) => s.teacherData?.name  || '',
+        getEmail:    (s) => s.teacherData?.email || '',
+        getSub:      (s) => s.schoolId ? `School: ${s.schoolId}` : '',
+        getDocRef:   (s) => doc(db, 'teachers', s.teacherId),
+        emailKey:    'email',
+        loginPath:   '../teacher/login.html',
+        dashPath:    '../teacher/home/home.html'
     },
     student: {
-        icon:       'fa-solid fa-graduation-cap',
-        badgeClass: 'bg-indigo-50 border-indigo-200',
-        badgeRole:  'Student Account',
-        collection: 'students',
-        getId:      (s) => s.studentId,
-        getName:    (s) => s.studentData?.name  || '',
-        getEmail:   (s) => s.studentData?.email || '',
-        getSub:     (s) => s.schoolId ? `School: ${s.schoolId}` : '',
-        loginPath:  '../student/login.html',
-        dashPath:   '../student/home/home.html'
+        icon:        'fa-solid fa-graduation-cap',
+        badgeClass:  'bg-indigo-50 border-indigo-200',
+        badgeRole:   'Student Account',
+        getName:     (s) => s.studentData?.name  || '',
+        getEmail:    (s) => s.studentData?.email || '',
+        getSub:      (s) => s.schoolId ? `School: ${s.schoolId}` : '',
+        getDocRef:   (s) => doc(db, 'students', s.studentId),
+        emailKey:    'email',
+        loginPath:   '../student/login.html',
+        dashPath:    '../student/home/home.html'
     }
 };
 
-// ── SHA-256 (same normalization as all other ConnectUs auth files) ────────────
+// ── SHA-256 ───────────────────────────────────────────────────────────────────
 async function sha256(text) {
     const encoded = new TextEncoder().encode(text.toLowerCase().trim());
     const buffer  = await crypto.subtle.digest('SHA-256', encoded);
@@ -193,9 +197,10 @@ if (!cfg) {
     window.location.replace('../index.html');
 }
 
-// requireAuth reads the session already set by the login page.
-// Redirects to loginPath automatically if no valid session exists.
-const session = requireAuth(role, cfg.loginPath);
+// requireAuth reads session set by login page.
+// For sub_admin, requireAuth('admin', ...) works because the session role is 'admin'.
+const authRole = (role === 'sub_admin') ? 'admin' : role;
+const session  = requireAuth(authRole, cfg.loginPath);
 
 if (session) {
     // ── Populate badge ─────────────────────────────────────────────────────
@@ -206,7 +211,7 @@ if (session) {
     document.getElementById('badgeName').textContent = cfg.getName(session);
     document.getElementById('badgeSub').textContent  = cfg.getSub(session);
 
-    // ── Show email field only if it's missing from the account ────────────
+    // Show email field only if email is missing
     if (!cfg.getEmail(session)) {
         document.getElementById('emailSection').classList.remove('hidden');
     }
@@ -227,7 +232,6 @@ document.getElementById('setupBtn').addEventListener('click', async () => {
 
     const emailRequired = !cfg.getEmail(session);
 
-    // ── Validation ─────────────────────────────────────────────────────────
     if (emailRequired && !email) {
         showError('Please enter your email address.'); return;
     }
@@ -253,18 +257,18 @@ document.getElementById('setupBtn').addEventListener('click', async () => {
 
         const updates = {
             securityQ1:           q1,
-            securityA1:           hashedA1,   // SHA-256 hash
+            securityA1:           hashedA1,
             securityQ2:           q2,
-            securityA2:           hashedA2,   // SHA-256 hash
+            securityA2:           hashedA2,
             securityQuestionsSet: true
         };
 
         if (emailRequired && email) {
-            // For admin this maps to contactEmail, for teacher/student to email
-            updates[role === 'admin' ? 'contactEmail' : 'email'] = email.toLowerCase();
+            updates[cfg.emailKey] = email.toLowerCase();
         }
 
-        await updateDoc(doc(db, cfg.collection, cfg.getId(session)), updates);
+        // Write to the correct Firestore path for this role
+        await updateDoc(cfg.getDocRef(session), updates);
 
         window.location.replace(cfg.dashPath);
 
