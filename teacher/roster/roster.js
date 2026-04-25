@@ -27,7 +27,6 @@ function getClasses()        { return session.teacherData.classes || [session.te
 function getActiveSubjects() { return (session.teacherData.subjects || []).filter(s => !s.archived); }
 function getGradeTypes()     { return session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
 
-// ── CHANGED: cleaned charset, no ambiguous chars ──────────────────────────────
 function generateStudentId() {
     const year  = new Date().getFullYear().toString().slice(-2);
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -76,7 +75,7 @@ async function fetchSchoolLimit() {
     } catch (e) { console.error('[Roster] fetchSchoolLimit:', e); }
 }
 
-// ── 5. SEMESTERS (localStorage cached & UI synced) ───────────────────────────
+// ── 5. SEMESTERS ─────────────────────────────────────────────────────────────
 async function loadSemesters() {
     try {
         const cacheKey = `connectus_semesters_${session.schoolId}`;
@@ -159,7 +158,7 @@ function checkLockStatus() {
     updatePeriodLabel();
 }
 
-// ── 6. LOAD STUDENTS — GLOBAL QUERY ──────────────────────────────────────────
+// ── 6. LOAD STUDENTS ──────────────────────────────────────────────────────────
 async function loadStudents() {
     const tbody = document.getElementById('studentsTableBody');
     tbody.innerHTML = `<tr><td colspan="9"><div class="table-loader">
@@ -167,7 +166,6 @@ async function loadStudents() {
     </div></td></tr>`;
 
     try {
-        // ── CHANGED: query global /students for active students at this school ──
         const allActSnap = await getDocs(query(
             collection(db, 'students'),
             where('currentSchoolId', '==', session.schoolId),
@@ -200,7 +198,7 @@ async function loadStudents() {
             return;
         }
 
-        const semId    = document.getElementById('activeSemester')?.value;
+        const semId     = document.getElementById('activeSemester')?.value;
         const allGrades = semId ? await fetchAllStudentGrades(semId) : [];
 
         let riskCount = 0;
@@ -283,7 +281,6 @@ async function loadStudents() {
     }
 }
 
-// ── UNCHANGED: grades still written to siloed path by grade_form.js ───────────
 async function fetchAllStudentGrades(semId) {
     const all = [];
     await Promise.all(allStudentsCache.map(async s => {
@@ -341,28 +338,42 @@ function filterStudents() {
     });
 }
 
+// ── QUICK GRADE — blocks if student has no class ──────────────────────────────
 window.quickGradeStudent = function (studentId) {
-    if (isSemesterLocked) { alert('The current grading period is locked.'); return; }
+    if (isSemesterLocked) {
+        alert('The current grading period is locked.');
+        return;
+    }
+
+    // A student must be assigned to a class before grades can be entered.
+    // Without a class, the grade cannot be properly categorized or reported.
+    const student = allStudentsCache.find(s => s.id === studentId);
+    if (!student?.className) {
+        alert(
+            `"${student?.name || 'This student'}" is not assigned to a class yet.\n\n` +
+            `Please open their record, assign them to a class, then try again.`
+        );
+        return;
+    }
+
     localStorage.setItem('connectus_quick_grade_student', studentId);
     window.location.assign('../grade_form/grade_form.html');
 };
 
-// ── 9. ENROLL / CLAIM STUDENT — SEARCH-FIRST FLOW ────────────────────────────
+// ── 9. ENROLL / CLAIM STUDENT ─────────────────────────────────────────────────
 window.openAddStudentModal = function () {
-    // Reset search area
     const searchQ = document.getElementById('sSearchQuery');
     const searchR = document.getElementById('sSearchResults');
     if (searchQ) searchQ.value = '';
     if (searchR) { searchR.innerHTML = ''; searchR.classList.add('hidden'); }
 
-    // Reset create form fields
-    ['sName', 'sParentPhone', 'sParentName', 'sDob'].forEach(id => {
+    // Reset all create form fields including the new email field
+    ['sName', 'sEmail', 'sParentPhone', 'sParentName', 'sDob'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
     document.getElementById('addStudentMsg').classList.add('hidden');
 
-    // Populate class dropdown
     const classes = getClasses().filter(Boolean);
     const sel     = document.getElementById('sClass');
     sel.innerHTML = '<option value="">— Select a Class —</option>' +
@@ -373,7 +384,6 @@ window.openAddStudentModal = function () {
 
 window.closeAddStudentModal = function () { closeOverlay('addStudentModal', 'addStudentModalInner'); };
 
-// ── Stub: no longer used but kept to avoid errors from any cached calls ───────
 window.toggleAddMethod = function () {};
 
 // ── SEARCH NATIONAL REGISTRY ──────────────────────────────────────────────────
@@ -396,11 +406,9 @@ window.searchStudentRegistry = async function () {
         const idPattern = /^S\d{2}-[A-Z0-9]{5}$/i;
 
         if (idPattern.test(searchTerm.replace(/\s/g, ''))) {
-            // ── Exact ID lookup ────────────────────────────────────────────
             const snap = await getDoc(doc(db, 'students', searchTerm.toUpperCase()));
             if (snap.exists()) students = [{ id: snap.id, ...snap.data() }];
         } else {
-            // ── Name prefix search across global registry ──────────────────
             const snap = await getDocs(query(
                 collection(db, 'students'),
                 where('name', '>=', searchTerm),
@@ -462,7 +470,7 @@ window.searchStudentRegistry = async function () {
     btn.disabled    = false;
 };
 
-// ── CLAIM STUDENT FROM SEARCH RESULTS ─────────────────────────────────────────
+// ── CLAIM STUDENT ─────────────────────────────────────────────────────────────
 window.claimSearchedStudent = async function (studentId) {
     const classVal = document.getElementById('sClass').value;
     if (!classVal) {
@@ -492,24 +500,30 @@ window.claimSearchedStudent = async function (studentId) {
 // ── SAVE NEW STUDENT ──────────────────────────────────────────────────────────
 document.getElementById('saveStudentBtn').addEventListener('click', async () => {
     const assignedClass = document.getElementById('sClass').value;
+    const name          = document.getElementById('sName').value.trim();
+    const email         = document.getElementById('sEmail')?.value.trim() || '';
     const btn           = document.getElementById('saveStudentBtn');
 
-    if (!assignedClass) {
-        showMsg('addStudentMsg', 'You must assign the student to a class.', true);
-        return;
-    }
-
-    const name = document.getElementById('sName').value.trim();
+    // ── Validation ────────────────────────────────────────────────────────────
     if (!name) {
         showMsg('addStudentMsg', 'Student name is required.', true);
         return;
     }
+    if (!email) {
+        showMsg('addStudentMsg', 'Email address is required so the student can recover their PIN.', true);
+        return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        showMsg('addStudentMsg', 'Please enter a valid email address.', true);
+        return;
+    }
+    // Class is optional at creation — student can be assigned later.
+    // However, grades cannot be entered until a class is assigned (enforced in quickGradeStudent).
 
     btn.textContent = 'Saving…';
     btn.disabled    = true;
 
     try {
-        // ── CHANGED: check limit against global collection ─────────────────
         const countSnap = await getDocs(query(
             collection(db, 'students'),
             where('currentSchoolId', '==', session.schoolId),
@@ -522,17 +536,17 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
             return;
         }
 
-        // ── CHANGED: setDoc on global /students path with new schema ───────
         const newId = generateStudentId();
         await setDoc(doc(db, 'students', newId), {
             studentIdNum:     newId,
             name,
+            email,                                                      // Required for forgot-pin flow
             dob:              document.getElementById('sDob').value,
             parentName:       document.getElementById('sParentName').value.trim(),
             parentPhone:      document.getElementById('sParentPhone').value.trim(),
             pin:              Math.floor(1000 + Math.random() * 9000).toString(),
             teacherId:        session.teacherId,
-            className:        assignedClass,
+            className:        assignedClass || '',                      // Empty string = unassigned
             currentSchoolId:  session.schoolId,
             enrollmentStatus: 'Active',
             medicalNotes:     '',
@@ -579,13 +593,11 @@ window.openStudentPanel = async function (studentId) {
 
     openOverlay('studentPanel', 'studentPanelInner');
 
-    // Prefill edit fields
     document.getElementById('editSName').value       = student?.name        || '';
     document.getElementById('editSDob').value        = student?.dob         || '';
     document.getElementById('editSParentName').value = student?.parentName  || '';
     document.getElementById('editSPhone').value      = student?.parentPhone || '';
 
-    // Populate class edit dropdown
     const classSel = document.getElementById('editSClass');
     const classes  = getClasses().filter(Boolean);
     classSel.innerHTML = classes.map(c =>
@@ -593,15 +605,14 @@ window.openStudentPanel = async function (studentId) {
     ).join('');
     classSel.dataset.original = student?.className || '';
 
-    // Reset reason box
     document.getElementById('editSClassReasonWrap').classList.add('hidden');
     document.getElementById('editSClassReason').value = '';
 
-    // Info rows — CHANGED: show global ID (doc id = studentIdNum)
     document.getElementById('sInfoGrid').innerHTML = [
         ['Name',         student?.name         || '—'],
         ['Global ID',    student?.id           || '—'],
-        ['Class',        student?.className    || '—'],
+        ['Class',        student?.className    || '<span style="color:#d97706;font-weight:700;">Unassigned — cannot enter grades</span>'],
+        ['Email',        student?.email        || '<span style="color:#d97706;font-weight:700;">Not set — required for PIN recovery</span>'],
         ['DOB',          student?.dob          || '—'],
         ['Parent Name',  student?.parentName   || '—'],
         ['Parent Phone', student?.parentPhone  || '—'],
@@ -624,7 +635,6 @@ window.openStudentPanel = async function (studentId) {
     document.getElementById('sPanelFilterType').value    = '';
 
     try {
-        // ── UNCHANGED: grades still at siloed path (grade_form writes here) ──
         const gradesSnap = await getDocs(
             collection(db, 'schools', session.schoolId, 'students', studentId, 'grades')
         );
@@ -812,7 +822,6 @@ document.getElementById('saveStudentEditBtn').addEventListener('click', async ()
             u.lastClassChangeDate   = new Date().toISOString();
         }
 
-        // ── CHANGED: update global doc ────────────────────────────────────
         await updateDoc(doc(db, 'students', currentStudentId), u);
 
         const idx = allStudentsCache.findIndex(s => s.id === currentStudentId);
@@ -848,7 +857,6 @@ window.saveInlinePin = async function () {
     btn.disabled    = true;
 
     try {
-        // ── CHANGED: update global doc ────────────────────────────────────
         await updateDoc(doc(db, 'students', currentStudentId), { pin: npin });
         const idx = allStudentsCache.findIndex(s => s.id === currentStudentId);
         if (idx !== -1) allStudentsCache[idx].pin = npin;
@@ -951,17 +959,16 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
     btn.disabled  = true;
 
     try {
-        const s        = allStudentsCache.find(x => x.id === currentStudentId);
+        const s          = allStudentsCache.find(x => x.id === currentStudentId);
         const isTransfer = reason === 'Transferred to another school';
         const newStatus  = reason === 'Graduated' ? 'Graduated' : isTransfer ? 'Transferred' : 'Archived';
 
-        // ── CHANGED: global doc update with snapshot + enrollmentStatus ────
         const snapshot = {
-            schoolId:   session.schoolId,
-            teacherId:  s?.teacherId  || '',
-            className:  s?.className  || '',
-            leftAt:     new Date().toISOString(),
-            reason:     reason || 'Not specified'
+            schoolId:  session.schoolId,
+            teacherId: s?.teacherId  || '',
+            className: s?.className  || '',
+            leftAt:    new Date().toISOString(),
+            reason:    reason || 'Not specified'
         };
 
         await updateDoc(doc(db, 'students', currentStudentId), {
@@ -1081,12 +1088,10 @@ window.executeStudentPrint = async function () {
     const studentId  = currentStudentId;
 
     try {
-        // ── CHANGED: student doc from global path ─────────────────────────
         const sDoc = await getDoc(doc(db, 'students', studentId));
         if (!sDoc.exists()) { alert('Student not found.'); return; }
         const s = sDoc.data();
 
-        // ── UNCHANGED: grades still at siloed path ────────────────────────
         const gradesSnap = await getDocs(
             collection(db, 'schools', session.schoolId, 'students', studentId, 'grades')
         );
@@ -1109,9 +1114,7 @@ window.executeStudentPrint = async function () {
         } else {
             for (const sem in bySem) {
                 bodyRows += `<div style="margin-bottom:32px;page-break-inside:avoid;">
-                    <div style="background:#0d1f35;color:#fff;padding:8px 14px;font-size:11px;
-                                font-weight:700;text-transform:uppercase;letter-spacing:0.1em;
-                                margin-bottom:12px;border-radius:2px;">
+                    <div style="background:#0d1f35;color:#fff;padding:8px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:12px;border-radius:2px;">
                         ${escHtml(sem)}
                     </div>
                     <table style="width:100%;border-collapse:collapse;font-size:12px;">`;
@@ -1174,8 +1177,7 @@ window.executeStudentPrint = async function () {
 
         const w = window.open('', '_blank');
         w.document.write(`<!DOCTYPE html><html><head>
-        <meta charset="UTF-8">
-        <title>Student Record — ${escHtml(s.name)}</title>
+        <meta charset="UTF-8"><title>Student Record — ${escHtml(s.name)}</title>
         <style>
             @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
             * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1189,15 +1191,12 @@ window.executeStudentPrint = async function () {
             .info-item span { font-size: 13px; font-weight: 600; color: #0d1f35; }
             .footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid #e8edf2; display: flex; justify-content: space-between; }
             .footer p { font-size: 10px; color: #9ab0c6; font-style: italic; }
-        </style>
-        </head><body>
+        </style></head><body>
         <div class="header">
             <img src="../../assets/images/logo.png" alt="ConnectUs" class="logo" onerror="this.style.display='none'">
             <p class="doc-label">ConnectUs · Official Student Record</p>
             <p class="doc-title">${mode === 'summary' ? 'Academic Report Card' : 'Detailed Grade Transcript'}</p>
-            <p style="font-size:11px;color:#6b84a0;">
-                Printed ${new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}
-            </p>
+            <p style="font-size:11px;color:#6b84a0;">Printed ${new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}</p>
         </div>
         <div class="info-grid">
             <div class="info-item"><label>Student Name</label><span>${escHtml(s.name)}</span></div>
@@ -1209,8 +1208,7 @@ window.executeStudentPrint = async function () {
         <div class="footer">
             <p>School ID: ${escHtml(session.schoolId)}</p>
             <p>This document does not constitute an official academic report card.</p>
-        </div>
-        </body></html>`);
+        </div></body></html>`);
 
         w.document.close();
         window.closePrintStudentModal();
