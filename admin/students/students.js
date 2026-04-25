@@ -506,6 +506,70 @@ window.openStudentPanel = async (studentId) => {
             return;
         }
 
+        // Load grade types for weighted calc (cache or Firestore)
+        let gradeTypeWeights = {};
+        try {
+            const cacheKey = 'connectus_gradeTypes_' + session.schoolId;
+            const cached = localStorage.getItem(cacheKey);
+            const types = cached ? JSON.parse(cached)
+                : (await getDocs(collection(db, 'schools', session.schoolId, 'gradeTypes'))).docs.map(d => ({ id: d.id, ...d.data() }));
+            types.forEach(t => { if (t.weight) gradeTypeWeights[t.name] = t.weight; });
+        } catch(_) {}
+
+        const hasWeights = Object.keys(gradeTypeWeights).length > 0;
+
+        // Helper: weighted average for a set of grades
+        function calcWeightedAvg(grades) {
+            if (!hasWeights) {
+                return grades.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / grades.length;
+            }
+            const byType = {};
+            grades.forEach(g => {
+                const t = g.type || 'Other';
+                if (!byType[t]) byType[t] = [];
+                byType[t].push(g.max ? (g.score / g.max) * 100 : 0);
+            });
+            let wSum = 0, wTotal = 0;
+            Object.entries(byType).forEach(([type, scores]) => {
+                const typeAvg = scores.reduce((a, b) => a + b, 0) / scores.length;
+                const w = gradeTypeWeights[type] || 0;
+                if (w > 0) { wSum += typeAvg * w; wTotal += w; }
+            });
+            // Normalize by weights actually present
+            return wTotal > 0 ? wSum / wTotal
+                : grades.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / grades.length;
+        }
+
+        // Build weight breakdown HTML for the info card
+        function buildWeightBreakdown(grades) {
+            if (!hasWeights) return '';
+            const byType = {};
+            grades.forEach(g => {
+                const t = g.type || 'Other';
+                if (!byType[t]) byType[t] = [];
+                byType[t].push(g.max ? Math.round((g.score / g.max) * 100) : 0);
+            });
+            const rows = Object.entries(gradeTypeWeights)
+                .filter(([type]) => byType[type])
+                .map(([type, w]) => {
+                    const avg = Math.round(byType[type].reduce((a, b) => a + b, 0) / byType[type].length);
+                    const cnt = byType[type].length;
+                    const col = avg >= 75 ? 'var(--green-600)' : avg >= 60 ? '#b45309' : '#e31b4a';
+                    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">'
+                        + '<span style="font-size:12px;color:var(--text-secondary);font-weight:500">' + type + ' <span style="color:var(--text-faint);font-size:11px">(' + cnt + ' entry' + (cnt !== 1 ? 'ies' : 'y') + ')</span></span>'
+                        + '<div style="display:flex;align-items:center;gap:8px">'
+                        + '<span style="font-size:11px;color:var(--text-muted);font-weight:600">' + w + '% weight</span>'
+                        + '<span style="font-size:13px;font-weight:700;color:' + col + '">' + avg + '%</span>'
+                        + '</div></div>';
+                }).join('');
+            if (!rows) return '';
+            return '<div style="background:var(--blue-50);border:1px solid var(--blue-100);border-radius:var(--r-md);padding:14px 16px;margin-bottom:14px">'
+                + '<p style="font-size:10.5px;font-weight:700;color:var(--blue-600);text-transform:uppercase;letter-spacing:0.08em;margin:0 0 8px">Grade Weight Breakdown</p>'
+                + rows
+                + '<p style="font-size:10.5px;color:var(--text-muted);margin:8px 0 0;font-weight:500">Weighted by types that have recorded grades — missing types do not reduce your average.</p>'
+                + '</div>';
+        }
+
         const bySubject = {};
         gradesSnap.forEach(d => {
             const g = { id: d.id, ...d.data() };
@@ -515,7 +579,7 @@ window.openStudentPanel = async (studentId) => {
         });
 
         accordions.innerHTML = Object.entries(bySubject).map(([subject, grades]) => {
-            const avg = grades.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / grades.length;
+            const avg = calcWeightedAvg(grades);
             const ac  = avg >= 75 ? 'text-green-600' : avg >= 60 ? 'text-amber-600' : 'text-red-600';
             const ab  = avg >= 75 ? 'bg-green-50 border-green-200' : avg >= 60 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200';
             const rows = grades.map(g => {
@@ -552,7 +616,7 @@ window.openStudentPanel = async (studentId) => {
                         <i class="fa-solid fa-chevron-down text-slate-400" style="transition:transform 0.2s"></i>
                     </div>
                 </div>
-                <div class="subject-body"><div class="px-4 pb-4 pt-2 bg-slate-50/70 space-y-2">${rows}</div></div>
+                <div class="subject-body"><div class="px-4 pb-4 pt-2 bg-slate-50/70 space-y-2">${buildWeightBreakdown(grades)}${rows}</div></div>
             </div>`;
         }).join('');
 
