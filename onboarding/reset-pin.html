@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reset PIN | ConnectUs</title>
+
+    <link rel="stylesheet" href="../assets/css/global.css">
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/images/favicon-32x32.png">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-[#f8faff] to-[#eef2ff] antialiased">
+
+    <div class="max-w-md w-full">
+        <div class="text-center mb-8">
+            <img src="../assets/images/logo.png" alt="ConnectUs" class="h-14 w-auto mx-auto mb-4 drop-shadow-md">
+            <h1 class="text-2xl font-black text-blue-900 tracking-tight">Reset Your PIN</h1>
+            <p class="text-slate-500 font-semibold mt-2 text-sm">Create a new secure login code for your account.</p>
+        </div>
+
+        <div class="bg-white rounded-3xl shadow-xl border border-blue-100 overflow-hidden relative">
+            <div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-600"></div>
+
+            <!-- ── Loading ─────────────────────────────────────────────── -->
+            <div id="loadingState" class="p-12 text-center">
+                <i class="fa-solid fa-circle-notch fa-spin text-4xl text-blue-500 mb-4"></i>
+                <p class="font-bold text-slate-600">Validating your reset link...</p>
+            </div>
+
+            <!-- ── Invalid / Expired ───────────────────────────────────── -->
+            <div id="invalidState" class="p-10 text-center hidden">
+                <div class="w-20 h-20 bg-red-100 text-red-500 rounded-full flex items-center justify-center text-4xl mx-auto mb-5">
+                    <i class="fa-solid fa-link-slash"></i>
+                </div>
+                <h3 class="font-black text-xl text-slate-800 mb-2">Link Expired or Invalid</h3>
+                <p id="invalidMsg" class="text-sm text-slate-500 font-semibold mb-6">This reset link is no longer valid. Reset links expire after 15 minutes.</p>
+                <a href="forgot-pin.html" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-black py-3 px-8 rounded-xl transition shadow-lg shadow-blue-500/30 text-sm">
+                    Request a New Link
+                </a>
+            </div>
+
+            <!-- ── Reset Form ──────────────────────────────────────────── -->
+            <div id="resetForm" class="p-8 space-y-5 hidden">
+
+                <!-- Role badge — shows who this reset is for -->
+                <div id="roleBadge" class="p-3 rounded-xl flex items-center gap-3 border">
+                    <i id="roleBadgeIcon" class="text-blue-500 text-lg"></i>
+                    <div>
+                        <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Resetting PIN For</p>
+                        <p id="roleBadgeName" class="text-sm font-black text-slate-800"></p>
+                        <p id="roleBadgeSub" class="text-[10px] text-slate-500 font-semibold"></p>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">
+                        New <span id="codeLabel">Admin Code</span> *
+                    </label>
+                    <p class="text-xs text-slate-400 font-semibold mb-2" id="codeHint">Must be at least 6 characters.</p>
+                    <input type="password" id="newCode" placeholder="New PIN / Password"
+                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition mb-3">
+                    <input type="password" id="newCodeConfirm" placeholder="Confirm New PIN"
+                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
+                </div>
+
+                <!-- Strength bar (admin only — longer codes warranted) -->
+                <div id="strengthBar" class="hidden">
+                    <div class="flex gap-1.5 mb-1">
+                        <div id="s1" class="h-1.5 flex-1 rounded-full bg-slate-200 transition-colors duration-300"></div>
+                        <div id="s2" class="h-1.5 flex-1 rounded-full bg-slate-200 transition-colors duration-300"></div>
+                        <div id="s3" class="h-1.5 flex-1 rounded-full bg-slate-200 transition-colors duration-300"></div>
+                        <div id="s4" class="h-1.5 flex-1 rounded-full bg-slate-200 transition-colors duration-300"></div>
+                    </div>
+                    <p id="strengthLabel" class="text-[10px] font-bold text-slate-400"></p>
+                </div>
+
+                <p id="resetError" class="text-xs font-bold text-red-600 bg-red-50 border border-red-100 p-3 rounded-lg text-center hidden"></p>
+
+                <button id="resetBtn"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl transition shadow-lg shadow-blue-500/30 text-sm tracking-wide">
+                    Save New PIN →
+                </button>
+            </div>
+
+            <!-- ── Success ─────────────────────────────────────────────── -->
+            <div id="successScreen" class="p-10 text-center hidden">
+                <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-5">
+                    <i class="fa-solid fa-shield-check"></i>
+                </div>
+                <h3 class="font-black text-2xl text-slate-800 mb-2">PIN Reset Successful!</h3>
+                <p class="text-sm text-slate-500 font-semibold mb-6">Your new login code is active. You can now sign into your dashboard.</p>
+                <a id="loginLink" href="../admin/login.html"
+                    class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-black py-3 px-8 rounded-xl transition shadow-lg shadow-blue-500/30 text-sm">
+                    Go to Login
+                </a>
+            </div>
+        </div>
+    </div>
+
+<script type="module">
+import { db } from '../assets/js/firebase-init.js';
+import { doc, getDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+// ── Role routing config ───────────────────────────────────────────────────────
+// Defines per-role: which collection, which field to update, UI labels, login path
+// NOTE ON HASHING:
+//   admin  → PIN is SHA-256 hashed (matches onboarding.js and admin login)
+//   teacher → PIN is stored plain-text (matches existing teacher login comparison)
+//   student → PIN is stored plain-text (matches existing student login comparison)
+//   When teacher/student login flows are upgraded to hash-compare,
+//   set hashPin: true for those roles and update their login pages accordingly.
+const ROLE_ROUTING = {
+    admin: {
+        collection:  'schools',
+        pinField:    'adminCode',
+        hashPin:     true,           // SHA-256 hash before storing
+        minLength:   6,
+        showStrength: true,
+        codeLabel:   'Admin Code',
+        codeHint:    'Must be at least 6 characters.',
+        icon:        'fa-solid fa-user-shield',
+        badgeClass:  'bg-blue-50 border-blue-200',
+        nameField:   'schoolName',
+        subField:    null,
+        loginPath:   '../admin/login.html'
+    },
+    teacher: {
+        collection:  'teachers',
+        pinField:    'pin',
+        hashPin:     false,          // Plain text — update when login hashing is added
+        minLength:   6,
+        showStrength: false,
+        codeLabel:   'Teacher PIN',
+        codeHint:    'Must be at least 6 characters.',
+        icon:        'fa-solid fa-chalkboard-user',
+        badgeClass:  'bg-indigo-50 border-indigo-200',
+        nameField:   'name',
+        subField:    'currentSchoolId',
+        loginPath:   '../teacher/login.html'
+    },
+    student: {
+        collection:  'students',
+        pinField:    'pin',
+        hashPin:     false,          // Plain text — update when login hashing is added
+        minLength:   4,
+        showStrength: false,
+        codeLabel:   'Student PIN',
+        codeHint:    'Must be at least 4 digits.',
+        icon:        'fa-solid fa-graduation-cap',
+        badgeClass:  'bg-green-50 border-green-200',
+        nameField:   'name',
+        subField:    'currentSchoolId',
+        loginPath:   '../student/login.html'
+    }
+};
+
+// ── SHA-256 (only used for admin role) ───────────────────────────────────────
+async function sha256(text) {
+    const encoded = new TextEncoder().encode(text.toLowerCase().trim());
+    const buffer  = await crypto.subtle.digest('SHA-256', encoded);
+    return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ── DOM ───────────────────────────────────────────────────────────────────────
+const loadingState = document.getElementById('loadingState');
+const invalidState = document.getElementById('invalidState');
+const invalidMsg   = document.getElementById('invalidMsg');
+const resetFormEl  = document.getElementById('resetForm');
+const successScr   = document.getElementById('successScreen');
+const resetError   = document.getElementById('resetError');
+
+// ── State ─────────────────────────────────────────────────────────────────────
+const token  = new URLSearchParams(window.location.search).get('token');
+let vaultData   = null;    // reset_vault document data
+let roleRouting = null;    // resolved ROLE_ROUTING entry
+
+// ── Boot: Validate Token ──────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+    if (!token || token.length !== 32) {
+        showInvalid("This link appears to be malformed. Please request a new one.");
+        return;
+    }
+
+    try {
+        const vaultSnap = await getDoc(doc(db, 'reset_vault', token));
+
+        if (!vaultSnap.exists()) {
+            showInvalid("This reset link has already been used or does not exist.");
+            return;
+        }
+
+        vaultData = vaultSnap.data();
+
+        // Check expiry
+        if (new Date() > new Date(vaultData.expiresAt)) {
+            await deleteDoc(doc(db, 'reset_vault', token)); // Clean up expired token
+            showInvalid("This reset link has expired. Reset links are only valid for 15 minutes.");
+            return;
+        }
+
+        // Resolve role routing
+        roleRouting = ROLE_ROUTING[vaultData.userType];
+        if (!roleRouting) {
+            showInvalid("This link contains an unrecognized account type.");
+            return;
+        }
+
+        // Fetch the target document to display the account name
+        const targetSnap = await getDoc(doc(db, roleRouting.collection, vaultData.targetId));
+        if (!targetSnap.exists()) {
+            showInvalid("The associated account could not be found.");
+            return;
+        }
+
+        const targetData = targetSnap.data();
+
+        // ── Populate role badge ────────────────────────────────────────────
+        const badgeEl = document.getElementById('roleBadge');
+        badgeEl.className = `p-3 rounded-xl flex items-center gap-3 border ${roleRouting.badgeClass}`;
+        document.getElementById('roleBadgeIcon').className = `${roleRouting.icon} text-lg`;
+        document.getElementById('roleBadgeName').textContent = targetData[roleRouting.nameField] || vaultData.targetId;
+        document.getElementById('roleBadgeSub').textContent  =
+            roleRouting.subField && targetData[roleRouting.subField]
+                ? `School: ${targetData[roleRouting.subField]}`
+                : vaultData.userType.charAt(0).toUpperCase() + vaultData.userType.slice(1) + ' Account';
+
+        // ── Populate form labels ───────────────────────────────────────────
+        document.getElementById('codeLabel').textContent = roleRouting.codeLabel;
+        document.getElementById('codeHint').textContent  = roleRouting.codeHint;
+
+        // Show strength bar only for admin
+        if (roleRouting.showStrength) {
+            document.getElementById('strengthBar').classList.remove('hidden');
+        }
+
+        // Update login link on success screen
+        document.getElementById('loginLink').href = roleRouting.loginPath;
+
+        loadingState.classList.add('hidden');
+        resetFormEl.classList.remove('hidden');
+
+    } catch (err) {
+        console.error('[ResetPin] boot:', err);
+        showInvalid("A connection error occurred. Please refresh the page.");
+    }
+});
+
+// ── Strength Indicator (admin only) ──────────────────────────────────────────
+document.getElementById('newCode').addEventListener('input', (e) => {
+    if (!roleRouting?.showStrength) return;
+    const val = e.target.value;
+    if (!val) { document.getElementById('strengthBar').classList.add('hidden'); return; }
+    document.getElementById('strengthBar').classList.remove('hidden');
+
+    let score = 0;
+    if (val.length >= 6)  score++;
+    if (val.length >= 10) score++;
+    if (/[A-Z]/.test(val) && /[0-9]/.test(val)) score++;
+    if (/[^A-Za-z0-9]/.test(val)) score++;
+
+    const colors  = ['bg-red-400','bg-orange-400','bg-yellow-400','bg-green-500'];
+    const labels  = ['Weak','Fair','Good','Strong'];
+    ['s1','s2','s3','s4'].forEach((id, i) => {
+        document.getElementById(id).className =
+            `h-1.5 flex-1 rounded-full transition-colors duration-300 ${i < score ? colors[score - 1] : 'bg-slate-200'}`;
+    });
+    document.getElementById('strengthLabel').textContent = score > 0 ? labels[score - 1] : '';
+});
+
+// ── Submit: Save New PIN ──────────────────────────────────────────────────────
+document.getElementById('resetBtn').addEventListener('click', async () => {
+    const newCode = document.getElementById('newCode').value;
+    const confirm = document.getElementById('newCodeConfirm').value;
+    resetError.classList.add('hidden');
+
+    if (!newCode || !confirm) {
+        showError("Both fields are required."); return;
+    }
+    if (newCode !== confirm) {
+        showError("Codes do not match. Please try again."); return;
+    }
+    if (newCode.length < roleRouting.minLength) {
+        showError(`${roleRouting.codeLabel} must be at least ${roleRouting.minLength} characters.`); return;
+    }
+
+    const btn = document.getElementById('resetBtn');
+    btn.disabled  = true;
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Saving...';
+
+    try {
+        // Hash for admin; plain text for teacher/student (matches their login flows)
+        const finalValue = roleRouting.hashPin
+            ? await sha256(newCode)
+            : newCode;
+
+        // Update the correct field in the correct collection
+        const updates = {
+            [roleRouting.pinField]: finalValue,
+            requiresPinReset:       false,
+            lastPinResetAt:         new Date().toISOString()
+        };
+
+        await updateDoc(doc(db, roleRouting.collection, vaultData.targetId), updates);
+
+        // Consume the token — one-time use
+        await deleteDoc(doc(db, 'reset_vault', token));
+
+        resetFormEl.classList.add('hidden');
+        successScr.classList.remove('hidden');
+
+    } catch (err) {
+        console.error('[ResetPin] save:', err);
+        showError("Failed to update your PIN. Please try again.");
+        btn.disabled  = false;
+        btn.innerHTML = 'Save New PIN →';
+    }
+});
+
+// ── UI Helpers ────────────────────────────────────────────────────────────────
+function showInvalid(msg) {
+    loadingState.classList.add('hidden');
+    invalidMsg.textContent = msg;
+    invalidState.classList.remove('hidden');
+}
+
+function showError(msg) {
+    resetError.textContent = msg;
+    resetError.classList.remove('hidden');
+}
+</script>
+</body>
+</html>
