@@ -12,9 +12,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 
-    <!-- EmailJS
-         Required template variables: {{to_email}}, {{user_name}}, {{role_label}}, {{reset_link}}
-         Template ID configured below as EMAILJS_TEMPLATE_ID -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-[#f8faff] to-[#eef2ff] antialiased">
@@ -29,84 +26,52 @@
         <div class="bg-white rounded-3xl shadow-xl border border-blue-100 overflow-hidden relative">
             <div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-600"></div>
 
-            <!-- ── Step 1: Role + Identity ────────────────────────────── -->
             <div id="step1" class="p-8 space-y-5">
                 <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl flex items-start gap-3">
                     <i class="fa-solid fa-magnifying-glass text-blue-500 mt-0.5"></i>
                     <div>
                         <h4 class="font-black text-blue-900 text-sm">Step 1 of 2 — Find Your Account</h4>
-                        <p class="text-xs text-slate-500 font-semibold mt-1">Select your role, then enter your details.</p>
+                        <p class="text-xs text-slate-500 font-semibold mt-1">Enter your system credentials to locate your record.</p>
                     </div>
                 </div>
 
-                <!-- Role Selector -->
                 <div>
-                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">I am a... *</label>
-                    <div class="grid grid-cols-2 gap-2" id="roleSelector">
-                        <button data-role="admin"     class="role-btn flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-slate-200 hover:border-blue-400 transition text-center" onclick="selectRole('admin')">
-                            <i class="fa-solid fa-user-shield text-slate-400 text-xl"></i>
-                            <span class="text-[11px] font-black text-slate-600 uppercase tracking-wide">Super Admin</span>
-                        </button>
-                        <button data-role="sub_admin" class="role-btn flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-slate-200 hover:border-blue-400 transition text-center" onclick="selectRole('sub_admin')">
-                            <i class="fa-solid fa-user-tie text-slate-400 text-xl"></i>
-                            <span class="text-[11px] font-black text-slate-600 uppercase tracking-wide">Sub-Admin</span>
-                        </button>
-                        <button data-role="teacher"   class="role-btn flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-slate-200 hover:border-blue-400 transition text-center" onclick="selectRole('teacher')">
-                            <i class="fa-solid fa-chalkboard-user text-slate-400 text-xl"></i>
-                            <span class="text-[11px] font-black text-slate-600 uppercase tracking-wide">Teacher</span>
-                        </button>
-                        <button data-role="student"   class="role-btn flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-slate-200 hover:border-blue-400 transition text-center" onclick="selectRole('student')">
-                            <i class="fa-solid fa-graduation-cap text-slate-400 text-xl"></i>
-                            <span class="text-[11px] font-black text-slate-600 uppercase tracking-wide">Student</span>
-                        </button>
-                    </div>
+                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">School ID *</label>
+                    <input type="text" id="fpSchoolId" placeholder="e.g. SCH-8B2X9"
+                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition uppercase">
                 </div>
 
-                <!-- Primary ID Field -->
-                <div id="idFieldWrap" class="hidden">
-                    <label id="idFieldLabel" class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">ID *</label>
-                    <input type="text" id="fpUserId"
-                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition uppercase"
-                        placeholder="">
-                    <p id="idFieldHint" class="text-[10px] text-slate-400 font-semibold mt-1.5"></p>
+                <div>
+                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">
+                        User ID <span class="text-slate-400 font-semibold normal-case ml-1">(Leave blank if Super Admin)</span>
+                    </label>
+                    <input type="text" id="fpUserId" placeholder="e.g. T24-AB3X7 or S24-XK9P2"
+                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition uppercase">
                 </div>
 
-                <!-- Secondary ID Field (sub_admin only) -->
-                <div id="secondIdFieldWrap" class="hidden">
-                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Sub-Admin ID *</label>
-                    <input type="text" id="fpSecondId"
-                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition uppercase"
-                        placeholder="Your Sub-Admin ID">
-                    <p class="text-[10px] text-slate-400 font-semibold mt-1.5">Found on your credential slip from your School Admin.</p>
-                </div>
-
-                <!-- Email Field -->
-                <div id="emailFieldWrap" class="hidden">
+                <div>
                     <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Email Address on File *</label>
-                    <input type="email" id="fpEmail"
-                        placeholder="email address on file"
+                    <input type="email" id="fpEmail" placeholder="your@email.com"
                         class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
                 </div>
 
                 <p id="step1Error" class="text-xs font-bold text-red-600 bg-red-50 border border-red-100 p-3 rounded-lg text-center hidden"></p>
 
                 <button id="findAccountBtn"
-                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl transition shadow-lg shadow-blue-500/30 text-sm tracking-wide hidden"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl transition shadow-lg shadow-blue-500/30 text-sm tracking-wide"
                     onclick="findAccount()">
                     Find My Account →
                 </button>
 
-                <!-- Back to Login — href is updated dynamically when role is selected -->
                 <p class="text-center text-xs text-slate-400 font-semibold">
                     Remembered it?
-                    <a id="step1LoginLink" href="../admin/login.html" class="text-blue-600 hover:underline font-black">Back to Login</a>
+                    <a href="../index.html" class="text-blue-600 hover:underline font-black">Back to Home</a>
                 </p>
             </div>
 
-            <!-- ── Step 2: Security Questions ────────────────────────── -->
             <div id="step2" class="p-8 space-y-5 hidden">
                 <div id="accountBadge" class="bg-green-50 border border-green-200 p-3 rounded-xl flex items-center gap-3">
-                    <i id="accountBadgeIcon" class="fa-solid fa-user-shield text-green-600"></i>
+                    <i id="accountBadgeIcon" class="fa-solid text-green-600"></i>
                     <div>
                         <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Account Found</p>
                         <p id="foundAccountName" class="text-sm font-black text-slate-800"></p>
@@ -150,7 +115,6 @@
                 </button>
             </div>
 
-            <!-- ── Success ─────────────────────────────────────────────── -->
             <div id="successScreen" class="p-10 text-center hidden">
                 <div class="w-20 h-20 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-5">
                     <i class="fa-solid fa-envelope-circle-check"></i>
@@ -158,20 +122,14 @@
                 <h3 class="font-black text-2xl text-slate-800 mb-2">Reset Link Sent!</h3>
                 <p class="text-sm text-slate-500 font-semibold mb-1">A secure reset link has been emailed to your registered address.</p>
                 <p class="text-xs text-slate-400 font-semibold mb-6">The link expires in <span class="font-black text-slate-600">15 minutes</span>. Check your spam folder if needed.</p>
-                <!-- href is updated dynamically when the email is sent -->
-                <a id="successLoginLink" href="../admin/login.html"
+                
+                <a id="successLoginLink" href="../index.html"
                     class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-black py-3 px-8 rounded-xl transition shadow-lg shadow-blue-500/30 text-sm">
-                    Back to Login
+                    Return Home
                 </a>
             </div>
         </div>
     </div>
-
-<style>
-    .role-btn.active { border-color: #2563eb; background: #eff6ff; }
-    .role-btn.active i { color: #2563eb; }
-    .role-btn.active span { color: #1e40af; }
-</style>
 
 <script type="module">
 import { db } from '../assets/js/firebase-init.js';
@@ -183,72 +141,12 @@ const EMAILJS_SERVICE_ID  = 'service_s5qvpzh';
 const EMAILJS_TEMPLATE_ID = 'template_reset_pin';
 emailjs.init(EMAILJS_PUBLIC_KEY);
 
-// ── Role Config ───────────────────────────────────────────────────────────────
+// ── Role Config Reference ─────────────────────────────────────────────────────
 const ROLE_CONFIG = {
-    admin: {
-        label:         'Super Admin',
-        icon:          'fa-user-shield',
-        idLabel:       'School ID',
-        idPlaceholder: 'e.g. SCH-8B2X9',
-        idHint:        'Your School ID was shown at the end of onboarding.',
-        idPattern:     /^SCH-[A-Z0-9]{5}$/,
-        emailField:    'contactEmail',
-        nameField:     'schoolName',
-        needsSecondId: false,
-        loginPath:     '../admin/login.html',
-        lookup: async (primaryId) => {
-            const snap = await getDoc(doc(db, 'schools', primaryId));
-            return snap.exists() ? { id: snap.id, ...snap.data() } : null;
-        }
-    },
-    sub_admin: {
-        label:         'Sub-Admin',
-        icon:          'fa-user-tie',
-        idLabel:       'School ID',
-        idPlaceholder: 'e.g. SCH-8B2X9',
-        idHint:        'The School ID of the school you work at.',
-        idPattern:     /^SCH-[A-Z0-9]{5}$/,
-        emailField:    'email',
-        nameField:     'name',
-        needsSecondId: true,
-        loginPath:     '../admin/login.html',
-        lookup: async (primaryId, secondaryId) => {
-            const snap = await getDoc(doc(db, 'schools', primaryId, 'admins', secondaryId));
-            return snap.exists() ? { id: snap.id, schoolId: primaryId, ...snap.data() } : null;
-        }
-    },
-    teacher: {
-        label:         'Teacher',
-        icon:          'fa-chalkboard-user',
-        idLabel:       'Teacher ID',
-        idPlaceholder: 'e.g. T24-AB3X7',
-        idHint:        'Your Teacher ID is on your credential slip.',
-        idPattern:     /^T\d{2}-[A-Z0-9]{5}$/,
-        emailField:    'email',
-        nameField:     'name',
-        needsSecondId: false,
-        loginPath:     '../teacher/login.html',
-        lookup: async (primaryId) => {
-            const snap = await getDoc(doc(db, 'teachers', primaryId));
-            return snap.exists() ? { id: snap.id, ...snap.data() } : null;
-        }
-    },
-    student: {
-        label:         'Student',
-        icon:          'fa-graduation-cap',
-        idLabel:       'Student ID',
-        idPlaceholder: 'e.g. S24-XK9P2',
-        idHint:        'Your Student ID is on your credential slip or report card.',
-        idPattern:     /^S\d{2}-[A-Z0-9]{5}$/,
-        emailField:    'email',
-        nameField:     'name',
-        needsSecondId: false,
-        loginPath:     '../student/login.html',
-        lookup: async (primaryId) => {
-            const snap = await getDoc(doc(db, 'students', primaryId));
-            return snap.exists() ? { id: snap.id, ...snap.data() } : null;
-        }
-    }
+    admin:     { label: 'Super Admin', icon: 'fa-user-shield',       emailField: 'contactEmail', nameField: 'schoolName', loginPath: '../admin/login.html' },
+    sub_admin: { label: 'Sub-Admin',   icon: 'fa-user-tie',          emailField: 'email',        nameField: 'name',       loginPath: '../admin/login.html' },
+    teacher:   { label: 'Teacher',     icon: 'fa-chalkboard-user',   emailField: 'email',        nameField: 'name',       loginPath: '../teacher/login.html' },
+    student:   { label: 'Student',     icon: 'fa-graduation-cap',    emailField: 'email',        nameField: 'name',       loginPath: '../student/login.html' }
 };
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -264,97 +162,106 @@ async function sha256(text) {
     return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// ── Token ─────────────────────────────────────────────────────────────────────
 function generateToken() {
     const arr = new Uint8Array(16);
     crypto.getRandomValues(arr);
     return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// ── Role Selection ────────────────────────────────────────────────────────────
-window.selectRole = function(role) {
-    selectedRole = role;
-    const cfg    = ROLE_CONFIG[role];
-
-    // Highlight selected button
-    document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
-    document.querySelector(`[data-role="${role}"]`).classList.add('active');
-
-    // Update ID field
-    document.getElementById('idFieldLabel').textContent = cfg.idLabel + ' *';
-    document.getElementById('fpUserId').placeholder     = cfg.idPlaceholder;
-    document.getElementById('idFieldHint').textContent  = cfg.idHint;
-    document.getElementById('fpUserId').value           = '';
-    document.getElementById('fpEmail').value            = '';
-    document.getElementById('fpSecondId').value         = '';
-    document.getElementById('step1Error').classList.add('hidden');
-
-    document.getElementById('idFieldWrap').classList.remove('hidden');
-    document.getElementById('emailFieldWrap').classList.remove('hidden');
-    document.getElementById('findAccountBtn').classList.remove('hidden');
-
-    // Sub-admin needs a second ID field
-    document.getElementById('secondIdFieldWrap').classList.toggle('hidden', !cfg.needsSecondId);
-
-    // ── Update both "Back to Login" links to the correct portal ───────────────
-    // This is the fix: teachers and students were incorrectly landing on the
-    // admin login page when using this page.
-    document.getElementById('step1LoginLink').href  = cfg.loginPath;
-    document.getElementById('successLoginLink').href = cfg.loginPath;
-};
-
-// ── Step 1: Find Account ──────────────────────────────────────────────────────
+// ── Step 1: Smart Find Account ────────────────────────────────────────────────
 window.findAccount = async function() {
-    if (!selectedRole) { showErr('step1Error', 'Please select your role first.'); return; }
-
-    const cfg      = ROLE_CONFIG[selectedRole];
-    const rawId    = document.getElementById('fpUserId').value.trim().toUpperCase();
-    const secondId = document.getElementById('fpSecondId').value.trim().toUpperCase();
+    const schoolId = document.getElementById('fpSchoolId').value.trim().toUpperCase();
+    const userId   = document.getElementById('fpUserId').value.trim().toUpperCase();
     const email    = document.getElementById('fpEmail').value.trim().toLowerCase();
+    
     document.getElementById('step1Error').classList.add('hidden');
 
-    if (!rawId || !email) { showErr('step1Error', 'All fields are required.'); return; }
-    if (cfg.needsSecondId && !secondId) { showErr('step1Error', 'Please enter your Sub-Admin ID.'); return; }
-    if (!cfg.idPattern.test(rawId)) { showErr('step1Error', `Invalid ${cfg.idLabel} format.`); return; }
+    if (!schoolId || !email) { 
+        showErr('step1Error', 'School ID and Email are required.'); 
+        return; 
+    }
 
     const btn = document.getElementById('findAccountBtn');
     setLoading(btn, true, 'Find My Account →');
 
     try {
-        const data = cfg.needsSecondId
-            ? await cfg.lookup(rawId, secondId)
-            : await cfg.lookup(rawId);
+        let role = '';
+        let targetId = '';
+        let docRef = null;
 
-        if (!data) {
-            showErr('step1Error', 'No account found matching those details. Please check and try again.');
-            setLoading(btn, false, 'Find My Account →'); return;
+        // Smart Routing Logic based on ID format
+        if (!userId) {
+            role = 'admin';
+            targetId = schoolId;
+            docRef = doc(db, 'schools', schoolId);
+        } else if (userId.startsWith('A')) {
+            role = 'sub_admin';
+            targetId = userId;
+            docRef = doc(db, 'schools', schoolId, 'admins', userId);
+        } else if (userId.startsWith('T')) {
+            role = 'teacher';
+            targetId = userId;
+            docRef = doc(db, 'teachers', userId);
+        } else if (userId.startsWith('S')) {
+            role = 'student';
+            targetId = userId;
+            docRef = doc(db, 'students', userId);
+        } else {
+            showErr('step1Error', 'Unrecognized User ID format.');
+            setLoading(btn, false, 'Find My Account →'); 
+            return;
         }
 
+        const snap = await getDoc(docRef);
+        
+        if (!snap.exists()) {
+            showErr('step1Error', 'No account found matching those details.');
+            setLoading(btn, false, 'Find My Account →'); 
+            return;
+        }
+
+        const data = { id: snap.id, ...snap.data() };
+        
+        // Security check: If it's a teacher or student, verify they belong to the requested School ID
+        if (role === 'teacher' || role === 'student') {
+            if (data.currentSchoolId !== schoolId) {
+                showErr('step1Error', 'No account found matching those details at this school.');
+                setLoading(btn, false, 'Find My Account →'); 
+                return;
+            }
+        }
+
+        // Email Verification Check
+        const cfg = ROLE_CONFIG[role];
         if ((data[cfg.emailField] || '').toLowerCase() !== email) {
-            showErr('step1Error', 'No account found matching those details. Please check and try again.');
-            setLoading(btn, false, 'Find My Account →'); return;
+            showErr('step1Error', 'No account found matching those details.');
+            setLoading(btn, false, 'Find My Account →'); 
+            return;
         }
 
         if (!data.securityQ1 || !data.securityQ2) {
-            showErr('step1Error',
-                'Security questions have not been set on this account yet. ' +
-                'Please log in and complete your profile setup first, or contact your administrator.');
-            setLoading(btn, false, 'Find My Account →'); return;
+            showErr('step1Error', 'Security questions have not been set on this account yet. Please contact your administrator.');
+            setLoading(btn, false, 'Find My Account →'); 
+            return;
         }
 
+        // Lock in the state
+        selectedRole  = role;
         foundDoc      = data;
-        foundDocId    = cfg.needsSecondId ? secondId : rawId;
-        foundSchoolId = cfg.needsSecondId ? rawId    : null;
+        foundDocId    = targetId;
+        foundSchoolId = schoolId;
 
+        // Populate Step 2 UI
         document.getElementById('accountBadgeIcon').className = `fa-solid ${cfg.icon} text-green-600`;
-        document.getElementById('foundAccountName').textContent = data[cfg.nameField] || foundDocId;
-        document.getElementById('foundAccountSub').textContent  = cfg.needsSecondId
-            ? `School: ${rawId} · ${cfg.label}`
-            : cfg.label;
+        document.getElementById('foundAccountName').textContent = data[cfg.nameField] || targetId;
+        document.getElementById('foundAccountSub').textContent  = `${cfg.label} · School: ${schoolId}`;
 
         document.getElementById('displayQ1').textContent = data.securityQ1;
         document.getElementById('displayQ2').textContent = data.securityQ2;
+        
+        document.getElementById('successLoginLink').href = cfg.loginPath;
 
+        // Transition UI
         document.getElementById('step1').classList.add('hidden');
         document.getElementById('step2').classList.remove('hidden');
 
