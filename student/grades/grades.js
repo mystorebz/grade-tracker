@@ -6,20 +6,16 @@ import { injectStudentLayout } from '../../assets/js/layout-student.js';
 // ── 1. INIT & AUTH ────────────────────────────────────────────────────────
 const session = requireAuth('student', '../login.html');
 
-// Inject layout
 injectStudentLayout('gradebook', 'Current Grades', 'Detailed grades for the active period');
 
-// Update UI with session data
 document.getElementById('displayStudentName').innerText = session.studentData.name || 'Student';
 document.getElementById('studentAvatar').innerText = (session.studentData.name || 'S').charAt(0).toUpperCase();
 document.getElementById('displayStudentClass').innerText = session.studentData.className ? `Class: ${session.studentData.className}` : 'Unassigned Class';
 
-// Elements
 const gradesLoader = document.getElementById('gradesLoader');
 const currentSubjectsContainer = document.getElementById('currentSubjectsContainer');
 const noCurrentGradesMsg = document.getElementById('noCurrentGradesMsg');
 
-// State
 let currentGrades = [];
 let schoolActiveSemesterId = null;
 
@@ -52,7 +48,6 @@ window.toggleAccordion = function(h) {
 // ── 3. FETCH & RENDER GRADES ──────────────────────────────────────────────
 async function loadCurrentGrades() {
     try {
-        // Fetch School Data to get activeSemesterId & Name
         const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
         if (schoolSnap.exists()) {
             document.getElementById('displaySchoolName').innerText = schoolSnap.data().schoolName;
@@ -66,15 +61,15 @@ async function loadCurrentGrades() {
             return;
         }
 
-        // Fetch semester name for topbar
         const semSnap = await getDoc(doc(db, 'schools', session.schoolId, 'semesters', schoolActiveSemesterId));
         if (semSnap.exists()) {
             document.getElementById('activeSemesterDisplay').textContent = semSnap.data().name;
         }
 
-        // Fetch Grades for active semester
+        // ADDED: Query directly from the global student passport, filtering by the current school
         const q = query(
-            collection(db, 'schools', session.schoolId, 'students', session.studentId, 'grades'),
+            collection(db, 'students', session.studentId, 'grades'),
+            where('schoolId', '==', session.schoolId),
             where('semesterId', '==', schoolActiveSemesterId)
         );
         const gSnap = await getDocs(q);
@@ -160,7 +155,6 @@ function renderSubjectAccordions(grades) {
     }).join('');
 }
 
-// ── 4. GRADE DETAIL MODAL ─────────────────────────────────────────────────
 window.viewGradeDetails = function(gradeId) {
     const g = currentGrades.find(x => x.id === gradeId); 
     if (!g) return;
@@ -214,5 +208,4 @@ window.closeAssignmentModal = function() {
     setTimeout(() => modal.classList.add('hidden'), 300);
 };
 
-// ── INITIALIZE ────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', loadCurrentGrades);
