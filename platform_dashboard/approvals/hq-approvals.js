@@ -2,7 +2,7 @@ import { db, storage } from '../../assets/js/firebase-init.js';
 import { collection, query, getDocs, doc, updateDoc, setDoc, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
-// ── Boot Sequence: Security Check & Setup ──────────────────────────────────
+// ── Boot Sequence & Setup ────────────────────────────────────────────────
 const rawSession = localStorage.getItem('connectus_hq_session');
 if (!rawSession) window.location.replace('../core/hq-login.html');
 const session = JSON.parse(rawSession);
@@ -17,7 +17,6 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
     window.location.replace('../core/hq-login.html');
 });
 
-// ── EmailJS Setup ────────────────────────────────────────────────────────
 const EMAILJS_PUBLIC_KEY  = 'XfaGXU_eFA9dph-5G';
 const EMAILJS_SERVICE_ID  = 'service_s5qvpzh'; 
 const EMAILJS_TEMPLATE_ID = 'template_school_approved';
@@ -26,6 +25,41 @@ emailjs.init(EMAILJS_PUBLIC_KEY);
 const tbody = document.getElementById('quotesTableBody');
 let allQuotes = []; 
 let currentQuote = null;
+let availablePlans = []; // Store fetched subscription plans
+
+// ── Load Subscription Plans ──────────────────────────────────────────────
+async function loadSubscriptionPlans() {
+    const planSelect = document.getElementById('payPlan');
+    try {
+        const snap = await getDocs(collection(db, 'subscriptionPlans'));
+        availablePlans = [];
+        let options = '<option value="">Select a subscription tier...</option>';
+        
+        snap.forEach(doc => {
+            const data = doc.data();
+            data.id = doc.id;
+            availablePlans.push(data);
+            options += `<option value="${data.id}">${data.name}</option>`;
+        });
+        planSelect.innerHTML = options;
+    } catch (e) {
+        console.error("Failed to load subscription plans:", e);
+        planSelect.innerHTML = '<option value="">Error loading plans. Check Firebase rules.</option>';
+    }
+}
+
+// Display Limits when a plan is selected
+document.getElementById('payPlan').addEventListener('change', (e) => {
+    const display = document.getElementById('planLimitsDisplay');
+    const selected = availablePlans.find(p => p.id === e.target.value);
+    
+    if (selected) {
+        display.innerHTML = `<i class="fa-solid fa-circle-check mr-1"></i> Limits: ${selected.studentLimit} Students | ${selected.teacherLimit} Teachers | ${selected.adminLimit} Admins`;
+        display.classList.remove('hidden');
+    } else {
+        display.classList.add('hidden');
+    }
+});
 
 // ── Load Quotes ────────────────────────────────────────────────────────────
 async function loadQuotes() {
@@ -44,7 +78,6 @@ async function loadQuotes() {
             data.id = docSnap.id; 
             allQuotes.push(data); 
 
-            // If the school has actually finished the onboarding flow, hide them from Approvals
             if (data.fulfilled) return; 
 
             pendingCount++;
@@ -55,7 +88,6 @@ async function loadQuotes() {
                 ? `<span class="bg-blue-900/40 text-blue-400 border border-blue-800 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider">Link Sent</span>`
                 : `<span class="bg-amber-900/40 text-amber-400 border border-amber-800 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider">Pending Payment</span>`;
 
-            // The button always says Manage now, but the modal changes depending on isApproved
             const actionBtn = `<button onclick="window.openApprovalModal('${data.id}')" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition border border-slate-600 shadow-md">Manage</button>`;
 
             rows += `
@@ -119,18 +151,16 @@ window.openApprovalModal = (reqId) => {
 
     // 2. Logic Switch: Which right-side panel do we show?
     if (currentQuote.paymentCleared) {
-        // ALREADY APPROVED -> Show Manage Link Panel
         document.getElementById('paymentFormContainer').classList.add('hidden');
         document.getElementById('manageLinkContainer').classList.remove('hidden');
-        
-        // Populate the editable email box
         document.getElementById('editEmailInput').value = currentQuote.workEmail;
     } else {
-        // NOT APPROVED -> Show Log Payment Panel
         document.getElementById('paymentFormContainer').classList.remove('hidden');
         document.getElementById('manageLinkContainer').classList.add('hidden');
         
         // Reset Inputs
+        document.getElementById('payPlan').value = '';
+        document.getElementById('planLimitsDisplay').classList.add('hidden');
         document.getElementById('payAmount').value = '';
         const cycleSelect = document.getElementById('payCycle');
         if (currentQuote.contractTerm === 'Annual') cycleSelect.value = 'Annual';
@@ -179,6 +209,7 @@ function calculateRenewalDate(cycleType) {
 
 // ── LOGIC A: Process Initial Approval ─────────────────────────────────────
 document.getElementById('confirmApproveBtn').addEventListener('click', async () => {
+    const planId = document.getElementById('payPlan').value;
     const amount = document.getElementById('payAmount').value;
     const cycleSelect = document.getElementById('payCycle').value;
     const customCycle = document.getElementById('payCustomCycle').value;
@@ -186,11 +217,16 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
     const receiptFile = document.getElementById('payReceipt').files[0]; 
     const errorMsg = document.getElementById('paymentErrorMsg');
 
+    if (!planId) {
+        errorMsg.textContent = "Please select a Subscription Tier.";
+        errorMsg.classList.remove('hidden'); return;
+    }
     if (!amount || amount <= 0) {
         errorMsg.textContent = "Please enter a valid payment amount.";
         errorMsg.classList.remove('hidden'); return;
     }
 
+    const selectedPlan = availablePlans.find(p => p.id === planId);
     const actualCycle = cycleSelect === 'Other' ? (customCycle || 'Custom') : cycleSelect;
     const btn = document.getElementById('confirmApproveBtn');
     btn.disabled = true;
@@ -218,23 +254,33 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
 
         const nextRenewalDate = calculateRenewalDate(cycleSelect);
 
+        // 1. Log Payment
         await setDoc(doc(db, 'payments', paymentId), {
             reqId: currentQuote.id,
             schoolName: currentQuote.schoolName,
             paymentType: 'Initial Setup',
             amount: parseFloat(amount),
             billingCycle: actualCycle,
+            subscriptionPlanId: selectedPlan.id,
             receiptUrl: receiptUrl, 
             internalNotes: notesArray,
             loggedBy: session.id,
             timestamp: timestamp
         });
 
+        // 2. Update Quote with Plan Limits
         await updateDoc(doc(db, 'quote_requests', currentQuote.id), {
             paymentCleared: true,
             clearedAt: timestamp,
             approvedBillingCycle: actualCycle,
-            calculatedRenewalDate: nextRenewalDate
+            calculatedRenewalDate: nextRenewalDate,
+            approvedPlanId: selectedPlan.id,
+            approvedPlanName: selectedPlan.name,
+            approvedLimits: {
+                adminLimit: selectedPlan.adminLimit,
+                studentLimit: selectedPlan.studentLimit,
+                teacherLimit: selectedPlan.teacherLimit
+            }
         });
 
         btn.innerHTML = '<i class="fa-solid fa-envelope fa-spin mr-2"></i> Emailing School...';
@@ -262,43 +308,36 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
 
 // ── LOGIC B: Manage Sent Links ────────────────────────────────────────────
 
-// 1. Update Email Address
 document.getElementById('saveEmailBtn').addEventListener('click', async () => {
     const newEmail = document.getElementById('editEmailInput').value.trim();
     if(!newEmail) return;
-    
     const btn = document.getElementById('saveEmailBtn');
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-    
     try {
         await updateDoc(doc(db, 'quote_requests', currentQuote.id), { workEmail: newEmail });
         currentQuote.workEmail = newEmail; 
-        document.getElementById('vEmail').textContent = newEmail; // Update left panel instantly
-        
+        document.getElementById('vEmail').textContent = newEmail;
         btn.innerHTML = '<i class="fa-solid fa-check"></i> Saved';
         setTimeout(() => btn.innerHTML = 'Save', 2000);
     } catch(e) {
-        console.error("Email update failed:", e);
+        console.error(e);
         btn.innerHTML = 'Error';
         setTimeout(() => btn.innerHTML = 'Save', 2000);
     }
 });
 
-// 2. Resend Email
 document.getElementById('resendLinkBtn').addEventListener('click', async () => {
     const btn = document.getElementById('resendLinkBtn');
     const originalText = btn.innerHTML;
     btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Sending...';
-    
     try {
         const onboardingLink = `https://connectusonline.org/onboarding/onboarding.html?req=${currentQuote.id}`;
         await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-            to_email: currentQuote.workEmail, // Uses updated email if changed
+            to_email: currentQuote.workEmail,
             contact_name: currentQuote.firstName,
             school_name: currentQuote.schoolName,
             onboarding_link: onboardingLink
         });
-        
         btn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Email Sent!';
         setTimeout(() => btn.innerHTML = originalText, 3000);
     } catch(e) {
@@ -308,20 +347,14 @@ document.getElementById('resendLinkBtn').addEventListener('click', async () => {
     }
 });
 
-// 3. Revoke Approval / Cancel Link
 document.getElementById('revokeLinkBtn').addEventListener('click', async () => {
     if(!confirm("Are you sure you want to revoke this approval? The onboarding link in their email will no longer work.")) return;
-    
     const btn = document.getElementById('revokeLinkBtn');
     btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Revoking...';
-    
     try {
-        // By setting paymentCleared back to false, the system locks them out of onboarding 
-        // and pushes them back into your "Pending Payment" queue
         await updateDoc(doc(db, 'quote_requests', currentQuote.id), { paymentCleared: false });
-        
         closePaymentModal();
-        loadQuotes(); // Will refresh and show them as pending again
+        loadQuotes();
     } catch(e) {
         console.error(e);
         alert("Failed to revoke approval.");
@@ -330,4 +363,6 @@ document.getElementById('revokeLinkBtn').addEventListener('click', async () => {
 });
 
 document.getElementById('refreshQuotesBtn').addEventListener('click', loadQuotes);
-loadQuotes(); // Init table on load
+
+// Initialize Data
+loadSubscriptionPlans().then(() => loadQuotes());
