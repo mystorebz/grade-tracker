@@ -97,11 +97,11 @@ loginBtn.addEventListener('click', async () => {
     const rawId  = document.getElementById('loginSchoolId').value.trim();
     const codeIn = document.getElementById('loginAdminCode').value.trim();
 
-    loginMsg.classList.add('hidden');
+    loginMsg.classList.remove('show');
 
     if (!rawId || !codeIn) {
         loginMsg.textContent = 'Please enter both fields.';
-        loginMsg.classList.remove('hidden');
+        loginMsg.classList.add('show');
         return;
     }
 
@@ -267,22 +267,20 @@ saveForceCodeBtn.addEventListener('click', async () => {
 // ── UI Helpers ────────────────────────────────────────────────────────────────
 function showLoginError(msg) {
     loginMsg.textContent = msg;
-    loginMsg.classList.remove('hidden');
+    loginMsg.classList.add('show');
     loginBtn.disabled = false;
     loginBtn.innerHTML = `<i class="fa-solid fa-arrow-right-to-bracket"></i> Secure Login`;
 }
 
 function showForceReset() {
-    forceResetModal.classList.remove('hidden');
-    requestAnimationFrame(() => forceResetModal.classList.remove('opacity-0'));
+    forceResetModal.classList.add('open');
 }
 
 function hideForceReset() {
-    forceResetModal.classList.add('opacity-0');
-    setTimeout(() => forceResetModal.classList.add('hidden'), 300);
+    forceResetModal.classList.remove('open');
 }
 
 function showForceError(msg) {
     forceResetMsg.textContent = msg;
-    forceResetMsg.classList.remove('hidden');
+    forceResetMsg.classList.add('show');
 }
