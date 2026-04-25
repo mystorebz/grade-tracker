@@ -128,7 +128,7 @@ if (registerBtn) {
                 teachers_count: teachersCount,
                 contract_summary: contractSummary,
                 user_email: workEmail
-            });
+            }, { publicKey: '0J9RlI4x1fQ8P9IG9' });
 
             // ── Send 2: Notification email to ConnectUs team (EmailJS) ──
             await emailjs.send('service_kgk97jd', 'template_5gr6dlw', {
@@ -147,7 +147,7 @@ if (registerBtn) {
                 contract_summary: contractSummary,
                 hear_about_us: hearAboutUs || '—',
                 message: message || '—'
-            });
+            }, { publicKey: '0J9RlI4x1fQ8P9IG9' });
 
             // Show success screen
             document.getElementById('registrationFormContainer').classList.add('hidden');
