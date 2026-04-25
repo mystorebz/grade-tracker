@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Approvals & Quotes | ConnectUs HQ</title>
+    
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+    
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-300 font-sans antialiased min-h-screen flex overflow-hidden">
+
+    <aside class="w-64 bg-slate-950 border-r border-slate-800 flex flex-col h-screen flex-shrink-0 relative z-20">
+        <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-400 to-teal-600"></div>
+        
+        <div class="h-20 flex flex-row items-center gap-3 px-6 border-b border-slate-800/50">
+            <img src="../../assets/images/logo.png" alt="ConnectUs" class="h-8 w-auto drop-shadow-md">
+            <div>
+                <h1 class="text-xl font-black text-white tracking-widest uppercase leading-none">ConnectUs <span class="text-emerald-400">HQ</span></h1>
+                <p id="hqAdminBadge" class="text-[9px] font-mono font-bold text-emerald-500 tracking-widest uppercase mt-0.5">Role: Owner</p>
+            </div>
+        </div>
+
+        <nav class="flex-1 overflow-y-auto py-6 px-3 space-y-1">
+            <a href="../index.html" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-chart-line w-5 text-center"></i> Overview
+            </a>
+            <a href="approvals.html" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition text-emerald-400 bg-emerald-900/20 border border-emerald-800/30">
+                <i class="fa-solid fa-file-invoice-dollar w-5 text-center"></i> Approvals & Quotes
+            </a>
+            <a href="../schools/schools.html" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-school w-5 text-center"></i> School Directory
+            </a>
+            <a href="../organizations/organizations.html" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-sitemap w-5 text-center"></i> Organizations
+            </a>
+            
+            <div class="pt-6 pb-2">
+                <p class="px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest">Platform Settings</p>
+            </div>
+            
+            <a href="../team/team.html" id="navTeamBtn" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-user-shield w-5 text-center"></i> HQ Team
+            </a>
+        </nav>
+
+        <div class="p-4 border-t border-slate-800">
+            <div class="bg-slate-900 border border-slate-700 rounded-xl p-3 flex items-center justify-between">
+                <div class="overflow-hidden">
+                    <p id="hqAdminName" class="text-xs font-bold text-white leading-tight truncate">Admin</p>
+                    <p id="hqAdminId" class="text-[10px] text-slate-500 font-mono mt-0.5">HQ-XXXXX</p>
+                </div>
+                <button id="logoutBtn" class="text-slate-400 hover:text-red-400 transition ml-2" title="Logout">
+                    <i class="fa-solid fa-power-off"></i>
+                </button>
+            </div>
+        </div>
+    </aside>
+
+    <main class="flex-1 flex flex-col h-screen overflow-hidden bg-[#0f172a] relative z-10">
+        <header class="h-20 flex items-center justify-between px-8 border-b border-slate-800 bg-slate-900/50 backdrop-blur-md flex-shrink-0">
+            <div>
+                <h2 class="text-xl font-black text-white tracking-wide">Approvals & Quotes</h2>
+                <p class="text-xs text-slate-400 font-semibold mt-1">Process payments and initialize school environments.</p>
+            </div>
+        </header>
+
+        <div class="flex-1 overflow-y-auto p-8">
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden shadow-xl">
+                <div class="p-6 border-b border-slate-700 flex justify-between items-center bg-slate-900/50">
+                    <h3 class="font-black text-white text-lg">Pending Quote Requests</h3>
+                    <button id="refreshQuotesBtn" class="text-xs font-bold text-emerald-400 hover:text-emerald-300 transition flex items-center gap-2 border border-emerald-900 bg-emerald-900/20 px-3 py-1.5 rounded-lg">
+                        <i class="fa-solid fa-rotate-right"></i> Refresh
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-900/80 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-700">
+                                <th class="p-4 font-black">Date</th>
+                                <th class="p-4 font-black">School Name</th>
+                                <th class="p-4 font-black">Contact</th>
+                                <th class="p-4 font-black">Status</th>
+                                <th class="p-4 font-black text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="quotesTableBody" class="text-sm"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div id="paymentModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 max-w-md w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden" id="paymentModalInner">
+            <div class="h-1.5 bg-gradient-to-r from-blue-500 to-emerald-400"></div>
+            <div class="p-8">
+                <div class="flex justify-between items-start mb-6">
+                    <div>
+                        <h3 class="font-black text-xl text-white">Approve & Send Link</h3>
+                        <p id="modalSchoolName" class="text-xs font-bold text-emerald-400 mt-1 uppercase tracking-widest"></p>
+                    </div>
+                    <button onclick="window.closePaymentModal()" class="text-slate-500 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+                </div>
+                <div class="space-y-4">
+                    <p class="text-sm text-slate-400 font-semibold mb-4">Logging payment will verify the account and instantly email the secure onboarding link to <span id="modalContactEmail" class="text-white font-bold"></span>.</p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Amount Paid (BZD)</label>
+                            <input type="number" id="payAmount" placeholder="e.g. 500" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Billing Cycle</label>
+                            <select id="payCycle" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition">
+                                <option value="Monthly">Monthly</option>
+                                <option value="Yearly">Yearly</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <p id="paymentErrorMsg" class="text-xs font-bold text-red-400 bg-red-900/30 border border-red-800/50 p-3 rounded-lg text-center hidden mt-5"></p>
+                <button id="confirmApproveBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-xl transition shadow-lg shadow-emerald-900/50 text-sm tracking-wide mt-6">
+                    <i class="fa-solid fa-paper-plane mr-2"></i> Log Payment & Email Link
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="hq-approvals.js"></script>
+</body>
+</html>
