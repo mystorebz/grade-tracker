@@ -16,8 +16,8 @@ injectAdminLayout('students', 'National Student Registry', 'Lifelong student ide
 // ── 2. STATE ───────────────────────────────────────────────────────────────
 let allStudentsCache  = [];
 let allTeachersCache  = [];
-let currentStudentId  = null;         // Global doc ID (= studentIdNum)
-let claimedStudentDoc = null;         // Temp hold during claim lookup
+let currentStudentId  = null;
+let claimedStudentDoc = null;
 
 const CLASSES = {
     'Primary':       ['Infant 1','Infant 2','Standard 1','Standard 2','Standard 3','Standard 4','Standard 5','Standard 6'],
@@ -33,14 +33,14 @@ const filterStatusSelect  = document.getElementById('filterStudentStatus');
 // ── 3. HELPERS ─────────────────────────────────────────────────────────────
 function generateStudentId() {
     const year  = new Date().getFullYear().toString().slice(-2);
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No ambiguous chars
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let rand = '';
     for (let i = 0; i < 5; i++) rand += chars.charAt(Math.floor(Math.random() * chars.length));
     return `S${year}-${rand}`;
 }
 
 function generatePin() {
-    return Math.floor(1000 + Math.random() * 9000).toString(); // 4-digit
+    return Math.floor(1000 + Math.random() * 9000).toString();
 }
 
 function escHtml(str) {
@@ -63,20 +63,18 @@ function getClassList() {
     return CLASSES[session.schoolType || 'Primary'] || CLASSES['Primary'];
 }
 
-// ── 4. DATA LOADING — GLOBAL QUERY ────────────────────────────────────────
+// ── 4. DATA LOADING ────────────────────────────────────────────────────────
 async function loadStudents() {
     tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center text-slate-400 font-semibold">
         <i class="fa-solid fa-spinner fa-spin text-emerald-400 text-2xl mb-3 block"></i>Loading students...
     </td></tr>`;
 
     try {
-        // Pull from global /students where currentSchoolId matches this school
         const [sSnap, tSnap] = await Promise.all([
             getDocs(query(collection(db, 'students'), where('currentSchoolId', '==', session.schoolId))),
             getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId)))
         ]);
 
-        // Build teacher name map
         const teacherMap = {};
         allTeachersCache = [];
         tSnap.forEach(d => {
@@ -90,13 +88,11 @@ async function loadStudents() {
             teacherName: teacherMap[d.data().teacherId] || '—'
         }));
 
-        // Populate teacher filter
         if (filterTeacherSelect.options.length <= 1) {
             filterTeacherSelect.innerHTML = '<option value="">All Teachers</option>' +
                 allTeachersCache.map(t => `<option value="${t.id}">${escHtml(t.name)}</option>`).join('');
         }
 
-        // Populate class filter
         if (filterClassSelect.options.length <= 2) {
             filterClassSelect.innerHTML =
                 '<option value="">All Classes</option><option value="unassigned">Unassigned Only</option>' +
@@ -121,11 +117,11 @@ function renderTable() {
     const filterC    = filterClassSelect.value;
     const filterStat = filterStatusSelect.value;
 
-    if (filterT)                filtered = filtered.filter(s => s.teacherId === filterT);
+    if (filterT)                  filtered = filtered.filter(s => s.teacherId === filterT);
     if (filterC === 'unassigned') filtered = filtered.filter(s => !s.className || !s.teacherId);
-    else if (filterC)           filtered = filtered.filter(s => s.className === filterC);
-    if (filterStat)             filtered = filtered.filter(s => (s.enrollmentStatus || 'Active') === filterStat);
-    if (term)                   filtered = filtered.filter(s => (s.name || '').toLowerCase().includes(term));
+    else if (filterC)             filtered = filtered.filter(s => s.className === filterC);
+    if (filterStat)               filtered = filtered.filter(s => (s.enrollmentStatus || 'Active') === filterStat);
+    if (term)                     filtered = filtered.filter(s => (s.name || '').toLowerCase().includes(term));
 
     if (!filtered.length) {
         tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center text-slate-400 italic font-semibold">
@@ -190,8 +186,8 @@ document.getElementById('searchInput')?.addEventListener('input', renderTable);
 
 // ── 7. ADD / CLAIM STUDENT MODAL ──────────────────────────────────────────
 window.openAddStudentModal = () => {
-    // Reset form fields
-    ['sGlobalId','sName','sDob','sParentName','sParentPhone'].forEach(id => {
+    // Reset all form fields including the email field
+    ['sGlobalId','sName','sDob','sParentName','sParentPhone','sEmail'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
@@ -201,9 +197,8 @@ window.openAddStudentModal = () => {
     document.getElementById('saveStudentBtn').textContent = 'Enroll into National Registry';
     claimedStudentDoc = null;
 
-    // Populate class and teacher dropdowns
     const sClass = document.getElementById('sClass');
-    sClass.innerHTML = '<option value="">-- Select Class --</option>' +
+    sClass.innerHTML = '<option value="">-- Select Class (optional) --</option>' +
         getClassList().map(c => `<option value="${c}">${c}</option>`).join('');
 
     const sTeacher = document.getElementById('sTeacher');
@@ -220,7 +215,7 @@ window.closeAddStudentModal = () => {
 
 // ── CLAIM LOOKUP ──
 document.getElementById('lookupStudentBtn').addEventListener('click', async () => {
-    const rawId = document.getElementById('sGlobalId').value.trim().toUpperCase();
+    const rawId   = document.getElementById('sGlobalId').value.trim().toUpperCase();
     const preview = document.getElementById('claimPreview');
     const error   = document.getElementById('claimError');
     preview.classList.add('hidden');
@@ -240,10 +235,22 @@ document.getElementById('lookupStudentBtn').addEventListener('click', async () =
         } else {
             claimedStudentDoc = { id: snap.id, ...snap.data() };
             const d = claimedStudentDoc;
-            document.getElementById('claimPreviewName').textContent  = d.name || 'Unknown';
-            document.getElementById('claimPreviewDob').textContent   = d.dob ? `DOB: ${d.dob}` : '';
-            document.getElementById('claimPreviewSchool').textContent = d.currentSchoolId
-                ? `Currently enrolled at: ${d.currentSchoolId}` : 'Not currently enrolled anywhere';
+
+            document.getElementById('claimPreviewName').textContent = d.name || 'Unknown';
+            document.getElementById('claimPreviewDob').textContent  = d.dob ? `DOB: ${d.dob}` : '';
+
+            // Show school status + email warning if email is missing
+            // Missing email means the student cannot use Forgot PIN until they add one on first login
+            document.getElementById('claimPreviewSchool').innerHTML =
+                (d.currentSchoolId ? `Currently enrolled at: ${d.currentSchoolId}` : 'Not currently enrolled anywhere') +
+                (!d.email
+                    ? `<br><span style="color:#d97706;font-size:10.5px;font-weight:700;">
+                          ⚠ No email on file — student must add one during first login setup.
+                       </span>`
+                    : `<br><span style="color:#059669;font-size:10.5px;font-weight:600;">
+                          ✓ Email on file: ${escHtml(d.email)}
+                       </span>`);
+
             preview.classList.remove('hidden');
             document.getElementById('saveStudentBtn').textContent = `Claim ${d.name} into This School`;
         }
@@ -265,22 +272,40 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
     try {
         if (claimedStudentDoc) {
             // ── CLAIM WORKFLOW ────────────────────────────────────────────
+            // Class and teacherId can be assigned via Reassign after claiming.
             await updateDoc(doc(db, 'students', claimedStudentDoc.id), {
                 currentSchoolId:  session.schoolId,
                 enrollmentStatus: 'Active',
-                // className and teacherId can be set via Reassign after claiming
             });
+
         } else {
             // ── CREATE WORKFLOW ───────────────────────────────────────────
             const name        = document.getElementById('sName').value.trim();
             const dob         = document.getElementById('sDob').value;
+            const email       = document.getElementById('sEmail')?.value.trim() || '';
             const parentName  = document.getElementById('sParentName').value.trim();
             const parentPhone = document.getElementById('sParentPhone').value.trim();
             const className   = document.getElementById('sClass').value;
             const teacherId   = document.getElementById('sTeacher').value;
 
+            // ── Validation ────────────────────────────────────────────────
+            // name and dob are the minimum identity fields.
+            // email is required for the Forgot PIN recovery flow.
+            // class and teacher are optional — admin can assign via Reassign later.
             if (!name || !dob) {
-                alert('Student name and date of birth are required.');
+                showMsg('addStudentMsg', 'Student name and date of birth are required.', true);
+                btn.disabled = false;
+                btn.textContent = 'Enroll into National Registry';
+                return;
+            }
+            if (!email) {
+                showMsg('addStudentMsg', 'Email address is required so the student can recover their PIN.', true);
+                btn.disabled = false;
+                btn.textContent = 'Enroll into National Registry';
+                return;
+            }
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                showMsg('addStudentMsg', 'Please enter a valid email address.', true);
                 btn.disabled = false;
                 btn.textContent = 'Enroll into National Registry';
                 return;
@@ -288,13 +313,14 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
 
             const newId = generateStudentId();
             await setDoc(doc(db, 'students', newId), {
-                studentIdNum:     newId,         // = document ID (redundant but useful for reads)
+                studentIdNum:     newId,
                 name,
                 dob,
+                email,                          // Required for forgot-pin flow
                 pin:              generatePin(),
                 parentName,
                 parentPhone,
-                className:        className || '',
+                className:        className || '',   // Empty = unassigned, can be set via Reassign
                 teacherId:        teacherId || '',
                 currentSchoolId:  session.schoolId,
                 enrollmentStatus: 'Active',
@@ -346,11 +372,10 @@ document.getElementById('confirmTransferBtn').addEventListener('click', async ()
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Sealing Record...`;
 
     try {
-        const s      = allStudentsCache.find(x => x.id === currentStudentId);
-        const sRef   = doc(db, 'students', currentStudentId);
-        const batch  = writeBatch(db);
+        const s     = allStudentsCache.find(x => x.id === currentStudentId);
+        const sRef  = doc(db, 'students', currentStudentId);
+        const batch = writeBatch(db);
 
-        // ── Snapshot entry for academicHistory ───────────────────────────
         const snapshot = {
             schoolId:   session.schoolId,
             schoolName: session.schoolName || session.schoolId,
@@ -358,15 +383,12 @@ document.getElementById('confirmTransferBtn').addEventListener('click', async ()
             className:  s?.className || '',
             leftAt:     new Date().toISOString(),
             reason,
-            ...(gpa  ? { gpa: parseFloat(gpa) }  : {}),
+            ...(gpa   ? { gpa: parseFloat(gpa) } : {}),
             ...(notes ? { notes }                 : {})
         };
 
-        // Command 1: Update student global doc
-        // - Transferred: clear currentSchoolId so another school can claim them
-        // - Graduated / Archived / Expelled / Dropped Out: keep school ref, update status
-        const isTransfer  = reason === 'Transferred';
-        const newStatus   = reason === 'Graduated' ? 'Graduated' : isTransfer ? 'Transferred' : 'Archived';
+        const isTransfer = reason === 'Transferred';
+        const newStatus  = reason === 'Graduated' ? 'Graduated' : isTransfer ? 'Transferred' : 'Archived';
 
         batch.update(sRef, {
             enrollmentStatus: newStatus,
@@ -376,16 +398,14 @@ document.getElementById('confirmTransferBtn').addEventListener('click', async ()
             academicHistory:  arrayUnion(snapshot)
         });
 
-        // Command 2: Write notification so old-school logic can be tracked
-        // (Future: notify new school dashboard in real time)
         const notifRef = doc(collection(db, 'schools', session.schoolId, 'notifications'));
         batch.set(notifRef, {
-            type:       'student_enrollment_closed',
-            studentId:  currentStudentId,
+            type:        'student_enrollment_closed',
+            studentId:   currentStudentId,
             studentName: s?.name || '',
             reason,
-            closedBy:   session.adminId || 'System',
-            closedAt:   new Date().toISOString()
+            closedBy:    session.adminId || 'System',
+            closedAt:    new Date().toISOString()
         });
 
         await batch.commit();
@@ -425,7 +445,7 @@ window.closeReassignModal = () => closeOverlay('reassignStudentModal', 'reassign
 document.getElementById('saveReassignBtn').addEventListener('click', async () => {
     const btn = document.getElementById('saveReassignBtn');
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
-    btn.disabled = true;
+    btn.disabled  = true;
 
     try {
         await updateDoc(doc(db, 'students', currentStudentId), {
@@ -449,16 +469,15 @@ window.openStudentPanel = async (studentId) => {
     currentStudentId = studentId;
     const student = allStudentsCache.find(s => s.id === studentId);
 
-    document.getElementById('sPanelName').textContent  = student?.name    || 'Student';
+    document.getElementById('sPanelName').textContent  = student?.name     || 'Student';
     document.getElementById('sPanelId').textContent    = studentId;
     document.getElementById('sPanelClass').textContent = student?.className || '—';
 
     const printBtn = document.getElementById('sPanelPrintBtn');
     if (printBtn) printBtn.onclick = () => window.printStudentRecord(studentId);
 
-    // Academic history timeline
-    const history = student?.academicHistory || [];
-    const histBar = document.getElementById('academicHistoryBar');
+    const history  = student?.academicHistory || [];
+    const histBar  = document.getElementById('academicHistoryBar');
     const histList = document.getElementById('academicHistoryList');
     if (history.length) {
         histList.innerHTML = history.map(h => `
@@ -476,8 +495,7 @@ window.openStudentPanel = async (studentId) => {
         histBar.classList.add('hidden');
     }
 
-    // Reset panel state
-    const loader = document.getElementById('sPanelLoader');
+    const loader     = document.getElementById('sPanelLoader');
     const accordions = document.getElementById('subjectAccordions');
     loader.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-4xl mb-3 text-emerald-500"></i><p class="font-semibold text-sm">Loading academic records...</p>`;
     loader.classList.remove('hidden');
@@ -487,7 +505,6 @@ window.openStudentPanel = async (studentId) => {
     openOverlay('studentPanel', 'studentPanelInner', true);
 
     try {
-        // Try global path first; fall back to legacy siloed path for pre-migration data
         let gradesSnap = await getDocs(collection(db, 'students', studentId, 'grades'));
         if (gradesSnap.empty) {
             gradesSnap = await getDocs(collection(db, 'schools', session.schoolId, 'students', studentId, 'grades'));
@@ -498,7 +515,6 @@ window.openStudentPanel = async (studentId) => {
             return;
         }
 
-        // Group by subject
         const bySubject = {};
         gradesSnap.forEach(d => {
             const g    = { id: d.id, ...d.data() };
@@ -508,9 +524,9 @@ window.openStudentPanel = async (studentId) => {
         });
 
         accordions.innerHTML = Object.entries(bySubject).map(([subject, grades]) => {
-            const avg  = grades.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / grades.length;
-            const ac   = avg >= 75 ? 'text-green-600' : avg >= 60 ? 'text-amber-600' : 'text-red-600';
-            const ab   = avg >= 75 ? 'bg-green-50 border-green-200' : avg >= 60 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200';
+            const avg = grades.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / grades.length;
+            const ac  = avg >= 75 ? 'text-green-600' : avg >= 60 ? 'text-amber-600' : 'text-red-600';
+            const ab  = avg >= 75 ? 'bg-green-50 border-green-200' : avg >= 60 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200';
 
             const rows = grades.map(g => {
                 const pct = g.max ? Math.round(g.score / g.max * 100) : null;
@@ -580,7 +596,7 @@ window.closeStudentPanel = () => {
 window.openAssignmentModal = (g) => {
     const pct  = g.max ? Math.round(g.score / g.max * 100) : null;
     const c    = pct == null ? 'text-slate-600' : pct >= 75 ? 'text-green-600' : pct >= 60 ? 'text-amber-600' : 'text-red-600';
-    const fill = pct == null ? '#94a3b8'        : pct >= 75 ? '#22c55e'        : pct >= 60 ? '#f59e0b'        : '#ef4444';
+    const fill = pct == null ? '#94a3b8' : pct >= 75 ? '#22c55e' : pct >= 60 ? '#f59e0b' : '#ef4444';
     const logs = (g.historyLogs || []).map(l =>
         typeof l === 'object'
             ? `[${l.changedAt}] ${l.oldScore}/${l.oldMax} → ${l.newScore}/${l.newMax}. Reason: ${l.reason}`
@@ -628,11 +644,11 @@ window.printStudentRecord = async (studentId) => {
     if (!sDoc.exists()) { alert('Student not found.'); return; }
     const s = sDoc.data();
 
-    // Try global path first; fall back to legacy siloed path for pre-migration data
     let gradesSnap = await getDocs(collection(db, 'students', studentId, 'grades'));
     if (gradesSnap.empty) {
         gradesSnap = await getDocs(collection(db, 'schools', session.schoolId, 'students', studentId, 'grades'));
     }
+
     const bySem = {};
     gradesSnap.forEach(d => {
         const g   = d.data();
@@ -643,7 +659,7 @@ window.printStudentRecord = async (studentId) => {
         bySem[sem][sub].push(g);
     });
 
-    const history = (s.academicHistory || []);
+    const history     = (s.academicHistory || []);
     const historyHtml = history.length ? `
         <div style="margin-bottom:30px;">
             <h3 style="font-size:13px;font-weight:bold;background:#334155;color:white;padding:8px 15px;border-radius:4px;margin-bottom:10px;">ACADEMIC HISTORY</h3>
