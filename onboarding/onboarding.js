@@ -13,7 +13,18 @@ let requestData = null;
 const urlParams = new URLSearchParams(window.location.search);
 const reqId = urlParams.get('req');
 
-// Helper: Generate School ID (e.g., SCH-8B2X9)
+// ─── Helper: SHA-256 Hash ─────────────────────────────────────────────────────
+// Normalizes to lowercase + trimmed before hashing so answers are case-insensitive.
+async function sha256(text) {
+    const normalized = text.toLowerCase().trim();
+    const encoded = new TextEncoder().encode(normalized);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
+    return Array.from(new Uint8Array(hashBuffer))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+}
+
+// ─── Helper: Generate School ID (e.g., SCH-8B2X9) ────────────────────────────
 function generateSchoolId() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let rand = '';
@@ -21,7 +32,7 @@ function generateSchoolId() {
     return `SCH-${rand}`;
 }
 
-// 1. Boot Sequence: Verify Request ID
+// ─── 1. Boot Sequence: Verify Request ID ─────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
     if (!reqId) {
         showError("Invalid or missing invitation link. Please check your email.");
@@ -37,7 +48,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         requestData = reqSnap.data();
 
-        // Security check: Has this request already been converted?
         if (requestData.fulfilled) {
             showError("This school has already been initialized. Please proceed to the Admin Login.");
             return;
@@ -47,13 +57,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('obSchoolName').value = requestData.schoolName || '';
         if (requestData.schoolType) {
             const st = document.getElementById('obSchoolType');
-            // Select matching option if exists
-            for(let i=0; i<st.options.length; i++) {
-                if(st.options[i].value === requestData.schoolType) st.selectedIndex = i;
+            for (let i = 0; i < st.options.length; i++) {
+                if (st.options[i].value === requestData.schoolType) st.selectedIndex = i;
             }
         }
 
-        // Show form
         loadingState.classList.add('hidden');
         setupForm.classList.remove('hidden');
 
@@ -63,17 +71,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-// 2. Initialize School Infrastructure
+// ─── 2. Initialize School Infrastructure ─────────────────────────────────────
 initializeBtn.addEventListener('click', async () => {
     const schoolName = document.getElementById('obSchoolName').value.trim();
-    const district = document.getElementById('obDistrict').value;
+    const district   = document.getElementById('obDistrict').value;
     const schoolType = document.getElementById('obSchoolType').value;
-    const code = document.getElementById('obAdminCode').value;
-    const confirm = document.getElementById('obAdminCodeConfirm').value;
+    const code       = document.getElementById('obAdminCode').value;
+    const confirm    = document.getElementById('obAdminCodeConfirm').value;
+    const secQ1      = document.getElementById('obSecQ1').value;
+    const secA1      = document.getElementById('obSecA1').value.trim();
+    const secQ2      = document.getElementById('obSecQ2').value;
+    const secA2      = document.getElementById('obSecA2').value.trim();
 
     obErrorMsg.classList.add('hidden');
 
-    // Validation
+    // ── Validation ──
     if (!schoolName || !district || !schoolType || !code) {
         showValidation("All fields are required."); return;
     }
@@ -83,29 +95,49 @@ initializeBtn.addEventListener('click', async () => {
     if (code.length < 6) {
         showValidation("Admin code must be at least 6 characters."); return;
     }
+    if (!secQ1 || !secA1) {
+        showValidation("Please select and answer Security Question 1."); return;
+    }
+    if (!secQ2 || !secA2) {
+        showValidation("Please select and answer Security Question 2."); return;
+    }
+    if (secQ1 === secQ2) {
+        showValidation("Please choose two different security questions."); return;
+    }
 
     initializeBtn.disabled = true;
     initializeBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Deploying Infrastructure...';
 
     try {
+        // ── Hash sensitive fields before ANY Firestore write ──
+        const [hashedCode, hashedA1, hashedA2] = await Promise.all([
+            sha256(code),
+            sha256(secA1),
+            sha256(secA2)
+        ]);
+
         const newSchoolId = generateSchoolId();
         const batch = writeBatch(db);
 
-        // A. Create the core School Document
+        // A. Create the core School Document — no plain-text passwords
         const schoolRef = doc(db, 'schools', newSchoolId);
         batch.set(schoolRef, {
             schoolName,
             district,
             schoolType,
-            adminCode: code,
-            isVerified: true,              // Ready to log in immediately
-            requiresPinReset: false,       // They just set it
-            subscriptionPlan: 'pro',       // You can map this dynamically later
-            activeSemesterId: 'sem_1',     // We will create this below
-            contactEmail: requestData.workEmail || '',
-            contactName: `${requestData.firstName} ${requestData.lastName}` || '',
-            phone: requestData.phone || '',
-            createdAt: new Date().toISOString()
+            adminCode:    hashedCode,   // SHA-256 hash
+            securityQ1:   secQ1,        // Question text (not sensitive)
+            securityA1:   hashedA1,     // SHA-256 hash
+            securityQ2:   secQ2,        // Question text (not sensitive)
+            securityA2:   hashedA2,     // SHA-256 hash
+            isVerified:          true,
+            requiresPinReset:    false,
+            subscriptionPlan:    'pro',
+            activeSemesterId:    'sem_1',
+            contactEmail:  requestData.workEmail || '',
+            contactName:   `${requestData.firstName || ''} ${requestData.lastName || ''}`.trim(),
+            phone:         requestData.phone || '',
+            createdAt:     new Date().toISOString()
         });
 
         // B. Generate Default Grading Periods (Semesters)
@@ -114,16 +146,16 @@ initializeBtn.addEventListener('click', async () => {
             { id: 'sem_2', name: 'Term 2', order: 2 },
             { id: 'sem_3', name: 'Term 3', order: 3 }
         ];
-        
+
         sems.forEach(sem => {
             const semRef = doc(collection(db, 'schools', newSchoolId, 'semesters'), sem.id);
             batch.set(semRef, {
-                name: sem.name,
-                order: sem.order,
+                name:      sem.name,
+                order:     sem.order,
                 startDate: '',
-                endDate: '',
-                archived: false,
-                isLocked: false
+                endDate:   '',
+                archived:  false,
+                isLocked:  false
             });
         });
 
@@ -140,16 +172,18 @@ initializeBtn.addEventListener('click', async () => {
         document.getElementById('finalSchoolId').textContent = newSchoolId;
 
     } catch (error) {
-        console.error("Initialization Failed: ", error);
-        showValidation("Failed to create school environment. Check console.");
+        console.error("Initialization Failed:", error);
+        showValidation("Failed to create school environment. Please check the console.");
         initializeBtn.disabled = false;
         initializeBtn.innerHTML = 'Initialize Infrastructure →';
     }
 });
 
-// UI Helpers
+// ─── UI Helpers ───────────────────────────────────────────────────────────────
 function showError(msg) {
-    loadingState.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-4xl text-red-500 mb-4"></i><p class="font-bold text-slate-600">${msg}</p>`;
+    loadingState.innerHTML = `
+        <i class="fa-solid fa-triangle-exclamation text-4xl text-red-500 mb-4"></i>
+        <p class="font-bold text-slate-600">${msg}</p>`;
 }
 
 function showValidation(msg) {
