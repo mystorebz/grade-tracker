@@ -32,6 +32,15 @@ function generateSchoolId() {
     return `SCH-${rand}`;
 }
 
+// ── Generate Admin ID (e.g., A26-8B2X9) ─────────────────────────────────────
+function generateAdminId() {
+    const year  = new Date().getFullYear().toString().slice(-2);
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let rand = '';
+    for (let i = 0; i < 5; i++) rand += chars.charAt(Math.floor(Math.random() * chars.length));
+    return `A${year}-${rand}`;
+}
+
 // ── 1. Boot Sequence: Verify Request ID ───────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
     if (!reqId) {
@@ -117,6 +126,7 @@ initializeBtn.addEventListener('click', async () => {
         ]);
 
         const newSchoolId = generateSchoolId();
+        const newSuperAdminId = generateAdminId();
         const batch       = writeBatch(db);
 
         // A. Create the core School Document
@@ -125,13 +135,14 @@ initializeBtn.addEventListener('click', async () => {
             schoolName,
             district,
             schoolType,
-            adminCode:            hashedCode,   // SHA-256 hash
-            securityQ1:           secQ1,        // Question text (not sensitive)
-            securityA1:           hashedA1,     // SHA-256 hash
-            securityQ2:           secQ2,        // Question text (not sensitive)
-            securityA2:           hashedA2,     // SHA-256 hash
-            securityQuestionsSet: true,         // Enables forgot-pin flow immediately
-            isSuperAdmin:         true,         // This account is the school's super admin
+            superAdminId:         newSuperAdminId, // Added Super Admin ID
+            adminCode:            hashedCode,      // SHA-256 hash
+            securityQ1:           secQ1,           // Question text (not sensitive)
+            securityA1:           hashedA1,        // SHA-256 hash
+            securityQ2:           secQ2,           // Question text (not sensitive)
+            securityA2:           hashedA2,        // SHA-256 hash
+            securityQuestionsSet: true,            // Enables forgot-pin flow immediately
+            isSuperAdmin:         true,            // This account is the school's super admin
             isVerified:           true,
             requiresPinReset:     false,
             subscriptionPlan:     'pro',
@@ -172,6 +183,7 @@ initializeBtn.addEventListener('click', async () => {
         setupForm.classList.add('hidden');
         successScreen.classList.remove('hidden');
         document.getElementById('finalSchoolId').textContent = newSchoolId;
+        document.getElementById('finalAdminId').textContent = newSuperAdminId; // Displayed on UI
 
     } catch (error) {
         console.error("Initialization Failed:", error);
