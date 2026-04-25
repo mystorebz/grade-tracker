@@ -68,11 +68,61 @@
                         </div>
                     </div>
 
+                    <!-- Master Admin Code -->
                     <div class="pt-4 border-t border-slate-100">
                         <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Master Admin Code *</label>
                         <p class="text-xs text-slate-400 font-semibold mb-2">This is the master password you will use to log into the Admin Dashboard.</p>
                         <input type="password" id="obAdminCode" placeholder="Min. 6 characters" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 transition mb-3">
                         <input type="password" id="obAdminCodeConfirm" placeholder="Confirm Admin Code" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 transition">
+                    </div>
+
+                    <!-- Security Questions -->
+                    <div class="pt-4 border-t border-slate-100">
+                        <div class="bg-amber-50 border border-amber-100 p-3 rounded-xl flex items-start gap-3 mb-4">
+                            <i class="fa-solid fa-key text-amber-500 mt-0.5 text-base"></i>
+                            <div>
+                                <h4 class="font-black text-amber-900 text-xs uppercase tracking-wide">Account Recovery</h4>
+                                <p class="text-xs text-slate-500 font-semibold mt-0.5">These two questions will verify your identity if you ever forget your PIN. Answers are not case-sensitive.</p>
+                            </div>
+                        </div>
+
+                        <!-- Question 1 -->
+                        <div class="mb-4">
+                            <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Security Question 1 *</label>
+                            <select id="obSecQ1" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 transition mb-2">
+                                <option value="">Select a question...</option>
+                                <option value="What was the name of your first pet?">What was the name of your first pet?</option>
+                                <option value="What city were you born in?">What city were you born in?</option>
+                                <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
+                                <option value="What was the name of your primary school?">What was the name of your primary school?</option>
+                                <option value="What is the name of the street you grew up on?">What is the name of the street you grew up on?</option>
+                                <option value="What was your childhood nickname?">What was your childhood nickname?</option>
+                                <option value="What is your oldest sibling's middle name?">What is your oldest sibling's middle name?</option>
+                                <option value="What was the make of your first car?">What was the make of your first car?</option>
+                                <option value="In what village or town did your parents meet?">In what village or town did your parents meet?</option>
+                                <option value="What is the name of your favourite teacher?">What is the name of your favourite teacher?</option>
+                            </select>
+                            <input type="text" id="obSecA1" placeholder="Your answer" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
+                        </div>
+
+                        <!-- Question 2 -->
+                        <div>
+                            <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Security Question 2 *</label>
+                            <select id="obSecQ2" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 transition mb-2">
+                                <option value="">Select a question...</option>
+                                <option value="What was the name of your first pet?">What was the name of your first pet?</option>
+                                <option value="What city were you born in?">What city were you born in?</option>
+                                <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
+                                <option value="What was the name of your primary school?">What was the name of your primary school?</option>
+                                <option value="What is the name of the street you grew up on?">What is the name of the street you grew up on?</option>
+                                <option value="What was your childhood nickname?">What was your childhood nickname?</option>
+                                <option value="What is your oldest sibling's middle name?">What is your oldest sibling's middle name?</option>
+                                <option value="What was the make of your first car?">What was the make of your first car?</option>
+                                <option value="In what village or town did your parents meet?">In what village or town did your parents meet?</option>
+                                <option value="What is the name of your favourite teacher?">What is the name of your favourite teacher?</option>
+                            </select>
+                            <input type="text" id="obSecA2" placeholder="Your answer" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
+                        </div>
                     </div>
                 </div>
 
