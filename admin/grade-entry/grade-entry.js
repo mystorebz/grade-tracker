@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('agDate').valueAsDate = new Date();
 
     await loadSemesters();
+    await loadGradeTypes();
 
     document.getElementById('lookupBtn').addEventListener('click', lookupStudent);
     document.getElementById('lookupId').addEventListener('keydown', e => {
@@ -68,7 +69,44 @@ async function loadSemesters() {
     }
 }
 
-// ── 5. STUDENT LOOKUP ─────────────────────────────────────────────────────
+
+// ── 5. LOAD GRADE TYPES ───────────────────────────────────────────────────
+async function loadGradeTypes() {
+    const sel = document.getElementById('agType');
+    try {
+        // Check cache first
+        const cacheKey = 'connectus_gradeTypes_' + session.schoolId;
+        let types = null;
+
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+            types = JSON.parse(cached);
+        } else {
+            const snap = await getDocs(collection(db, 'schools', session.schoolId, 'gradeTypes'));
+            types = snap.docs
+                .map(d => ({ id: d.id, ...d.data() }))
+                .sort((a, b) => (a.order || 0) - (b.order || 0));
+            if (types.length) localStorage.setItem(cacheKey, JSON.stringify(types));
+        }
+
+        // Fallback to defaults if empty
+        if (!types || !types.length) {
+            types = [
+                { name: 'Test' }, { name: 'Quiz' }, { name: 'Assignment' },
+                { name: 'Homework' }, { name: 'Project' }, { name: 'Final Exam' }
+            ];
+        }
+
+        sel.innerHTML = '<option value="">Select type...</option>' +
+            types.map(t => '<option value="' + t.name + '">' + t.name + (t.weight ? ' (' + t.weight + '%)' : '') + '</option>').join('');
+    } catch (e) {
+        console.error('[AdminGradeEntry] loadGradeTypes:', e);
+        // Fallback
+        sel.innerHTML = '<option value="">Test</option><option>Quiz</option><option>Assignment</option><option>Project</option><option>Final Exam</option>';
+    }
+}
+
+// ── 6. STUDENT LOOKUP ─────────────────────────────────────────────────────
 // ID-only — no name search. Student must belong to THIS school (currentSchoolId).
 async function lookupStudent() {
     const rawId  = document.getElementById('lookupId').value.trim().toUpperCase();
@@ -151,7 +189,7 @@ window.resetLookup = function() {
     document.getElementById('gradeSavedBanner').classList.add('hidden');
 };
 
-// ── 6. LIVE PREVIEW ───────────────────────────────────────────────────────
+// ── 7. LIVE PREVIEW ───────────────────────────────────────────────────────
 function updatePreview() {
     const score = parseFloat(document.getElementById('agScore').value);
     const max   = parseFloat(document.getElementById('agMax').value);
@@ -175,7 +213,7 @@ function updatePreview() {
     }
 }
 
-// ── 7. SAVE GRADE ─────────────────────────────────────────────────────────
+// ── 8. SAVE GRADE ─────────────────────────────────────────────────────────
 // Grades are saved to the SAME path as teacher grades:
 //   schools/{schoolId}/students/{studentId}/grades
 // This ensures all existing grade-reading code works without changes.
