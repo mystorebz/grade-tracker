@@ -20,8 +20,16 @@ let rawSemesters            = [];
 let isSemesterLocked        = false;
 let gradeDetailCache        = {};
 let schoolLimit             = 50;
+let cachedEvaluations       = []; 
 
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
+
+// New Global State for Evaluation Stars
+window.evalRatings = {
+    academicMastery: 0, taskExecution: 0, engagement: 0,
+    academicGrowth: 0, socialDynamics: 0, resilience: 0,
+    ruleAdherence: 0, conflictResolution: 0, respectAuthority: 0
+};
 
 function getClasses()        { return session.teacherData.classes || [session.teacherData.className || '']; }
 function getActiveSubjects() { return (session.teacherData.subjects || []).filter(s => !s.archived); }
@@ -60,6 +68,9 @@ async function init() {
 
     await Promise.all([fetchSchoolLimit(), loadSemesters()]);
     await loadStudents();
+    
+    // Initialize stars
+    window.buildStarGroups();
 }
 
 // ── 4. SCHOOL PLAN LIMIT ──────────────────────────────────────────────────────
@@ -97,6 +108,11 @@ async function loadSemesters() {
 
         const semSel   = document.getElementById('activeSemester');
         const sbPeriod = document.getElementById('sb-period');
+        
+        // Also populate eval dropdown
+        const evalSemSel = document.getElementById('evalSemester');
+        if (evalSemSel) evalSemSel.innerHTML = '';
+
         if (semSel) {
             semSel.innerHTML = '';
             rawSemesters.forEach(s => {
@@ -104,6 +120,13 @@ async function loadSemesters() {
                 opt.value = s.id; opt.textContent = s.name;
                 if (s.id === activeId) opt.selected = true;
                 semSel.appendChild(opt);
+                
+                if(evalSemSel) {
+                    const eOpt = document.createElement('option');
+                    eOpt.value = s.id; eOpt.textContent = s.name;
+                    if (s.id === activeId) eOpt.selected = true;
+                    evalSemSel.appendChild(eOpt);
+                }
             });
             checkLockStatus();
             semSel.addEventListener('change', () => {
@@ -299,8 +322,6 @@ window.closeAddStudentModal = function() { closeOverlay('addStudentModal', 'addS
 window.toggleAddMethod      = function() {};
 
 // ── SEARCH: ID-ONLY — privacy protection for national registry ────────────────
-// A student is claimable ONLY if currentSchoolId is empty (unassigned globally).
-// Students enrolled at any school (including this one) are not shown.
 window.searchStudentRegistry = async function() {
     const rawId      = (document.getElementById('sSearchQuery')?.value || '').trim().toUpperCase();
     const resultsDiv = document.getElementById('sSearchResults');
@@ -334,7 +355,6 @@ window.searchStudentRegistry = async function() {
 
         const s = { id: snap.id, ...snap.data() };
 
-        // ── Already enrolled somewhere — not claimable ─────────────────────
         if (s.currentSchoolId && s.currentSchoolId !== '') {
             const msg = s.currentSchoolId === session.schoolId
                 ? 'This student is already enrolled at your school.'
@@ -343,7 +363,6 @@ window.searchStudentRegistry = async function() {
             btn.textContent = 'Search'; btn.disabled = false; return;
         }
 
-        // ── Available to claim ─────────────────────────────────────────────
         const lastSchool = s.academicHistory?.length
             ? `Last school: ${s.academicHistory[s.academicHistory.length-1].schoolName || s.academicHistory[s.academicHistory.length-1].schoolId}`
             : 'No prior enrollment';
@@ -373,7 +392,6 @@ window.searchStudentRegistry = async function() {
     btn.textContent = 'Search'; btn.disabled = false;
 };
 
-// ── CLAIM ─────────────────────────────────────────────────────────────────────
 window.claimSearchedStudent = async function(studentId) {
     const classVal = document.getElementById('sClass').value;
     if (!classVal) { alert('Please select a class from the "Assign to Class" dropdown first, then claim.'); return; }
@@ -395,7 +413,6 @@ window.claimSearchedStudent = async function(studentId) {
     }
 };
 
-// ── SAVE NEW STUDENT ──────────────────────────────────────────────────────────
 document.getElementById('saveStudentBtn').addEventListener('click', async () => {
     const assignedClass = document.getElementById('sClass').value;
     const name          = document.getElementById('sName').value.trim();
@@ -445,7 +462,26 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
     btn.textContent = 'Save to Roster'; btn.disabled = false;
 });
 
-// ── 10. STUDENT PANEL ─────────────────────────────────────────────────────────
+// ── 10. STUDENT PANEL & TABS ──────────────────────────────────────────────────
+window.switchStudentTab = function(tabName) {
+    const btnG = document.getElementById('tabBtnGrades');
+    const btnE = document.getElementById('tabBtnEvaluations');
+    const conG = document.getElementById('tabContentGrades');
+    const conE = document.getElementById('tabContentEvaluations');
+
+    if(tabName === 'grades') {
+        btnG.style.borderBottomColor = '#0ea871'; btnG.style.color = '#0d1f35';
+        btnE.style.borderBottomColor = 'transparent'; btnE.style.color = '#6b84a0';
+        conG.classList.remove('hidden');
+        conE.classList.add('hidden');
+    } else {
+        btnE.style.borderBottomColor = '#0ea871'; btnE.style.color = '#0d1f35';
+        btnG.style.borderBottomColor = 'transparent'; btnG.style.color = '#6b84a0';
+        conE.classList.remove('hidden');
+        conG.classList.add('hidden');
+    }
+};
+
 window.openStudentPanel = async function(studentId) {
     currentStudentId = studentId;
     const student    = allStudentsCache.find(s => s.id === studentId);
@@ -455,6 +491,8 @@ window.openStudentPanel = async function(studentId) {
         [student?.className, student?.parentPhone].filter(Boolean).join(' · ') || '—';
 
     togglePinResetUI(false);
+    window.switchStudentTab('grades'); // Default to grades tab
+
     document.getElementById('spinReadonly').textContent = student?.pin || '—';
     document.getElementById('sPanelLoader').style.display = 'flex';
     document.getElementById('sViewMode').classList.add('hidden');
@@ -507,6 +545,7 @@ window.openStudentPanel = async function(studentId) {
     document.getElementById('sPanelFilterType').value          = '';
 
     try {
+        // Load Grades
         const gradesSnap = await getDocs(collection(db, 'schools', session.schoolId, 'students', studentId, 'grades'));
         currentStudentGradesCache = [];
         gradesSnap.forEach(d => { const g = { id: d.id, ...d.data() }; if (g.semesterId === semId) currentStudentGradesCache.push(g); });
@@ -515,7 +554,11 @@ window.openStudentPanel = async function(studentId) {
         document.getElementById('sPanelFilterSubject').innerHTML = '<option value="">All Subjects</option>' + subjSet.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
         document.getElementById('sPanelFilterType').innerHTML    = '<option value="">All Types</option>' + getGradeTypes().map(t => `<option value="${escHtml(t)}">${escHtml(t)}</option>`).join('');
         window.renderStudentGrades();
-    } catch (e) { console.error('[Roster] openStudentPanel grades:', e); }
+        
+        // Load Evaluations
+        await window.loadStudentEvaluations(studentId);
+        
+    } catch (e) { console.error('[Roster] openStudentPanel data load:', e); }
 
     document.getElementById('sPanelLoader').style.display = 'none';
     document.getElementById('sViewMode').classList.remove('hidden');
@@ -577,6 +620,285 @@ window.toggleAccordion = function(header) {
     body.classList.toggle('open');
     const chevron = header.querySelector('.fa-chevron-down');
     if (chevron) chevron.style.transform = body.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0)';
+};
+
+// ── 10.5. EVALUATIONS LOGIC (NEW MATRIX) ──────────────────────────────────────
+
+window.buildStarGroups = function() {
+    document.querySelectorAll('.rating-row').forEach(row => {
+        const field = row.dataset.field;
+        const group = row.querySelector('.star-group');
+        group.innerHTML = [1,2,3,4,5].map(n =>
+            `<button type="button" class="star-btn" data-val="${n}" data-field="${field}"
+              onmouseover="window.hoverStars('${field}',${n})"
+              onmouseout="window.renderStars('${field}')"
+              onclick="window.setRating('${field}',${n})">★</button>`
+        ).join('');
+        window.renderStars(field);
+    });
+};
+
+window.renderStars = function(field) {
+    const val = window.evalRatings[field] || 0;
+    document.querySelectorAll(`[data-field="${field}"]`).forEach(btn => {
+        if(btn.tagName === 'BUTTON') {
+            if(parseInt(btn.dataset.val) <= val) {
+                btn.classList.add('star-active');
+            } else {
+                btn.classList.remove('star-active');
+            }
+        }
+    });
+};
+
+window.hoverStars = function(field, val) {
+    document.querySelectorAll(`[data-field="${field}"]`).forEach(btn => {
+        if(btn.tagName === 'BUTTON') {
+            if(parseInt(btn.dataset.val) <= val) {
+                btn.classList.add('star-active');
+            } else {
+                btn.classList.remove('star-active');
+            }
+        }
+    });
+};
+
+window.setRating = function(field, val) {
+    window.evalRatings[field] = val;
+    window.renderStars(field);
+};
+
+window.openEvalModal = function() {
+    document.getElementById('evalDate').value = new Date().toISOString().split('T')[0];
+    
+    // Reset inputs
+    document.querySelectorAll('.eval-section textarea, .eval-section select').forEach(el => el.value = '');
+    Object.keys(window.evalRatings).forEach(k => window.evalRatings[k] = 0);
+    Object.keys(window.evalRatings).forEach(k => window.renderStars(k));
+    
+    document.getElementById('evalType').value = 'academic';
+    window.toggleEvalType();
+    
+    openOverlay('evalModal', 'evalModalInner');
+};
+
+window.closeEvalModal = function() { closeOverlay('evalModal', 'evalModalInner'); };
+
+window.toggleEvalType = function() {
+    const type = document.getElementById('evalType').value;
+    document.getElementById('type-academic').classList.toggle('hidden', type !== 'academic');
+    document.getElementById('type-eoy').classList.toggle('hidden', type !== 'end_of_year');
+    document.getElementById('type-behavioral').classList.toggle('hidden', type !== 'behavioral');
+};
+
+window.saveEvaluation = async function() {
+    const type = document.getElementById('evalType').value;
+    const semId = document.getElementById('evalSemester').value;
+    const semName = document.getElementById('evalSemester').options[document.getElementById('evalSemester').selectedIndex].text;
+    const date = document.getElementById('evalDate').value;
+    const btn = document.getElementById('btnSubmitEval');
+    
+    if(!semId || !date) { alert("Please ensure Semester and Date are filled."); return; }
+
+    let payload = {
+        type: type,
+        schoolId: session.schoolId,
+        teacherId: session.teacherId,
+        teacherName: session.teacherData.name,
+        semesterId: semId,
+        semesterName: semName,
+        date: date,
+        createdAt: new Date().toISOString()
+    };
+
+    if(type === 'academic') {
+        if(!window.evalRatings.academicMastery || !window.evalRatings.taskExecution || !window.evalRatings.engagement) {
+            alert("Please rate all quantitative metrics."); return;
+        }
+        payload.ratings = {
+            mastery: window.evalRatings.academicMastery,
+            execution: window.evalRatings.taskExecution,
+            engagement: window.evalRatings.engagement
+        };
+        payload.written = {
+            strengths: document.getElementById('evalAcadStrengths').value.trim(),
+            growth: document.getElementById('evalAcadGrowth').value.trim(),
+            steps: document.getElementById('evalAcadSteps').value.trim()
+        };
+    } 
+    else if (type === 'end_of_year') {
+        if(!window.evalRatings.academicGrowth || !window.evalRatings.socialDynamics || !window.evalRatings.resilience) {
+            alert("Please rate all summative metrics."); return;
+        }
+        payload.ratings = {
+            growth: window.evalRatings.academicGrowth,
+            social: window.evalRatings.socialDynamics,
+            resilience: window.evalRatings.resilience
+        };
+        payload.written = {
+            narrative: document.getElementById('evalEoyNarrative').value.trim(),
+            interventions: document.getElementById('evalEoyInterventions').value.trim()
+        };
+        payload.status = document.getElementById('evalEoyStatus').value;
+        if(!payload.status) { alert("Please select a Promotion Status."); return; }
+    }
+    else if (type === 'behavioral') {
+        if(!window.evalRatings.ruleAdherence || !window.evalRatings.conflictResolution || !window.evalRatings.respectAuthority) {
+            alert("Please rate all conduct metrics."); return;
+        }
+        payload.ratings = {
+            adherence: window.evalRatings.ruleAdherence,
+            resolution: window.evalRatings.conflictResolution,
+            respect: window.evalRatings.respectAuthority
+        };
+        payload.written = {
+            description: document.getElementById('evalBehDesc').value.trim(),
+            prior: document.getElementById('evalBehPrior').value.trim(),
+            actionPlan: document.getElementById('evalBehAction').value.trim()
+        };
+        payload.status = document.getElementById('evalBehStatus').value;
+        if(!payload.status) { alert("Please select an Action Taken."); return; }
+    }
+
+    btn.textContent = 'Saving...'; btn.disabled = true;
+
+    try {
+        await addDoc(collection(db, 'students', currentStudentId, 'evaluations'), payload);
+        window.closeEvalModal();
+        await window.loadStudentEvaluations(currentStudentId);
+    } catch (e) {
+        console.error("Error saving evaluation", e);
+        alert("Failed to save evaluation.");
+    }
+    btn.textContent = 'Save to Formal Record'; btn.disabled = false;
+};
+
+window.loadStudentEvaluations = async function(studentId) {
+    const list = document.getElementById('evaluationsList');
+    const noMsg = document.getElementById('noEvaluationsMsg');
+    list.innerHTML = '';
+    cachedEvaluations = [];
+
+    try {
+        const q = query(
+            collection(db, 'students', studentId, 'evaluations'), 
+            where('schoolId', '==', session.schoolId)
+        );
+        const snap = await getDocs(q);
+        
+        snap.forEach(d => {
+            cachedEvaluations.push({ id: d.id, ...d.data() });
+        });
+
+        cachedEvaluations.sort((a,b) => new Date(b.date) - new Date(a.date));
+
+        if(cachedEvaluations.length === 0) {
+            noMsg.classList.remove('hidden');
+        } else {
+            noMsg.classList.add('hidden');
+            
+            cachedEvaluations.forEach(ev => {
+                let badgeClass = '';
+                let typeLabel = '';
+                let highlightText = '';
+                
+                if(ev.type === 'academic') {
+                    badgeClass = 'background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;';
+                    typeLabel = 'Academic Progress';
+                } else if(ev.type === 'end_of_year') {
+                    badgeClass = 'background:#fef3c7;color:#b45309;border:1px solid #fde68a;';
+                    typeLabel = 'Comprehensive End-of-Year';
+                    highlightText = `<div style="margin-top:10px;padding:6px 10px;background:#f8fafb;border-radius:4px;font-size:11px;font-weight:700;color:#0d1f35;"><i class="fa-solid fa-award" style="color:#f59e0b;margin-right:5px;"></i> Status: ${ev.status}</div>`;
+                } else if(ev.type === 'behavioral') {
+                    badgeClass = 'background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;';
+                    typeLabel = 'Behavioral Intervention';
+                    highlightText = `<div style="margin-top:10px;padding:6px 10px;background:#fff0f3;border-radius:4px;font-size:11px;font-weight:700;color:#be1240;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:5px;"></i> Action: ${ev.status}</div>`;
+                }
+
+                const card = document.createElement('div');
+                card.style.cssText = 'background:#fff;border:1px solid #dce3ed;border-radius:4px;padding:16px;display:flex;flex-direction:column;gap:8px;';
+                card.innerHTML = `
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                        <div>
+                            <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:99px;text-transform:uppercase;letter-spacing:0.05em;${badgeClass}">${typeLabel}</span>
+                            <h4 style="font-size:14px;font-weight:700;color:#0d1f35;margin:8px 0 2px;">${ev.semesterName}</h4>
+                            <p style="font-size:11px;color:#6b84a0;margin:0;">Filed by ${ev.teacherName} on ${ev.date}</p>
+                        </div>
+                        <button onclick="window.printEvaluation('${ev.id}')" style="background:none;border:1px solid #dce3ed;border-radius:4px;padding:6px 10px;color:#374f6b;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='#f8fafb';this.style.borderColor='#b8c5d4'" onmouseout="this.style.background='none';this.style.borderColor='#dce3ed'">
+                            <i class="fa-solid fa-print"></i> Print Matrix
+                        </button>
+                    </div>
+                    ${highlightText}
+                `;
+                list.appendChild(card);
+            });
+        }
+    } catch (e) {
+        console.error("Error loading evaluations", e);
+        noMsg.classList.remove('hidden');
+    }
+};
+
+window.printEvaluation = function(evalId) {
+    const ev = cachedEvaluations.find(e => e.id === evalId);
+    if(!ev) return;
+    const student = allStudentsCache.find(s => s.id === currentStudentId);
+
+    // Populate the hidden template
+    document.getElementById('ptSchoolName').textContent = session.schoolName || 'ConnectUs Partner School';
+    document.getElementById('ptStudentName').textContent = student?.name || '—';
+    document.getElementById('ptStudentId').textContent = student?.id || '—';
+    document.getElementById('ptEvalContext').textContent = `${ev.semesterName} · Filed ${ev.date} by ${ev.teacherName}`;
+
+    let typeStr = "";
+    let metricsHtml = "";
+    let textHtml = "";
+
+    if (ev.type === 'academic') {
+        typeStr = "Academic Progress Matrix";
+        metricsHtml = `
+            <div class="print-metric-row"><span class="print-metric-label">Subject Mastery</span><span class="print-metric-value">${ev.ratings.mastery}/5</span></div>
+            <div class="print-metric-row"><span class="print-metric-label">Task Execution</span><span class="print-metric-value">${ev.tatingsexecution}/5</span></div>
+            <div class="print-metric-row"><span class="print-metric-label">Classroom Engagement</span><span class="print-metric-value">${ev.ratings.engagement}/5</span></div>
+        `;
+        textHtml = `
+            <div class="print-text-block"><div class="print-text-label">Key Academic Strengths</div><p class="print-text-content">${escHtml(ev.written.strengths) || 'None documented'}</p></div>
+            <div class="print-text-block"><div class="print-text-label">Areas for Growth</div><p class="print-text-content">${escHtml(ev.written.growth) || 'None documented'}</p></div>
+            <div class="print-text-block"><div class="print-text-label">Actionable Next Steps</div><p class="print-text-content">${escHtml(ev.written.steps) || 'None documented'}</p></div>
+        `;
+    } else if (ev.type === 'end_of_year') {
+        typeStr = "Comprehensive End-of-Year Matrix";
+        metricsHtml = `
+            <div class="print-metric-row"><span class="print-metric-label">Overall Academic Growth</span><span class="print-metric-value">${ev.ratings.growth}/5</span></div>
+            <div class="print-metric-row"><span class="print-metric-label">Social & Peer Dynamics</span><span class="print-metric-value">${ev.ratings.social}/5</span></div>
+            <div class="print-metric-row"><span class="print-metric-label">Resilience & Effort</span><span class="print-metric-value">${ev.ratings.resilience}/5</span></div>
+        `;
+        textHtml = `
+            <div class="print-text-block"><div class="print-text-label">Year-in-Review Narrative</div><p class="print-text-content">${escHtml(ev.written.narrative) || 'None documented'}</p></div>
+            <div class="print-text-block"><div class="print-text-label">Recommended Interventions</div><p class="print-text-content">${escHtml(ev.written.interventions) || 'N/A'}</p></div>
+            <div class="print-text-block" style="border:1px solid #000;"><div class="print-text-label" style="color:#000;">Promotion Status</div><p class="print-text-content" style="font-weight:bold;font-size:14px;">${ev.status}</p></div>
+        `;
+    } else if (ev.type === 'behavioral') {
+        typeStr = "Behavioral & Conduct Intervention Matrix";
+        metricsHtml = `
+            <div class="print-metric-row"><span class="print-metric-label">Rule Adherence</span><span class="print-metric-value">${ev.ratings.adherence}/5</span></div>
+            <div class="print-metric-row"><span class="print-metric-label">Conflict Resolution</span><span class="print-metric-value">${ev.ratings.resolution}/5</span></div>
+            <div class="print-metric-row"><span class="print-metric-label">Respect for Authority</span><span class="print-metric-value">${ev.ratings.respect}/5</span></div>
+        `;
+        textHtml = `
+            <div class="print-text-block"><div class="print-text-label">Conduct Description</div><p class="print-text-content">${escHtml(ev.written.description) || 'None documented'}</p></div>
+            <div class="print-text-block"><div class="print-text-label">Prior Interventions Attempted</div><p class="print-text-content">${escHtml(ev.written.prior) || 'None documented'}</p></div>
+            <div class="print-text-block"><div class="print-text-label">Corrective Action Plan</div><p class="print-text-content">${escHtml(ev.written.actionPlan) || 'None documented'}</p></div>
+            <div class="print-text-block" style="border:2px solid #000;"><div class="print-text-label" style="color:#000;">Formal Action Taken</div><p class="print-text-content" style="font-weight:bold;font-size:14px;text-transform:uppercase;">${ev.status}</p></div>
+        `;
+    }
+
+    document.getElementById('ptEvalType').textContent = typeStr;
+    document.getElementById('ptMetricsList').innerHTML = metricsHtml;
+    document.getElementById('ptTextList').innerHTML = textHtml;
+
+    // Trigger browser print
+    window.print();
 };
 
 // ── 11. EDIT STUDENT ──────────────────────────────────────────────────────────
