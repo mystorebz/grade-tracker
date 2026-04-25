@@ -49,6 +49,7 @@ export function injectAdminLayout(activePageId, pageTitle, pageSub, showSearch =
           <span class="nav-section-label">Main Menu</span>
           <a href="../home/home.html"               id="nav-overview"    class="nav-item"><i class="fa-solid fa-chart-pie"></i> Overview</a>
           <a href="../teachers/teachers.html"        id="nav-teachers"    class="nav-item"><i class="fa-solid fa-chalkboard-user"></i> Teachers</a>
+          <a href="../evaluations/evaluations.html"   id="nav-evaluations" class="nav-item"><i class="fa-solid fa-star-half-stroke"></i> Evaluations</a>
           <a href="../classes/classes.html"          id="nav-classes"     class="nav-item"><i class="fa-solid fa-school"></i> Classes</a>
           <a href="../students/students.html"        id="nav-students"    class="nav-item"><i class="fa-solid fa-user-graduate"></i> Students</a>
           <a href="../grading_periods/grading_periods.html" id="nav-semesters"   class="nav-item"><i class="fa-solid fa-calendar-days"></i> Grading Periods</a>
