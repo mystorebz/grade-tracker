@@ -349,6 +349,47 @@ window.openTeacherPanel = async (teacherId) => {
         document.getElementById('editTEmail').value = t.email || '';
         document.getElementById('editTPhone').value = t.phone || '';
 
+
+        // -- Load evaluations summary
+        try {
+            const evalSnap = await getDocs(query(
+                collection(db, 'teachers', teacherId, 'evaluations'),
+                where('schoolId', '==', session.schoolId)
+            ));
+            const evals   = evalSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const count   = evals.length;
+            const avgNum  = count ? evals.reduce((s, e) => s + (e.overallRating || 0), 0) / count : null;
+            const avg     = avgNum !== null ? avgNum.toFixed(1) : null;
+            const last    = count ? evals.sort((a, b) => new Date(b.date) - new Date(a.date))[0] : null;
+            const lastStr = last?.date
+                ? new Date(last.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                : null;
+
+            const stars = avg
+                ? [1,2,3,4,5].map(n => '<span style="color:' + (n <= Math.round(parseFloat(avg)) ? '#f59e0b' : '#dce3ed') + ';font-size:15px">&#9733;</span>').join('')
+                : null;
+
+            const evalSummaryEl = document.getElementById('tEvalSummary');
+            if (evalSummaryEl) {
+                if (!count) {
+                    evalSummaryEl.innerHTML = '<p style="font-size:12px;color:#9ab0c6;font-style:italic;text-align:center;padding:8px 0">No evaluations on record.</p>';
+                } else {
+                    evalSummaryEl.innerHTML =
+                        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
+                            '<div style="display:flex;align-items:baseline;gap:6px">' +
+                                '<span style="font-size:22px;font-weight:700;color:#0d1f35">' + avg + '</span>' +
+                                '<span style="font-size:11px;color:#6b84a0;font-weight:600">/ 5</span>' +
+                            '</div>' +
+                            '<div>' + stars + '</div>' +
+                        '</div>' +
+                        '<div style="display:flex;justify-content:space-between">' +
+                            '<span style="font-size:11px;color:#6b84a0;font-weight:600">' + count + ' evaluation' + (count !== 1 ? 's' : '') + '</span>' +
+                            (lastStr ? '<span style="font-size:11px;color:#6b84a0;font-weight:600">Last: ' + lastStr + '</span>' : '') +
+                        '</div>';
+                }
+            }
+        } catch (_) {}
+
         document.getElementById('tPanelLoader').classList.add('hidden');
         document.getElementById('tViewMode').classList.remove('hidden');
 
