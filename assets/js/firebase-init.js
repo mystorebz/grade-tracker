@@ -1,7 +1,7 @@
 // Import the functions you need from the Firebase SDKs
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-// Swap 'getFirestore' for the caching modules
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getStorage } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js"; // <-- NEW
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -21,4 +21,7 @@ export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
 });
 
-console.log("Firebase initialized successfully with offline caching!");
+// Initialize Storage and export it
+export const storage = getStorage(app); // <-- NEW
+
+console.log("Firebase initialized successfully with offline caching and storage!");
