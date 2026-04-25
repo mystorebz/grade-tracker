@@ -52,7 +52,6 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         isGlobalTeacher   = false;
 
         // ── Try global /teachers first (new system) ────────────────────────
-        // New teachers authenticate with School ID + 6-digit PIN
         for (const schoolId of [rawId.toUpperCase(), rawId.toLowerCase(), rawId]) {
             try {
                 const globalQ = query(
@@ -72,7 +71,6 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         }
 
         // ── Fall back to legacy siloed path ────────────────────────────────
-        // Legacy teachers authenticate with School ID + loginCode
         if (!foundSchoolId) {
             for (const schoolId of [rawId.toUpperCase(), rawId.toLowerCase(), rawId]) {
                 try {
@@ -157,7 +155,6 @@ document.getElementById('saveForceCodeBtn').addEventListener('click', async () =
     btn.disabled = true;
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
 
-    // Update whichever path this teacher authenticated against
     if (isGlobalTeacher) {
         await updateDoc(doc(db, 'teachers', tempSession.teacherId), {
             pin: n, requiresPinReset: false
@@ -269,14 +266,19 @@ async function finalizeLogin() {
         tempSession.teacherData.subjects = DEFAULT_SUBJECTS;
     }
 
-    // Save session
+    // Save session — must happen BEFORE any gate redirect below
     setSessionData('teacher', tempSession);
 
-    // ── profileComplete gate (global teachers only) ────────────────────────
-    // If the teacher hasn't filled in their address/district yet, send them
-    // to the onboarding page before the dashboard.
+    // ── Gate 1: Profile completion (address/district) ──────────────────────
     if (isGlobalTeacher && tempSession.teacherData.profileComplete === false) {
         window.location.href = 'onboarding/onboarding.html';
+        return;
+    }
+
+    // ── Gate 2: Security questions (new accounts, global teachers only) ────
+    // Legacy siloed teachers skip this gate — they don't use the reset flow.
+    if (isGlobalTeacher && !tempSession.teacherData.securityQuestionsSet) {
+        window.location.href = '../onboarding/first-time-setup.html?role=teacher';
         return;
     }
 
