@@ -179,8 +179,7 @@
                                     <th class="p-2 text-right pr-4">Receipt</th>
                                 </tr>
                             </thead>
-                            <tbody id="ledgerTableBody">
-                                </tbody>
+                            <tbody id="ledgerTableBody"></tbody>
                         </table>
                     </div>
                 </div>
@@ -316,25 +315,25 @@
         </div>
     </div>
 
-    <div id="deployModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
-        <div class="bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 max-w-md w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden" id="deployModalInner">
-            <div class="h-1.5 bg-gradient-to-r from-teal-500 to-emerald-400"></div>
-            <div class="p-8">
+    <div id="deployModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300 py-10 overflow-y-auto">
+        <div class="bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 max-w-2xl w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden flex flex-col md:flex-row" id="deployModalInner">
+            
+            <div class="md:w-1/2 p-8 border-b md:border-b-0 md:border-r border-slate-700 bg-slate-800/50">
                 <div class="flex justify-between items-start mb-6">
                     <div>
                         <h3 class="font-black text-xl text-white">Manual Deployment</h3>
                         <p class="text-xs font-bold text-teal-400 mt-1 uppercase tracking-widest">Bypass Quote System</p>
                     </div>
-                    <button id="closeDeployBtn" class="text-slate-500 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+                    <button id="closeDeployBtnMobile" class="md:hidden text-slate-500 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
                 </div>
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">School Name</label>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">School Name *</label>
                         <input type="text" id="depSchoolName" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-teal-500 transition">
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">District</label>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">District *</label>
                             <select id="depDistrict" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-teal-500 transition">
                                 <option value="Belize">Belize</option>
                                 <option value="Cayo">Cayo</option>
@@ -345,7 +344,7 @@
                             </select>
                         </div>
                         <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Type</label>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Type *</label>
                             <select id="depSchoolType" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-teal-500 transition">
                                 <option value="Primary">Primary</option>
                                 <option value="Secondary">Secondary</option>
@@ -353,18 +352,68 @@
                         </div>
                     </div>
                     <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Admin Contact Email</label>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Admin Contact Email *</label>
                         <input type="email" id="depEmail" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-teal-500 transition">
                     </div>
                     <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Initial Admin PIN</label>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Initial Admin PIN *</label>
                         <input type="password" id="depPin" placeholder="At least 6 characters" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-teal-500 transition">
                     </div>
                 </div>
-                <p id="deployErrorMsg" class="text-xs font-bold text-red-400 bg-red-900/30 border border-red-800/50 p-3 rounded-lg text-center hidden mt-5"></p>
-                <button id="executeDeployBtn" class="w-full bg-teal-600 hover:bg-teal-500 text-white font-black py-4 rounded-xl transition shadow-lg shadow-teal-900/50 text-sm tracking-wide mt-6">
-                    <i class="fa-solid fa-server mr-2"></i> Deploy Infrastructure
-                </button>
+            </div>
+
+            <div class="md:w-1/2 p-8 relative flex flex-col justify-between">
+                <button id="closeDeployBtnDesktop" class="hidden md:block absolute top-6 right-6 text-slate-500 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+                
+                <div class="space-y-4 mt-8 md:mt-0">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 text-indigo-400">Subscription Tier *</label>
+                        <select id="depPlan" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-indigo-500 transition">
+                            <option value="">Loading plans...</option>
+                        </select>
+                        <p id="depPlanLimitsDisplay" class="text-[10px] font-bold text-indigo-400 mt-2 hidden"></p>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Amount Paid *</label>
+                            <input type="number" id="depAmount" placeholder="BZD" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-teal-500 transition">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Billing Term</label>
+                            <select id="depCycle" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-teal-500 transition">
+                                <option value="Monthly">1 Month</option>
+                                <option value="Annual">1 Year</option>
+                                <option value="Multi-Year">Multi-Year</option>
+                                <option value="Other">Other (Custom)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="depCustomCycleWrap" class="hidden">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Specify Custom Term</label>
+                        <input type="text" id="depCustomCycle" placeholder="e.g. 6 Months" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-teal-500 transition">
+                    </div>
+
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Internal Notes (Optional)</label>
+                        <textarea id="depNotes" placeholder="e.g. Direct manual onboard..." class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-teal-500 transition resize-none h-10"></textarea>
+                    </div>
+
+                    <div class="pt-2 border-t border-slate-800">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Attach Bank Receipt / Invoice</label>
+                        <div class="relative">
+                            <input type="file" id="depReceipt" accept="image/*,.pdf" class="w-full p-2 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-400 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:uppercase file:tracking-wider file:bg-teal-900/30 file:text-teal-400 hover:file:bg-teal-900/50 transition outline-none cursor-pointer">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-6">
+                    <p id="deployErrorMsg" class="text-xs font-bold text-red-400 bg-red-900/30 border border-red-800/50 p-3 rounded-lg text-center hidden mb-4"></p>
+                    <button id="executeDeployBtn" class="w-full bg-teal-600 hover:bg-teal-500 text-white font-black py-4 rounded-xl transition shadow-lg shadow-teal-900/50 text-sm tracking-wide">
+                        <i class="fa-solid fa-server mr-2"></i> Deploy Infrastructure
+                    </button>
+                </div>
             </div>
         </div>
     </div>
