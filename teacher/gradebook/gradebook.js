@@ -267,13 +267,16 @@ async function loadGradebook() {
     const grades = await getAllGrades(semId);
 
     // ── Sidebar: at-risk count ────────────────────────────────────────────────
-    const stuG = {};
+    const weights = await getGradeWeights();
+    const stuGMap = {};
     grades.forEach(g => {
-        if (!stuG[g.studentId]) stuG[g.studentId] = { total: 0, count: 0 };
-        stuG[g.studentId].total += g.max ? (g.score / g.max) * 100 : 0;
-        stuG[g.studentId].count++;
+        if (!stuGMap[g.studentId]) stuGMap[g.studentId] = [];
+        stuGMap[g.studentId].push(g);
     });
-    const riskCount = Object.values(stuG).filter(sg => sg.count > 0 && Math.round(sg.total / sg.count) < 65).length;
+    const riskCount = Object.values(stuGMap).filter(sg => {
+        const avg = calcWeightedAvg(sg, weights);
+        return avg !== null && Math.round(avg) < 65;
+    }).length;
     const sbRisk = document.getElementById('sb-risk');
     if (sbRisk) { sbRisk.textContent = riskCount; sbRisk.classList.toggle('is-risk', riskCount > 0); }
 
@@ -303,8 +306,15 @@ function renderGradebook() {
 
     // ── Summary stats (whole dataset) ─────────────────────────────────────────
     const allRows = allGradesCache?.grades || [];
+    // Group by student for weighted average
+    const stuGrps = {};
+    allRows.forEach(g => {
+        if (!stuGrps[g.studentId]) stuGrps[g.studentId] = [];
+        stuGrps[g.studentId].push(g);
+    });
+    const stuAvgs = Object.values(stuGrps).map(sg => calcWeightedAvg(sg, gradeTypeWeights || {})).filter(a => a !== null);
+    const avgAll  = stuAvgs.length ? Math.round(stuAvgs.reduce((a, b) => a + b, 0) / stuAvgs.length) : null;
     const allPcts = allRows.map(g => g.max ? Math.round(g.score / g.max * 100) : 0);
-    const avgAll  = allPcts.length ? Math.round(allPcts.reduce((a, b) => a + b, 0) / allPcts.length) : null;
 
     const totalEl = document.getElementById('gbStatTotal');
     if (totalEl) totalEl.textContent = allRows.length || '—';
@@ -313,13 +323,10 @@ function renderGradebook() {
     if (avgEl) { avgEl.textContent = avgAll !== null ? avgAll + '%' : '—'; avgEl.style.color = avgAll !== null ? gradeColor(avgAll) : '#0d1f35'; }
 
     // Recalculate risk for the stat card
-    const stuG2 = {};
-    allRows.forEach(g => {
-        if (!stuG2[g.studentId]) stuG2[g.studentId] = { total: 0, count: 0 };
-        stuG2[g.studentId].total += g.max ? (g.score / g.max) * 100 : 0;
-        stuG2[g.studentId].count++;
-    });
-    const riskStat = Object.values(stuG2).filter(sg => sg.count > 0 && Math.round(sg.total / sg.count) < 65).length;
+    const riskStat = Object.values(stuGrps).filter(sg => {
+        const avg = calcWeightedAvg(sg, gradeTypeWeights || {});
+        return avg !== null && Math.round(avg) < 65;
+    }).length;
     const riskEl   = document.getElementById('gbStatRisk');
     if (riskEl) { riskEl.textContent = riskStat || '0'; riskEl.style.color = riskStat > 0 ? '#e31b4a' : '#0d1f35'; }
 
