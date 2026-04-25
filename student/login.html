@@ -17,7 +17,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body id="loginScreen" class="min-h-screen flex flex-col items-center justify-center p-4 overflow-y-auto relative">
-
     <div class="orb orb-1"></div>
     <div class="orb orb-2"></div>
     <div class="orb orb-3"></div>
@@ -56,13 +55,20 @@
                 View Progress <i class="fa-solid fa-arrow-right-to-bracket"></i>
             </button>
             <p id="loginMsg" class="text-sm text-center font-bold hidden text-red-600 bg-red-50 p-3 rounded-xl border border-red-100"></p>
+
+            <!-- ── Forgot PIN link ──────────────────────────────────────── -->
+            <p class="text-center text-xs">
+                <a href="../onboarding/forgot-pin.html"
+                    class="text-indigo-500 hover:text-indigo-700 font-black transition">
+                    <i class="fa-solid fa-key mr-1"></i>Forgot Your PIN?
+                </a>
+            </p>
         </div>
         
         <div class="px-8 pb-7 text-center">
             <p class="text-xs text-slate-400 font-semibold">© 2026 ConnectUs</p>
         </div>
     </div>
-
     <script type="module" src="login.js"></script>
 </body>
 </html>
