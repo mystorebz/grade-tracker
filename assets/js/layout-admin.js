@@ -10,69 +10,69 @@ import { logout, getSessionData } from './auth.js';
  */
 export function injectAdminLayout(activePageId, pageTitle, pageSub, showSearch = false, showPeriod = false) {
 
-    // ── Read session to drive role-based rendering ────────────────────────────
+    // ── Read session ──────────────────────────────────────────────────────────
     const session      = getSessionData('admin') || {};
     const isSuperAdmin = session.isSuperAdmin === true;
     const schoolName   = session.schoolName || 'Your School';
     const schoolId     = session.schoolId   || '—';
 
-    // Display name in sidebar:
-    // Super admin → school name (they represent the school)
-    // Sub-admin   → their personal name + "Sub-Admin" badge
-    const displayName   = isSuperAdmin
-        ? schoolName
-        : (session.adminName || 'Administrator');
-    const roleBadgeText = isSuperAdmin ? 'Super Admin' : 'Administrator';
-    const roleBadgeCls  = isSuperAdmin
-        ? 'text-[10px] text-blue-300 mt-1.5 uppercase tracking-[0.18em] font-black bg-blue-900/50 py-0.5 px-2.5 rounded-full'
-        : 'text-[10px] text-cyan-300 mt-1.5 uppercase tracking-[0.18em] font-black bg-cyan-900/50 py-0.5 px-2.5 rounded-full';
+    const displayName   = isSuperAdmin ? schoolName : (session.adminName || 'Administrator');
+    const roleBadgeClass = isSuperAdmin ? 'sidebar-role-badge sidebar-role-super' : 'sidebar-role-badge sidebar-role-admin';
+    const roleBadgeText  = isSuperAdmin ? 'Super Admin' : 'Administrator';
+
+    // Initials for avatar fallback
+    const initials = displayName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
 
     // ── 1. Sidebar HTML ───────────────────────────────────────────────────────
-    // "Manage Admins" and the Subscription card inside Settings are super-admin
-    // only. We hide the entire Manage Admins nav item for sub-admins here.
-    // Settings itself is visible to both (they can still update their own profile
-    // and PIN); the sub-admin management section inside settings.js is gated
-    // separately by checking isSuperAdmin at runtime.
     const sidebarHTML = `
-      <aside id="sidebar" class="text-slate-300 flex flex-col shadow-2xl z-20 flex-shrink-0 h-screen" style="width:272px">
+      <aside id="sidebar" class="flex flex-col flex-shrink-0 h-screen z-20" style="width:256px">
 
-        <div class="p-5 border-b border-white/5">
-          <div class="school-badge rounded-2xl p-4 flex flex-col items-center text-center">
-            <div id="schoolLogoFallback" class="h-14 w-14 bg-blue-800/50 border border-blue-600/40 rounded-xl flex items-center justify-center text-2xl mb-2 shadow-inner">🏫</div>
-            <img id="schoolLogo" src="" alt="Logo" class="h-14 w-14 object-contain rounded-xl bg-white p-1 mb-2 hidden shadow-md">
-            <h2 id="displaySchoolName" class="font-black text-white text-sm leading-tight">${displayName}</h2>
-            <span class="${roleBadgeCls}">${roleBadgeText}</span>
+        <div class="sidebar-brand">
+          <div class="sidebar-brand-logo">
+            <img src="../../assets/images/logo.png" alt="ConnectUs" onerror="this.parentElement.textContent='C'">
+          </div>
+          <span class="sidebar-brand-text">ConnectUs</span>
+        </div>
+
+        <div class="sidebar-profile">
+          <div class="sidebar-profile-row">
+            <div class="sidebar-avatar" id="sidebarAvatar">${initials}</div>
+            <div>
+              <p class="sidebar-school-name" id="displaySchoolName">${displayName}</p>
+              <span class="${roleBadgeClass}">${roleBadgeText}</span>
+            </div>
           </div>
         </div>
 
-        <nav class="flex-1 p-4 space-y-1 overflow-y-auto mt-1">
+        <nav class="sidebar-nav">
 
-          <p class="text-[10px] font-black text-slate-600 uppercase tracking-widest px-3 mb-2">Main Menu</p>
-          <a href="../home/home.html"         id="nav-overview"     class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-chart-pie w-5 text-base opacity-90"></i> Overview</a>
-          <a href="../teachers/teachers.html" id="nav-teachers"     class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-chalkboard-user w-5 text-base opacity-70"></i> Teachers</a>
-          <a href="../classes/classes.html"   id="nav-classes"      class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-school w-5 text-base opacity-70"></i> Classes</a>
-          <a href="../students/students.html" id="nav-students"     class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-user-graduate w-5 text-base opacity-70"></i> Students</a>
-          <a href="../semesters/semesters.html" id="nav-semesters"  class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-calendar-days w-5 text-base opacity-70"></i> Grading Periods</a>
+          <span class="nav-section-label">Main Menu</span>
+          <a href="../home/home.html"               id="nav-overview"    class="nav-item"><i class="fa-solid fa-chart-pie"></i> Overview</a>
+          <a href="../teachers/teachers.html"        id="nav-teachers"    class="nav-item"><i class="fa-solid fa-chalkboard-user"></i> Teachers</a>
+          <a href="../classes/classes.html"          id="nav-classes"     class="nav-item"><i class="fa-solid fa-school"></i> Classes</a>
+          <a href="../students/students.html"        id="nav-students"    class="nav-item"><i class="fa-solid fa-user-graduate"></i> Students</a>
+          <a href="../grading_periods/grading_periods.html" id="nav-semesters"   class="nav-item"><i class="fa-solid fa-calendar-days"></i> Grading Periods</a>
 
-          <p class="text-[10px] font-black text-slate-600 uppercase tracking-widest px-3 mt-4 mb-2">Grades & Reports</p>
-          <a href="../grade-entry/grade-entry.html" id="nav-grade-entry" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-pen-to-square w-5 text-base opacity-70"></i> Enter Grade</a>
-          <a href="../reports/reports.html"   id="nav-reports"      class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-chart-column w-5 text-base opacity-70"></i> Reports</a>
+          <span class="nav-section-label">Grades &amp; Reports</span>
+          <a href="../grade-entry/grade-entry.html"  id="nav-grade-entry" class="nav-item"><i class="fa-solid fa-pen-to-square"></i> Enter Grade</a>
+          <a href="../reports/reports.html"          id="nav-reports"     class="nav-item"><i class="fa-solid fa-chart-column"></i> Reports</a>
 
-          <p class="text-[10px] font-black text-slate-600 uppercase tracking-widest px-3 mt-4 mb-2">System</p>
-          <a href="../settings/settings.html" id="nav-settings"     class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-gear w-5 text-base opacity-70"></i> Settings</a>
+          <span class="nav-section-label">System</span>
+          <a href="../settings/settings.html"        id="nav-settings"    class="nav-item"><i class="fa-solid fa-gear"></i> Settings</a>
+          <a href="../archives/archives.html"        id="nav-archives"    class="nav-item"><i class="fa-solid fa-box-archive"></i> Archives</a>
 
           ${isSuperAdmin ? `
-          <a href="../settings/settings.html#admins" id="nav-admins" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-user-shield w-5 text-base opacity-70"></i> Manage Admins</a>
+          <a href="../settings/settings.html#admins" id="nav-admins"  class="nav-item"><i class="fa-solid fa-user-shield"></i> Manage Admins</a>
           ` : ''}
 
         </nav>
 
-        <div class="p-4 border-t border-white/5 space-y-3">
-          <div class="rounded-xl p-3 text-center" style="background:rgba(37,99,235,0.12);border:1px solid rgba(96,165,250,0.2)">
-            <p class="text-[10px] text-blue-400 font-black uppercase tracking-widest">School ID</p>
-            <p id="sidebarSchoolId" class="text-white font-black text-base mt-0.5 font-mono tracking-[0.2em]">${schoolId}</p>
+        <div class="sidebar-footer">
+          <div class="sidebar-school-id-block">
+            <span class="sidebar-school-id-label">School ID</span>
+            <span class="sidebar-school-id-val" id="sidebarSchoolId">${schoolId}</span>
           </div>
-          <button id="logoutBtn" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition font-black text-sm border border-red-500/20 hover:border-red-500">
+          <button id="logoutBtn" class="sidebar-logout-btn">
             <i class="fa-solid fa-power-off"></i> Log Out
           </button>
         </div>
@@ -82,54 +82,47 @@ export function injectAdminLayout(activePageId, pageTitle, pageSub, showSearch =
 
     // ── 2. Topbar HTML ────────────────────────────────────────────────────────
     const topbarHTML = `
-      <header class="topbar h-16 bg-white border-b border-slate-200 flex items-center px-8 z-10 justify-between flex-shrink-0 shadow-sm">
+      <header class="topbar">
         <div>
-          <h1 id="topbarTitle" class="text-xl font-black text-slate-800 leading-none">${pageTitle}</h1>
-          <p id="topbarSub" class="text-xs text-slate-400 font-semibold mt-0.5">${pageSub}</p>
+          <h1 class="topbar-title">${pageTitle}</h1>
+          <p class="topbar-sub">${pageSub}</p>
         </div>
-        <div class="flex items-center gap-3">
+        <div class="topbar-right">
 
-          <div id="topbarSearch" class="${showSearch ? 'flex' : 'hidden'} items-center gap-2 bg-slate-50 border-2 border-slate-200 rounded-xl px-3 py-2 focus-within:border-blue-400 transition">
-            <i class="fa-solid fa-magnifying-glass text-slate-400 text-sm"></i>
-            <input type="text" id="searchInput" placeholder="Search..." class="bg-transparent text-sm outline-none w-44 font-semibold text-slate-700">
+          <div class="topbar-search ${showSearch ? '' : 'hidden'}" id="topbarSearch">
+            <i class="fa-solid fa-magnifying-glass topbar-search-icon"></i>
+            <input type="text" id="searchInput" placeholder="Search..." class="topbar-search-input">
           </div>
 
-          <div id="topbarPeriod" class="${showPeriod ? 'flex' : 'hidden'} items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">
-            <i class="fa-solid fa-calendar-days text-blue-500 text-sm"></i>
-            <span class="text-xs font-black text-blue-700 uppercase tracking-wider">Period:</span>
-            <select id="globalPeriodSelect" class="bg-transparent text-sm font-black text-blue-700 outline-none cursor-pointer"><option value="">—</option></select>
+          <div class="topbar-period-wrap ${showPeriod ? '' : 'hidden'}" id="topbarPeriod">
+            <i class="fa-solid fa-calendar-days topbar-period-icon"></i>
+            <span class="topbar-period-label">Period:</span>
+            <select id="globalPeriodSelect" class="topbar-period-select">
+              <option value="">—</option>
+            </select>
           </div>
 
           ${!isSuperAdmin ? `
-          <div class="flex items-center gap-2 bg-cyan-50 border border-cyan-200 rounded-xl px-3 py-1.5">
-            <i class="fa-solid fa-user-shield text-cyan-500 text-xs"></i>
-            <span class="text-[11px] font-black text-cyan-700">${session.adminName || 'Sub-Admin'}</span>
+          <div style="display:flex;align-items:center;gap:6px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.15);border-radius:var(--r-md);padding:5px 10px;">
+            <i class="fa-solid fa-user-shield" style="font-size:11px;color:var(--blue-500)"></i>
+            <span style="font-size:11.5px;font-weight:600;color:var(--blue-600)">${session.adminName || 'Sub-Admin'}</span>
           </div>
           ` : ''}
 
-          <img src="../../assets/images/logo.png" alt="ConnectUs" class="h-8 w-auto opacity-30">
+          <img src="../../assets/images/logo.png" alt="ConnectUs" class="topbar-logo">
         </div>
       </header>
     `;
 
-    // ── 3. Inject into the page ───────────────────────────────────────────────
+    // ── 3. Inject ─────────────────────────────────────────────────────────────
     document.getElementById('layout-sidebar-container').innerHTML = sidebarHTML;
     document.getElementById('layout-topbar-container').innerHTML  = topbarHTML;
 
-    // ── 4. Populate school name dynamically (in case session loaded after render)
-    const schoolNameEl = document.getElementById('displaySchoolName');
-    if (schoolNameEl && isSuperAdmin) {
-        schoolNameEl.textContent = schoolName;
-    }
-
-    // ── 5. Highlight the active nav tab ──────────────────────────────────────
+    // ── 4. Highlight active nav ───────────────────────────────────────────────
     const activeNav = document.getElementById(`nav-${activePageId}`);
-    if (activeNav) {
-        activeNav.classList.remove('text-slate-400');
-        activeNav.classList.add('active');
-    }
+    if (activeNav) activeNav.classList.add('active');
 
-    // ── 6. Logout ─────────────────────────────────────────────────────────────
+    // ── 5. Logout ─────────────────────────────────────────────────────────────
     document.getElementById('logoutBtn').addEventListener('click', () => {
         logout('../../admin/login.html');
     });
