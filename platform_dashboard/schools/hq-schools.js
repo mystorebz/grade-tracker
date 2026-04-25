@@ -1,5 +1,5 @@
 import { db, storage } from '../../assets/js/firebase-init.js';
-import { collection, getDocs, doc, updateDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, getDocs, doc, updateDoc, setDoc, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
 // ── Boot Sequence: Security Check & Setup ──────────────────────────────────
@@ -21,6 +21,40 @@ const tbody = document.getElementById('schoolsTableBody');
 const searchInput = document.getElementById('searchSchools');
 let allSchools = [];
 let currentSchool = null;
+let availablePlans = [];
+
+// ── Load Subscription Plans ──────────────────────────────────────────────
+async function loadSubscriptionPlans() {
+    const planSelect = document.getElementById('renPlan');
+    try {
+        const snap = await getDocs(collection(db, 'subscriptionPlans'));
+        availablePlans = [];
+        let options = '<option value="">Select a subscription tier...</option>';
+        
+        snap.forEach(doc => {
+            const data = doc.data();
+            data.id = doc.id;
+            availablePlans.push(data);
+            options += `<option value="${data.id}">${data.name}</option>`;
+        });
+        planSelect.innerHTML = options;
+    } catch (e) {
+        console.error("Failed to load subscription plans:", e);
+        planSelect.innerHTML = '<option value="">Error loading plans. Check Firebase rules.</option>';
+    }
+}
+
+document.getElementById('renPlan').addEventListener('change', (e) => {
+    const display = document.getElementById('renPlanLimitsDisplay');
+    const selected = availablePlans.find(p => p.id === e.target.value);
+    
+    if (selected) {
+        display.innerHTML = `<i class="fa-solid fa-circle-check mr-1"></i> Limits: ${selected.studentLimit} Students | ${selected.teacherLimit} Teachers | ${selected.adminLimit} Admins`;
+        display.classList.remove('hidden');
+    } else {
+        display.classList.add('hidden');
+    }
+});
 
 // ── Load Schools ───────────────────────────────────────────────────────────
 async function loadSchools() {
@@ -55,7 +89,6 @@ function renderSchools() {
             ? `<span class="bg-red-900/40 text-red-400 border border-red-800 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider">Suspended</span>`
             : `<span class="bg-emerald-900/40 text-emerald-400 border border-emerald-800 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider">Active</span>`;
 
-        // Renewal Date Logic
         let renewalDisplay = '<span class="text-slate-500 italic">Not Set</span>';
         if (data.nextRenewalDate) {
             const renDate = new Date(data.nextRenewalDate);
@@ -71,6 +104,8 @@ function renderSchools() {
             }
         }
 
+        const tierName = data.subscriptionName || 'Unknown Tier';
+
         rows += `
             <tr class="border-b border-slate-800 hover:bg-slate-800/50 transition">
                 <td class="p-4">
@@ -81,7 +116,10 @@ function renderSchools() {
                     <p class="font-bold text-slate-300 text-xs">${data.contactName || 'Admin'}</p>
                     <p class="text-xs text-slate-500">${data.contactEmail || 'No Email'}</p>
                 </td>
-                <td class="p-4 text-xs">${renewalDisplay}</td>
+                <td class="p-4">
+                    <p class="font-bold text-indigo-400 text-xs uppercase tracking-widest">${tierName}</p>
+                    <p class="text-xs mt-0.5">${renewalDisplay}</p>
+                </td>
                 <td class="p-4">${statusBadge}</td>
                 <td class="p-4 text-right">
                     <button onclick="window.openSchoolModal('${data.id}')" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition shadow-md border border-slate-600">
@@ -96,6 +134,64 @@ function renderSchools() {
 if (searchInput) searchInput.addEventListener('input', renderSchools);
 document.getElementById('refreshSchoolsBtn').addEventListener('click', loadSchools);
 
+// ── Transaction Ledger Loader ─────────────────────────────────────────────
+async function loadSchoolLedger(school) {
+    const tbody = document.getElementById('ledgerTableBody');
+    tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center"><i class="fa-solid fa-spinner fa-spin text-indigo-400"></i></td></tr>';
+    
+    try {
+        const payments = [];
+        
+        // 1. Fetch Post-Setup Payments (Renewals, Add-ons logged with schoolId)
+        const q1 = query(collection(db, 'payments'), where('schoolId', '==', school.id));
+        const snap1 = await getDocs(q1);
+        snap1.forEach(d => payments.push({ id: d.id, ...d.data() }));
+
+        // 2. Fetch Initial Setup Payment (Logged via Quote reqId during approval)
+        if (school.originalQuoteId) {
+            const q2 = query(collection(db, 'payments'), where('reqId', '==', school.originalQuoteId));
+            const snap2 = await getDocs(q2);
+            snap2.forEach(d => {
+                if (!payments.some(p => p.id === d.id)) {
+                    payments.push({ id: d.id, ...d.data() });
+                }
+            });
+        }
+
+        // Sort by timestamp (newest first)
+        payments.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+        if (payments.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-xs text-slate-500 italic">No transactions found.</td></tr>';
+            return;
+        }
+
+        let rows = '';
+        payments.forEach(p => {
+            const date = new Date(p.timestamp).toLocaleDateString();
+            const amount = p.amount ? `$${p.amount.toFixed(2)}` : '$0.00';
+            const type = p.paymentType || 'Payment';
+            const receipt = p.receiptUrl ? `<a href="${p.receiptUrl}" target="_blank" class="text-blue-400 hover:underline"><i class="fa-solid fa-file-invoice"></i> View</a>` : '<span class="text-slate-600">-</span>';
+            const notes = (p.internalNotes && p.internalNotes.length > 0) ? p.internalNotes[0].note : '-';
+
+            rows += `
+            <tr class="border-b border-slate-700 hover:bg-slate-800/50 text-xs transition">
+                <td class="p-2 pl-4 text-slate-400">${date}</td>
+                <td class="p-2 font-bold text-white">${type}</td>
+                <td class="p-2 text-emerald-400 font-black">${amount}</td>
+                <td class="p-2 text-slate-400 truncate max-w-[150px]" title="${notes}">${notes}</td>
+                <td class="p-2 text-right pr-4">${receipt}</td>
+            </tr>`;
+        });
+        tbody.innerHTML = rows;
+
+    } catch (e) {
+        console.error("Failed to load ledger:", e);
+        tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-xs text-red-400">Failed to load transaction ledger.</td></tr>';
+    }
+}
+
+
 // ── Manage Node Modal ─────────────────────────────────────────────────────
 window.openSchoolModal = (schoolId) => {
     currentSchool = allSchools.find(s => s.id === schoolId);
@@ -106,13 +202,18 @@ window.openSchoolModal = (schoolId) => {
     document.getElementById('manageAdminId').textContent = currentSchool.superAdminId || 'N/A';
     document.getElementById('manageEmail').textContent = currentSchool.contactEmail || 'N/A';
     
-    // Billing Info
+    document.getElementById('manageTier').textContent = currentSchool.subscriptionName || 'Not Set';
     document.getElementById('manageBillingCycle').textContent = currentSchool.billingCycle || 'Not Specified';
     document.getElementById('manageExpiration').textContent = currentSchool.nextRenewalDate 
         ? new Date(currentSchool.nextRenewalDate).toLocaleDateString() 
         : 'Not Set';
 
-    // Danger Zone
+    // Populate Limits
+    const limits = currentSchool.limits || {};
+    document.getElementById('manageLimitStudents').textContent = limits.studentLimit || '0';
+    document.getElementById('manageLimitTeachers').textContent = limits.teacherLimit || '0';
+    document.getElementById('manageLimitAdmins').textContent = limits.adminLimit || '0';
+
     const isSuspended = currentSchool.isActive === false;
     const toggleBtn = document.getElementById('toggleStatusBtn');
     const toggleText = document.getElementById('toggleStatusText');
@@ -125,6 +226,9 @@ window.openSchoolModal = (schoolId) => {
         toggleText.textContent = "Suspend Platform Access";
     }
     
+    // Fetch and populate transaction ledger
+    loadSchoolLedger(currentSchool);
+
     const modal = document.getElementById('schoolManageModal');
     const inner = document.getElementById('schoolManageModalInner');
     modal.classList.remove('hidden');
@@ -138,7 +242,114 @@ document.getElementById('closeSchoolBtn').addEventListener('click', () => {
     setTimeout(() => modal.classList.add('hidden'), 300);
 });
 
-// ── Renewal Payment Modal Logic ───────────────────────────────────────────
+// ── Override Limits Modal (Add-Ons) ──────────────────────────────────────────
+document.getElementById('openLimitsModalBtn').addEventListener('click', () => {
+    document.getElementById('limSchoolName').textContent = currentSchool.schoolName;
+    
+    const limits = currentSchool.limits || {};
+    document.getElementById('ovStudents').value = limits.studentLimit || 0;
+    document.getElementById('ovTeachers').value = limits.teacherLimit || 0;
+    document.getElementById('ovAdmins').value = limits.adminLimit || 0;
+    
+    document.getElementById('ovAmount').value = '';
+    document.getElementById('ovNotes').value = '';
+    document.getElementById('ovReceipt').value = '';
+    document.getElementById('limitsErrorMsg').classList.add('hidden');
+
+    const modal = document.getElementById('limitsModal');
+    const inner = document.getElementById('limitsModalInner');
+    modal.classList.remove('hidden');
+    setTimeout(() => { modal.classList.remove('opacity-0'); inner.classList.remove('scale-95'); }, 10);
+});
+
+document.getElementById('closeLimitsBtn').addEventListener('click', () => {
+    const modal = document.getElementById('limitsModal');
+    const inner = document.getElementById('limitsModalInner');
+    modal.classList.add('opacity-0'); inner.classList.add('scale-95');
+    setTimeout(() => modal.classList.add('hidden'), 300);
+});
+
+document.getElementById('confirmLimitsBtn').addEventListener('click', async () => {
+    const newStudents = parseInt(document.getElementById('ovStudents').value);
+    const newTeachers = parseInt(document.getElementById('ovTeachers').value);
+    const newAdmins = parseInt(document.getElementById('ovAdmins').value);
+    
+    const amountPaid = document.getElementById('ovAmount').value;
+    const internalNote = document.getElementById('ovNotes').value.trim();
+    const receiptFile = document.getElementById('ovReceipt').files[0]; 
+    const errorMsg = document.getElementById('limitsErrorMsg');
+
+    if (isNaN(newStudents) || isNaN(newTeachers) || isNaN(newAdmins)) {
+        errorMsg.textContent = "Please enter valid numbers for all seat limits.";
+        errorMsg.classList.remove('hidden'); return;
+    }
+
+    const btn = document.getElementById('confirmLimitsBtn');
+    btn.disabled = true;
+
+    try {
+        const timestamp = new Date().toISOString();
+        
+        // 1. Log Payment if an amount was entered
+        if (amountPaid && amountPaid > 0) {
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Logging Payment...';
+            const paymentId = `PAY-${Date.now()}`;
+            let receiptUrl = null;
+
+            if (receiptFile) {
+                const storageRef = ref(storage, `receipts/${paymentId}_${receiptFile.name}`);
+                await uploadBytes(storageRef, receiptFile);
+                receiptUrl = await getDownloadURL(storageRef);
+            }
+
+            const notesArray = internalNote ? [{
+                note: internalNote,
+                timestamp: timestamp,
+                loggedBy: session.id,
+                loggedByName: session.name
+            }] : [];
+
+            await setDoc(doc(db, 'payments', paymentId), {
+                schoolId: currentSchool.id,
+                schoolName: currentSchool.schoolName,
+                paymentType: 'Seat Add-On / Limit Override',
+                amount: parseFloat(amountPaid),
+                billingCycle: 'One-Time Charge',
+                receiptUrl: receiptUrl, 
+                internalNotes: notesArray,
+                loggedBy: session.id,
+                timestamp: timestamp
+            });
+        }
+
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Saving Overrides...';
+
+        // 2. Update the School Document Limits
+        await updateDoc(doc(db, 'schools', currentSchool.id), {
+            limits: {
+                studentLimit: newStudents,
+                teacherLimit: newTeachers,
+                adminLimit: newAdmins
+            }
+        });
+
+        // 3. Cleanup
+        document.getElementById('closeLimitsBtn').click();
+        document.getElementById('closeSchoolBtn').click(); 
+        loadSchools(); 
+
+    } catch (e) {
+        console.error("Limits Override Failed:", e);
+        errorMsg.textContent = "An error occurred. Check console for details.";
+        errorMsg.classList.remove('hidden');
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = 'Save Overrides & Log Payment <i class="fa-solid fa-check ml-1"></i>';
+});
+
+
+// ── Renewal & Upgrade Modal Logic ───────────────────────────────────────────
 document.getElementById('renCycle').addEventListener('change', (e) => {
     const customWrap = document.getElementById('renCustomCycleWrap');
     if (e.target.value === 'Other') customWrap.classList.remove('hidden');
@@ -147,8 +358,14 @@ document.getElementById('renCycle').addEventListener('change', (e) => {
 
 document.getElementById('openRenewalBtn').addEventListener('click', () => {
     document.getElementById('renSchoolName').textContent = currentSchool.schoolName;
+    
+    document.getElementById('renPlan').value = currentSchool.subscriptionPlanId || '';
+    if(currentSchool.subscriptionPlanId) {
+        document.getElementById('renPlan').dispatchEvent(new Event('change')); 
+    }
+    
     document.getElementById('renAmount').value = '';
-    document.getElementById('renCycle').value = 'Annual'; // Default to annual renewal
+    document.getElementById('renCycle').value = 'No Extension'; 
     document.getElementById('renCustomCycleWrap').classList.add('hidden');
     document.getElementById('renCustomCycle').value = '';
     document.getElementById('renNotes').value = '';
@@ -169,9 +386,9 @@ const closeRenewalModal = () => {
 };
 document.getElementById('closeRenewalBtn').addEventListener('click', closeRenewalModal);
 
-// Helper to advance the date based on existing expiration (or now if none exists)
 function calculateNewRenewalDate(cycleType, currentExpirationString) {
-    // If they are way past due, start the clock from today. If active, extend current clock.
+    if (cycleType === 'No Extension') return currentExpirationString; 
+
     const now = new Date();
     let baseDate = currentExpirationString ? new Date(currentExpirationString) : now;
     if (baseDate < now) baseDate = now; 
@@ -181,14 +398,15 @@ function calculateNewRenewalDate(cycleType, currentExpirationString) {
     } else if (cycleType === 'Annual') {
         baseDate.setFullYear(baseDate.getFullYear() + 1);
     } else if (cycleType === 'Multi-Year') {
-        baseDate.setFullYear(baseDate.getFullYear() + 2); // Default to 2 for generic multi
+        baseDate.setFullYear(baseDate.getFullYear() + 2);
     } else {
-        baseDate.setFullYear(baseDate.getFullYear() + 1); // Default fallback
+        baseDate.setFullYear(baseDate.getFullYear() + 1); 
     }
     return baseDate.toISOString();
 }
 
 document.getElementById('confirmRenewalBtn').addEventListener('click', async () => {
+    const planId = document.getElementById('renPlan').value;
     const amount = document.getElementById('renAmount').value;
     const cycleSelect = document.getElementById('renCycle').value;
     const customCycle = document.getElementById('renCustomCycle').value;
@@ -196,11 +414,16 @@ document.getElementById('confirmRenewalBtn').addEventListener('click', async () 
     const receiptFile = document.getElementById('renReceipt').files[0]; 
     const errorMsg = document.getElementById('renewalErrorMsg');
 
-    if (!amount || amount <= 0) {
-        errorMsg.textContent = "Please enter a valid payment amount.";
+    if (!planId) {
+        errorMsg.textContent = "Please select a Subscription Tier.";
+        errorMsg.classList.remove('hidden'); return;
+    }
+    if (!amount || amount < 0) {
+        errorMsg.textContent = "Please enter a payment amount (can be 0 for free upgrades).";
         errorMsg.classList.remove('hidden'); return;
     }
 
+    const selectedPlan = availablePlans.find(p => p.id === planId);
     const actualCycle = cycleSelect === 'Other' ? (customCycle || 'Custom') : cycleSelect;
     const btn = document.getElementById('confirmRenewalBtn');
     btn.disabled = true;
@@ -210,7 +433,6 @@ document.getElementById('confirmRenewalBtn').addEventListener('click', async () 
         const timestamp = new Date().toISOString();
         let receiptUrl = null;
 
-        // 1. Upload File to Firebase Storage
         if (receiptFile) {
             btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up fa-spin mr-2"></i> Uploading Receipt...';
             const storageRef = ref(storage, `receipts/${paymentId}_${receiptFile.name}`);
@@ -220,7 +442,6 @@ document.getElementById('confirmRenewalBtn').addEventListener('click', async () 
 
         btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Logging Ledger...';
 
-        // 2. Prepare Timestamped Note
         const notesArray = internalNote ? [{
             note: internalNote,
             timestamp: timestamp,
@@ -228,45 +449,49 @@ document.getElementById('confirmRenewalBtn').addEventListener('click', async () 
             loggedByName: session.name
         }] : [];
 
-        // 3. Calculate New Expiration Clock
         const newRenewalDate = calculateNewRenewalDate(cycleSelect, currentSchool.nextRenewalDate);
+        const paymentType = cycleSelect === 'No Extension' ? 'Plan Upgrade/Change' : 'Renewal';
 
-        // 4. Create Master Ledger Payment Record (Type: Renewal)
         await setDoc(doc(db, 'payments', paymentId), {
             schoolId: currentSchool.id,
             schoolName: currentSchool.schoolName,
-            paymentType: 'Renewal',
+            paymentType: paymentType,
             amount: parseFloat(amount),
             billingCycle: actualCycle,
+            subscriptionPlanId: selectedPlan.id,
             receiptUrl: receiptUrl, 
             internalNotes: notesArray,
             loggedBy: session.id,
             timestamp: timestamp
         });
 
-        // 5. Update School Document
-        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Updating Node...';
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Updating Node Limits...';
         await updateDoc(doc(db, 'schools', currentSchool.id), {
-            billingCycle: actualCycle,
+            billingCycle: cycleSelect === 'No Extension' ? currentSchool.billingCycle : actualCycle,
             nextRenewalDate: newRenewalDate,
-            isActive: true // Ensure they are un-suspended if they were locked out
+            subscriptionPlanId: selectedPlan.id,
+            subscriptionName: selectedPlan.name,
+            limits: {
+                adminLimit: selectedPlan.adminLimit,
+                studentLimit: selectedPlan.studentLimit,
+                teacherLimit: selectedPlan.teacherLimit
+            },
+            isActive: true 
         });
 
-        // 6. Cleanup
         closeRenewalModal();
-        document.getElementById('closeSchoolBtn').click(); // Close manage modal too
+        document.getElementById('closeSchoolBtn').click(); 
         loadSchools(); 
 
     } catch (e) {
-        console.error("Renewal Failed:", e);
-        errorMsg.textContent = "An error occurred during renewal update. Check console for details.";
+        console.error("Update Failed:", e);
+        errorMsg.textContent = "An error occurred during update. Check console for details.";
         errorMsg.classList.remove('hidden');
     }
 
     btn.disabled = false;
     btn.innerHTML = 'Update Subscription & Log Ledger <i class="fa-solid fa-arrow-rotate-right ml-1"></i>';
 });
-
 
 // ── Toggle Suspension (Kill Switch) ───────────────────────────────────────
 const toggleStatusBtn = document.getElementById('toggleStatusBtn');
@@ -299,4 +524,5 @@ if (toggleStatusBtn) {
     });
 }
 
-loadSchools(); // Init table on load
+// Init Data
+loadSubscriptionPlans().then(() => loadSchools());
