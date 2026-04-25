@@ -35,36 +35,34 @@
                     <i class="fa-solid fa-magnifying-glass text-blue-500 mt-0.5"></i>
                     <div>
                         <h4 class="font-black text-blue-900 text-sm">Step 1 of 2 — Find Your Account</h4>
-                        <p class="text-xs text-slate-500 font-semibold mt-1">Select your role, then enter your ID and email address.</p>
+                        <p class="text-xs text-slate-500 font-semibold mt-1">Select your role, then enter your details.</p>
                     </div>
                 </div>
 
                 <!-- Role Selector -->
                 <div>
                     <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">I am a... *</label>
-                    <div class="grid grid-cols-3 gap-2" id="roleSelector">
-                        <button data-role="admin"
-                            class="role-btn flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-slate-200 hover:border-blue-400 transition text-center"
-                            onclick="selectRole('admin')">
+                    <div class="grid grid-cols-2 gap-2 mb-2" id="roleSelector">
+                        <button data-role="admin"     class="role-btn flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-slate-200 hover:border-blue-400 transition text-center" onclick="selectRole('admin')">
                             <i class="fa-solid fa-user-shield text-slate-400 text-xl"></i>
-                            <span class="text-[11px] font-black text-slate-600 uppercase tracking-wide">Admin</span>
+                            <span class="text-[11px] font-black text-slate-600 uppercase tracking-wide">Super Admin</span>
                         </button>
-                        <button data-role="teacher"
-                            class="role-btn flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-slate-200 hover:border-blue-400 transition text-center"
-                            onclick="selectRole('teacher')">
+                        <button data-role="sub_admin" class="role-btn flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-slate-200 hover:border-blue-400 transition text-center" onclick="selectRole('sub_admin')">
+                            <i class="fa-solid fa-user-tie text-slate-400 text-xl"></i>
+                            <span class="text-[11px] font-black text-slate-600 uppercase tracking-wide">Sub-Admin</span>
+                        </button>
+                        <button data-role="teacher"   class="role-btn flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-slate-200 hover:border-blue-400 transition text-center" onclick="selectRole('teacher')">
                             <i class="fa-solid fa-chalkboard-user text-slate-400 text-xl"></i>
                             <span class="text-[11px] font-black text-slate-600 uppercase tracking-wide">Teacher</span>
                         </button>
-                        <button data-role="student"
-                            class="role-btn flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-slate-200 hover:border-blue-400 transition text-center"
-                            onclick="selectRole('student')">
+                        <button data-role="student"   class="role-btn flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-slate-200 hover:border-blue-400 transition text-center" onclick="selectRole('student')">
                             <i class="fa-solid fa-graduation-cap text-slate-400 text-xl"></i>
                             <span class="text-[11px] font-black text-slate-600 uppercase tracking-wide">Student</span>
                         </button>
                     </div>
                 </div>
 
-                <!-- Dynamic ID Field -->
+                <!-- Primary ID Field -->
                 <div id="idFieldWrap" class="hidden">
                     <label id="idFieldLabel" class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">ID *</label>
                     <input type="text" id="fpUserId"
@@ -73,8 +71,18 @@
                     <p id="idFieldHint" class="text-[10px] text-slate-400 font-semibold mt-1.5"></p>
                 </div>
 
+                <!-- Secondary ID Field (sub_admin only — they need School ID + Admin ID) -->
+                <div id="secondIdFieldWrap" class="hidden">
+                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Sub-Admin ID *</label>
+                    <input type="text" id="fpSecondId"
+                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition uppercase"
+                        placeholder="Your Sub-Admin ID">
+                    <p class="text-[10px] text-slate-400 font-semibold mt-1.5">Found on your credential slip from your School Admin.</p>
+                </div>
+
+                <!-- Email Field -->
                 <div id="emailFieldWrap" class="hidden">
-                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Email Address *</label>
+                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Email Address on File *</label>
                     <input type="email" id="fpEmail"
                         placeholder="email address on file"
                         class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
@@ -100,7 +108,7 @@
                     <div>
                         <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Account Found</p>
                         <p id="foundAccountName" class="text-sm font-black text-slate-800"></p>
-                        <p id="foundAccountSub" class="text-[10px] text-slate-500 font-semibold"></p>
+                        <p id="foundAccountSub"  class="text-[10px] text-slate-500 font-semibold"></p>
                     </div>
                 </div>
 
@@ -156,10 +164,7 @@
     </div>
 
 <style>
-    .role-btn.active {
-        border-color: #2563eb;
-        background: #eff6ff;
-    }
+    .role-btn.active { border-color: #2563eb; background: #eff6ff; }
     .role-btn.active i { color: #2563eb; }
     .role-btn.active span { color: #1e40af; }
 </style>
@@ -171,64 +176,91 @@ import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/f
 // ── EmailJS Config ────────────────────────────────────────────────────────────
 const EMAILJS_PUBLIC_KEY  = '0J9RlI4x1fQ8P9IG9';
 const EMAILJS_SERVICE_ID  = 'service_kgk97jd';
-const EMAILJS_TEMPLATE_ID = 'template_reset_pin'; // Must have: {{to_email}}, {{user_name}}, {{role_label}}, {{reset_link}}
-
+const EMAILJS_TEMPLATE_ID = 'template_reset_pin';
 emailjs.init(EMAILJS_PUBLIC_KEY);
 
 // ── Role Config ───────────────────────────────────────────────────────────────
-// Defines per-role: which Firestore collection, ID format, field names
+// sub_admin is special: it needs TWO identifiers (schoolId + adminId).
+// needsSecondId flags this so the UI shows the extra field.
 const ROLE_CONFIG = {
     admin: {
-        label:       'School Admin',
-        icon:        'fa-user-shield',
-        collection:  'schools',
-        idLabel:     'School ID',
-        idPlaceholder: 'e.g. SCH-8B2X9',
-        idHint:      'Your School ID was shown at the end of onboarding.',
-        idPattern:   /^SCH-[A-Z0-9]{5}$/,
-        emailField:  'contactEmail',   // field name in Firestore doc
-        nameField:   'schoolName',
-        subField:    null
+        label:          'Super Admin',
+        icon:           'fa-user-shield',
+        idLabel:        'School ID',
+        idPlaceholder:  'e.g. SCH-8B2X9',
+        idHint:         'Your School ID was shown at the end of onboarding.',
+        idPattern:      /^SCH-[A-Z0-9]{5}$/,
+        emailField:     'contactEmail',
+        nameField:      'schoolName',
+        needsSecondId:  false,
+        // lookup: getDoc(schools/{id})
+        lookup: async (primaryId) => {
+            const snap = await getDoc(doc(db, 'schools', primaryId));
+            return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+        }
+    },
+    sub_admin: {
+        label:               'Sub-Admin',
+        icon:                'fa-user-tie',
+        idLabel:             'School ID',
+        idPlaceholder:       'e.g. SCH-8B2X9',
+        idHint:              'The School ID of the school you work at.',
+        idPattern:           /^SCH-[A-Z0-9]{5}$/,
+        emailField:          'email',
+        nameField:           'name',
+        needsSecondId:       true,
+        // lookup: getDoc(schools/{schoolId}/admins/{adminId})
+        lookup: async (primaryId, secondaryId) => {
+            const snap = await getDoc(doc(db, 'schools', primaryId, 'admins', secondaryId));
+            return snap.exists() ? { id: snap.id, schoolId: primaryId, ...snap.data() } : null;
+        }
     },
     teacher: {
-        label:       'Teacher',
-        icon:        'fa-chalkboard-user',
-        collection:  'teachers',
-        idLabel:     'Teacher ID',
-        idPlaceholder: 'e.g. T24-AB3X7',
-        idHint:      'Your Teacher ID is on your credential slip.',
-        idPattern:   /^T\d{2}-[A-Z0-9]{5}$/,
-        emailField:  'email',
-        nameField:   'name',
-        subField:    'currentSchoolId'
+        label:          'Teacher',
+        icon:           'fa-chalkboard-user',
+        idLabel:        'Teacher ID',
+        idPlaceholder:  'e.g. T24-AB3X7',
+        idHint:         'Your Teacher ID is on your credential slip.',
+        idPattern:      /^T\d{2}-[A-Z0-9]{5}$/,
+        emailField:     'email',
+        nameField:      'name',
+        needsSecondId:  false,
+        lookup: async (primaryId) => {
+            const snap = await getDoc(doc(db, 'teachers', primaryId));
+            return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+        }
     },
     student: {
-        label:       'Student',
-        icon:        'fa-graduation-cap',
-        collection:  'students',
-        idLabel:     'Student ID',
-        idPlaceholder: 'e.g. S24-XK9P2',
-        idHint:      'Your Student ID is on your credential slip or report card.',
-        idPattern:   /^S\d{2}-[A-Z0-9]{5}$/,
-        emailField:  'email',
-        nameField:   'name',
-        subField:    'currentSchoolId'
+        label:          'Student',
+        icon:           'fa-graduation-cap',
+        idLabel:        'Student ID',
+        idPlaceholder:  'e.g. S24-XK9P2',
+        idHint:         'Your Student ID is on your credential slip or report card.',
+        idPattern:      /^S\d{2}-[A-Z0-9]{5}$/,
+        emailField:     'email',
+        nameField:      'name',
+        needsSecondId:  false,
+        lookup: async (primaryId) => {
+            const snap = await getDoc(doc(db, 'students', primaryId));
+            return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+        }
     }
 };
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let selectedRole   = null;
-let foundDoc       = null;
-let foundDocId     = null;
+let selectedRole  = null;
+let foundDoc      = null;
+let foundDocId    = null;   // primary doc ID (or adminId for sub_admin)
+let foundSchoolId = null;   // only used for sub_admin
 
-// ── SHA-256 (same normalization as onboarding.js) ─────────────────────────────
+// ── SHA-256 ───────────────────────────────────────────────────────────────────
 async function sha256(text) {
     const encoded = new TextEncoder().encode(text.toLowerCase().trim());
     const buffer  = await crypto.subtle.digest('SHA-256', encoded);
     return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// ── Generate 32-char token ────────────────────────────────────────────────────
+// ── Token ─────────────────────────────────────────────────────────────────────
 function generateToken() {
     const arr = new Uint8Array(16);
     crypto.getRandomValues(arr);
@@ -240,80 +272,85 @@ window.selectRole = function(role) {
     selectedRole = role;
     const cfg    = ROLE_CONFIG[role];
 
-    // Update button styles
     document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
     document.querySelector(`[data-role="${role}"]`).classList.add('active');
 
-    // Show ID field
-    document.getElementById('idFieldLabel').textContent      = cfg.idLabel + ' *';
-    document.getElementById('fpUserId').placeholder          = cfg.idPlaceholder;
-    document.getElementById('idFieldHint').textContent       = cfg.idHint;
-    document.getElementById('fpUserId').value                = '';
-    document.getElementById('fpEmail').value                 = '';
+    document.getElementById('idFieldLabel').textContent    = cfg.idLabel + ' *';
+    document.getElementById('fpUserId').placeholder        = cfg.idPlaceholder;
+    document.getElementById('idFieldHint').textContent     = cfg.idHint;
+    document.getElementById('fpUserId').value              = '';
+    document.getElementById('fpEmail').value               = '';
+    document.getElementById('fpSecondId').value            = '';
     document.getElementById('step1Error').classList.add('hidden');
 
     document.getElementById('idFieldWrap').classList.remove('hidden');
     document.getElementById('emailFieldWrap').classList.remove('hidden');
     document.getElementById('findAccountBtn').classList.remove('hidden');
+
+    // Show/hide secondary ID field for sub_admin
+    if (cfg.needsSecondId) {
+        document.getElementById('secondIdFieldWrap').classList.remove('hidden');
+    } else {
+        document.getElementById('secondIdFieldWrap').classList.add('hidden');
+    }
 };
 
 // ── Step 1: Find Account ──────────────────────────────────────────────────────
 window.findAccount = async function() {
-    if (!selectedRole) { showError('step1Error', 'Please select your role first.'); return; }
+    if (!selectedRole) { showErr('step1Error', 'Please select your role first.'); return; }
 
-    const cfg      = ROLE_CONFIG[selectedRole];
-    const rawId    = document.getElementById('fpUserId').value.trim().toUpperCase();
-    const email    = document.getElementById('fpEmail').value.trim().toLowerCase();
-    const errEl    = document.getElementById('step1Error');
-    errEl.classList.add('hidden');
+    const cfg       = ROLE_CONFIG[selectedRole];
+    const rawId     = document.getElementById('fpUserId').value.trim().toUpperCase();
+    const secondId  = document.getElementById('fpSecondId').value.trim().toUpperCase();
+    const email     = document.getElementById('fpEmail').value.trim().toLowerCase();
+    document.getElementById('step1Error').classList.add('hidden');
 
     if (!rawId || !email) {
-        showError('step1Error', 'Both fields are required.'); return;
+        showErr('step1Error', 'All fields are required.'); return;
+    }
+    if (cfg.needsSecondId && !secondId) {
+        showErr('step1Error', 'Please enter your Sub-Admin ID.'); return;
     }
     if (!cfg.idPattern.test(rawId)) {
-        showError('step1Error', `Invalid ${cfg.idLabel} format. It should look like "${cfg.idPlaceholder.replace('e.g. ', '')}".`);
-        return;
+        showErr('step1Error', `Invalid ${cfg.idLabel} format.`); return;
     }
 
     const btn = document.getElementById('findAccountBtn');
     setLoading(btn, true, 'Find My Account →');
 
     try {
-        const snap = await getDoc(doc(db, cfg.collection, rawId));
+        const data = cfg.needsSecondId
+            ? await cfg.lookup(rawId, secondId)
+            : await cfg.lookup(rawId);
 
         // Generic error — don't reveal whether ID or email was wrong
-        if (!snap.exists()) {
-            showError('step1Error', 'No account found matching those details. Please check and try again.');
+        if (!data) {
+            showErr('step1Error', 'No account found matching those details. Please check and try again.');
             setLoading(btn, false, 'Find My Account →'); return;
         }
-
-        const data = snap.data();
 
         if ((data[cfg.emailField] || '').toLowerCase() !== email) {
-            showError('step1Error', 'No account found matching those details. Please check and try again.');
+            showErr('step1Error', 'No account found matching those details. Please check and try again.');
             setLoading(btn, false, 'Find My Account →'); return;
         }
 
-        // Check that security questions have been set
         if (!data.securityQ1 || !data.securityQ2) {
-            showError('step1Error',
+            showErr('step1Error',
                 'Security questions have not been set on this account yet. ' +
                 'Please log in and complete your profile setup first, or contact your administrator.');
             setLoading(btn, false, 'Find My Account →'); return;
         }
 
-        // ── Account found — move to step 2 ────────────────────────────────
-        foundDoc   = data;
-        foundDocId = rawId;
+        // ── Account found ──────────────────────────────────────────────────
+        foundDoc      = data;
+        foundDocId    = cfg.needsSecondId ? secondId : rawId;
+        foundSchoolId = cfg.needsSecondId ? rawId    : null;
 
-        const cfg2 = ROLE_CONFIG[selectedRole];
-        document.getElementById('accountBadgeIcon').className = `fa-solid ${cfg2.icon} text-green-600`;
-        document.getElementById('foundAccountName').textContent =
-            data[cfg2.nameField] || rawId;
-        document.getElementById('foundAccountSub').textContent =
-            cfg2.subField && data[cfg2.subField]
-                ? `School: ${data[cfg2.subField]}`
-                : cfg2.label;
+        document.getElementById('accountBadgeIcon').className = `fa-solid ${cfg.icon} text-green-600`;
+        document.getElementById('foundAccountName').textContent = data[cfg.nameField] || foundDocId;
+        document.getElementById('foundAccountSub').textContent  = cfg.needsSecondId
+            ? `School: ${rawId} · ${cfg.label}`
+            : cfg.label;
 
         document.getElementById('displayQ1').textContent = data.securityQ1;
         document.getElementById('displayQ2').textContent = data.securityQ2;
@@ -323,7 +360,7 @@ window.findAccount = async function() {
 
     } catch (err) {
         console.error('[ForgotPin] findAccount:', err);
-        showError('step1Error', 'A connection error occurred. Please refresh and try again.');
+        showErr('step1Error', 'A connection error occurred. Please refresh and try again.');
     }
 
     setLoading(btn, false, 'Find My Account →');
@@ -331,12 +368,12 @@ window.findAccount = async function() {
 
 // ── Step 2: Verify & Send ─────────────────────────────────────────────────────
 window.verifyAndSend = async function() {
-    const a1  = document.getElementById('fpSecA1').value.trim();
-    const a2  = document.getElementById('fpSecA2').value.trim();
+    const a1 = document.getElementById('fpSecA1').value.trim();
+    const a2 = document.getElementById('fpSecA2').value.trim();
     document.getElementById('step2Error').classList.add('hidden');
 
     if (!a1 || !a2) {
-        showError('step2Error', 'Please answer both security questions.'); return;
+        showErr('step2Error', 'Please answer both security questions.'); return;
     }
 
     const btn = document.getElementById('verifyBtn');
@@ -346,28 +383,31 @@ window.verifyAndSend = async function() {
         const [h1, h2] = await Promise.all([sha256(a1), sha256(a2)]);
 
         if (h1 !== foundDoc.securityA1 || h2 !== foundDoc.securityA2) {
-            showError('step2Error', 'One or both answers are incorrect. Please try again.');
+            showErr('step2Error', 'One or both answers are incorrect. Please try again.');
             setLoading(btn, false, 'Verify & Send Reset Link →'); return;
         }
 
-        // ── Generate reset token ───────────────────────────────────────────
+        // ── Generate token ─────────────────────────────────────────────────
         const token     = generateToken();
         const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
         const cfg       = ROLE_CONFIG[selectedRole];
 
-        // reset_vault stores userType + targetId so reset-pin.html knows
-        // exactly which collection and document to update
-        await setDoc(doc(db, 'reset_vault', token), {
-            userType:  selectedRole,           // 'admin' | 'teacher' | 'student'
-            targetId:  foundDocId,             // schoolId | teacherId | studentId
+        // reset_vault entry — sub_admin stores schoolId separately so reset-pin
+        // can construct the correct subcollection path
+        const vaultEntry = {
+            userType:  selectedRole,
+            targetId:  foundDocId,
             expiresAt,
             createdAt: new Date().toISOString()
-        });
+        };
+        if (foundSchoolId) vaultEntry.schoolId = foundSchoolId;
 
-        // ── Send reset email ───────────────────────────────────────────────
+        await setDoc(doc(db, 'reset_vault', token), vaultEntry);
+
+        // ── Send email ─────────────────────────────────────────────────────
         const resetLink = `https://connectusonline.org/onboarding/reset-pin.html?token=${token}`;
         const toEmail   = (foundDoc[cfg.emailField] || '').toLowerCase();
-        const userName  = foundDoc[cfg.nameField] || foundDocId;
+        const userName  = foundDoc[cfg.nameField]   || foundDocId;
 
         await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
             to_email:   toEmail,
@@ -381,7 +421,7 @@ window.verifyAndSend = async function() {
 
     } catch (err) {
         console.error('[ForgotPin] verifyAndSend:', err);
-        showError('step2Error', 'Failed to send reset email. Please try again.');
+        showErr('step2Error', 'Failed to send reset email. Please try again.');
     }
 
     setLoading(btn, false, 'Verify & Send Reset Link →');
@@ -389,8 +429,7 @@ window.verifyAndSend = async function() {
 
 // ── Back to Step 1 ────────────────────────────────────────────────────────────
 window.backToStep1 = function() {
-    foundDoc   = null;
-    foundDocId = null;
+    foundDoc = foundDocId = foundSchoolId = null;
     document.getElementById('fpSecA1').value = '';
     document.getElementById('fpSecA2').value = '';
     document.getElementById('step2Error').classList.add('hidden');
@@ -399,15 +438,15 @@ window.backToStep1 = function() {
 };
 
 // ── UI Helpers ────────────────────────────────────────────────────────────────
-function showError(elId, msg) {
+function showErr(elId, msg) {
     const el = document.getElementById(elId);
     el.textContent = msg;
     el.classList.remove('hidden');
 }
 
 function setLoading(btn, loading, resetLabel) {
-    btn.disabled   = loading;
-    btn.innerHTML  = loading
+    btn.disabled  = loading;
+    btn.innerHTML = loading
         ? '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Please wait...'
         : resetLabel;
 }
