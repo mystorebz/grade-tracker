@@ -1,107 +1,416 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { doc, getDoc, getDocs, updateDoc, deleteDoc, collection, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import {
+    doc, getDoc, getDocs, setDoc, updateDoc,
+    collection, query, where, writeBatch
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
 import { showMsg, letterGrade } from '../../assets/js/utils.js';
 
-// ── 1. INIT & AUTH ────────────────────────────────────────────────────────
+// ── 1. AUTH & LAYOUT ──────────────────────────────────────────────────────
 const session = requireAuth('admin', '../login.html');
-
-// Inject layout
 injectAdminLayout('settings', 'Settings', 'Security, profile, and system configuration', false, false);
 
-// Local state for full school document
+// ── 2. STATE ──────────────────────────────────────────────────────────────
 let fullSchoolData = null;
 
-// ── 2. LOAD DATA ──────────────────────────────────────────────────────────
+// ── SHA-256 ───────────────────────────────────────────────────────────────
+async function sha256(text) {
+    const normalized  = text.toLowerCase().trim();
+    const encoded     = new TextEncoder().encode(normalized);
+    const hashBuffer  = await crypto.subtle.digest('SHA-256', encoded);
+    return Array.from(new Uint8Array(hashBuffer))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+}
+
+// ── Generate Sub-Admin ID ─────────────────────────────────────────────────
+function generateAdminId() {
+    const year  = new Date().getFullYear().toString().slice(-2);
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let rand = '';
+    for (let i = 0; i < 5; i++) rand += chars.charAt(Math.floor(Math.random() * chars.length));
+    return `A${year}-${rand}`;
+}
+
+// ── Generate temporary PIN (8 chars) ──────────────────────────────────────
+function generateTempPin() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let pin = '';
+    for (let i = 0; i < 8; i++) pin += chars.charAt(Math.floor(Math.random() * chars.length));
+    return pin;
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── 3. LOAD ALL SETTINGS DATA ─────────────────────────────────────────────
 async function loadSettingsData() {
     try {
         const snap = await getDoc(doc(db, 'schools', session.schoolId));
-        if (snap.exists()) {
-            fullSchoolData = snap.data();
-            
-            // Populate Profile Fields
-            document.getElementById('profileSchoolName').value = fullSchoolData.schoolName || '';
-            document.getElementById('profileDistrict').value = fullSchoolData.district || '';
-            document.getElementById('profileSchoolType').value = fullSchoolData.schoolType || '';
-            document.getElementById('profilePhone').value = fullSchoolData.phone || '';
-            document.getElementById('profileAddress').value = fullSchoolData.schoolAddress || '';
-        }
-        
+        if (!snap.exists()) return;
+
+        fullSchoolData = snap.data();
+
+        // ── Populate profile fields ────────────────────────────────────────
+        document.getElementById('profileSchoolName').value    = fullSchoolData.schoolName    || '';
+        document.getElementById('profileContactEmail').value  = fullSchoolData.contactEmail  || '';
+        document.getElementById('profileDistrict').value      = fullSchoolData.district      || '';
+        document.getElementById('profileSchoolType').value    = fullSchoolData.schoolType    || '';
+        document.getElementById('profilePhone').value         = fullSchoolData.phone         || '';
+        document.getElementById('profileContactName').value   = fullSchoolData.contactName   || '';
+        document.getElementById('profileAddress').value       = fullSchoolData.schoolAddress || '';
+
+        // ── Subscription usage ─────────────────────────────────────────────
+        await loadSubscriptionUsage();
+
+        // ── Archive management ─────────────────────────────────────────────
         loadArchivedRecords();
+
+        // ── Sub-admin management (super admin only) ────────────────────────
+        if (session.isSuperAdmin) {
+            document.getElementById('adminManagementSection').classList.remove('hidden');
+            loadSubAdmins();
+        }
+
+        // ── Danger zone — hide for sub-admins ─────────────────────────────
+        if (!session.isSuperAdmin) {
+            const danger = document.querySelector('.danger-zone');
+            if (danger) danger.classList.add('hidden');
+        }
+
+        // ── Scroll to #admins anchor if navigated from sidebar ────────────
+        if (window.location.hash === '#admins' && session.isSuperAdmin) {
+            setTimeout(() => {
+                document.getElementById('adminManagementSection')?.scrollIntoView({ behavior: 'smooth' });
+            }, 400);
+        }
+
     } catch (e) {
-        console.error("Error loading settings data:", e);
+        console.error('[Settings] loadSettingsData:', e);
     }
 }
 
-// ── 3. UPDATE SECURITY CODE ───────────────────────────────────────────────
+// ── 4. SUBSCRIPTION USAGE ─────────────────────────────────────────────────
+async function loadSubscriptionUsage() {
+    try {
+        const planName      = session.planName      || 'Pro';
+        const teacherLimit  = session.teacherLimit  || 50;
+        const studentLimit  = session.studentLimit  || 999;
+        const adminLimit    = session.adminLimit    || 1;
+
+        document.getElementById('planBadge').textContent = planName;
+
+        // Fetch live counts in parallel
+        const [tSnap, sSnap, aSnap] = await Promise.all([
+            getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId))),
+            getDocs(query(collection(db, 'students'),
+                where('currentSchoolId', '==', session.schoolId),
+                where('enrollmentStatus', '==', 'Active'))),
+            getDocs(query(collection(db, 'schools', session.schoolId, 'admins'),
+                where('isArchived', '==', false)))
+        ]);
+
+        const teacherCount = tSnap.size;
+        const studentCount = sSnap.size;
+        const adminCount   = aSnap.size;
+
+        const usageItems = [
+            { label: 'Teachers', used: teacherCount, limit: teacherLimit, icon: 'fa-chalkboard-user', color: 'blue' },
+            { label: 'Students', used: studentCount, limit: studentLimit, icon: 'fa-user-graduate',   color: 'emerald' },
+            { label: 'Sub-Admins', used: adminCount, limit: adminLimit,  icon: 'fa-user-shield',     color: 'indigo' }
+        ];
+
+        document.getElementById('subscriptionUsageGrid').innerHTML = usageItems.map(item => {
+            const pct       = item.limit > 0 ? Math.min(Math.round((item.used / item.limit) * 100), 100) : 0;
+            const isWarning = pct >= 80;
+            const isFull    = pct >= 100;
+            const barColor  = isFull ? 'bg-red-500' : isWarning ? 'bg-amber-500' : `bg-${item.color}-500`;
+            const textColor = isFull ? 'text-red-600' : isWarning ? 'text-amber-600' : `text-${item.color}-600`;
+            const bgColor   = isFull ? 'bg-red-50 border-red-200' : isWarning ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200';
+
+            return `
+            <div class="text-center p-4 rounded-xl border ${bgColor}">
+                <i class="fa-solid ${item.icon} ${textColor} text-xl mb-2"></i>
+                <p class="text-xs font-black text-slate-500 uppercase tracking-wider mb-1">${item.label}</p>
+                <p class="${textColor} font-black text-2xl">${item.used}</p>
+                <p class="text-xs text-slate-400 font-semibold">of ${item.limit === 99999 ? '∞' : item.limit}</p>
+                <div class="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div class="h-full ${barColor} rounded-full transition-all" style="width:${pct}%"></div>
+                </div>
+            </div>`;
+        }).join('');
+
+        // Update admin usage badge
+        document.getElementById('adminUsageBadge').textContent = `${adminCount} / ${adminLimit} used`;
+
+    } catch (e) {
+        console.error('[Settings] loadSubscriptionUsage:', e);
+    }
+}
+
+// ── 5. CHANGE PIN (hash-aware) ────────────────────────────────────────────
 document.getElementById('updateCodeBtn').addEventListener('click', async () => {
     const cur = document.getElementById('currentAdminCode').value.trim();
-    const nw = document.getElementById('newAdminCodeSettings').value.trim();
-    const cf = document.getElementById('confirmAdminCodeSettings').value.trim();
+    const nw  = document.getElementById('newAdminCodeSettings').value.trim();
+    const cf  = document.getElementById('confirmAdminCodeSettings').value.trim();
     const mid = 'settingsSecurityMsg';
     const btn = document.getElementById('updateCodeBtn');
-    
+
     if (!cur || !nw || !cf) { showMsg(mid, 'All three fields are required.', true); return; }
-    if (cur !== fullSchoolData.adminCode) { showMsg(mid, 'Current admin code is incorrect.', true); return; }
-    if (nw !== cf) { showMsg(mid, 'New codes do not match.', true); return; }
-    if (nw.length < 5) { showMsg(mid, 'Min. 5 characters required.', true); return; }
-    
+    if (nw !== cf)           { showMsg(mid, 'New codes do not match.', true);       return; }
+    if (nw.length < 6)       { showMsg(mid, 'Min. 6 characters required.', true);   return; }
+
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Updating...`;
-    btn.disabled = true;
+    btn.disabled  = true;
 
     try {
-        await updateDoc(doc(db, 'schools', session.schoolId), { adminCode: nw });
-        fullSchoolData.adminCode = nw; // Update local state
-        
-        ['currentAdminCode', 'newAdminCodeSettings', 'confirmAdminCodeSettings'].forEach(id => document.getElementById(id).value = '');
+        // ── Hash-aware comparison ──────────────────────────────────────────
+        // Super admin code is on the school document.
+        // Sub-admin code is on their own admin document.
+        const hashedCurrent = await sha256(cur);
+        const hashedNew     = await sha256(nw);
+
+        if (session.isSuperAdmin) {
+            if (hashedCurrent !== fullSchoolData.adminCode) {
+                showMsg(mid, 'Current admin code is incorrect.', true);
+                btn.innerHTML = 'Update Security Code'; btn.disabled = false; return;
+            }
+            await updateDoc(doc(db, 'schools', session.schoolId), { adminCode: hashedNew });
+            fullSchoolData.adminCode = hashedNew;
+        } else {
+            // Sub-admin — fetch their own doc to compare
+            const adminSnap = await getDoc(doc(db, 'schools', session.schoolId, 'admins', session.adminId));
+            if (!adminSnap.exists() || hashedCurrent !== adminSnap.data().adminCode) {
+                showMsg(mid, 'Current admin code is incorrect.', true);
+                btn.innerHTML = 'Update Security Code'; btn.disabled = false; return;
+            }
+            await updateDoc(doc(db, 'schools', session.schoolId, 'admins', session.adminId), { adminCode: hashedNew });
+        }
+
+        ['currentAdminCode', 'newAdminCodeSettings', 'confirmAdminCodeSettings']
+            .forEach(id => document.getElementById(id).value = '');
         showMsg(mid, 'Admin code updated successfully!', false);
+
     } catch (e) {
-        console.error("Error updating admin code:", e);
+        console.error('[Settings] updateCode:', e);
         showMsg(mid, 'Failed to update admin code.', true);
     }
-    
-    btn.innerHTML = `Update Security Code`;
-    btn.disabled = false;
+
+    btn.innerHTML = 'Update Security Code';
+    btn.disabled  = false;
 });
 
-// ── 4. UPDATE SCHOOL PROFILE ──────────────────────────────────────────────
+// ── 6. SAVE SCHOOL PROFILE ────────────────────────────────────────────────
 document.getElementById('saveProfileBtn').addEventListener('click', async () => {
     const btn = document.getElementById('saveProfileBtn');
     const u = {
-        schoolName: document.getElementById('profileSchoolName').value.trim(),
-        district: document.getElementById('profileDistrict').value,
-        schoolType: document.getElementById('profileSchoolType').value,
-        phone: document.getElementById('profilePhone').value.trim(),
+        schoolName:    document.getElementById('profileSchoolName').value.trim(),
+        contactEmail:  document.getElementById('profileContactEmail').value.trim(),
+        district:      document.getElementById('profileDistrict').value,
+        schoolType:    document.getElementById('profileSchoolType').value,
+        phone:         document.getElementById('profilePhone').value.trim(),
+        contactName:   document.getElementById('profileContactName').value.trim(),
         schoolAddress: document.getElementById('profileAddress').value.trim()
     };
-    
+
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
-    btn.disabled = true;
+    btn.disabled  = true;
 
     try {
         await updateDoc(doc(db, 'schools', session.schoolId), u);
         Object.assign(fullSchoolData, u);
-        
-        // Update Session if critical UI elements changed
-        session.schoolName = u.schoolName;
-        session.schoolType = u.schoolType;
+
+        session.schoolName   = u.schoolName;
+        session.schoolType   = u.schoolType;
+        session.contactEmail = u.contactEmail;
         setSessionData('admin', session);
-        
-        // Update sidebar name dynamically
-        document.getElementById('displaySchoolName').textContent = u.schoolName;
-        
-        showMsg('settingsProfileMsg', 'Profile saved!', false);
+
+        const nameEl = document.getElementById('displaySchoolName');
+        if (nameEl && session.isSuperAdmin) nameEl.textContent = u.schoolName;
+
+        showMsg('settingsProfileMsg', 'Profile saved successfully!', false);
     } catch (e) {
-        console.error("Error updating profile:", e);
+        console.error('[Settings] saveProfile:', e);
         showMsg('settingsProfileMsg', 'Failed to save profile.', true);
     }
 
-    btn.innerHTML = `Save Profile`;
-    btn.disabled = false;
+    btn.innerHTML = 'Save Profile';
+    btn.disabled  = false;
 });
 
-// ── 5. ARCHIVE MANAGEMENT ─────────────────────────────────────────────────
+// ── 7. SUB-ADMIN MANAGEMENT ───────────────────────────────────────────────
+
+async function loadSubAdmins() {
+    try {
+        const snap = await getDocs(collection(db, 'schools', session.schoolId, 'admins'));
+        const all  = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        const active   = all.filter(a => !a.isArchived);
+        const archived = all.filter(a =>  a.isArchived);
+
+        // Active list
+        document.getElementById('activeAdminsList').innerHTML = active.length
+            ? active.map(a => `
+            <div class="flex items-center justify-between bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center font-black text-sm">
+                        ${(a.name || 'A').charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                        <p class="font-black text-slate-700 text-sm">${escHtml(a.name)}</p>
+                        <p class="text-xs text-slate-400 font-semibold">${escHtml(a.email || '—')} · ${a.id}</p>
+                        <p class="text-[10px] font-bold mt-0.5 ${a.securityQuestionsSet ? 'text-green-600' : 'text-amber-500'}">
+                            ${a.securityQuestionsSet ? '✓ Setup complete' : '⚠ Awaiting first login setup'}
+                        </p>
+                    </div>
+                </div>
+                <button onclick="window.archiveSubAdmin('${a.id}', '${escHtml(a.name)}')"
+                    class="text-xs font-black text-amber-600 hover:bg-amber-500 hover:text-white border border-amber-200 px-3 py-1.5 rounded-lg transition">
+                    Archive
+                </button>
+            </div>`)
+            .join('')
+            : '<p class="text-sm text-slate-400 italic font-semibold text-center py-4">No sub-admins created yet.</p>';
+
+        // Archived list
+        if (archived.length) {
+            document.getElementById('archivedAdminsWrap').classList.remove('hidden');
+            document.getElementById('archivedAdminsList').innerHTML = archived.map(a => `
+            <div class="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <div>
+                    <p class="font-black text-slate-500 text-sm">${escHtml(a.name)}</p>
+                    <p class="text-xs text-slate-400 font-semibold">${escHtml(a.email || '—')} · Archived ${a.archivedAt ? new Date(a.archivedAt).toLocaleDateString() : ''}</p>
+                </div>
+                <button onclick="window.restoreSubAdmin('${a.id}', '${escHtml(a.name)}')"
+                    class="text-xs font-black text-green-700 hover:bg-green-600 hover:text-white border border-green-300 px-3 py-1.5 rounded-lg transition">
+                    Restore
+                </button>
+            </div>`).join('');
+        } else {
+            document.getElementById('archivedAdminsWrap').classList.add('hidden');
+        }
+
+    } catch (e) {
+        console.error('[Settings] loadSubAdmins:', e);
+    }
+}
+
+// ── Create Sub-Admin ──────────────────────────────────────────────────────
+document.getElementById('createSubAdminBtn').addEventListener('click', async () => {
+    const name  = document.getElementById('newAdminName').value.trim();
+    const email = document.getElementById('newAdminEmail').value.trim();
+    const btn   = document.getElementById('createSubAdminBtn');
+
+    if (!name)  { showMsg('createAdminMsg', 'Name is required.', true); return; }
+    if (!email) { showMsg('createAdminMsg', 'Email is required.', true); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        showMsg('createAdminMsg', 'Please enter a valid email address.', true); return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Creating...`;
+
+    try {
+        // ── Check adminLimit ───────────────────────────────────────────────
+        const adminLimit = session.adminLimit || 1;
+        const existingSnap = await getDocs(
+            query(collection(db, 'schools', session.schoolId, 'admins'),
+                  where('isArchived', '==', false))
+        );
+        if (existingSnap.size >= adminLimit) {
+            showMsg('createAdminMsg',
+                `Sub-admin limit reached (${adminLimit} max). Contact ConnectUs to upgrade your plan.`, true);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-user-plus mr-1.5"></i>Create Sub-Admin';
+            return;
+        }
+
+        // ── Generate credentials ───────────────────────────────────────────
+        const newId   = generateAdminId();
+        const tempPin = generateTempPin();
+        const hashedPin = await sha256(tempPin);
+
+        await setDoc(doc(db, 'schools', session.schoolId, 'admins', newId), {
+            name,
+            email:                email.toLowerCase(),
+            adminCode:            hashedPin,   // SHA-256 hashed
+            role:                 'sub_admin',
+            isArchived:           false,
+            archivedAt:           null,
+            requiresPinReset:     true,        // Forced to change on first login
+            securityQuestionsSet: false,       // Must complete setup on first login
+            createdAt:            new Date().toISOString()
+        });
+
+        // ── Show credentials slip ──────────────────────────────────────────
+        document.getElementById('newAdminIdDisplay').textContent  = newId;
+        document.getElementById('newAdminPinDisplay').textContent = tempPin;
+        document.getElementById('newAdminCredentials').classList.remove('hidden');
+
+        // ── Clear form ─────────────────────────────────────────────────────
+        document.getElementById('newAdminName').value  = '';
+        document.getElementById('newAdminEmail').value = '';
+
+        showMsg('createAdminMsg', `${name} has been created successfully.`, false);
+        loadSubAdmins();
+        loadSubscriptionUsage();
+
+    } catch (e) {
+        console.error('[Settings] createSubAdmin:', e);
+        showMsg('createAdminMsg', 'Failed to create sub-admin. Please try again.', true);
+    }
+
+    btn.disabled  = false;
+    btn.innerHTML = '<i class="fa-solid fa-user-plus mr-1.5"></i>Create Sub-Admin';
+});
+
+// ── Archive Sub-Admin ─────────────────────────────────────────────────────
+window.archiveSubAdmin = async function(adminId, name) {
+    if (!confirm(`Archive ${name}? They will no longer be able to log in. You can restore them later.`)) return;
+
+    try {
+        await updateDoc(doc(db, 'schools', session.schoolId, 'admins', adminId), {
+            isArchived: true,
+            archivedAt: new Date().toISOString()
+        });
+        loadSubAdmins();
+        loadSubscriptionUsage();
+    } catch (e) {
+        console.error('[Settings] archiveSubAdmin:', e);
+        alert('Error archiving sub-admin. Please try again.');
+    }
+};
+
+// ── Restore Sub-Admin ─────────────────────────────────────────────────────
+window.restoreSubAdmin = async function(adminId, name) {
+    // Check limit before restoring
+    const adminLimit = session.adminLimit || 1;
+    const existingSnap = await getDocs(
+        query(collection(db, 'schools', session.schoolId, 'admins'),
+              where('isArchived', '==', false))
+    );
+    if (existingSnap.size >= adminLimit) {
+        alert(`Cannot restore — sub-admin limit (${adminLimit}) already reached.`);
+        return;
+    }
+
+    try {
+        await updateDoc(doc(db, 'schools', session.schoolId, 'admins', adminId), {
+            isArchived: false,
+            archivedAt: null
+        });
+        loadSubAdmins();
+        loadSubscriptionUsage();
+    } catch (e) {
+        console.error('[Settings] restoreSubAdmin:', e);
+        alert('Error restoring sub-admin. Please try again.');
+    }
+};
+
+// ── 8. ARCHIVE MANAGEMENT (global collections, no deleteDoc) ──────────────
 window.switchArchiveTab = function(tab) {
     document.getElementById('archiveTeachersList').classList.toggle('hidden', tab !== 'teachers');
     document.getElementById('archiveStudentsList').classList.toggle('hidden', tab !== 'students');
@@ -111,235 +420,125 @@ window.switchArchiveTab = function(tab) {
 
 async function loadArchivedRecords() {
     try {
-        // Teachers
-        const tSnap = await getDocs(collection(db, 'schools', session.schoolId, 'teachers'));
-        const aT = tSnap.docs.filter(d => d.data().archived);
-        
-        document.getElementById('archiveTeachersList').innerHTML = aT.length ? aT.map(d => {
-            const t = d.data();
-            return `
-            <div class="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl p-4">
+        // ── Archived Teachers (global collection) ──────────────────────────
+        // Teachers are archived by setting currentSchoolId to '' and
+        // archivedSchoolIds to include this school. We look for teachers
+        // where this school appears in archivedSchoolIds.
+        // Simpler: teachers panel handles exit — here we just show a note.
+        // For a true archived teacher view, use the teachers page exit flow.
+        document.getElementById('archiveTeachersList').innerHTML =
+            `<div class="bg-blue-50 border border-blue-100 rounded-xl p-4 text-center">
+                <p class="text-sm text-slate-600 font-semibold">
+                    Teacher archiving is managed through the
+                    <a href="../teachers/teachers.html" class="text-blue-600 font-black hover:underline">Teachers panel</a>
+                    using the Exit Evaluation workflow.
+                </p>
+            </div>`;
+
+        // ── Archived Students (global collection) ──────────────────────────
+        // Students archived from this school have enrollmentStatus != 'Active'
+        // and currentSchoolId == this school (or empty for transferred).
+        const sSnap = await getDocs(
+            query(collection(db, 'students'),
+                  where('currentSchoolId', '==', session.schoolId))
+        );
+        const archivedStudents = sSnap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .filter(s => s.enrollmentStatus && s.enrollmentStatus !== 'Active');
+
+        document.getElementById('archiveStudentsList').innerHTML = archivedStudents.length
+            ? archivedStudents.map(s => `
+            <div class="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl p-4">
                 <div>
-                    <p class="font-black text-slate-700">${t.name}</p>
-                    <p class="text-xs text-slate-400 font-semibold">Archived ${t.archivedAt ? new Date(t.archivedAt).toLocaleDateString() : 'Unknown'}</p>
+                    <p class="font-black text-slate-600">${escHtml(s.name || 'Unnamed')}</p>
+                    <p class="text-xs text-slate-400 font-semibold">
+                        ${escHtml(s.className || 'Unassigned')} ·
+                        <span class="font-bold ${s.enrollmentStatus === 'Graduated' ? 'text-green-600' : s.enrollmentStatus === 'Transferred' ? 'text-blue-600' : 'text-amber-600'}">
+                            ${s.enrollmentStatus}
+                        </span>
+                    </p>
+                    <p class="text-[10px] text-slate-400 font-mono mt-0.5">${s.id}</p>
                 </div>
                 <div class="flex gap-2">
-                    <button onclick="window.printTeacherRecord('${d.id}')" class="text-xs font-black text-slate-700 hover:bg-slate-200 border border-slate-300 bg-white px-3 py-1.5 rounded-lg transition" title="Print Record"><i class="fa-solid fa-print"></i></button>
-                    <button onclick="window.restoreTeacher('${d.id}')" class="text-xs font-black text-green-700 hover:bg-green-600 hover:text-white border border-green-300 px-3 py-1.5 rounded-lg transition">Restore</button>
-                    <button onclick="window.permanentDeleteTeacher('${d.id}')" class="text-xs font-black text-red-600 hover:bg-red-600 hover:text-white border border-red-300 px-3 py-1.5 rounded-lg transition">Delete</button>
+                    <button onclick="window.restoreStudent('${s.id}')"
+                        class="text-xs font-black text-green-700 hover:bg-green-600 hover:text-white border border-green-300 px-3 py-1.5 rounded-lg transition">
+                        Restore
+                    </button>
                 </div>
-            </div>`;
-        }).join('') : '<p class="text-sm text-slate-400 italic font-semibold text-center py-4">No archived teachers.</p>';
-        
-        // Students
-        const sSnap = await getDocs(collection(db, 'schools', session.schoolId, 'students'));
-        const aS = sSnap.docs.filter(d => d.data().archived);
-        
-        document.getElementById('archiveStudentsList').innerHTML = aS.length ? aS.map(d => {
-            const s = d.data();
-            return `
-            <div class="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl p-4">
-                <div>
-                    <p class="font-black text-slate-700">${s.name || 'Unnamed'}</p>
-                    <p class="text-xs text-slate-400 font-semibold">${s.className || 'Unassigned'} — Archived ${s.archivedAt ? new Date(s.archivedAt).toLocaleDateString() : 'Unknown'} ${s.archiveReason ? `<br><span class="text-amber-700">Reason: ${s.archiveReason}</span>` : ''}</p>
-                </div>
-                <div class="flex gap-2">
-                    <button onclick="window.printStudentRecord('${d.id}')" class="text-xs font-black text-slate-700 hover:bg-slate-200 border border-slate-300 bg-white px-3 py-1.5 rounded-lg transition" title="Print Record"><i class="fa-solid fa-print"></i></button>
-                    <button onclick="window.restoreStudent('${d.id}')" class="text-xs font-black text-green-700 hover:bg-green-600 hover:text-white border border-green-300 px-3 py-1.5 rounded-lg transition">Restore</button>
-                    <button onclick="window.permanentDeleteStudent('${d.id}')" class="text-xs font-black text-red-600 hover:bg-red-600 hover:text-white border border-red-300 px-3 py-1.5 rounded-lg transition">Delete</button>
-                </div>
-            </div>`;
-        }).join('') : '<p class="text-sm text-slate-400 italic font-semibold text-center py-4">No archived students.</p>';
+            </div>`)
+            .join('')
+            : '<p class="text-sm text-slate-400 italic font-semibold text-center py-4">No archived students at this school.</p>';
 
     } catch (e) {
-        console.error("Error loading archives:", e);
-        document.getElementById('archiveTeachersList').innerHTML = '<p class="text-red-500 font-bold py-4">Error loading data.</p>';
-        document.getElementById('archiveStudentsList').innerHTML = '<p class="text-red-500 font-bold py-4">Error loading data.</p>';
+        console.error('[Settings] loadArchivedRecords:', e);
     }
 }
 
-window.restoreTeacher = async function(id) {
-    if (!confirm('Restore this teacher to active duty?')) return;
-    await updateDoc(doc(db, 'schools', session.schoolId, 'teachers', id), { archived: false, archivedAt: null });
-    loadArchivedRecords();
+// ── Restore Student ───────────────────────────────────────────────────────
+// Restores to Active but leaves class/teacher unassigned — admin can reassign.
+// NOTE: No deleteDoc anywhere in this file. ConnectUs platform handles deletions.
+window.restoreStudent = async function(studentId) {
+    if (!confirm('Restore this student to Active status? They will be unassigned and can be placed in a class.')) return;
+    try {
+        await updateDoc(doc(db, 'students', studentId), {
+            enrollmentStatus: 'Active',
+            currentSchoolId:  session.schoolId,
+            teacherId:        '',
+            className:        ''
+        });
+        loadArchivedRecords();
+    } catch (e) {
+        console.error('[Settings] restoreStudent:', e);
+        alert('Error restoring student. Please try again.');
+    }
 };
 
-window.permanentDeleteTeacher = async function(id) {
-    if (!confirm('Permanently delete this teacher? This action CANNOT be undone.')) return;
-    await deleteDoc(doc(db, 'schools', session.schoolId, 'teachers', id));
-    loadArchivedRecords();
-};
-
-window.restoreStudent = async function(id) {
-    if (!confirm('Restore this student to active status? (They will be unassigned from classes)')) return;
-    await updateDoc(doc(db, 'schools', session.schoolId, 'students', id), { archived: false, archivedAt: null, archiveReason: '' });
-    loadArchivedRecords();
-};
-
-window.permanentDeleteStudent = async function(id) {
-    if (!confirm('Permanently delete student and all associated grades? This action CANNOT be undone.')) return;
-    // Note: To be perfectly clean in Firestore, subcollections (grades) should be deleted via cloud function or batch, 
-    // but standard SDK allows doc deletion. Leaving subcollections orphaned is acceptable for this level.
-    await deleteDoc(doc(db, 'schools', session.schoolId, 'students', id));
-    loadArchivedRecords();
-};
-
-
-// ── 6. DANGER ZONE: END OF YEAR RESET ─────────────────────────────────────
+// ── 9. END OF YEAR RESET (super admin only) ───────────────────────────────
 window.endOfYearReset = async function() {
-    const confirm1 = confirm("WARNING: This will unassign ALL active students from their current teachers and classes. This should only be run at the very end of the school year. Are you sure you want to proceed?");
-    if (!confirm1) return;
-    
-    const confirm2 = prompt('Type "RESET" to confirm this action:');
-    if (confirm2 !== "RESET") {
-        alert("Reset canceled.");
+    if (!session.isSuperAdmin) {
+        alert('Only the Super Admin can perform this action.');
         return;
     }
 
+    const c1 = confirm(
+        "WARNING: This will unassign ALL active students from their current teachers and classes.\n\n" +
+        "Run this ONLY at the end of the school year. Grades are preserved.\n\n" +
+        "Are you sure you want to proceed?"
+    );
+    if (!c1) return;
+
+    const c2 = prompt('Type "RESET" to confirm:');
+    if (c2 !== 'RESET') { alert('Reset cancelled.'); return; }
+
     try {
-        const q = query(collection(db, 'schools', session.schoolId, 'students'), where('archived', '==', false));
-        const snap = await getDocs(q);
-        
-        if (snap.empty) { 
-            alert("No active students found."); 
-            return; 
-        }
+        // ── Use global students collection ─────────────────────────────────
+        const snap = await getDocs(
+            query(collection(db, 'students'),
+                  where('currentSchoolId', '==', session.schoolId),
+                  where('enrollmentStatus', '==', 'Active'))
+        );
 
-        const batch = writeBatch(db);
-        let batchCount = 0;
-        
-        snap.forEach(d => {
-            batch.update(d.ref, { teacherId: '', className: '' });
-            batchCount++;
-        });
-        
-        if (batchCount > 0) {
+        if (snap.empty) { alert('No active students found.'); return; }
+
+        // Firestore batch limit is 500 writes. Split if needed.
+        const docs    = snap.docs;
+        let committed = 0;
+
+        for (let i = 0; i < docs.length; i += 499) {
+            const chunk = docs.slice(i, i + 499);
+            const batch = writeBatch(db);
+            chunk.forEach(d => batch.update(d.ref, { teacherId: '', className: '' }));
             await batch.commit();
+            committed += chunk.length;
         }
 
-        alert(`Successfully reset ${batchCount} students to the Unassigned pool for the new academic year.`);
-        
+        alert(`Successfully reset ${committed} students to the unassigned pool for the new academic year.`);
+
     } catch (e) {
-        console.error("Error during reset:", e);
-        alert("Error during reset. Please try again or contact support.");
+        console.error('[Settings] endOfYearReset:', e);
+        alert('Error during reset. Please try again or contact support.');
     }
 };
 
-// ── 7. PRINT RECORD HELPERS (Ported from original) ────────────────────────
-window.printTeacherRecord = async function(teacherId) {
-    const tDoc = await getDoc(doc(db, 'schools', session.schoolId, 'teachers', teacherId));
-    if (!tDoc.exists()) return;
-    const t = tDoc.data();
-    const classes = t.classes ? t.classes.join(', ') : (t.className || 'None assigned');
-    const subjects = t.subjects ? t.subjects.map(s => typeof s === 'string' ? s : s.name).join(', ') : 'None assigned';
-    
-    let html = `<html><head><title>Teacher Record - ${t.name}</title>
-    <style>
-        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #1e293b; line-height: 1.6; }
-        .header { text-align: center; border-bottom: 2px solid #cbd5e1; padding-bottom: 20px; margin-bottom: 30px; }
-        .header h1 { margin: 0 0 5px 0; font-size: 24px; color: #0f172a; text-transform: uppercase; letter-spacing: 1px; }
-        .header h2 { margin: 0; font-size: 16px; color: #64748b; font-weight: normal; letter-spacing: 2px; }
-        .info-box { background: #f8fafc; border: 1px solid #e2e8f0; padding: 30px; border-radius: 8px; margin-bottom: 20px; }
-        .info-row { display: flex; border-bottom: 1px solid #e2e8f0; padding: 12px 0; }
-        .info-row:last-child { border-bottom: none; }
-        .info-label { width: 150px; font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: bold; letter-spacing: 1px; }
-        .info-val { flex: 1; font-size: 15px; font-weight: bold; color: #0f172a; }
-        .footer { margin-top: 50px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 15px; }
-    </style></head><body>
-    <div class="header">
-        <h1>${session.schoolName}</h1>
-        <h2>TEACHER EMPLOYMENT RECORD</h2>
-    </div>
-    <div class="info-box">
-        <div class="info-row"><div class="info-label">Full Name</div><div class="info-val">${t.name}</div></div>
-        <div class="info-row"><div class="info-label">Email Address</div><div class="info-val">${t.email || 'N/A'}</div></div>
-        <div class="info-row"><div class="info-label">Phone Number</div><div class="info-val">${t.phone || 'N/A'}</div></div>
-        <div class="info-row"><div class="info-label">Status</div><div class="info-val">${t.archived ? 'Archived (Inactive)' : 'Active'}</div></div>
-        <div class="info-row"><div class="info-label">Record Created</div><div class="info-val">${t.createdAt ? new Date(t.createdAt).toLocaleDateString() : 'N/A'}</div></div>
-        <div class="info-row"><div class="info-label">Last Known Classes</div><div class="info-val">${classes}</div></div>
-        <div class="info-row"><div class="info-label">Teaching Subjects</div><div class="info-val">${subjects}</div></div>
-    </div>
-    <div class="footer">Printed on ${new Date().toLocaleDateString()} via ConnectUs Platform</div></body></html>`;
-    
-    const w = window.open('', '_blank'); w.document.write(html); w.document.close();
-    setTimeout(() => w.print(), 500);
-};
-
-window.printStudentRecord = async function(studentId) {
-    const sDoc = await getDoc(doc(db, 'schools', session.schoolId, 'students', studentId));
-    if (!sDoc.exists()) return;
-    const s = sDoc.data();
-    
-    const gradesSnap = await getDocs(collection(db, 'schools', session.schoolId, 'students', studentId, 'grades'));
-    const grades = [];
-    gradesSnap.forEach(d => grades.push(d.data()));
-
-    const bySem = {};
-    grades.forEach(g => {
-        const sem = g.semesterId || 'Unknown Period';
-        const sub = g.subject || 'Uncategorized';
-        if (!bySem[sem]) bySem[sem] = {};
-        if (!bySem[sem][sub]) bySem[sem][sub] = [];
-        bySem[sem][sub].push(g);
-    });
-
-    let html = `<html><head><title>Student Record - ${s.name}</title>
-    <style>
-        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #1e293b; line-height: 1.5; }
-        .header { text-align: center; border-bottom: 2px solid #cbd5e1; padding-bottom: 20px; margin-bottom: 30px; }
-        .header h1 { margin: 0 0 5px 0; font-size: 24px; color: #0f172a; text-transform: uppercase; letter-spacing: 1px; }
-        .header h2 { margin: 0; font-size: 16px; color: #64748b; font-weight: normal; letter-spacing: 2px; }
-        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 40px; background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; }
-        .info-item label { display: block; font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: bold; letter-spacing: 1px; }
-        .info-item span { font-size: 14px; font-weight: bold; color: #0f172a; }
-        .sem-block { margin-bottom: 40px; page-break-inside: avoid; }
-        .sem-title { font-size: 16px; font-weight: bold; background: #334155; color: white; padding: 8px 15px; margin: 0 0 15px 0; border-radius: 4px; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 13px; }
-        th, td { border: 1px solid #e2e8f0; padding: 10px 15px; text-align: left; }
-        th { background: #f1f5f9; color: #475569; font-weight: bold; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
-        .text-center { text-align: center; }
-        .text-right { text-align: right; }
-        .avg-row { background: #f8fafc; font-weight: bold; }
-        .footer { margin-top: 50px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 15px; }
-    </style></head><body>
-
-    <div class="header">
-        <h1>${session.schoolName}</h1>
-        <h2>OFFICIAL STUDENT RECORD</h2>
-    </div>
-
-    <div class="info-grid">
-        <div class="info-item"><label>Student Name</label><span>${s.name}</span></div>
-        <div class="info-item"><label>Current Status</label><span>${s.archived ? 'Archived / Transferred' : 'Active'}</span></div>
-        <div class="info-item"><label>Last Known Class</label><span>${s.className || 'Unassigned'}</span></div>
-        <div class="info-item"><label>Archive Reason</label><span>${s.archiveReason || 'N/A'}</span></div>
-    </div>`;
-
-    if (Object.keys(bySem).length === 0) {
-        html += `<p style="text-align:center; color:#64748b; font-style:italic; padding: 40px;">No academic grades recorded for this student.</p>`;
-    } else {
-        for (let sem in bySem) {
-            html += `<div class="sem-block"><h3 class="sem-title">Period ID: ${sem}</h3><table>
-                <thead><tr><th>Subject</th><th class="text-center">Assignments</th><th class="text-center">Average (%)</th><th class="text-center">Letter Grade</th></tr></thead><tbody>`;
-            
-            let semTotalPct = 0; let semSubjCount = 0;
-            for (let sub in bySem[sem]) {
-                const sGrades = bySem[sem][sub];
-                const avg = Math.round(sGrades.reduce((acc, g) => acc + (g.max ? (g.score / g.max) * 100 : 0), 0) / sGrades.length);
-                semTotalPct += avg; semSubjCount++;
-                html += `<tr><td>${sub}</td><td class="text-center">${sGrades.length}</td><td class="text-center">${avg}%</td><td class="text-center">${letterGrade(avg)}</td></tr>`;
-            }
-            const semAvg = Math.round(semTotalPct / semSubjCount);
-            html += `<tr class="avg-row"><td colspan="2" class="text-right">PERIOD AVERAGE:</td><td class="text-center">${semAvg}%</td><td class="text-center">${letterGrade(semAvg)}</td></tr>`;
-            html += `</tbody></table></div>`;
-        }
-    }
-
-    html += `<div class="footer">Printed on ${new Date().toLocaleDateString()} via ConnectUs Platform<br>Record generated by Admin: ${session.schoolId}</div></body></html>`;
-    
-    const w = window.open('', '_blank'); w.document.write(html); w.document.close();
-    setTimeout(() => w.print(), 500);
-};
-
-// ── INITIALIZE ────────────────────────────────────────────────────────────
+// ── INIT ──────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', loadSettingsData);
