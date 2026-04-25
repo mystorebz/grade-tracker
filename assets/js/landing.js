@@ -90,7 +90,7 @@ if (registerBtn) {
             for (let i = 0; i < 5; i++) rand += chars.charAt(Math.floor(Math.random() * chars.length));
             const reqId = `REQ-${rand}`;
 
-            // ── Write 1: quote_requests collection (Firebase) ──
+            // ── Write 1: quote_requests collection to Firebase ──
             await setDoc(doc(db, 'quote_requests', reqId), {
                 requestId:      reqId,
                 firstName,
@@ -116,25 +116,22 @@ if (registerBtn) {
                 createdAt:      timestamp,
             });
 
-            // ── Send 1: Confirmation email to the contact (EmailJS) ──
-            await emailjs.send('YOUR_SERVICE_ID', 'TEMPLATE_ID_FOR_CLIENT', {
+            // ── Send 1: Confirmation email to the client (EmailJS) ──
+            await emailjs.send('service_kgk97jd', 'template_i5vrfdf', {
                 req_id: reqId,
                 first_name: firstName,
-                full_name: fullName,
-                job_title: jobTitle,
-                user_email: workEmail,
                 school_name: schoolName,
                 school_type: schoolType,
                 city: city,
-                state_province: stateProvince || '',
                 country: country,
                 students_count: studentsCount,
                 teachers_count: teachersCount,
-                contract_summary: contractSummary
+                contract_summary: contractSummary,
+                user_email: workEmail
             });
 
             // ── Send 2: Notification email to ConnectUs team (EmailJS) ──
-            await emailjs.send('YOUR_SERVICE_ID', 'TEMPLATE_ID_FOR_TEAM', {
+            await emailjs.send('service_kgk97jd', 'template_5gr6dlw', {
                 req_id: reqId,
                 full_name: fullName,
                 job_title: jobTitle,
@@ -142,9 +139,9 @@ if (registerBtn) {
                 phone: phone,
                 school_name: schoolName,
                 school_type: schoolType,
-                country: country,
                 city: city,
                 state_province: stateProvince || '—',
+                country: country,
                 students_count: studentsCount,
                 teachers_count: teachersCount,
                 contract_summary: contractSummary,
