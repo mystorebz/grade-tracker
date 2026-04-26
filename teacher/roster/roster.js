@@ -189,7 +189,9 @@ async function loadStudents() {
             where('enrollmentStatus', '==', 'Active')
         ));
         const allActive = allActSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        allStudentsCache        = allActive.filter(s => s.teacherId === session.teacherId);
+        
+        // Bulletproof filter: strictly only shows students who have this teacher's ID
+        allStudentsCache        = allActive.filter(s => s.teacherId && s.teacherId === session.teacherId);
         unassignedStudentsCache = allActive.filter(s => !s.teacherId || !s.className);
 
         studentMap = {};
@@ -390,7 +392,7 @@ window.searchStudentRegistry = async function() {
                     }
                     btn.textContent = 'Search'; btn.disabled = false; return;
                 }
-                // If we get here, they are at the school but have NO teacher. We proceed!
+                // If we get here, they are at the school but have NO teacher. We proceed to let the teacher claim them!
             }
         }
         // -------------------------
