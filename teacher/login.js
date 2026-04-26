@@ -123,7 +123,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         schoolType  = schoolSnap.data().schoolType || 'Primary';
         tempSession = { schoolId: foundSchoolId, teacherId: tId, teacherData: tData };
 
-        document.getElementById('loginScreen').style.display = 'none';
+        document.querySelector('.login-shell').style.display = 'none';
 
         const needsClasses = !tData.classes || tData.classes.length === 0;
 
