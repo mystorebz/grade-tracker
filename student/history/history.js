@@ -24,6 +24,7 @@ const historyTeacherName       = document.getElementById('historyTeacherName');
 let teachersMap            = {};
 let currentViewGrades      = [];
 let schoolActiveSemesterId = null;
+let gradeTypeWeights       = {};
 
 // ── 2. UI HELPERS ─────────────────────────────────────────────────────────
 function getGradeStyle(p) {
@@ -59,7 +60,6 @@ function renderAcademicPassport(academicHistory) {
     if (!passportEl) {
         passportEl = document.createElement('div');
         passportEl.id = 'academicPassportSection';
-        // Insert before the semester select or grades container
         const anchor = historySemesterSelect?.closest('div') || historySubjectsContainer;
         anchor?.parentElement?.insertBefore(passportEl, anchor);
     }
@@ -70,7 +70,7 @@ function renderAcademicPassport(academicHistory) {
     }
 
     passportEl.innerHTML = `
-        <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-radius:16px;padding:24px 28px;margin-bottom:28px;color:#fff;">
+        <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-radius:16px;padding:24px 28px;margin-bottom:28px;color:#fff;box-shadow:0 10px 25px rgba(30,27,75,0.15)">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
                 <div style="width:40px;height:40px;background:rgba(255,255,255,0.15);border-radius:10px;
                             display:flex;align-items:center;justify-content:center;font-size:18px;">🎒</div>
@@ -138,29 +138,20 @@ function renderAcademicPassport(academicHistory) {
 // ── 4. LOAD INITIAL DATA ──────────────────────────────────────────────────
 async function initializeHistory() {
     try {
-        // School doc — school-scoped, unchanged
         const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
         if (schoolSnap.exists()) {
             document.getElementById('displaySchoolName').innerText = schoolSnap.data().schoolName;
             schoolActiveSemesterId = schoolSnap.data().activeSemesterId;
         }
 
-        // CHANGED: teachers are global — query by currentSchoolId
-        const tSnap = await getDocs(query(
-            collection(db, 'teachers'),
-            where('currentSchoolId', '==', session.schoolId)
-        ));
+        const tSnap = await getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId)));
         tSnap.forEach(d => { teachersMap[d.id] = d.data().name; });
 
-        // Semesters — school-scoped, unchanged
         const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
-        const allSemesters = semSnap.docs
-            .map(d => ({ id: d.id, ...d.data() }))
-            .sort((a, b) => (a.order || 0) - (b.order || 0));
+        const allSemesters = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
 
         const activeSemObj = allSemesters.find(s => s.id === schoolActiveSemesterId);
-        document.getElementById('activeSemesterDisplay').textContent =
-            activeSemObj ? activeSemObj.name : 'Unknown';
+        document.getElementById('activeSemesterDisplay').textContent = activeSemObj ? activeSemObj.name : 'Unknown';
 
         if (!allSemesters.length) {
             historySemesterSelect.innerHTML = '<option value="">No periods available</option>';
@@ -174,28 +165,28 @@ async function initializeHistory() {
         ).join('');
 
         const pastSemesters = allSemesters.filter(s => s.id !== schoolActiveSemesterId);
-        historySemesterSelect.value = pastSemesters.length
-            ? pastSemesters[pastSemesters.length - 1].id
-            : schoolActiveSemesterId;
+        historySemesterSelect.value = pastSemesters.length ? pastSemesters[pastSemesters.length - 1].id : schoolActiveSemesterId;
 
-        // ADDED: fetch global student doc for academicHistory passport section
+        // Fetch Global Grade Weights for calculations
+        try {
+            const cached = localStorage.getItem(`connectus_gradeTypes_${session.schoolId}`);
+            const types = cached ? JSON.parse(cached) : (await getDocs(collection(db, 'schools', session.schoolId, 'gradeTypes'))).docs.map(d => ({ id: d.id, ...d.data() }));
+            types.forEach(t => { if (t.weight) gradeTypeWeights[t.name] = t.weight; });
+        } catch(_) {}
+
         try {
             const globalStudentSnap = await getDoc(doc(db, 'students', session.studentId));
             if (globalStudentSnap.exists()) {
                 renderAcademicPassport(globalStudentSnap.data().academicHistory || []);
             }
-        } catch (e) {
-            // Non-critical — passport section simply won't render if doc not found
-            console.warn('[History] Could not load academic passport:', e);
-        }
+        } catch (e) {}
 
         historySemesterSelect.addEventListener('change', loadHistoricalGrades);
         loadHistoricalGrades();
 
     } catch (e) {
         console.error('Error initializing history:', e);
-        historySubjectsContainer.innerHTML =
-            '<p class="text-red-500 text-center font-bold">Failed to load data. Please refresh.</p>';
+        historySubjectsContainer.innerHTML = '<p class="text-red-500 text-center font-bold">Failed to load data. Please refresh.</p>';
     }
 }
 
@@ -204,21 +195,20 @@ async function loadHistoricalGrades() {
     const semId = historySemesterSelect.value;
     if (!semId) return;
 
-    historySubjectsContainer.innerHTML =
-        '<div class="text-center py-12 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-3xl text-indigo-400"></i></div>';
+    historySubjectsContainer.innerHTML = '<div class="text-center py-12 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-3xl text-indigo-400"></i></div>';
     noHistoryGradesMsg.classList.add('hidden');
     historyInfoCard.classList.add('hidden');
 
     try {
-        // Grades stay at siloed path — grade_form writes here, unchanged
+        // CHANGED TO GLOBAL PASSPORT PATH: filtered by current school
         const q = query(
-            collection(db, 'schools', session.schoolId, 'students', session.studentId, 'grades'),
+            collection(db, 'students', session.studentId, 'grades'),
+            where('schoolId', '==', session.schoolId),
             where('semesterId', '==', semId)
         );
         const gSnap = await getDocs(q);
         currentViewGrades = gSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        // Teacher on record — most frequent grader this period
         const tCount = {};
         let topId = null, topN = 0;
         currentViewGrades.forEach(g => {
@@ -237,9 +227,29 @@ async function loadHistoricalGrades() {
 
     } catch (e) {
         console.error('Error fetching historical grades:', e);
-        historySubjectsContainer.innerHTML =
-            '<p class="text-red-500 text-center font-bold">Error loading grades.</p>';
+        historySubjectsContainer.innerHTML = '<p class="text-red-500 text-center font-bold">Error loading grades.</p>';
     }
+}
+
+// Helper: weighted average for a set of grades
+function calcWeightedAvg(grades) {
+    const hasWeights = Object.keys(gradeTypeWeights).length > 0;
+    if (!hasWeights) {
+        return grades.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / grades.length;
+    }
+    const byType = {};
+    grades.forEach(g => {
+        const t = g.type || 'Other';
+        if (!byType[t]) byType[t] = [];
+        byType[t].push(g.max ? (g.score / g.max) * 100 : 0);
+    });
+    let wSum = 0, wTotal = 0;
+    Object.entries(byType).forEach(([type, scores]) => {
+        const typeAvg = scores.reduce((a, b) => a + b, 0) / scores.length;
+        const w = gradeTypeWeights[type] || 0;
+        if (w > 0) { wSum += typeAvg * w; wTotal += w; }
+    });
+    return wTotal > 0 ? wSum / wTotal : grades.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / grades.length;
 }
 
 // ── 6. RENDER ACCORDIONS ──────────────────────────────────────────────────
@@ -258,7 +268,7 @@ function renderSubjectAccordions(grades) {
     });
 
     historySubjectsContainer.innerHTML = Object.entries(bySub).map(([subject, gList]) => {
-        const avg   = gList.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / gList.length;
+        const avg   = calcWeightedAvg(gList);
         const style = getGradeStyle(Math.round(avg));
 
         const rows = gList
@@ -378,6 +388,161 @@ window.closeAssignmentModal = function() {
     modal.classList.add('opacity-0');
     inner.classList.add('scale-95');
     setTimeout(() => modal.classList.add('hidden'), 300);
+};
+
+// ── 8. PRINT PROFESSIONAL TRANSCRIPT ──────────────────────────────────────
+window.printStudentRecord = async (studentId) => {
+    const s = session.studentData;
+    
+    // Fetch grades specifically for this school (unlocked records)
+    let gradesSnap = await getDocs(query(
+        collection(db, 'students', studentId, 'grades'),
+        where('schoolId', '==', session.schoolId)
+    ));
+    
+    const bySem = {};
+    let totalAssessments = 0;
+    let sumScore = 0;
+    let sumMax = 0;
+
+    gradesSnap.forEach(d => {
+        const g = d.data();
+        const sem = g.semesterId || 'General';
+        const sub = g.subject    || 'Uncategorized';
+        if (!bySem[sem]) bySem[sem] = {};
+        if (!bySem[sem][sub]) bySem[sem][sub] = [];
+        bySem[sem][sub].push(g);
+        
+        if (g.max) {
+            totalAssessments++;
+            sumScore += (g.score / g.max) * 100;
+        }
+    });
+
+    const cumulativeAvg = totalAssessments > 0 ? Math.round(sumScore / totalAssessments) : 0;
+    const gpaLetter = totalAssessments > 0 ? getGradeStyle(cumulativeAvg).ltr : 'N/A';
+
+    let gradesHtml = Object.keys(bySem).length === 0
+        ? `<p style="text-align:center;color:#64748b;font-style:italic;padding:40px;border:1px dashed #cbd5e1;border-radius:8px;">No academic grades recorded for this institution.</p>`
+        : Object.entries(bySem).map(([sem, subjects]) => {
+            let rows = '', total = 0, count = 0;
+            for (const sub in subjects) {
+                const avg = Math.round(calcWeightedAvg(subjects[sub]));
+                total += avg; count++;
+                rows += `<tr>
+                            <td style="border-bottom:1px solid #e2e8f0;padding:12px 15px;color:#1e293b;font-weight:600;">${sub}</td>
+                            <td style="border-bottom:1px solid #e2e8f0;padding:12px 15px;text-align:center;color:#64748b;">${subjects[sub].length}</td>
+                            <td style="border-bottom:1px solid #e2e8f0;padding:12px 15px;text-align:center;font-weight:bold;color:#0f172a;">${avg}%</td>
+                            <td style="border-bottom:1px solid #e2e8f0;padding:12px 15px;text-align:center;font-weight:bold;color:#0f172a;">${getGradeStyle(avg).ltr}</td>
+                        </tr>`;
+            }
+            const termAvg = Math.round(total/count);
+            rows += `<tr style="background:#f8fafc;">
+                        <td colspan="2" style="border-bottom:2px solid #cbd5e1;padding:12px 15px;text-align:right;font-weight:800;color:#334155;text-transform:uppercase;letter-spacing:1px;">Term Average:</td>
+                        <td style="border-bottom:2px solid #cbd5e1;padding:12px 15px;text-align:center;font-weight:900;color:#0f172a;font-size:16px;">${termAvg}%</td>
+                        <td style="border-bottom:2px solid #cbd5e1;padding:12px 15px;text-align:center;font-weight:900;color:#0f172a;font-size:16px;">${getGradeStyle(termAvg).ltr}</td>
+                    </tr>`;
+            return `
+            <div style="margin-bottom:40px;page-break-inside:avoid;">
+                <h3 style="font-size:14px;font-weight:800;background:#1e1b4b;color:white;padding:10px 15px;border-radius:6px 6px 0 0;margin:0;text-transform:uppercase;letter-spacing:1px;">Term: ${sem}</h3>
+                <table style="width:100%;border-collapse:collapse;font-size:13px;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;">
+                    <thead>
+                        <tr style="background:#f1f5f9;">
+                            <th style="border-bottom:2px solid #cbd5e1;padding:10px 15px;text-align:left;color:#475569;font-size:11px;">Subject</th>
+                            <th style="border-bottom:2px solid #cbd5e1;padding:10px 15px;text-align:center;color:#475569;font-size:11px;">Assessments</th>
+                            <th style="border-bottom:2px solid #cbd5e1;padding:10px 15px;text-align:center;color:#475569;font-size:11px;">Average</th>
+                            <th style="border-bottom:2px solid #cbd5e1;padding:10px 15px;text-align:center;color:#475569;font-size:11px;">Grade</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>`;
+        }).join('');
+
+    const schoolName = document.getElementById('displaySchoolName').innerText || 'ConnectUs School';
+    
+    const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Academic Transcript — ${s.name}</title>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
+            body { font-family: 'Nunito', sans-serif; padding: 40px; color: #0f172a; line-height: 1.5; margin: 0 auto; max-width: 8.5in; }
+            .watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); font-size: 100px; color: rgba(203, 213, 225, 0.2); font-weight: 900; white-space: nowrap; pointer-events: none; z-index: -1; }
+            .header-flex { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid #1e1b4b; padding-bottom: 20px; margin-bottom: 30px; }
+            .logo { max-height: 60px; max-width: 200px; object-fit: contain; }
+            .header-text { text-align: right; }
+            .header-text h1 { margin: 0 0 5px; font-size: 24px; font-weight: 900; text-transform: uppercase; color: #1e1b4b; }
+            .header-text h2 { margin: 0; font-size: 14px; color: #64748b; font-weight: 700; letter-spacing: 2px; }
+            
+            .student-info-box { display: flex; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; margin-bottom: 30px; }
+            .info-col { flex: 1; padding: 15px 20px; border-right: 1px solid #cbd5e1; }
+            .info-col:last-child { border-right: none; background: #f8fafc; }
+            .info-item { margin-bottom: 10px; }
+            .info-item:last-child { margin-bottom: 0; }
+            .info-label { font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: 800; display: block; margin-bottom: 2px; }
+            .info-value { font-size: 15px; font-weight: 800; color: #0f172a; }
+            
+            .analytics-grid { display: flex; gap: 15px; margin-bottom: 40px; }
+            .analytic-card { flex: 1; background: #fff; border: 2px solid #e2e8f0; border-radius: 8px; padding: 15px; text-align: center; }
+            .analytic-val { font-size: 28px; font-weight: 900; color: #4338ca; line-height: 1; margin-bottom: 5px; }
+            .analytic-lbl { font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
+
+            .footer { margin-top: 50px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 20px; font-weight: 600; }
+        </style>
+    </head>
+    <body>
+        <div class="watermark">UNOFFICIAL TRANSCRIPT</div>
+        
+        <div class="header-flex">
+            <img src="../../assets/images/logo.png" alt="ConnectUs" class="logo" onerror="this.style.display='none'">
+            <div class="header-text">
+                <h1>${schoolName}</h1>
+                <h2>UNOFFICIAL ACADEMIC TRANSCRIPT</h2>
+            </div>
+        </div>
+
+        <div class="student-info-box">
+            <div class="info-col">
+                <div class="info-item"><span class="info-label">Student Name</span><span class="info-value">${s.name}</span></div>
+                <div class="info-item"><span class="info-label">Global ID Number</span><span class="info-value" style="font-family:monospace;letter-spacing:1px;">${s.studentIdNum || studentId}</span></div>
+            </div>
+            <div class="info-col">
+                <div class="info-item"><span class="info-label">Date of Birth</span><span class="info-value">${s.dob || 'Not on file'}</span></div>
+                <div class="info-item"><span class="info-label">Current Enrollment</span><span class="info-value">${s.className || 'Unassigned'}</span></div>
+            </div>
+        </div>
+
+        <div class="analytics-grid">
+            <div class="analytic-card">
+                <div class="analytic-val">${cumulativeAvg}%</div>
+                <div class="analytic-lbl">Cumulative Average</div>
+            </div>
+            <div class="analytic-card">
+                <div class="analytic-val">${gpaLetter}</div>
+                <div class="analytic-lbl">Overall Grade</div>
+            </div>
+            <div class="analytic-card">
+                <div class="analytic-val">${totalAssessments}</div>
+                <div class="analytic-lbl">Total Assessments</div>
+            </div>
+        </div>
+
+        ${gradesHtml}
+
+        <div class="footer">
+            <strong>NOTICE:</strong> This document is an unofficial academic report generated via the ConnectUs National Registry for <strong>${schoolName}</strong>.<br>
+            To access locked historical records from previous institutions, a formal transcript request must be submitted.<br><br>
+            Date Issued: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+        </div>
+    </body>
+    </html>`;
+
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+    setTimeout(() => w.print(), 800);
 };
 
 // ── INITIALIZE ────────────────────────────────────────────────────────────
