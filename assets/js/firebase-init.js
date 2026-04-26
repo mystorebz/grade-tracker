@@ -1,15 +1,11 @@
 import { initializeApp }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
 import { getStorage }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
-
 import { getAuth }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-
 import { initializeAppCheck, ReCaptchaV3Provider }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check.js";
 
@@ -40,6 +36,9 @@ export const storage = getStorage(app);
 export const auth = getAuth(app);
 
 // ── App Check (reCAPTCHA v3) ──────────────────────────────────────────────────
+// DEBUG TOKEN — remove self.FIREBASE_APPCHECK_DEBUG_TOKEN before going to production
+self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+
 initializeAppCheck(app, {
     provider: new ReCaptchaV3Provider('6LfJsMosAAAAALY9ywfvWy_PxU1Z42DT0C62IIH0'),
     isTokenAutoRefreshEnabled: true
