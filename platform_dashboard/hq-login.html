@@ -4,55 +4,265 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HQ Login | ConnectUs</title>
-    
+
     <link rel="icon" type="image/x-icon" href="../assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="../assets/images/favicon-32x32.png">
-    
+
     <link rel="stylesheet" href="../assets/css/global.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- App Check: reCAPTCHA v3 -->
+    <script src="https://www.google.com/recaptcha/api.js?render=6LfJsMosAAAAALY9ywfvWy_PxU1Z42DT0C62IIH0" async defer></script>
+
+    <style>
+        html, body {
+            height: 100%; margin: 0; padding: 0;
+            font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            background: #030d17;
+            overflow: hidden;
+        }
+
+        .hq-shell {
+            width: 100%; height: 100vh;
+            display: flex; align-items: center; justify-content: center;
+            position: relative; overflow: hidden;
+        }
+
+        /* ── Dot grid background ── */
+        .hq-shell::before {
+            content: '';
+            position: absolute; inset: 0;
+            background-image: radial-gradient(rgba(52,211,153,0.07) 1px, transparent 1px);
+            background-size: 28px 28px;
+            pointer-events: none;
+        }
+
+        /* ── Glow orb ── */
+        .hq-shell::after {
+            content: '';
+            position: absolute;
+            top: -200px; left: 50%; transform: translateX(-50%);
+            width: 600px; height: 600px;
+            background: radial-gradient(circle, rgba(52,211,153,0.06) 0%, transparent 65%);
+            pointer-events: none;
+        }
+
+        .hq-card {
+            position: relative; z-index: 1;
+            width: 100%; max-width: 420px;
+            margin: 16px;
+            background: #071929;
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 32px 80px rgba(0,0,0,0.5);
+        }
+
+        .hq-card-stripe {
+            height: 2px;
+            background: linear-gradient(90deg, transparent 0%, #34d399 40%, #0ea871 60%, transparent 100%);
+        }
+
+        .hq-card-body { padding: 36px 36px 32px; }
+
+        /* ── Brand ── */
+        .hq-brand {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .hq-brand-logo {
+            width: 52px; height: 52px;
+            border-radius: 14px;
+            background: rgba(52,211,153,0.08);
+            border: 1px solid rgba(52,211,153,0.18);
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 16px;
+            overflow: hidden;
+        }
+
+        .hq-brand-logo img {
+            width: 100%; height: 100%;
+            object-fit: contain; padding: 8px;
+        }
+
+        .hq-brand-title {
+            font-size: 22px; font-weight: 700;
+            color: #ffffff; letter-spacing: -0.5px;
+            margin: 0 0 4px;
+        }
+
+        .hq-brand-title span { color: #34d399; }
+
+        .hq-brand-sub {
+            font-size: 10.5px; font-weight: 600;
+            color: rgba(255,255,255,0.28);
+            text-transform: uppercase; letter-spacing: 0.16em;
+            margin: 0;
+        }
+
+        /* ── Restricted badge ── */
+        .hq-restricted {
+            display: flex; align-items: center; justify-content: center; gap: 6px;
+            background: rgba(239,68,68,0.07);
+            border: 1px solid rgba(239,68,68,0.18);
+            border-radius: 8px;
+            padding: 8px 14px;
+            margin-bottom: 28px;
+        }
+
+        .hq-restricted-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: #ef4444;
+            box-shadow: 0 0 6px #ef4444;
+            animation: blink 2s ease-in-out infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.3; }
+        }
+
+        .hq-restricted-text {
+            font-size: 10px; font-weight: 700;
+            color: #fca5a5;
+            text-transform: uppercase; letter-spacing: 0.14em;
+        }
+
+        /* ── Form fields ── */
+        .hq-field { margin-bottom: 18px; }
+
+        .hq-label {
+            display: block;
+            font-size: 10.5px; font-weight: 700;
+            color: rgba(255,255,255,0.35);
+            text-transform: uppercase; letter-spacing: 0.12em;
+            margin-bottom: 8px;
+        }
+
+        .hq-input-wrap { position: relative; }
+
+        .hq-input-icon {
+            position: absolute; left: 14px; top: 50%;
+            transform: translateY(-50%);
+            font-size: 12px; color: rgba(255,255,255,0.22);
+            pointer-events: none;
+        }
+
+        .hq-input {
+            width: 100%; box-sizing: border-box;
+            padding: 11px 14px 11px 40px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.09);
+            border-radius: 10px;
+            font-size: 13.5px; font-family: 'DM Mono', monospace;
+            color: #ffffff; font-weight: 500;
+            outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+            letter-spacing: 0.08em;
+        }
+
+        .hq-input::placeholder { color: rgba(255,255,255,0.18); font-weight: 400; }
+
+        .hq-input:focus {
+            border-color: rgba(52,211,153,0.45);
+            box-shadow: 0 0 0 3px rgba(52,211,153,0.10);
+            background: rgba(255,255,255,0.06);
+        }
+
+        /* ── Error message ── */
+        .hq-error {
+            display: none;
+            margin-top: 0; margin-bottom: 18px;
+            padding: 10px 14px;
+            background: rgba(239,68,68,0.08);
+            border: 1px solid rgba(239,68,68,0.22);
+            border-radius: 8px;
+            font-size: 12.5px; font-weight: 500;
+            color: #fca5a5; text-align: center;
+        }
+
+        .hq-error.show { display: block; }
+
+        /* ── Auth button ── */
+        .hq-btn {
+            width: 100%;
+            padding: 13px 20px;
+            background: #0b8f5e; color: #ffffff;
+            border: none; border-radius: 10px;
+            font-size: 14px; font-weight: 700;
+            font-family: 'DM Sans', inherit;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            transition: background 0.15s, box-shadow 0.15s, transform 0.12s;
+            box-shadow: 0 1px 2px rgba(11,143,94,0.3);
+            letter-spacing: 0.02em;
+        }
+
+        .hq-btn:hover   { background: #08754d; box-shadow: 0 4px 14px rgba(11,143,94,0.35); transform: translateY(-1px); }
+        .hq-btn:active  { transform: none; }
+        .hq-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+        /* ── Footer ── */
+        .hq-footer {
+            margin-top: 24px; text-align: center;
+            font-size: 11px; color: rgba(255,255,255,0.18);
+        }
+    </style>
 </head>
-<body class="min-h-screen flex items-center justify-center p-4 bg-slate-900 antialiased">
+<body>
+<div class="hq-shell">
+    <div class="hq-card">
+        <div class="hq-card-stripe"></div>
+        <div class="hq-card-body">
 
-    <div class="max-w-md w-full">
-        <div class="text-center mb-8">
-            <img src="../assets/images/logo.png" alt="ConnectUs" class="h-16 w-auto mx-auto mb-4 drop-shadow-md">
-            <h1 class="text-3xl font-black text-white tracking-widest uppercase">ConnectUs <span class="text-emerald-400">HQ</span></h1>
-            <p class="text-slate-500 font-bold mt-2 text-xs tracking-widest uppercase">Restricted Access</p>
-        </div>
-
-        <div class="bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 overflow-hidden relative p-8">
-            <div class="absolute top-0 left-0 right-0 h-1 bg-slate-700">
-                <div class="h-full bg-emerald-400 shadow-[0_0_10px_#34d399] w-1/3 animate-pulse mx-auto"></div>
-            </div>
-            
-            <div class="space-y-5 mt-2">
-                <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Authorization ID</label>
-                    <div class="relative">
-                        <i class="fa-solid fa-fingerprint absolute left-4 top-3.5 text-slate-500"></i>
-                        <input type="text" id="loginId" placeholder="HQ-XXXXX" class="w-full pl-11 p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white font-mono font-bold outline-none focus:border-emerald-500 transition uppercase">
-                    </div>
+            <div class="hq-brand">
+                <div class="hq-brand-logo">
+                    <img src="../assets/images/logo2.png" alt="ConnectUs">
                 </div>
-
-                <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Security PIN</label>
-                    <div class="relative">
-                        <i class="fa-solid fa-lock absolute left-4 top-3.5 text-slate-500"></i>
-                        <input type="password" id="loginPin" placeholder="••••••••" class="w-full pl-11 p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition">
-                    </div>
-                </div>
+                <h1 class="hq-brand-title">ConnectUs <span>HQ</span></h1>
+                <p class="hq-brand-sub">Command Center</p>
             </div>
 
-            <p id="loginErrorMsg" class="text-xs font-bold text-red-400 bg-red-900/30 border border-red-800/50 p-3 rounded-lg text-center hidden mt-5"></p>
+            <div class="hq-restricted">
+                <div class="hq-restricted-dot"></div>
+                <span class="hq-restricted-text">Restricted Access — Authorized Personnel Only</span>
+            </div>
 
-            <button id="authBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-xl transition shadow-lg shadow-emerald-900/50 text-sm tracking-wide mt-6">
-                Authenticate →
+            <p id="loginErrorMsg" class="hq-error"></p>
+
+            <div class="hq-field">
+                <label class="hq-label" for="loginId">Authorization ID</label>
+                <div class="hq-input-wrap">
+                    <i class="fa-solid fa-fingerprint hq-input-icon"></i>
+                    <input type="text" id="loginId" placeholder="HQ-XXXXX"
+                        class="hq-input" maxlength="10"
+                        autocomplete="off" spellcheck="false">
+                </div>
+            </div>
+
+            <div class="hq-field" style="margin-bottom:24px">
+                <label class="hq-label" for="loginPin">Security PIN</label>
+                <div class="hq-input-wrap">
+                    <i class="fa-solid fa-lock hq-input-icon"></i>
+                    <input type="password" id="loginPin" placeholder="••••••••"
+                        class="hq-input" autocomplete="current-password">
+                </div>
+            </div>
+
+            <button id="authBtn" class="hq-btn">
+                <i class="fa-solid fa-shield-halved"></i> Authenticate
             </button>
+
+            <p class="hq-footer">© 2026 ConnectUs · Kismet Code Digital</p>
+
         </div>
     </div>
+</div>
 
-    <script type="module" src="core/hq-login.js"></script>
+<script type="module" src="core/hq-login.js"></script>
 </body>
 </html>
