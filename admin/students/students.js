@@ -254,9 +254,10 @@ function populateCreateClassDropdown() {
         getClassOptions().map(c => `<option value="${c}">${c}</option>`).join('');
 }
 
-document.getElementById('sClass').addEventListener('change', function () {
-    const cls     = this.value;
+function onModalClassChange() {
+    const cls     = document.getElementById('sClass')?.value || '';
     const tSelect = document.getElementById('sTeacher');
+    if (!tSelect) return;
     tSelect.innerHTML = '';
 
     if (!cls) {
@@ -274,7 +275,7 @@ document.getElementById('sClass').addEventListener('change', function () {
         if (matches.length === 1) tSelect.value = matches[0].id;
     }
     tSelect.disabled = false;
-});
+}
 
 window.openAddStudentModal = () => {
     ['sFirstName', 'sLastName', 'sDob', 'sEmail', 'sParentName', 'sParentPhone', 'studentSearchInput'].forEach(id => {
@@ -284,10 +285,20 @@ window.openAddStudentModal = () => {
     ['studentSearchResults', 'claimStudentPreview', 'claimStudentEmpty', 'addStudentMsg'].forEach(id =>
         document.getElementById(id)?.classList.add('hidden')
     );
-    document.getElementById('sTeacher').innerHTML = '<option value="">— Select a class first —</option>';
-    document.getElementById('sTeacher').disabled  = true;
+    const tSelect = document.getElementById('sTeacher');
+    if (tSelect) { tSelect.innerHTML = '<option value="">— Select a class first —</option>'; tSelect.disabled = true; }
     claimedStudentDoc = null;
     populateCreateClassDropdown();
+
+    // Wire class → teacher filter fresh each open (avoids duplicate listeners)
+    const sClassEl = document.getElementById('sClass');
+    if (sClassEl) {
+        const fresh = sClassEl.cloneNode(true);
+        sClassEl.parentNode.replaceChild(fresh, sClassEl);
+        fresh.addEventListener('change', onModalClassChange);
+        populateCreateClassDropdown(); // re-populate after clone
+    }
+
     openOverlay('addStudentModal', 'addStudentModalInner');
 };
 
