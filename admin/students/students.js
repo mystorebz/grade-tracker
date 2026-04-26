@@ -811,8 +811,8 @@ async function renderStudentAcademicTab() {
                 <select id="academicTermSelect"
                     class="form-input flex-1 p-2 bg-[#f4f7fb] border border-[#dce3ed] rounded text-[12px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">
                     <option value="${activeTerm?.id || ''}">— Select a past term —</option>
-                    ${pastOptions}
                     <option value="all">All Terms</option>
+                    ${pastOptions}
                 </select>
             </div>` : ''}
 
@@ -1295,7 +1295,8 @@ async function renderStudentEnrollmentTab() {
             <i class="fa-solid fa-box-archive text-[#9ab0c6] text-3xl mb-3"></i>
             <p class="font-bold text-[#374f6b] text-[13px]">This student is no longer active.</p>
             <p class="text-[11px] text-[#9ab0c6] font-semibold mt-1">Enrollment actions are unavailable for archived or transferred students.</p>
-        </div>`}`;
+        </div>`}
+    `;
 
     if (isActive && !isLocked) {
         document.getElementById('enrollClassSelect')?.addEventListener('change', function () {
