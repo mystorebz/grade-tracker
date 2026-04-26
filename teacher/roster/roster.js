@@ -43,6 +43,26 @@ function generateStudentId() {
     return `S${year}-${rand}`;
 }
 
+// Weighted Average Helper
+function calcWeightedAvg(grades, weights = {}) {
+    const hasWeights = Object.keys(weights).length > 0;
+    if (!hasWeights) return grades.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / (grades.length || 1);
+
+    const byType = {};
+    grades.forEach(g => {
+        const t = g.type || 'Other';
+        if (!byType[t]) byType[t] = [];
+        byType[t].push(g.max ? (g.score / g.max) * 100 : 0);
+    });
+    let wSum = 0, wTotal = 0;
+    Object.entries(byType).forEach(([type, scores]) => {
+        const typeAvg = scores.reduce((a, b) => a + b, 0) / scores.length;
+        const w = weights[type] || 0;
+        if (w > 0) { wSum += typeAvg * w; wTotal += w; }
+    });
+    return wTotal > 0 ? wSum / wTotal : grades.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / (grades.length || 1);
+}
+
 // ── 3. INIT ───────────────────────────────────────────────────────────────────
 async function init() {
     if (!session) return;
@@ -195,7 +215,7 @@ async function loadStudents() {
         tbody.innerHTML = allStudentsCache.map((s, i) => {
             const sG           = allGrades.filter(g => g.studentId === s.id);
             const subjectCount = new Set(sG.map(g => g.subject)).size;
-            const avg          = sG.length ? Math.round(sG.reduce((a, g) => a + (g.max ? g.score/g.max*100 : 0), 0) / sG.length) : null;
+            const avg          = sG.length ? Math.round(calcWeightedAvg(sG)) : null;
             if (avg !== null && avg < 65) riskCount++;
             const avgDisplay = avg !== null
                 ? `<span class="grade-num ${gradeNumClass(avg)}">${avg}%</span>`
@@ -238,7 +258,7 @@ async function fetchAllStudentGrades(semId) {
     const all = [];
     await Promise.all(allStudentsCache.map(async s => {
         try {
-            const q    = query(collection(db, 'schools', session.schoolId, 'students', s.id, 'grades'), where('semesterId', '==', semId));
+            const q    = query(collection(db, 'students', s.id, 'grades'), where('schoolId', '==', session.schoolId), where('semesterId', '==', semId));
             const snap = await getDocs(q);
             snap.forEach(d => all.push({ id: d.id, studentId: s.id, studentName: s.name, ...d.data() }));
         } catch (e) {}
@@ -321,7 +341,6 @@ window.openAddStudentModal = function() {
 window.closeAddStudentModal = function() { closeOverlay('addStudentModal', 'addStudentModalInner'); };
 window.toggleAddMethod      = function() {};
 
-// ── SEARCH: ID-ONLY — privacy protection for national registry ────────────────
 window.searchStudentRegistry = async function() {
     const rawId      = (document.getElementById('sSearchQuery')?.value || '').trim().toUpperCase();
     const resultsDiv = document.getElementById('sSearchResults');
@@ -545,8 +564,8 @@ window.openStudentPanel = async function(studentId) {
     document.getElementById('sPanelFilterType').value          = '';
 
     try {
-        // Load Grades
-        const gradesSnap = await getDocs(collection(db, 'schools', session.schoolId, 'students', studentId, 'grades'));
+        // Load Grades from Global Passport
+        const gradesSnap = await getDocs(query(collection(db, 'students', studentId, 'grades'), where('schoolId', '==', session.schoolId)));
         currentStudentGradesCache = [];
         gradesSnap.forEach(d => { const g = { id: d.id, ...d.data() }; if (g.semesterId === semId) currentStudentGradesCache.push(g); });
 
@@ -586,7 +605,7 @@ window.renderStudentGrades = function() {
     noG.classList.add('hidden');
 
     container.innerHTML = Object.entries(by).map(([subject, grades]) => {
-        const avg = grades.reduce((a, g) => a + (g.max ? g.score/g.max*100 : 0), 0) / grades.length;
+        const avg = calcWeightedAvg(grades);
         const rows = grades.sort((a,b) => (b.date||'').localeCompare(a.date||'')).map(g => {
             gradeDetailCache[g.id] = g;
             const pct   = g.max ? Math.round(g.score/g.max*100) : null;
@@ -623,7 +642,6 @@ window.toggleAccordion = function(header) {
 };
 
 // ── 10.5. EVALUATIONS LOGIC (NEW MATRIX) ──────────────────────────────────────
-
 window.buildStarGroups = function() {
     document.querySelectorAll('.rating-row').forEach(row => {
         const field = row.dataset.field;
@@ -671,7 +689,6 @@ window.setRating = function(field, val) {
 window.openEvalModal = function() {
     document.getElementById('evalDate').value = new Date().toISOString().split('T')[0];
     
-    // Reset inputs
     document.querySelectorAll('.eval-section textarea, .eval-section select').forEach(el => el.value = '');
     Object.keys(window.evalRatings).forEach(k => window.evalRatings[k] = 0);
     Object.keys(window.evalRatings).forEach(k => window.renderStars(k));
@@ -844,7 +861,6 @@ window.printEvaluation = function(evalId) {
     if(!ev) return;
     const student = allStudentsCache.find(s => s.id === currentStudentId);
 
-    // Populate the hidden template
     document.getElementById('ptSchoolName').textContent = session.schoolName || 'ConnectUs Partner School';
     document.getElementById('ptStudentName').textContent = student?.name || '—';
     document.getElementById('ptStudentId').textContent = student?.id || '—';
@@ -858,7 +874,7 @@ window.printEvaluation = function(evalId) {
         typeStr = "Academic Progress Matrix";
         metricsHtml = `
             <div class="print-metric-row"><span class="print-metric-label">Subject Mastery</span><span class="print-metric-value">${ev.ratings.mastery}/5</span></div>
-            <div class="print-metric-row"><span class="print-metric-label">Task Execution</span><span class="print-metric-value">${ev.tatingsexecution}/5</span></div>
+            <div class="print-metric-row"><span class="print-metric-label">Task Execution</span><span class="print-metric-value">${ev.ratings.execution}/5</span></div>
             <div class="print-metric-row"><span class="print-metric-label">Classroom Engagement</span><span class="print-metric-value">${ev.ratings.engagement}/5</span></div>
         `;
         textHtml = `
@@ -897,7 +913,6 @@ window.printEvaluation = function(evalId) {
     document.getElementById('ptMetricsList').innerHTML = metricsHtml;
     document.getElementById('ptTextList').innerHTML = textHtml;
 
-    // Trigger browser print
     window.print();
 };
 
@@ -1021,11 +1036,15 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
     btn.textContent = 'Confirm & Archive'; btn.disabled = false;
 });
 
-// ── 15. EXPORT ────────────────────────────────────────────────────────────────
+// ── 15. EXPORT & PROFESSIONAL UNOFFICIAL TERM REPORT ──────────────────────────
 window.exportRosterCSV = function() {
     const rows = [['Global ID','Name','Class','Parent Phone','Parent PIN']];
     allStudentsCache.forEach(s => rows.push([s.id, s.name, s.className||'', s.parentPhone||'', s.pin]));
     downloadCSV(rows, `${session.schoolId}_roster.csv`);
+};
+
+window.printRoster = function() {
+    window.print();
 };
 
 window.openPrintStudentModal = function() {
@@ -1036,6 +1055,174 @@ window.openPrintStudentModal = function() {
 };
 
 window.closePrintStudentModal = function() { closeOverlay('printStudentModal', 'printStudentModalInner'); };
+
+window.executeStudentPrint = async function() {
+    const mode = document.getElementById('psMode').value;
+    const subjFilter = document.getElementById('psSubject').value;
+    const student = allStudentsCache.find(s => s.id === currentStudentId);
+
+    if (!student) return;
+
+    let gradesToPrint = currentStudentGradesCache;
+    if (subjFilter !== 'all') {
+        gradesToPrint = gradesToPrint.filter(g => g.subject === subjFilter);
+    }
+
+    // Get dynamic global weights (if applicable to this school)
+    let weights = {};
+    try {
+        const cached = localStorage.getItem(`connectus_gradeTypes_${session.schoolId}`);
+        if (cached) { 
+            JSON.parse(cached).forEach(t => { if(t.weight) weights[t.name] = t.weight; }); 
+        }
+    } catch(e) {}
+
+    const bySub = {};
+    let totalAssessments = 0;
+    
+    gradesToPrint.forEach(g => {
+        const sub = g.subject || 'Uncategorized';
+        if (!bySub[sub]) bySub[sub] = [];
+        bySub[sub].push(g);
+        if (g.max) totalAssessments++;
+    });
+
+    const cumulativeAvg = gradesToPrint.length ? Math.round(calcWeightedAvg(gradesToPrint, weights)) : 0;
+    const gpaLetter = totalAssessments > 0 ? letterGrade(cumulativeAvg) : 'N/A';
+
+    const semSelect = document.getElementById('activeSemester');
+    const semName = semSelect?.options[semSelect.selectedIndex]?.text || 'Active Term';
+    const schoolName = session.schoolName || 'ConnectUs School';
+
+    let gradesHtml = Object.keys(bySub).length === 0
+        ? `<tr><td colspan="4" style="text-align:center;color:#64748b;font-style:italic;padding:40px;">No grades recorded for this filter.</td></tr>`
+        : Object.entries(bySub).sort((a,b) => a[0].localeCompare(b[0])).map(([sub, gList]) => {
+            const subAvg = Math.round(calcWeightedAvg(gList, weights));
+            let html = `
+                <tr style="background:#f8fafc; font-weight:800;">
+                    <td style="border-bottom:1px solid #cbd5e1;padding:12px 15px;color:#1e293b;">${escHtml(sub)}</td>
+                    <td style="border-bottom:1px solid #cbd5e1;padding:12px 15px;text-align:center;color:#64748b;">${gList.length}</td>
+                    <td style="border-bottom:1px solid #cbd5e1;padding:12px 15px;text-align:center;color:#0f172a;">${subAvg}%</td>
+                    <td style="border-bottom:1px solid #cbd5e1;padding:12px 15px;text-align:center;color:#0f172a;">${letterGrade(subAvg)}</td>
+                </tr>
+            `;
+
+            if (mode === 'detailed') {
+                gList.sort((a,b) => (b.date||'').localeCompare(a.date||'')).forEach(g => {
+                    const pct = g.max ? Math.round((g.score/g.max)*100) : null;
+                    html += `
+                    <tr style="font-size:11px; background:#fff;">
+                        <td style="border-bottom:1px solid #f1f5f9;padding:8px 15px 8px 30px;color:#475569;">
+                            ${escHtml(g.title)} <span style="color:#94a3b8;margin-left:6px;">${escHtml(g.type)} · ${g.date}</span>
+                        </td>
+                        <td style="border-bottom:1px solid #f1f5f9;padding:8px 15px;text-align:center;color:#64748b;font-family:monospace;">${g.score}/${g.max||'?'}</td>
+                        <td style="border-bottom:1px solid #f1f5f9;padding:8px 15px;text-align:center;color:#475569;font-family:monospace;">${pct!==null?pct+'%':'-'}</td>
+                        <td style="border-bottom:1px solid #f1f5f9;padding:8px 15px;text-align:center;color:#475569;">${pct!==null?letterGrade(pct):'-'}</td>
+                    </tr>`;
+                });
+            }
+            return html;
+        }).join('');
+
+    const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Unofficial Term Report — ${escHtml(student.name)}</title>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
+            body { font-family: 'Nunito', sans-serif; padding: 40px; color: #0f172a; line-height: 1.5; margin: 0 auto; max-width: 8.5in; }
+            .watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); font-size: 110px; color: rgba(203, 213, 225, 0.25); font-weight: 900; white-space: nowrap; pointer-events: none; z-index: -1; }
+            .header-flex { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid #1e1b4b; padding-bottom: 20px; margin-bottom: 30px; }
+            .logo { max-height: 60px; max-width: 200px; object-fit: contain; }
+            .header-text { text-align: right; }
+            .header-text h1 { margin: 0 0 5px; font-size: 24px; font-weight: 900; text-transform: uppercase; color: #1e1b4b; }
+            .header-text h2 { margin: 0; font-size: 14px; color: #64748b; font-weight: 700; letter-spacing: 2px; }
+            
+            .student-info-box { display: flex; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; margin-bottom: 30px; }
+            .info-col { flex: 1; padding: 15px 20px; border-right: 1px solid #cbd5e1; }
+            .info-col:last-child { border-right: none; background: #f8fafc; }
+            .info-item { margin-bottom: 10px; }
+            .info-item:last-child { margin-bottom: 0; }
+            .info-label { font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: 800; display: block; margin-bottom: 2px; }
+            .info-value { font-size: 15px; font-weight: 800; color: #0f172a; }
+            
+            .analytics-grid { display: flex; gap: 15px; margin-bottom: 30px; }
+            .analytic-card { flex: 1; background: #fff; border: 2px solid #e2e8f0; border-radius: 8px; padding: 15px; text-align: center; }
+            .analytic-val { font-size: 28px; font-weight: 900; color: #4338ca; line-height: 1; margin-bottom: 5px; }
+            .analytic-lbl { font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
+
+            table { width: 100%; border-collapse: collapse; font-size: 13px; border: 1px solid #e2e8f0; }
+            th { background: #1e1b4b; color: #fff; padding: 10px 15px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+            th.center { text-align: center; }
+
+            .footer { margin-top: 50px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 20px; font-weight: 600; }
+        </style>
+    </head>
+    <body>
+        <div class="watermark">UNOFFICIAL REPORT</div>
+        
+        <div class="header-flex">
+            <img src="../../assets/images/logo.png" alt="ConnectUs" class="logo" onerror="this.style.display='none'">
+            <div class="header-text">
+                <h1>${escHtml(schoolName)}</h1>
+                <h2>UNOFFICIAL TERM REPORT</h2>
+            </div>
+        </div>
+
+        <div class="student-info-box">
+            <div class="info-col">
+                <div class="info-item"><span class="info-label">Student Name</span><span class="info-value">${escHtml(student.name)}</span></div>
+                <div class="info-item"><span class="info-label">Global ID Number</span><span class="info-value" style="font-family:monospace;letter-spacing:1px;">${student.id}</span></div>
+            </div>
+            <div class="info-col">
+                <div class="info-item"><span class="info-label">Academic Term</span><span class="info-value">${escHtml(semName)}</span></div>
+                <div class="info-item"><span class="info-label">Current Enrollment</span><span class="info-value">${escHtml(student.className || 'Unassigned')}</span></div>
+            </div>
+        </div>
+
+        <div class="analytics-grid">
+            <div class="analytic-card">
+                <div class="analytic-val">${cumulativeAvg}%</div>
+                <div class="analytic-lbl">Term Average</div>
+            </div>
+            <div class="analytic-card">
+                <div class="analytic-val">${gpaLetter}</div>
+                <div class="analytic-lbl">Overall Grade</div>
+            </div>
+            <div class="analytic-card">
+                <div class="analytic-val">${totalAssessments}</div>
+                <div class="analytic-lbl">Total Assessments</div>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Subject / Assignment</th>
+                    <th class="center">Assessments / Score</th>
+                    <th class="center">Average / Pct</th>
+                    <th class="center">Grade</th>
+                </tr>
+            </thead>
+            <tbody>${gradesHtml}</tbody>
+        </table>
+
+        <div class="footer">
+            <strong>NOTICE:</strong> This document is an unofficial academic report generated via the ConnectUs Registry for <strong>${escHtml(schoolName)}</strong>.<br>
+            ${mode === 'summary' ? 'This is a summary report. Details omitted for brevity.' : 'This report includes all detailed assignments for the selected filters.'}<br><br>
+            Date Issued: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+        </div>
+    </body>
+    </html>`;
+
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+    
+    window.closePrintStudentModal();
+    setTimeout(() => w.print(), 800);
+};
 
 // ── 16. XSS PROTECTION ───────────────────────────────────────────────────────
 function escHtml(str) {
