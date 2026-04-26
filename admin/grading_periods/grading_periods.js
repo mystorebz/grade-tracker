@@ -36,7 +36,9 @@ async function loadSemesters() {
         }
         
         allSemesters = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.order - b.order);
-        const activeId = session.activeSemesterId || allSemesters[0]?.id;
+        
+        // STRICT FIX: No automatic fallback. If it's not set in the session/DB, nothing is active.
+        const activeId = session.activeSemesterId || null;
 
         const activePeriods = allSemesters.filter(s => !s.archived);
         const archivedPeriods = allSemesters.filter(s => s.archived);
