@@ -128,7 +128,7 @@
                         <p id="claimPreviewSchool" class="text-xs text-slate-400 italic mt-0.5"></p>
                     </div>
                     <div id="claimError" class="hidden mt-3 p-3 bg-red-50 rounded-lg border border-red-200">
-                        <p class="text-xs text-red-600 font-bold">No student found with that ID. Check the ID and try again, or create a new identity below.</p>
+                        <p class="text-xs text-red-600 font-bold"></p>
                     </div>
                 </div>
 
@@ -153,7 +153,7 @@
                         <div>
                             <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Assign to Class</label>
                             <select id="sClass" class="w-full p-2.5 border border-slate-200 rounded text-sm outline-none focus:border-emerald-500">
-                                <option value="">-- Select Class --</option>
+                                <option value="">-- Select Class First --</option>
                             </select>
                         </div>
                         <div>
@@ -174,8 +174,8 @@
                         </div>
                         <div class="col-span-2">
                             <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Assign Teacher</label>
-                            <select id="sTeacher" class="w-full p-2.5 border border-slate-200 rounded text-sm outline-none focus:border-emerald-500">
-                                <option value="">-- Assign Later --</option>
+                            <select id="sTeacher" class="w-full p-2.5 border border-slate-200 rounded text-sm outline-none focus:border-emerald-500" disabled>
+                                <option value="">-- Waiting for class selection --</option>
                             </select>
                         </div>
                     </div>
@@ -257,7 +257,7 @@
         <div id="reassignStudentModalInner" class="bg-white rounded-2xl shadow-2xl max-w-md w-full m-4 overflow-hidden transform scale-95">
             <div class="h-1 bg-gradient-to-r from-emerald-500 to-teal-400"></div>
             <div class="px-7 py-5 border-b border-slate-100 flex justify-between items-center">
-                <h3 class="font-black text-xl text-slate-800">Edit / Reassign Student</h3>
+                <h3 class="font-black text-xl text-slate-800">Reassign Student</h3>
                 <button onclick="window.closeReassignModal()" class="text-slate-400 hover:text-red-500 h-8 w-8 rounded-full flex items-center justify-center hover:bg-red-50 transition">
                     <i class="fa-solid fa-xmark text-lg"></i>
                 </button>
@@ -265,7 +265,7 @@
             <div class="p-7 space-y-4 bg-slate-50/50">
                 <div>
                     <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Student Name</label>
-                    <input type="text" id="rsName" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none">
+                    <input type="text" id="rsName" class="form-input w-full p-3 bg-slate-100 border border-slate-200 rounded-xl text-sm outline-none font-bold text-slate-600" disabled>
                 </div>
                 <div>
                     <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Assign to Class</label>
@@ -275,7 +275,7 @@
                     <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Assign Teacher</label>
                     <select id="rsTeacher" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none"></select>
                 </div>
-                <button id="saveReassignBtn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3.5 rounded-xl transition shadow-md text-base mt-2">Save Changes</button>
+                <button id="saveReassignBtn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3.5 rounded-xl transition shadow-md text-base mt-2">Save Reassignment</button>
                 <p id="reassignMsg" class="text-sm hidden font-bold p-3 rounded-xl text-center bg-red-50 text-red-600 border border-red-100"></p>
             </div>
         </div>
@@ -285,6 +285,7 @@
     <div id="studentPanel" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-end hidden opacity-0">
         <div id="studentPanelInner" class="side-panel bg-[#f8faff] w-full max-w-2xl h-full shadow-2xl flex flex-col translate-x-full">
             <div class="h-1 bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-500 flex-shrink-0"></div>
+            
             <div class="px-7 py-5 border-b border-slate-200 bg-white flex justify-between items-center flex-shrink-0">
                 <div>
                     <h3 id="sPanelName" class="font-black text-2xl text-slate-800">Student Name</h3>
@@ -301,56 +302,69 @@
                 </div>
             </div>
 
-            <div class="px-7 py-4 bg-white border-b border-slate-100 flex items-start gap-6">
-                <div class="flex-1 bg-blue-50 border border-blue-100 rounded-xl p-4">
+            <div class="px-7 py-4 bg-slate-50 border-b border-slate-200 grid grid-cols-3 gap-4">
+                <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Student PIN</p>
+                    
                     <div id="pinDisplayArea" class="flex justify-between items-center">
-                        <div>
-                            <p class="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-0.5">Student PIN</p>
-                            <p id="spinReadonly" class="font-mono text-lg font-bold text-slate-800">----</p>
-                        </div>
-                        <button onclick="window.togglePinResetUI(true)" class="bg-white text-blue-600 text-xs font-bold px-3 py-1.5 rounded shadow-sm hover:bg-blue-600 hover:text-white transition">Reset</button>
+                        <p id="spinReadonly" class="font-mono text-lg font-bold text-slate-800">----</p>
+                        <button onclick="window.togglePinResetUI(true)" class="text-blue-600 text-xs font-bold hover:underline">Reset</button>
                     </div>
-                    <div id="pinEditArea" class="hidden flex gap-2">
-                        <input type="password" id="inlineNewPin" placeholder="New PIN" class="w-24 p-2 font-mono text-sm border border-blue-200 rounded outline-none text-center">
-                        <button id="inlinePinSaveBtn" onclick="window.saveInlinePin()" class="bg-blue-600 text-white font-bold text-sm px-4 rounded hover:bg-blue-700 transition">Save</button>
-                        <button onclick="window.togglePinResetUI(false)" class="text-blue-500 hover:text-blue-800 text-sm font-semibold px-2">Cancel</button>
+                    
+                    <div id="pinEditArea" class="hidden flex flex-col gap-2">
+                        <input type="password" id="inlineNewPin" placeholder="New PIN" class="w-full p-2 font-mono text-sm border border-blue-200 rounded outline-none text-center">
+                        <div class="flex gap-2">
+                            <button id="inlinePinSaveBtn" onclick="window.saveInlinePin()" class="flex-1 bg-blue-600 text-white font-bold text-xs py-1.5 rounded hover:bg-blue-700 transition">Save</button>
+                            <button onclick="window.togglePinResetUI(false)" class="flex-1 text-slate-500 text-xs font-bold py-1.5 border border-slate-200 rounded hover:bg-slate-100 transition">Cancel</button>
+                        </div>
                     </div>
                 </div>
 
-                <div class="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-4 flex justify-between items-center">
+                <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
                     <div>
-                        <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5">Profile Tools</p>
-                        <p class="text-sm font-bold text-slate-700">Update Information</p>
+                        <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Profile Data</p>
+                        <p class="text-xs text-slate-600 font-semibold">Name, Contact, DOB</p>
                     </div>
-                    <button onclick="window.toggleStudentEdit(true)" class="bg-white text-slate-600 text-xs font-bold px-3 py-1.5 rounded shadow-sm hover:bg-slate-600 hover:text-white transition border border-slate-200">Edit Details</button>
+                    <button onclick="window.toggleStudentEdit(true)" class="text-emerald-600 text-xs font-bold hover:underline text-left mt-2 w-max">Edit Details</button>
+                </div>
+
+                <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col justify-between" id="panelEnrollmentActions">
+                    <div>
+                        <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Enrollment</p>
+                        <p class="text-xs text-slate-600 font-semibold">Class or Status</p>
+                    </div>
+                    <div class="flex flex-col gap-1.5 mt-2">
+                        <button id="panelActionReassign" class="text-blue-600 text-xs font-bold hover:underline text-left w-max">Reassign Student</button>
+                        <button id="panelActionTransfer" class="text-amber-600 text-xs font-bold hover:underline text-left w-max">Close Enrollment</button>
+                    </div>
                 </div>
             </div>
 
-            <div id="sEditForm" class="hidden px-7 py-5 bg-slate-50 border-b border-slate-200">
+            <div id="sEditForm" class="hidden px-7 py-5 bg-emerald-50 border-b border-emerald-100">
                 <div class="grid grid-cols-2 gap-4 mb-4">
                     <div>
-                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Full Name</label>
-                        <input type="text" id="editSName" class="w-full p-2.5 bg-white border border-slate-200 rounded text-sm outline-none focus:border-emerald-500">
+                        <label class="block text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-1.5">Full Name</label>
+                        <input type="text" id="editSName" class="w-full p-2.5 bg-white border border-emerald-200 rounded text-sm outline-none focus:border-emerald-500">
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Date of Birth</label>
-                        <input type="date" id="editSDob" class="w-full p-2.5 bg-white border border-slate-200 rounded text-sm outline-none focus:border-emerald-500">
+                        <label class="block text-[10px] font-bold text-emerald-700 uppercase tracking-widest mb-1.5">Date of Birth</label>
+                        <input type="date" id="editSDob" class="w-full p-2.5 bg-white border border-emerald-200 rounded text-sm outline-none focus:border-emerald-500">
                     </div>
                     <div>
-                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Parent / Guardian</label>
-                        <input type="text" id="editSParentName" class="w-full p-2.5 bg-white border border-slate-200 rounded text-sm outline-none focus:border-emerald-500">
+                        <label class="block text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-1.5">Parent / Guardian</label>
+                        <input type="text" id="editSParentName" class="w-full p-2.5 bg-white border border-emerald-200 rounded text-sm outline-none focus:border-emerald-500">
                     </div>
                     <div>
-                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Parent Phone</label>
-                        <input type="text" id="editSPhone" class="w-full p-2.5 bg-white border border-slate-200 rounded text-sm outline-none focus:border-emerald-500">
+                        <label class="block text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-1.5">Parent Phone</label>
+                        <input type="text" id="editSPhone" class="w-full p-2.5 bg-white border border-emerald-200 rounded text-sm outline-none focus:border-emerald-500">
                     </div>
                     <div class="col-span-2">
-                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Student Email</label>
-                        <input type="email" id="editSEmail" class="w-full p-2.5 bg-white border border-slate-200 rounded text-sm outline-none focus:border-emerald-500">
+                        <label class="block text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-1.5">Student Email</label>
+                        <input type="email" id="editSEmail" class="w-full p-2.5 bg-white border border-emerald-200 rounded text-sm outline-none focus:border-emerald-500">
                     </div>
                 </div>
                 <div class="flex justify-end gap-2">
-                    <button onclick="window.toggleStudentEdit(false)" class="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-800 transition">Cancel</button>
+                    <button onclick="window.toggleStudentEdit(false)" class="px-4 py-2 text-sm font-bold text-emerald-600 hover:text-emerald-900 transition">Cancel</button>
                     <button id="saveStudentEditBtn" class="px-5 py-2 bg-emerald-600 text-white font-bold rounded-lg text-sm hover:bg-emerald-700 shadow-sm transition">Save Changes</button>
                 </div>
                 <p id="editStudentMsg" class="hidden mt-3 p-3 text-sm font-bold rounded-lg text-center bg-red-50 text-red-600 border border-red-100"></p>
