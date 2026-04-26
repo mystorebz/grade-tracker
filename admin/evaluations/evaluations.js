@@ -12,8 +12,10 @@ injectAdminLayout('evaluations', 'Teacher Evaluations', 'Performance reviews and
 
 // ── 2. STATE ──────────────────────────────────────────────────────────────
 let allTeachers  = [];
+let evalMapCache = {};
+let dynamicEvalTypes = new Set();
 let evalRatings  = { overallRating: 0, classroomManagement: 0, curriculumDelivery: 0, studentEngagement: 0, professionalConduct: 0 };
-let currentPanelTeacherId = null;
+window.currentPanelTeacherId = null;
 
 function escHtml(str) {
     if (!str) return '';
@@ -54,7 +56,7 @@ window.setRating = function(field, val) {
     renderStars(field);
 };
 
-// ── 4. LOAD TEACHERS ──────────────────────────────────────────────────────
+// ── 4. LOAD TEACHERS & EVALS ──────────────────────────────────────────────
 async function loadPage() {
     try {
         const snap = await getDocs(query(
@@ -79,11 +81,19 @@ async function loadPage() {
         });
 
         const allEvals = await Promise.all(evalPromises);
-        const evalMap  = {};
-        allEvals.forEach(e => { evalMap[e.teacherId] = e.evals; });
+        evalMapCache = {};
+        dynamicEvalTypes.clear();
 
-        renderTable(evalMap);
-        renderSummaryCards(evalMap);
+        allEvals.forEach(e => { 
+            evalMapCache[e.teacherId] = e.evals; 
+            // Harvest custom evaluation types to reuse in dropdown
+            e.evals.forEach(ev => {
+                if (ev.type) dynamicEvalTypes.add(ev.type);
+            });
+        });
+
+        renderTable(evalMapCache);
+        renderSummaryCards(evalMapCache);
 
     } catch (e) {
         console.error('[Evaluations] loadPage:', e);
@@ -108,9 +118,9 @@ function renderTable(evalMap, filter = '') {
         const evals   = evalMap[t.id] || [];
         const count   = evals.length;
         const avg     = count ? (evals.reduce((s, e) => s + (e.overallRating || 0), 0) / count).toFixed(1) : null;
-        const last    = count ? evals.sort((a, b) => new Date(b.date) - new Date(a.date))[0] : null;
-        const lastStr = last ? new Date(last.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-        const rec     = last?.recommendedAction || '—';
+        const last    = count ? evals.sort((a, b) => new Date(b.date || b.timestamp) - new Date(a.date || a.timestamp))[0] : null;
+        const lastStr = last ? new Date(last.date || last.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+        const rec     = last?.recommendedAction && last.recommendedAction !== 'None' ? last.recommendedAction : '—';
 
         const stars   = avg ? Math.round(parseFloat(avg)) : 0;
         const starStr = avg
@@ -122,7 +132,7 @@ function renderTable(evalMap, filter = '') {
                        : rec === 'Professional Development' ? 'color:#b45309;background:#fffbeb;border-color:#fef3c7'
                        : 'color:#6b84a0;background:#f4f7fb;border-color:#dce3ed';
 
-        return `<tr class="hover:bg-[#f8fafb] transition cursor-pointer" onclick="window.openEvalPanel('${t.id}','${escHtml(t.name)}')">
+        return `<tr class="hover:bg-[#f8fafb] transition">
             <td class="px-6 py-4">
                 <div class="flex items-center gap-3">
                     <div style="width:34px;height:34px;border-radius:8px;background:#f0f4f8;border:1px solid #dce3ed;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#6b84a0;flex-shrink:0">
@@ -143,11 +153,16 @@ function renderTable(evalMap, filter = '') {
                 <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;border:1px solid;${recColor}">${rec}</span>
             </td>
             <td class="px-6 py-4 text-right">
-                <button onclick="event.stopPropagation();window.openNewEvalModal('${t.id}')"
-                    style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;font-size:11.5px;font-weight:700;color:var(--blue-600);background:var(--blue-50);border:1px solid var(--blue-100);border-radius:var(--r-md);cursor:pointer;font-family:inherit;transition:background 0.15s"
-                    onmouseover="this.style.background='var(--blue-100)'" onmouseout="this.style.background='var(--blue-50)'">
-                    <i class="fa-solid fa-plus" style="font-size:10px"></i> Evaluate
-                </button>
+                <div class="flex items-center justify-end gap-2">
+                    <button onclick="window.openEvalPanel('${t.id}','${escHtml(t.name)}')"
+                        class="bg-white hover:bg-[#eef4ff] text-[#2563eb] font-bold px-3 py-1.5 rounded text-[11px] transition border border-[#c7d9fd]">
+                        <i class="fa-regular fa-eye mr-1"></i> View
+                    </button>
+                    <button onclick="window.openNewEvalModal('${t.id}')"
+                        class="bg-[#eef4ff] hover:bg-[#dbeafe] text-[#2563eb] font-bold px-3 py-1.5 rounded text-[11px] transition border border-[#c7d9fd]">
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
+                </div>
             </td>
         </tr>`;
     }).join('');
@@ -178,13 +193,12 @@ function renderSummaryCards(evalMap) {
 }
 
 window.filterEvalTable = function(val) {
-    // Re-fetch evalMap from DOM isn't ideal — reload the table
-    loadPage(); // Simplified: just reload. Could cache evalMap in module scope for better perf.
+    renderTable(evalMapCache, val);
 };
 
-// ── 6. EVAL HISTORY PANEL ─────────────────────────────────────────────────
+// ── 6. EVAL HISTORY PANEL (ACCORDION) ─────────────────────────────────────
 window.openEvalPanel = async function(teacherId, teacherName) {
-    currentPanelTeacherId = teacherId;
+    window.currentPanelTeacherId = teacherId;
     document.getElementById('evalPanelName').textContent = teacherName;
     document.getElementById('evalPanelBody').innerHTML =
         '<div class="flex justify-center py-10"><i class="fa-solid fa-spinner fa-spin text-2xl text-[#2563eb]"></i></div>';
@@ -192,78 +206,76 @@ window.openEvalPanel = async function(teacherId, teacherName) {
     openOverlay('evalHistoryPanel', 'evalHistoryPanelInner', true);
 
     try {
-        const snap = await getDocs(query(
-            collection(db, 'teachers', teacherId, 'evaluations'),
-            where('schoolId', '==', session.schoolId)
-        ));
-
-        const evals = snap.docs
-            .map(d => ({ id: d.id, ...d.data() }))
-            .sort((a, b) => new Date(b.date) - new Date(a.date));
+        const evals = (evalMapCache[teacherId] || [])
+            .sort((a, b) => new Date(b.date || b.timestamp) - new Date(a.date || a.timestamp));
 
         if (!evals.length) {
             document.getElementById('evalPanelBody').innerHTML =
                 '<div style="text-align:center;padding:48px 24px;background:#fafbfc;border:1px solid #dce3ed;border-radius:14px">' +
                 '<i class="fa-regular fa-folder-open" style="font-size:28px;color:#9ab0c6;display:block;margin-bottom:10px"></i>' +
-                '<p style="font-size:13.5px;color:#6b84a0;font-weight:500">No evaluations on record for this teacher at your school.</p></div>';
+                '<p style="font-size:13.5px;color:#6b84a0;font-weight:500">No evaluations on record for this teacher.</p></div>';
             return;
         }
 
-        // Compute averages across categories
-        const cats   = ['classroomManagement', 'curriculumDelivery', 'studentEngagement', 'professionalConduct'];
-        const avgAll = v => evals.filter(e => e[v]).reduce((s, e) => s + e[v], 0) / evals.filter(e => e[v]).length;
-        const overallAvg = (evals.reduce((s, e) => s + (e.overallRating || 0), 0) / evals.length).toFixed(1);
+        document.getElementById('evalPanelBody').innerHTML = evals.map((e, index) => {
+            const stars = [1,2,3,4,5].map(n => `<span style="color:${n<=(e.overallRating||0)?'#f59e0b':'#dce3ed'};font-size:14px">★</span>`).join('');
+            const dateStr = e.date ? new Date(e.date).toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' }) : '—';
+            
+            const recColor = e.recommendedAction === 'Commendation' ? 'color:#0ea871;background:#edfaf4;border-color:#c6f0db'
+                           : e.recommendedAction === 'Formal Warning' || e.recommendedAction === 'Performance Plan' ? 'color:#e31b4a;background:#fff0f3;border-color:#ffd6de'
+                           : e.recommendedAction === 'Professional Development' ? 'color:#b45309;background:#fffbeb;border-color:#fef3c7'
+                           : 'color:#6b84a0;background:#f4f7fb;border-color:#dce3ed';
 
-        const catLabels = { classroomManagement: 'Classroom Mgmt', curriculumDelivery: 'Curriculum', studentEngagement: 'Engagement', professionalConduct: 'Conduct' };
-
-        document.getElementById('evalPanelBody').innerHTML = `
-            <div style="background:#fff;border:1px solid #dce3ed;border-radius:14px;padding:18px 20px">
-                <p style="font-size:10px;font-weight:700;color:#6b84a0;text-transform:uppercase;letter-spacing:0.1em;margin:0 0 12px">Performance Analytics</p>
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-                    <span style="font-size:28px;font-weight:700;color:#0d1f35;letter-spacing:-1px">${overallAvg}</span>
+            return `
+            <div class="bg-white border border-[#dce3ed] rounded-xl overflow-hidden mb-3">
+                <div class="px-5 py-4 cursor-pointer hover:bg-[#f8fafb] transition flex items-center justify-between" onclick="window.toggleEvalAccordion(this)">
                     <div>
-                        <div style="display:flex;gap:2px">${[1,2,3,4,5].map(n => `<span style="color:${n<=Math.round(parseFloat(overallAvg))?'#f59e0b':'#dce3ed'};font-size:16px">★</span>`).join('')}</div>
-                        <p style="font-size:11px;color:#6b84a0;font-weight:600;margin:2px 0 0">${evals.length} evaluation${evals.length!==1?'s':''}</p>
+                        <p class="font-black text-[13px] text-[#0d1f35]">${escHtml(e.type)}</p>
+                        <p class="text-[10px] font-semibold text-[#9ab0c6] mt-0.5">${dateStr} · Evaluated by ${escHtml(e.evaluatorName || 'Admin')}</p>
+                    </div>
+                    <div class="flex items-center gap-4 text-right">
+                        <div>
+                            <div class="text-[15px] leading-none flex gap-0.5">${stars}</div>
+                        </div>
+                        <i class="fa-solid fa-chevron-down text-[#c5d0db] transition-transform ${index === 0 ? 'rotate-180' : ''}"></i>
                     </div>
                 </div>
-                ${cats.map(cat => {
-                    const avg = evals.filter(e => e[cat]).length ? avgAll(cat).toFixed(1) : null;
-                    const pct = avg ? (parseFloat(avg) / 5 * 100) : 0;
-                    const col = pct >= 70 ? '#0ea871' : pct >= 50 ? '#f59e0b' : '#e31b4a';
-                    return avg ? `<div style="margin-bottom:8px">
-                        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-                            <span style="font-size:11.5px;font-weight:600;color:#374f6b">${catLabels[cat]}</span>
-                            <span style="font-size:11.5px;font-weight:700;color:${col}">${avg} / 5</span>
+                <div class="eval-body ${index === 0 ? 'open' : ''} bg-[#fafbfc] border-t border-[#f0f4f8] p-5">
+                    
+                    ${e.subjectObserved || e.studentFocus ? `
+                        <div class="flex flex-wrap gap-2 mb-4 bg-white border border-[#dce3ed] p-2.5 rounded-lg">
+                            ${e.subjectObserved ? `<span class="text-[10px] font-bold text-[#2563eb] bg-[#eef4ff] px-2 py-1 rounded border border-[#c7d9fd]">Subject: ${escHtml(e.subjectObserved)}</span>` : ''}
+                            ${e.studentFocus ? `<span class="text-[10px] font-bold text-[#6b84a0] bg-[#f0f4f8] px-2 py-1 rounded border border-[#dce3ed]">Student Focus: ${escHtml(e.studentFocus)}</span>` : ''}
                         </div>
-                        <div style="height:4px;background:#f0f4f8;border-radius:99px;overflow:hidden">
-                            <div style="height:100%;width:${pct}%;background:${col};border-radius:99px;transition:width 0.3s"></div>
-                        </div>
-                    </div>` : '';
-                }).join('')}
-            </div>
+                    ` : ''}
 
-            ${evals.map(e => {
-                const stars = [1,2,3,4,5].map(n => `<span style="color:${n<=(e.overallRating||0)?'#f59e0b':'#dce3ed'};font-size:14px">★</span>`).join('');
-                const recColor = e.recommendedAction === 'Commendation' ? '#0ea871'
-                               : e.recommendedAction === 'Formal Warning' || e.recommendedAction === 'Performance Plan' ? '#e31b4a'
-                               : e.recommendedAction === 'Professional Development' ? '#b45309' : '#6b84a0';
-                const dateStr = e.date ? new Date(e.date).toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' }) : '—';
-                return `<div style="background:#fff;border:1px solid #dce3ed;border-radius:14px;overflow:hidden">
-                    <div style="padding:14px 18px;border-bottom:1px solid #f0f4f8;display:flex;align-items:center;justify-content:space-between">
-                        <div>
-                            <div style="display:flex;align-items:center;gap:6px">${stars}</div>
-                            <p style="font-size:11px;color:#6b84a0;font-weight:600;margin:3px 0 0">${dateStr} · Evaluated by ${escHtml(e.evaluatorName || 'Admin')}</p>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        ${e.strengths ? `<div>
+                            <p class="text-[10px] font-bold text-[#0ea871] uppercase tracking-widest mb-1.5"><i class="fa-solid fa-arrow-trend-up mr-1"></i> Strengths</p>
+                            <p class="text-[12px] text-[#374f6b] font-medium leading-relaxed">${escHtml(e.strengths)}</p>
+                        </div>` : ''}
+                        ${e.areasForImprovement ? `<div>
+                            <p class="text-[10px] font-bold text-[#e31b4a] uppercase tracking-widest mb-1.5"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Improvements</p>
+                            <p class="text-[12px] text-[#374f6b] font-medium leading-relaxed">${escHtml(e.areasForImprovement)}</p>
+                        </div>` : ''}
+                    </div>
+
+                    ${e.comments ? `
+                        <div class="mb-4 border-t border-[#dce3ed] pt-4">
+                            <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5"><i class="fa-regular fa-comment-dots mr-1"></i> Overall Comments</p>
+                            <p class="text-[12px] text-[#374f6b] font-medium leading-relaxed">${escHtml(e.comments)}</p>
                         </div>
-                        ${e.recommendedAction && e.recommendedAction !== 'None' ? `<span style="font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:99px;border:1px solid;color:${recColor};background:${recColor}18;border-color:${recColor}33">${e.recommendedAction}</span>` : ''}
-                    </div>
-                    <div style="padding:14px 18px;background:#fafbfc">
-                        ${e.strengths ? `<p style="font-size:11px;font-weight:700;color:#6b84a0;text-transform:uppercase;letter-spacing:0.07em;margin:0 0 4px">Strengths</p><p style="font-size:13px;color:#374f6b;font-weight:500;margin:0 0 12px;line-height:1.5">${escHtml(e.strengths)}</p>` : ''}
-                        ${e.areasForImprovement ? `<p style="font-size:11px;font-weight:700;color:#6b84a0;text-transform:uppercase;letter-spacing:0.07em;margin:0 0 4px">Areas for Improvement</p><p style="font-size:13px;color:#374f6b;font-weight:500;margin:0;line-height:1.5">${escHtml(e.areasForImprovement)}</p>` : ''}
-                        ${!e.strengths && !e.areasForImprovement ? `<p style="font-size:13px;color:#9ab0c6;font-style:italic">No written comments.</p>` : ''}
-                    </div>
-                </div>`;
-            }).join('')}
-        `;
+                    ` : ''}
+                    
+                    ${e.recommendedAction && e.recommendedAction !== 'None' ? `
+                        <div class="mt-4 flex items-center gap-2">
+                            <span class="text-[10px] font-bold uppercase tracking-widest text-[#6b84a0]">Action:</span>
+                            <span style="font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:99px;border:1px solid;${recColor}">${e.recommendedAction}</span>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>`;
+        }).join('');
 
     } catch (err) {
         console.error('[Evaluations] openEvalPanel:', err);
@@ -272,16 +284,41 @@ window.openEvalPanel = async function(teacherId, teacherName) {
     }
 };
 
+window.toggleEvalAccordion = (header) => {
+    const body    = header.nextElementSibling;
+    const chevron = header.querySelector('.fa-chevron-down');
+    body.classList.toggle('open');
+    if (chevron) chevron.style.transform = body.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0deg)';
+};
+
 window.closeEvalPanel = () => closeOverlay('evalHistoryPanel', 'evalHistoryPanelInner', true);
 
 // ── 7. NEW EVAL MODAL ─────────────────────────────────────────────────────
 window.openNewEvalModal = function(preselectedTeacherId = null) {
     evalRatings = { overallRating: 0, classroomManagement: 0, curriculumDelivery: 0, studentEngagement: 0, professionalConduct: 0 };
-    document.getElementById('evalDate').value       = new Date().toISOString().split('T')[0];
-    document.getElementById('evalStrengths').value  = '';
+    document.getElementById('evalDate').value         = new Date().toISOString().split('T')[0];
+    document.getElementById('evalStrengths').value    = '';
     document.getElementById('evalImprovements').value = '';
-    document.getElementById('evalAction').value     = 'None';
+    document.getElementById('evalComments').value     = '';
+    document.getElementById('evalAction').value       = 'None';
+    document.getElementById('evalSubject').value      = '';
+    document.getElementById('evalStudentFocus').value = '';
     document.getElementById('evalMsg').classList.add('hidden');
+    
+    // Build Dynamic Dropdown
+    const standardTypes = ["Classroom Observation", "Term Review", "Peer Review"];
+    const allTypes = new Set([...standardTypes, ...Array.from(dynamicEvalTypes)]);
+    
+    let optionsHtml = `<option value="">— Select Type —</option>`;
+    allTypes.forEach(t => {
+        optionsHtml += `<option value="${escHtml(t)}">${escHtml(t)}</option>`;
+    });
+    optionsHtml += `<option value="Custom">Custom (Type below)...</option>`;
+    
+    const typeSelect = document.getElementById('evalType');
+    typeSelect.innerHTML = optionsHtml;
+    typeSelect.value = '';
+    window.toggleEvalTypeFields();
 
     if (preselectedTeacherId) {
         document.getElementById('evalTeacherId').value = preselectedTeacherId;
@@ -293,18 +330,48 @@ window.openNewEvalModal = function(preselectedTeacherId = null) {
     openOverlay('newEvalModal', 'newEvalModalInner');
 };
 
+window.toggleEvalTypeFields = function() {
+    const type = document.getElementById('evalType').value;
+    
+    // Toggle Custom Input
+    const customContainer = document.getElementById('customEvalTypeContainer');
+    if (type === 'Custom') {
+        customContainer.classList.remove('hidden');
+    } else {
+        customContainer.classList.add('hidden');
+        document.getElementById('customEvalType').value = '';
+    }
+
+    // Toggle Optional Observation Fields
+    const obsContainer = document.getElementById('observationFieldsContainer');
+    if (type === 'Classroom Observation') {
+        obsContainer.classList.remove('hidden');
+    } else {
+        obsContainer.classList.add('hidden');
+        document.getElementById('evalSubject').value = '';
+        document.getElementById('evalStudentFocus').value = '';
+    }
+};
+
 window.closeNewEvalModal = () => closeOverlay('newEvalModal', 'newEvalModalInner');
 
 // ── 8. SUBMIT EVALUATION ──────────────────────────────────────────────────
 document.getElementById('submitEvalBtn').addEventListener('click', async () => {
     const teacherId = document.getElementById('evalTeacherId').value;
     const date      = document.getElementById('evalDate').value;
-    const msg       = document.getElementById('evalMsg');
+    let type        = document.getElementById('evalType').value;
+    
+    if (type === 'Custom') {
+        type = document.getElementById('customEvalType').value.trim();
+    }
+
+    const msg = document.getElementById('evalMsg');
     msg.classList.add('hidden');
 
-    if (!teacherId)              { showEvalMsg('Please select a teacher.'); return; }
-    if (!date)                   { showEvalMsg('Please select a date.'); return; }
-    if (!evalRatings.overallRating) { showEvalMsg('Please set an Overall Performance rating.'); return; }
+    if (!teacherId)                  { showEvalMsg('Please select a teacher.'); return; }
+    if (!type)                       { showEvalMsg('Please select or enter an evaluation type.'); return; }
+    if (!date)                       { showEvalMsg('Please select a date.'); return; }
+    if (!evalRatings.overallRating)  { showEvalMsg('Please set an Overall Performance rating.'); return; }
 
     const teacher = allTeachers.find(t => t.id === teacherId);
     const evaluatorName = session.isSuperAdmin
@@ -322,20 +389,30 @@ document.getElementById('submitEvalBtn').addEventListener('click', async () => {
             teacherName:          teacher?.name || '',
             evaluatorId:          session.adminId || session.schoolId,
             evaluatorName,
+            type,
             date,
             overallRating:        evalRatings.overallRating,
             classroomManagement:  evalRatings.classroomManagement  || null,
             curriculumDelivery:   evalRatings.curriculumDelivery   || null,
             studentEngagement:    evalRatings.studentEngagement    || null,
             professionalConduct:  evalRatings.professionalConduct  || null,
+            subjectObserved:      document.getElementById('evalSubject').value.trim(),
+            studentFocus:         document.getElementById('evalStudentFocus').value.trim(),
             strengths:            document.getElementById('evalStrengths').value.trim(),
             areasForImprovement:  document.getElementById('evalImprovements').value.trim(),
+            comments:             document.getElementById('evalComments').value.trim(),
             recommendedAction:    document.getElementById('evalAction').value,
-            createdAt:            new Date().toISOString()
+            timestamp:            new Date().toISOString()
         });
 
         window.closeNewEvalModal();
-        loadPage(); // Refresh table
+        
+        // Check if we need to refresh the open panel
+        if (window.currentPanelTeacherId === teacherId && !document.getElementById('evalHistoryPanel').classList.contains('hidden')) {
+            window.openEvalPanel(teacherId, teacher.name);
+        }
+
+        loadPage(); // Refresh table and caches
     } catch (e) {
         console.error('[Evaluations] submit:', e);
         showEvalMsg('System error. Please try again.');
