@@ -131,10 +131,13 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
             await signInWithCustomToken(auth, result.data.token);
         } catch (e) {
             console.error('[Teacher Login] mintTeacherToken failed:', e);
-            // Non-fatal — continue, but writes may fail if rules are strict
+            msgEl.textContent = 'Authentication service unavailable. Please try again.';
+            msgEl.classList.remove('hidden');
+            resetLoginBtn(btn);
+            return; // <-- FIX: Stops execution to prevent infinite spin and failed writes
         }
 
-        //document.querySelector('.login-shell').style.display = 'none';
+        // FIX: The line hiding the login-shell has been completely removed.
 
         const needsClasses = !tData.classes || tData.classes.length === 0;
 
