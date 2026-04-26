@@ -190,63 +190,70 @@
     </div>
 
 
-    <div id="transferModal" class="overlay fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[60] flex items-center justify-center hidden opacity-0">
-        <div id="transferModalInner" class="bg-white rounded-2xl shadow-2xl max-w-lg w-full m-4 overflow-hidden transform scale-95 border-t-4 border-amber-500">
+    <div id="archiveModal" class="overlay fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[60] flex items-center justify-center hidden opacity-0">
+        <div id="archiveModalInner" class="bg-white rounded-2xl shadow-2xl max-w-lg w-full m-4 overflow-hidden transform scale-95 border-t-4 border-amber-500">
             <div class="p-6 bg-amber-50 border-b border-amber-100 flex items-center justify-between gap-4">
                 <div class="flex items-center gap-4">
                     <div class="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-xl">
-                        <i class="fa-solid fa-file-signature"></i>
+                        <i class="fa-solid fa-box-archive"></i>
                     </div>
                     <div>
-                        <h3 class="font-black text-amber-900 text-lg">Close Enrollment</h3>
-                        <p class="text-xs text-amber-600 font-bold uppercase tracking-wider">Permanent Record Protocol — Machine Law</p>
+                        <h3 class="font-black text-amber-900 text-lg">Archive Student</h3>
+                        <p class="text-xs text-amber-600 font-bold uppercase tracking-wider">Remove from active roster</p>
                     </div>
                 </div>
-                <button onclick="window.closeTransferModal()" class="text-amber-400 hover:text-red-500 h-9 w-9 rounded-full flex items-center justify-center hover:bg-red-50 transition flex-shrink-0">
+                <button onclick="window.closeArchiveModal()" class="text-amber-400 hover:text-red-500 h-9 w-9 rounded-full flex items-center justify-center hover:bg-red-50 transition flex-shrink-0">
                     <i class="fa-solid fa-xmark text-xl"></i>
                 </button>
             </div>
             <div class="p-7 space-y-5">
                 <p class="text-sm text-slate-600 leading-relaxed">
-                    You are closing enrollment for <strong id="transferStudentName" class="text-slate-900">Student</strong>.
-                    A permanent academic snapshot will be recorded and attached to their lifelong ID.
-                    This school will no longer be able to edit their past records.
+                    Select how you want to archive <strong id="archiveStudentName" class="text-slate-900">Student</strong>.
                 </p>
 
-                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-1 text-xs">
-                    <p class="font-black text-slate-500 uppercase tracking-widest text-[10px] mb-2">Snapshot to be recorded</p>
-                    <div class="flex justify-between"><span class="text-slate-400 font-bold">School</span><span id="tSnapSchool" class="font-black text-slate-700"></span></div>
-                    <div class="flex justify-between"><span class="text-slate-400 font-bold">Class</span><span id="tSnapClass" class="font-black text-slate-700"></span></div>
-                    <div class="flex justify-between"><span class="text-slate-400 font-bold">Date</span><span id="tSnapDate" class="font-black text-slate-700"></span></div>
+                <div class="space-y-3">
+                    <label class="flex items-start gap-3 p-4 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 transition has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
+                        <input type="radio" name="archiveType" id="optArchive" value="archive" checked class="mt-1" onchange="window.toggleArchiveType()">
+                        <div>
+                            <p class="font-bold text-slate-800 text-sm">Internal Archive (Keep Enrolled)</p>
+                            <p class="text-xs text-slate-500 mt-1">Student is removed from active class rosters and gradebooks, but remains tied to your school.</p>
+                        </div>
+                    </label>
+
+                    <label class="flex items-start gap-3 p-4 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 transition has-[:checked]:border-amber-500 has-[:checked]:bg-amber-50">
+                        <input type="radio" name="archiveType" id="optRelease" value="release" class="mt-1" onchange="window.toggleArchiveType()">
+                        <div>
+                            <p class="font-bold text-slate-800 text-sm">Close Enrollment (Release Student)</p>
+                            <p class="text-xs text-slate-500 mt-1">Student has permanently left the school. This releases their Global ID so another school can claim them.</p>
+                        </div>
+                    </label>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4">
+                <div id="releaseFields" class="hidden space-y-4 pt-2">
+                    <div class="bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg flex gap-3 text-xs">
+                        <i class="fa-solid fa-triangle-exclamation text-base mt-0.5"></i>
+                        <p><strong>Warning:</strong> Once enrollment is closed, you will lose the ability to edit this student's profile. Their academic records at this school will be permanently sealed.</p>
+                    </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Departure Reason</label>
-                        <select id="transferReason" class="w-full p-2.5 border border-slate-200 rounded font-bold text-sm outline-none focus:border-amber-500">
-                            <option value="">Select...</option>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Departure Reason (Required)</label>
+                        <select id="releaseReason" class="w-full p-2.5 border border-slate-200 rounded font-bold text-sm outline-none focus:border-amber-500">
+                            <option value="">Select reason...</option>
                             <option value="Transferred">Transferred to Another School</option>
                             <option value="Graduated">Graduated</option>
                             <option value="Expelled">Expelled</option>
                             <option value="Dropped Out">Dropped Out</option>
-                            <option value="Archived">Other / Archive</option>
                         </select>
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Final GPA (Optional)</label>
-                        <input type="number" id="transferGpa" min="0" max="4" step="0.1" placeholder="e.g. 3.2"
-                            class="w-full p-2.5 border border-slate-200 rounded text-sm outline-none focus:border-amber-500">
                     </div>
                 </div>
 
                 <div>
-                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Administrator Notes</label>
-                    <textarea id="transferNotes" placeholder="Optional notes about the student's tenure..."
-                        class="w-full p-3 border border-slate-200 rounded text-sm h-24 resize-none outline-none focus:border-amber-500"></textarea>
+                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Administrator Notes (Optional)</label>
+                    <textarea id="archiveNotes" placeholder="Optional notes for internal records..."
+                        class="w-full p-3 border border-slate-200 rounded text-sm h-20 resize-none outline-none focus:border-amber-500"></textarea>
                 </div>
 
-                <button id="confirmTransferBtn" class="w-full bg-amber-600 text-white font-black py-4 rounded-xl hover:bg-amber-700 transition shadow-xl text-sm uppercase tracking-widest">
-                    <i class="fa-solid fa-lock mr-2"></i>Seal Snapshot & Close Enrollment
+                <button id="confirmArchiveBtn" class="w-full bg-slate-900 text-white font-black py-4 rounded-xl hover:bg-slate-700 transition shadow-xl text-sm uppercase tracking-widest">
+                    <i class="fa-solid fa-box-archive mr-2"></i>Confirm Action
                 </button>
             </div>
         </div>
@@ -335,7 +342,7 @@
                     </div>
                     <div class="flex flex-col gap-1.5 mt-2">
                         <button id="panelActionReassign" class="text-blue-600 text-xs font-bold hover:underline text-left w-max">Reassign Student</button>
-                        <button id="panelActionTransfer" class="text-amber-600 text-xs font-bold hover:underline text-left w-max">Close Enrollment</button>
+                        <button id="panelActionArchive" class="text-amber-600 text-xs font-bold hover:underline text-left w-max">Archive / Transfer</button>
                     </div>
                 </div>
             </div>
