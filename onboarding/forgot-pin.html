@@ -11,8 +11,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-
-    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-[#f8faff] to-[#eef2ff] antialiased">
 
@@ -134,12 +132,6 @@
 <script type="module">
 import { db } from '../assets/js/firebase-init.js';
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
-// ── EmailJS Config ────────────────────────────────────────────────────────────
-const EMAILJS_PUBLIC_KEY  = 'XfaGXU_eFA9dph-5G';
-const EMAILJS_SERVICE_ID  = 'service_s5qvpzh'; 
-const EMAILJS_TEMPLATE_ID = 'template_reset_pin';
-emailjs.init(EMAILJS_PUBLIC_KEY);
 
 // ── Role Config Reference ─────────────────────────────────────────────────────
 const ROLE_CONFIG = {
@@ -295,27 +287,21 @@ window.verifyAndSend = async function() {
         const token     = generateToken();
         const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
         const cfg       = ROLE_CONFIG[selectedRole];
+        const toEmail   = (foundDoc[cfg.emailField] || '').toLowerCase();
+        const userName  = foundDoc[cfg.nameField]   || foundDocId;
 
         const vaultEntry = {
             userType:  selectedRole,
             targetId:  foundDocId,
+            email:     toEmail,
+            name:      userName,
+            roleLabel: cfg.label,
             expiresAt,
             createdAt: new Date().toISOString()
         };
         if (foundSchoolId) vaultEntry.schoolId = foundSchoolId;
 
         await setDoc(doc(db, 'reset_vault', token), vaultEntry);
-
-        const resetLink = `https://connectusonline.org/onboarding/reset-pin.html?token=${token}`;
-        const toEmail   = (foundDoc[cfg.emailField] || '').toLowerCase();
-        const userName  = foundDoc[cfg.nameField]   || foundDocId;
-
-        await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-            to_email:   toEmail,
-            user_name:  userName,
-            role_label: cfg.label,
-            reset_link: resetLink
-        });
 
         document.getElementById('step2').classList.add('hidden');
         document.getElementById('successScreen').classList.remove('hidden');
