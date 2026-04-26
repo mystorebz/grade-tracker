@@ -754,141 +754,182 @@ function renderStudentOverviewTab() {
 
 
 // ── 10. ACADEMIC TAB ──────────────────────────────────────────────────────
+
+// Cached grade docs so term switching doesn't re-fetch
+let _academicGradesCache = [];
+
 async function renderStudentAcademicTab() {
     const pane = document.getElementById('tab-academic');
     pane.innerHTML = `<div class="flex items-center justify-center py-16">
         <i class="fa-solid fa-spinner fa-spin text-2xl text-[#2563eb]"></i></div>`;
 
     try {
-        // Get current active term
-        let termName = 'Current Term';
+        // ── Fetch all terms for this school ──────────────────────────────
+        let allTerms    = [];
+        let activeTermId = null;
         try {
             const termSnap = await getDocs(
-                query(collection(db, 'terms'),
-                    where('schoolId', '==', session.schoolId),
-                    where('isActive', '==', true))
+                query(collection(db, 'terms'), where('schoolId', '==', session.schoolId))
             );
-            if (!termSnap.empty) termName = termSnap.docs[0].data().name || termName;
+            allTerms = termSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            // Sort: active first, then by createdAt/name descending
+            allTerms.sort((a, b) => {
+                if (a.isActive && !b.isActive) return -1;
+                if (!a.isActive && b.isActive) return 1;
+                return (b.createdAt || b.name || '').localeCompare(a.createdAt || a.name || '');
+            });
+            const active = allTerms.find(t => t.isActive);
+            if (active) activeTermId = active.id;
         } catch (_) {}
 
-        // Fetch grades
+        // ── Fetch all grades for this student (once, cache for term switching)
+        _academicGradesCache = [];
         let gradesSnap = await getDocs(collection(db, 'students', currentStudentId, 'grades'));
         if (gradesSnap.empty) {
             gradesSnap = await getDocs(
                 collection(db, 'schools', session.schoolId, 'students', currentStudentId, 'grades')
             );
         }
+        gradesSnap.forEach(d => _academicGradesCache.push({ id: d.id, ...d.data() }));
 
-        if (gradesSnap.empty) {
-            pane.innerHTML = `
-                <div class="bg-white border border-[#dce3ed] rounded-xl p-4 mb-5 flex items-center gap-3">
-                    <i class="fa-solid fa-calendar-week text-[#2563eb] text-lg"></i>
-                    <div>
-                        <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Current Term</p>
-                        <p class="font-bold text-[#0d1f35] text-[13px]">${escHtml(termName)}</p>
-                    </div>
-                </div>
-                <div class="text-center py-16 text-[#9ab0c6]">
-                    <i class="fa-solid fa-folder-open text-4xl mb-3 block"></i>
-                    <p class="italic font-semibold text-[13px]">No grades recorded yet for this student.</p>
-                </div>`;
-            return;
-        }
+        // ── Build term selector options ───────────────────────────────────
+        const termOptions = allTerms.length
+            ? allTerms.map(t => {
+                const label = t.isActive ? `${t.name} (Current)` : t.name;
+                return `<option value="${t.id}" ${t.id === activeTermId ? 'selected' : ''}>${escHtml(label)}</option>`;
+              }).join('')
+            : `<option value="">All Grades</option>`;
 
-        // Group by subject
-        const bySubject = {};
-        gradesSnap.forEach(d => {
-            const g = { id: d.id, ...d.data() };
-            const subj = g.subject || 'Uncategorized';
-            if (!bySubject[subj]) bySubject[subj] = [];
-            bySubject[subj].push(g);
-        });
-
-        const accordionHtml = Object.entries(bySubject).map(([subject, grades]) => {
-            const avg = grades.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / grades.length;
-            const avgRound = Math.round(avg);
-            const lg  = typeof letterGrade === 'function' ? letterGrade(avgRound) : (avgRound >= 90 ? 'A' : avgRound >= 80 ? 'B' : avgRound >= 70 ? 'C' : avgRound >= 60 ? 'D' : 'F');
-            const avgClass = avg >= 75 ? 'text-green-600 bg-green-50 border-green-200'
-                           : avg >= 60 ? 'text-amber-600 bg-amber-50 border-amber-200'
-                           : 'text-red-600 bg-red-50 border-red-200';
-
-            // Group grades by type within the subject
-            const byType = {};
-            grades.forEach(g => {
-                const t = g.type || 'Assessment';
-                if (!byType[t]) byType[t] = [];
-                byType[t].push(g);
-            });
-
-            const typeRows = Object.entries(byType).map(([type, tGrades]) => {
-                const typeAvg = Math.round(tGrades.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / tGrades.length);
-                const tColor = typeAvg >= 75 ? '#16a34a' : typeAvg >= 60 ? '#d97706' : '#dc2626';
-
-                const gradeRows = tGrades.map(g => {
-                    const pct   = g.max ? Math.round((g.score / g.max) * 100) : null;
-                    const pColor = pct == null ? '#374f6b' : pct >= 75 ? '#16a34a' : pct >= 60 ? '#d97706' : '#dc2626';
-                    return `
-                        <div class="flex items-center justify-between py-2.5 border-b border-[#f0f4f8] last:border-0">
-                            <div class="flex-1 min-w-0 mr-3">
-                                <p class="font-semibold text-[12px] text-[#0d1f35] truncate">${escHtml(g.title || 'Assessment')}</p>
-                                <p class="text-[10px] text-[#9ab0c6] font-semibold mt-0.5">${g.date ? g.date : '—'}</p>
-                                ${g.comments ? `<p class="text-[11px] text-[#6b84a0] italic mt-1 leading-snug">"${escHtml(g.comments)}"</p>` : ''}
-                            </div>
-                            <div class="text-right flex-shrink-0">
-                                <p class="font-black text-[13px]" style="color:${pColor}">${g.score}/${g.max || '?'}</p>
-                                ${pct != null ? `<p class="text-[10px] font-bold" style="color:${pColor}">${pct}%</p>` : ''}
-                            </div>
-                        </div>`;
-                }).join('');
-
-                return `
-                    <div class="mb-3 last:mb-0">
-                        <div class="flex items-center justify-between mb-2 px-1">
-                            <p class="text-[10px] font-black text-[#6b84a0] uppercase tracking-widest">${escHtml(type)} <span class="text-[#9ab0c6]">(${tGrades.length})</span></p>
-                            <p class="text-[11px] font-black" style="color:${tColor}">${typeAvg}% avg</p>
-                        </div>
-                        <div class="bg-white border border-[#dce3ed] rounded-lg px-4">${gradeRows}</div>
-                    </div>`;
-            }).join('');
-
-            return `
-                <div class="bg-white border border-[#dce3ed] rounded-xl overflow-hidden shadow-sm">
-                    <div class="flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-[#f8fafb] transition"
-                        onclick="window.toggleSubjectAccordion(this)">
-                        <div class="flex items-center gap-3">
-                            <div class="w-9 h-9 bg-[#0d1f35] text-white rounded-lg flex items-center justify-center font-black text-xs flex-shrink-0">
-                                ${subject.charAt(0).toUpperCase()}
-                            </div>
-                            <div>
-                                <p class="font-black text-[#0d1f35] text-[13px]">${escHtml(subject)}</p>
-                                <p class="text-[10px] text-[#9ab0c6] font-semibold">${grades.length} assessment${grades.length !== 1 ? 's' : ''}</p>
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span class="px-2.5 py-1 rounded-lg border font-black text-[11px] ${avgClass}">${avgRound}% · ${lg}</span>
-                            <i class="fa-solid fa-chevron-down text-[#c5d0db] transition-transform"></i>
-                        </div>
-                    </div>
-                    <div class="subject-body">
-                        <div class="px-5 pb-5 pt-2 bg-[#f8fafb] border-t border-[#f0f4f8]">${typeRows}</div>
-                    </div>
-                </div>`;
-        }).join('');
-
+        // ── Render shell with term selector ──────────────────────────────
         pane.innerHTML = `
             <div class="bg-white border border-[#dce3ed] rounded-xl p-4 mb-4 flex items-center gap-3">
-                <i class="fa-solid fa-calendar-week text-[#2563eb] text-lg"></i>
-                <div>
-                    <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Current Term</p>
-                    <p class="font-bold text-[#0d1f35] text-[13px]">${escHtml(termName)}</p>
+                <i class="fa-solid fa-calendar-week text-[#2563eb] text-xl flex-shrink-0"></i>
+                <div class="flex-1 min-w-0">
+                    <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Viewing Term</p>
+                    <select id="academicTermSelect"
+                        class="form-input w-full p-2 bg-[#f4f7fb] border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">
+                        ${termOptions}
+                    </select>
                 </div>
             </div>
-            <div class="space-y-3">${accordionHtml}</div>`;
+            <div id="academicGradesArea" class="space-y-3"></div>`;
+
+        // ── Wire term selector ────────────────────────────────────────────
+        const termSelect = document.getElementById('academicTermSelect');
+        termSelect.addEventListener('change', () => {
+            renderGradesForTerm(termSelect.value);
+        });
+
+        // ── Render initial grades ─────────────────────────────────────────
+        renderGradesForTerm(activeTermId || (allTerms[0]?.id || ''));
 
     } catch (e) {
         console.error('[Students] academicTab:', e);
         pane.innerHTML = `<div class="text-center py-16 text-[#e31b4a] font-semibold">Error loading academic records.</div>`;
     }
+}
+
+// Renders grade accordions for a given termId into #academicGradesArea
+function renderGradesForTerm(termId) {
+    const area = document.getElementById('academicGradesArea');
+    if (!area) return;
+
+    // Filter: if termId provided, match on grade.termId; otherwise show all
+    const grades = termId
+        ? _academicGradesCache.filter(g => (g.termId || '') === termId)
+        : _academicGradesCache;
+
+    if (!grades.length) {
+        area.innerHTML = `
+            <div class="text-center py-16 text-[#9ab0c6]">
+                <i class="fa-solid fa-folder-open text-4xl mb-3 block"></i>
+                <p class="italic font-semibold text-[13px]">No grades recorded for this term.</p>
+            </div>`;
+        return;
+    }
+
+    // Group by subject
+    const bySubject = {};
+    grades.forEach(g => {
+        const subj = g.subject || 'Uncategorized';
+        if (!bySubject[subj]) bySubject[subj] = [];
+        bySubject[subj].push(g);
+    });
+
+    const calcLg = (avg) => avg >= 90 ? 'A' : avg >= 80 ? 'B' : avg >= 70 ? 'C' : avg >= 60 ? 'D' : 'F';
+
+    area.innerHTML = Object.entries(bySubject).map(([subject, sGrades]) => {
+        const avg      = sGrades.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / sGrades.length;
+        const avgRound = Math.round(avg);
+        const lg       = typeof letterGrade === 'function' ? letterGrade(avgRound) : calcLg(avgRound);
+        const avgClass = avg >= 75 ? 'text-green-600 bg-green-50 border-green-200'
+                       : avg >= 60 ? 'text-amber-600 bg-amber-50 border-amber-200'
+                       : 'text-red-600 bg-red-50 border-red-200';
+
+        // Group by grade type
+        const byType = {};
+        sGrades.forEach(g => {
+            const t = g.type || 'Assessment';
+            if (!byType[t]) byType[t] = [];
+            byType[t].push(g);
+        });
+
+        const typeRows = Object.entries(byType).map(([type, tGrades]) => {
+            const typeAvg = Math.round(tGrades.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / tGrades.length);
+            const tColor  = typeAvg >= 75 ? '#16a34a' : typeAvg >= 60 ? '#d97706' : '#dc2626';
+
+            const gradeRows = tGrades.map(g => {
+                const pct    = g.max ? Math.round((g.score / g.max) * 100) : null;
+                const pColor = pct == null ? '#374f6b' : pct >= 75 ? '#16a34a' : pct >= 60 ? '#d97706' : '#dc2626';
+                return `
+                    <div class="flex items-center justify-between py-2.5 border-b border-[#f0f4f8] last:border-0">
+                        <div class="flex-1 min-w-0 mr-3">
+                            <p class="font-semibold text-[12px] text-[#0d1f35] truncate">${escHtml(g.title || 'Assessment')}</p>
+                            <p class="text-[10px] text-[#9ab0c6] font-semibold mt-0.5">${g.date || '—'}</p>
+                            ${g.comments ? `<p class="text-[11px] text-[#6b84a0] italic mt-1 leading-snug">"${escHtml(g.comments)}"</p>` : ''}
+                        </div>
+                        <div class="text-right flex-shrink-0">
+                            <p class="font-black text-[13px]" style="color:${pColor}">${g.score}/${g.max || '?'}</p>
+                            ${pct != null ? `<p class="text-[10px] font-bold" style="color:${pColor}">${pct}%</p>` : ''}
+                        </div>
+                    </div>`;
+            }).join('');
+
+            return `
+                <div class="mb-3 last:mb-0">
+                    <div class="flex items-center justify-between mb-2 px-1">
+                        <p class="text-[10px] font-black text-[#6b84a0] uppercase tracking-widest">
+                            ${escHtml(type)} <span class="text-[#9ab0c6]">(${tGrades.length})</span>
+                        </p>
+                        <p class="text-[11px] font-black" style="color:${tColor}">${typeAvg}% avg</p>
+                    </div>
+                    <div class="bg-white border border-[#dce3ed] rounded-lg px-4">${gradeRows}</div>
+                </div>`;
+        }).join('');
+
+        return `
+            <div class="bg-white border border-[#dce3ed] rounded-xl overflow-hidden shadow-sm">
+                <div class="flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-[#f8fafb] transition"
+                    onclick="window.toggleSubjectAccordion(this)">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 bg-[#0d1f35] text-white rounded-lg flex items-center justify-center font-black text-xs flex-shrink-0">
+                            ${subject.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                            <p class="font-black text-[#0d1f35] text-[13px]">${escHtml(subject)}</p>
+                            <p class="text-[10px] text-[#9ab0c6] font-semibold">${sGrades.length} assessment${sGrades.length !== 1 ? 's' : ''}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="px-2.5 py-1 rounded-lg border font-black text-[11px] ${avgClass}">${avgRound}% · ${lg}</span>
+                        <i class="fa-solid fa-chevron-down text-[#c5d0db] transition-transform"></i>
+                    </div>
+                </div>
+                <div class="subject-body">
+                    <div class="px-5 pb-5 pt-2 bg-[#f8fafb] border-t border-[#f0f4f8]">${typeRows}</div>
+                </div>
+            </div>`;
+    }).join('');
 }
 
 window.toggleSubjectAccordion = (header) => {
