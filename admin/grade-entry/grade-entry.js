@@ -1,6 +1,6 @@
 import { db } from '../../assets/js/firebase-init.js';
 import {
-    doc, getDoc, getDocs, addDoc, collection, query, where, orderBy
+    doc, getDoc, getDocs, addDoc, updateDoc, collection, query, where, arrayUnion
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
@@ -12,9 +12,12 @@ injectAdminLayout('grade-entry', 'Grade Management', 'Oversee class performance 
 
 // ── 2. STATE ──────────────────────────────────────────────────────────────
 let rawSemesters  = [];
-let currentRoster = []; // Cache of students currently displayed
-let currentGrades = []; // Cache of grades for the current subject
-window.targetStudent = null; // Used for the modal
+let currentRoster = []; 
+let currentGrades = []; 
+window.targetStudent = null; 
+window.editGradeMode = false;
+window.editGradeId   = null;
+window.editGradeOldData = null;
 
 // ── 3. INIT ───────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -130,7 +133,6 @@ async function loadRosterData() {
     </td></tr>`;
 
     try {
-        // Fetch Students in the selected class
         const studentSnap = await getDocs(query(
             collection(db, 'students'),
             where('currentSchoolId', '==', session.schoolId),
@@ -145,7 +147,6 @@ async function loadRosterData() {
             return;
         }
 
-        // Fetch grades for those students in parallel
         const gradePromises = currentRoster.map(s => 
             getDocs(query(
                 collection(db, 'schools', session.schoolId, 'students', s.id, 'grades'),
@@ -158,7 +159,7 @@ async function loadRosterData() {
         currentGrades = [];
         gradeResults.forEach((snap, idx) => {
             snap.forEach(d => {
-                currentGrades.push({ studentId: currentRoster[idx].id, ...d.data() });
+                currentGrades.push({ id: d.id, studentId: currentRoster[idx].id, ...d.data() });
             });
         });
 
@@ -191,7 +192,6 @@ function renderGrid() {
     const calcLg = (avg) => avg >= 90 ? 'A' : avg >= 80 ? 'B' : avg >= 70 ? 'C' : avg >= 60 ? 'D' : 'F';
 
     tbody.innerHTML = filteredRoster.map(s => {
-        // Filter grades specifically for this student
         const sGrades = currentGrades.filter(g => g.studentId === s.id);
         
         let avgStr = '--';
@@ -209,19 +209,23 @@ function renderGrid() {
                    : 'text-red-700 bg-red-50 border-red-200';
         }
 
-        // Show last 2 assessments
+        // Show last 2 assessments (Clickable for editing)
         const recent = sGrades.sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 2);
         const recentHtml = recent.length === 0 
             ? `<span class="text-[11px] text-[#9ab0c6] italic">No grades entered</span>`
             : recent.map(g => {
-                const isOverride = g.enteredByAdmin;
+                const isOverride = g.enteredByAdmin || (g.historyLogs && g.historyLogs.length > 0);
                 const p = g.max ? Math.round((g.score/g.max)*100) : 0;
                 const pCol = p >= 75 ? '#0ea871' : p >= 60 ? '#f59e0b' : '#e31b4a';
-                return `<div class="flex items-center gap-2 mb-1 last:mb-0">
-                            <span class="text-[10px] font-bold text-[#6b84a0] w-14 truncate" title="${escHtml(g.type)}">${escHtml(g.type)}</span>
-                            <span class="text-[11px] font-black" style="color:${pCol}">${g.score}/${g.max}</span>
-                            ${isOverride ? `<i class="fa-solid fa-triangle-exclamation text-amber-500 text-[10px]" title="Admin Override"></i>` : ''}
-                        </div>`;
+                return `
+                    <div onclick="window.openEditGradePanel('${s.id}', '${g.id}')" 
+                        class="flex items-center gap-2 mb-1 last:mb-0 cursor-pointer hover:bg-slate-100 p-1.5 -ml-1.5 rounded transition group" 
+                        title="Click to edit grade">
+                        <span class="text-[10px] font-bold text-[#6b84a0] w-14 truncate group-hover:text-[#2563eb]">${escHtml(g.type)}</span>
+                        <span class="text-[11px] font-black group-hover:underline" style="color:${pCol}">${g.score}/${g.max}</span>
+                        ${isOverride ? `<i class="fa-solid fa-triangle-exclamation text-amber-500 text-[10px] ml-1" title="Admin Edited/Overridden"></i>` : ''}
+                        <i class="fa-solid fa-pen text-[#c5d0db] text-[9px] opacity-0 group-hover:opacity-100 transition ml-1"></i>
+                    </div>`;
             }).join('');
 
         return `
@@ -252,7 +256,7 @@ function renderGrid() {
                 <td class="px-6 py-4 text-right">
                     <button onclick="window.openGradePanel('${s.id}')"
                         class="bg-white hover:bg-amber-50 hover:border-amber-300 text-[#0d1f35] hover:text-[#b45309] font-bold px-3 py-1.5 rounded text-[11px] transition border border-[#dce3ed] shadow-sm flex items-center gap-1.5 ml-auto">
-                        <i class="fa-solid fa-pen-to-square"></i> Add / Override
+                        <i class="fa-solid fa-plus"></i> Override
                     </button>
                 </td>
             </tr>
@@ -260,18 +264,28 @@ function renderGrid() {
     }).join('');
 }
 
-// ── 7. PANEL LOGIC ────────────────────────────────────────────────────────
+// ── 7. PANEL LOGIC (ADD & EDIT) ───────────────────────────────────────────
 window.openGradePanel = function(studentId) {
     const student = currentRoster.find(s => s.id === studentId);
     if (!student) return;
 
     window.targetStudent = student;
+    window.editGradeMode = false;
+    window.editGradeId = null;
+    window.editGradeOldData = null;
+
     const subject = document.getElementById('filterSubject').value;
 
+    document.getElementById('panelHeaderTitle').textContent = 'Admin Grade Override';
+    document.getElementById('saveGradeText').textContent = 'Commit Admin Override';
     document.getElementById('panelStudentName').textContent = `${student.name} (${student.id})`;
-    document.getElementById('agSubject').value = subject;
     
+    // Unlock Fields
+    document.getElementById('agType').disabled = false;
+    document.getElementById('agTitle').readOnly = false;
+
     // Reset Form
+    document.getElementById('agSubject').value = subject;
     document.getElementById('agType').value = '';
     document.getElementById('agTitle').value = '';
     document.getElementById('agScore').value = '';
@@ -280,6 +294,38 @@ window.openGradePanel = function(studentId) {
     document.getElementById('agNotes').value = '';
     document.getElementById('gradeMsg').classList.add('hidden');
     
+    updatePreview();
+    openOverlay('gradeEntryPanel', 'gradeEntryPanelInner', true);
+};
+
+window.openEditGradePanel = function(studentId, gradeId) {
+    const student = currentRoster.find(s => s.id === studentId);
+    const grade   = currentGrades.find(g => g.id === gradeId);
+    if (!student || !grade) return;
+
+    window.targetStudent = student;
+    window.editGradeMode = true;
+    window.editGradeId = gradeId;
+    window.editGradeOldData = grade;
+
+    document.getElementById('panelHeaderTitle').textContent = 'Edit Assessment Record';
+    document.getElementById('saveGradeText').textContent = 'Update Grade Record';
+    document.getElementById('panelStudentName').textContent = `${student.name} (${student.id})`;
+
+    // Populate Fields
+    document.getElementById('agSubject').value = grade.subject;
+    document.getElementById('agType').value = grade.type;
+    document.getElementById('agTitle').value = grade.title;
+    document.getElementById('agScore').value = grade.score;
+    document.getElementById('agMax').value = grade.max;
+    document.getElementById('agDate').value = grade.date;
+    document.getElementById('agNotes').value = ''; // Force new note
+    document.getElementById('gradeMsg').classList.add('hidden');
+
+    // Lock Fundamental Assignment Details
+    document.getElementById('agType').disabled = true;
+    document.getElementById('agTitle').readOnly = true;
+
     updatePreview();
     openOverlay('gradeEntryPanel', 'gradeEntryPanelInner', true);
 };
@@ -315,7 +361,7 @@ function updatePreview() {
     }
 }
 
-// ── 8. SAVE GRADE ─────────────────────────────────────────────────────────
+// ── 8. SAVE / UPDATE GRADE ────────────────────────────────────────────────
 async function saveGrade() {
     if (!window.targetStudent) return;
 
@@ -337,52 +383,90 @@ async function saveGrade() {
     if (!type || !title) return showMsg('Grade type and title are required.');
     if (isNaN(score) || isNaN(max) || max <= 0) return showMsg('Please enter valid score and max values.');
     if (score < 0 || score > max) return showMsg('Score cannot be negative or exceed the maximum.');
-    if (!notes) return showMsg('An Admin Audit Note is mandatory for overriding or entering a grade.');
+    if (!notes) return showMsg('An Admin Audit Note is mandatory for overriding or editing a grade.');
 
     msgEl.classList.add('hidden');
 
     const btn = document.getElementById('saveGradeBtn');
+    const originalBtnHTML = btn.innerHTML;
     btn.disabled  = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Committing...';
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Securing Record...';
 
     try {
         const adminDisplayName = session.isSuperAdmin ? (session.schoolName || 'Super Admin') : (session.adminName || 'Sub-Admin');
+        const now = new Date().toISOString();
 
-        const gradeData = {
-            teacherId:       window.targetStudent.teacherId || '', 
-            semesterId:      semId,
-            subject,
-            type,
-            date,
-            title,
-            score,
-            max,
-            notes:           `[Admin Override] ${notes}`,
-            historyLogs:     [],
-            createdAt:       new Date().toISOString(),
+        if (window.editGradeMode && window.editGradeId) {
+            // EDIT EXISTING GRADE LOGIC
+            const oldData = window.editGradeOldData;
+            
+            const historyEntry = {
+                dateChanged: now,
+                adminId: session.adminId || session.schoolId,
+                adminName: adminDisplayName,
+                oldScore: oldData.score,
+                oldMax: oldData.max,
+                oldDate: oldData.date,
+                newScore: score,
+                newMax: max,
+                note: notes
+            };
 
-            // ── Audit fields ───────────────────────────────────────────
-            enteredByAdmin:  true,
-            adminId:         session.adminId || session.schoolId,
-            adminName:       adminDisplayName,
-            adminRole:       session.isSuperAdmin ? 'super_admin' : 'sub_admin'
-        };
+            await updateDoc(doc(db, 'schools', session.schoolId, 'students', window.targetStudent.id, 'grades', window.editGradeId), {
+                score,
+                max,
+                date,
+                historyLogs: arrayUnion(historyEntry)
+            });
 
-        const newDocRef = await addDoc(
-            collection(db, 'schools', session.schoolId, 'students', window.targetStudent.id, 'grades'),
-            gradeData
-        );
+            // Update local cache
+            const gIdx = currentGrades.findIndex(g => g.id === window.editGradeId);
+            if (gIdx > -1) {
+                currentGrades[gIdx].score = score;
+                currentGrades[gIdx].max = max;
+                currentGrades[gIdx].date = date;
+                if (!currentGrades[gIdx].historyLogs) currentGrades[gIdx].historyLogs = [];
+                currentGrades[gIdx].historyLogs.push(historyEntry);
+            }
 
-        // Update local cache and UI without full page reload
-        currentGrades.push({ studentId: window.targetStudent.id, ...gradeData });
+        } else {
+            // ADD NEW OVERRIDE LOGIC
+            const gradeData = {
+                teacherId:       window.targetStudent.teacherId || '', 
+                semesterId:      semId,
+                subject,
+                type,
+                date,
+                title,
+                score,
+                max,
+                notes:           `[Admin Override] ${notes}`,
+                historyLogs:     [],
+                createdAt:       now,
+
+                // Audit fields
+                enteredByAdmin:  true,
+                adminId:         session.adminId || session.schoolId,
+                adminName:       adminDisplayName,
+                adminRole:       session.isSuperAdmin ? 'super_admin' : 'sub_admin'
+            };
+
+            const newDocRef = await addDoc(
+                collection(db, 'schools', session.schoolId, 'students', window.targetStudent.id, 'grades'),
+                gradeData
+            );
+
+            // Update local cache
+            currentGrades.push({ id: newDocRef.id, studentId: window.targetStudent.id, ...gradeData });
+        }
+
         renderGrid();
-
         window.closeGradePanel();
 
     } catch (e) {
         console.error('[AdminGradeEntry] saveGrade:', e);
-        showMsg('System error. Could not commit record.');
+        showMsg('System error. Could not secure record.');
         btn.disabled  = false;
-        btn.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-2"></i> Commit Admin Override';
+        btn.innerHTML = originalBtnHTML;
     }
 }
