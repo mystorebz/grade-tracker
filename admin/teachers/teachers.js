@@ -19,6 +19,7 @@ let currentTeacherId  = null;
 let currentTeacherData = null;
 let claimedTeacherDoc = null;
 let slipData          = { name: '', id: '', pin: '' };
+let dynamicEvalTypes  = new Set(); // Added to harvest custom eval types
 
 const tbody = document.getElementById('teachersTableBody');
 
@@ -1061,7 +1062,7 @@ async function addSubject(name, description = '') {
 }
 
 
-// ── 12. EVALUATIONS TAB ───────────────────────────────────────────────────
+// ── 12. EVALUATIONS TAB (UNIFIED ARCHITECTURE) ────────────────────────────
 async function renderEvaluationsTab() {
     const pane = document.getElementById('tab-evaluations');
     pane.innerHTML = `<div class="flex items-center justify-center py-16">
@@ -1076,6 +1077,10 @@ async function renderEvaluationsTab() {
             .map(d => ({ id: d.id, ...d.data() }))
             .sort((a, b) => new Date(b.timestamp || b.date || 0) - new Date(a.timestamp || a.date || 0));
 
+        // Harvest dynamic evaluation types
+        dynamicEvalTypes.clear();
+        evals.forEach(ev => { if (ev.type) dynamicEvalTypes.add(ev.type); });
+
         const count  = evals.length;
         const avgNum = count ? evals.reduce((s, e) => s + (e.overallRating || e.performanceScore || 0), 0) / count : null;
         const avg    = avgNum !== null ? avgNum.toFixed(1) : null;
@@ -1084,6 +1089,13 @@ async function renderEvaluationsTab() {
                 `<span style="color:${n <= Math.round(parseFloat(avg)) ? '#f59e0b' : '#dce3ed'};font-size:16px">★</span>`
               ).join('')
             : null;
+
+        // Build Dynamic Options
+        const standardTypes = ["Classroom Observation", "Term Review", "Peer Review"];
+        const allTypes = new Set([...standardTypes, ...Array.from(dynamicEvalTypes)]);
+        let typeOptionsHtml = `<option value="">— Select Type —</option>`;
+        allTypes.forEach(t => { typeOptionsHtml += `<option value="${escHtml(t)}">${escHtml(t)}</option>`; });
+        typeOptionsHtml += `<option value="Custom">Custom (Type below)...</option>`;
 
         const inlineFormHtml = `
             <div id="inlineEvalFormContainer" class="hidden mb-6 bg-white border-2 border-[#2563eb] rounded-xl p-5 shadow-sm">
@@ -1095,18 +1107,34 @@ async function renderEvaluationsTab() {
                         <i class="fa-solid fa-xmark text-lg"></i>
                     </button>
                 </div>
+                
                 <div class="grid grid-cols-2 gap-4 mb-4">
-                    <div>
+                    <div class="col-span-2">
                         <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Evaluation Type <span class="text-[#e31b4a]">*</span></label>
-                        <select id="inlEvalType" class="form-input w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">
-                            <option value="">— Select Type —</option>
-                            <option value="Classroom Observation">Classroom Observation</option>
-                            <option value="Mid-Year Review">Mid-Year Review</option>
-                            <option value="Annual Review">Annual Review</option>
-                            <option value="Probationary Review">Probationary Review</option>
-                            <option value="Peer Review">Peer Review</option>
+                        <select id="inlEvalType" onchange="window.toggleInlEvalTypeFields()" class="form-input w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">
+                            ${typeOptionsHtml}
                         </select>
                     </div>
+
+                    <div id="inlCustomTypeContainer" class="col-span-2 hidden">
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Custom Evaluation Type <span class="text-[#e31b4a]">*</span></label>
+                        <input type="text" id="inlCustomType" placeholder="e.g. Term 2 Walkthrough" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none">
+                    </div>
+
+                    <div id="inlObservationContainer" class="col-span-2 grid grid-cols-2 gap-4 hidden bg-[#eef4ff] border border-[#c7d9fd] p-4 rounded-lg">
+                        <div class="col-span-2">
+                            <p class="text-[10px] font-bold text-[#2563eb] uppercase tracking-widest mb-1"><i class="fa-solid fa-eye mr-1"></i> Observation Details</p>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Subject Observed (Optional)</label>
+                            <input type="text" id="inlEvalSubject" placeholder="e.g. Standard 4 Mathematics" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Student Focus (Optional)</label>
+                            <input type="text" id="inlEvalStudent" placeholder="e.g. John Doe / Group B" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none">
+                        </div>
+                    </div>
+
                     <div>
                         <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Overall Rating (1–5) <span class="text-[#e31b4a]">*</span></label>
                         <select id="inlEvalRating" class="form-input w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">
@@ -1118,15 +1146,37 @@ async function renderEvaluationsTab() {
                             <option value="1">1 — Unsatisfactory</option>
                         </select>
                     </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Date of Evaluation <span class="text-[#e31b4a]">*</span></label>
+                        <input type="date" id="inlEvalDate" value="${new Date().toISOString().split('T')[0]}" class="form-input w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
+                    </div>
                 </div>
-                <div class="mb-4">
-                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Date of Evaluation <span class="text-[#e31b4a]">*</span></label>
-                    <input type="date" id="inlEvalDate" value="${new Date().toISOString().split('T')[0]}" class="form-input w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
+                
+                <div class="space-y-4 mb-5 border-t border-[#f0f4f8] pt-4">
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Strengths</label>
+                        <textarea id="inlEvalStrengths" rows="2" placeholder="What does this teacher do particularly well?" class="form-input w-full p-3 bg-[#f8fafb] border border-[#dce3ed] rounded text-[13px] resize-none outline-none focus:border-[#2563eb]"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Areas for Improvement</label>
+                        <textarea id="inlEvalImprovements" rows="2" placeholder="What areas need development or support?" class="form-input w-full p-3 bg-[#f8fafb] border border-[#dce3ed] rounded text-[13px] resize-none outline-none focus:border-[#2563eb]"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Overall Comments & Feedback</label>
+                        <textarea id="inlEvalComments" rows="2" placeholder="General feedback summary..." class="form-input w-full p-3 bg-[#f8fafb] border border-[#dce3ed] rounded text-[13px] resize-none outline-none focus:border-[#2563eb]"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Recommended Action</label>
+                        <select id="inlEvalAction" class="form-input w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">
+                            <option value="None">No Action Required</option>
+                            <option value="Commendation">Commendation</option>
+                            <option value="Professional Development">Professional Development</option>
+                            <option value="Formal Warning">Formal Warning</option>
+                            <option value="Performance Plan">Performance Improvement Plan</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="mb-5">
-                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Comments <span class="text-[#e31b4a]">*</span></label>
-                    <textarea id="inlEvalComments" placeholder="Evaluation notes and observations..." class="form-input w-full p-3 bg-[#f8fafb] border border-[#dce3ed] rounded text-[13px] h-20 resize-none outline-none focus:border-[#2563eb]"></textarea>
-                </div>
+
                 <button id="inlSaveEvalBtn" onclick="window.saveInlineEval()" class="w-full bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-3 rounded transition text-[12px] uppercase tracking-widest shadow-sm">
                     Submit Evaluation
                 </button>
@@ -1157,28 +1207,64 @@ async function renderEvaluationsTab() {
             ${inlineFormHtml}
 
             <div class="space-y-3">
-                ${evals.map(e => {
+                ${evals.map((e, index) => {
                     const rating  = e.overallRating || e.performanceScore || 0;
-                    const eStars  = [1,2,3,4,5].map(n =>
-                        `<span style="color:${n <= rating ? '#f59e0b' : '#dce3ed'}">★</span>`
-                    ).join('');
-                    const dateStr = (e.timestamp || e.date)
-                        ? new Date(e.timestamp || e.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                        : '—';
+                    const eStars  = [1,2,3,4,5].map(n => `<span style="color:${n <= rating ? '#f59e0b' : '#dce3ed'};font-size:14px">★</span>`).join('');
+                    const dateStr = (e.timestamp || e.date) ? new Date(e.timestamp || e.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+                    
+                    const recColor = e.recommendedAction === 'Commendation' ? 'color:#0ea871;background:#edfaf4;border-color:#c6f0db'
+                                   : e.recommendedAction === 'Formal Warning' || e.recommendedAction === 'Performance Plan' ? 'color:#e31b4a;background:#fff0f3;border-color:#ffd6de'
+                                   : e.recommendedAction === 'Professional Development' ? 'color:#b45309;background:#fffbeb;border-color:#fef3c7'
+                                   : 'color:#6b84a0;background:#f4f7fb;border-color:#dce3ed';
+
                     return `
-                        <div class="bg-white border border-[#dce3ed] rounded-xl p-5">
-                            <div class="flex items-start justify-between mb-2">
+                        <div class="bg-white border border-[#dce3ed] rounded-xl overflow-hidden mb-3">
+                            <div class="px-5 py-4 cursor-pointer hover:bg-[#f8fafb] transition flex items-center justify-between" onclick="window.toggleEvalAccordion(this)">
                                 <div>
                                     <p class="font-black text-[13px] text-[#0d1f35]">${escHtml(e.type || 'Evaluation')}</p>
-                                    <p class="text-[10px] font-semibold text-[#9ab0c6] mt-0.5">${dateStr}</p>
+                                    <p class="text-[10px] font-semibold text-[#9ab0c6] mt-0.5">${dateStr} · Evaluated by ${escHtml(e.evaluatorName || 'Admin')}</p>
                                 </div>
-                                <div class="text-right flex-shrink-0 ml-3">
-                                    <div class="text-[15px] leading-none">${eStars}</div>
-                                    <p class="text-[11px] font-black text-[#374f6b] mt-1">${rating}/5</p>
+                                <div class="flex items-center gap-4 text-right">
+                                    <div>
+                                        <div class="text-[15px] leading-none flex gap-0.5">${eStars}</div>
+                                    </div>
+                                    <i class="fa-solid fa-chevron-down text-[#c5d0db] transition-transform ${index === 0 ? 'rotate-180' : ''}"></i>
                                 </div>
                             </div>
-                            ${e.reason ? `<p class="text-[11px] font-bold text-[#6b84a0] mb-1.5">Reason: ${escHtml(e.reason)}</p>` : ''}
-                            ${e.comments ? `<p class="text-[12px] text-[#374f6b] font-semibold leading-relaxed border-t border-[#f0f4f8] pt-3 mt-2">${escHtml(e.comments)}</p>` : ''}
+                            <div class="eval-body ${index === 0 ? 'block' : 'hidden'} bg-[#fafbfc] border-t border-[#f0f4f8] p-5">
+                                
+                                ${e.subjectObserved || e.studentFocus ? `
+                                    <div class="flex flex-wrap gap-2 mb-4 bg-white border border-[#dce3ed] p-2.5 rounded-lg">
+                                        ${e.subjectObserved ? `<span class="text-[10px] font-bold text-[#2563eb] bg-[#eef4ff] px-2 py-1 rounded border border-[#c7d9fd]">Subject: ${escHtml(e.subjectObserved)}</span>` : ''}
+                                        ${e.studentFocus ? `<span class="text-[10px] font-bold text-[#6b84a0] bg-[#f0f4f8] px-2 py-1 rounded border border-[#dce3ed]">Student Focus: ${escHtml(e.studentFocus)}</span>` : ''}
+                                    </div>
+                                ` : ''}
+
+                                <div class="grid grid-cols-2 gap-4 mb-4">
+                                    ${e.strengths ? `<div>
+                                        <p class="text-[10px] font-bold text-[#0ea871] uppercase tracking-widest mb-1.5"><i class="fa-solid fa-arrow-trend-up mr-1"></i> Strengths</p>
+                                        <p class="text-[12px] text-[#374f6b] font-medium leading-relaxed">${escHtml(e.strengths)}</p>
+                                    </div>` : ''}
+                                    ${e.areasForImprovement ? `<div>
+                                        <p class="text-[10px] font-bold text-[#e31b4a] uppercase tracking-widest mb-1.5"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Improvements</p>
+                                        <p class="text-[12px] text-[#374f6b] font-medium leading-relaxed">${escHtml(e.areasForImprovement)}</p>
+                                    </div>` : ''}
+                                </div>
+
+                                ${e.comments ? `
+                                    <div class="mb-4 border-t border-[#dce3ed] pt-4">
+                                        <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5"><i class="fa-regular fa-comment-dots mr-1"></i> Overall Comments</p>
+                                        <p class="text-[12px] text-[#374f6b] font-medium leading-relaxed">${escHtml(e.comments)}</p>
+                                    </div>
+                                ` : ''}
+                                
+                                ${e.recommendedAction && e.recommendedAction !== 'None' ? `
+                                    <div class="mt-4 flex items-center gap-2">
+                                        <span class="text-[10px] font-bold uppercase tracking-widest text-[#6b84a0]">Action:</span>
+                                        <span style="font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:99px;border:1px solid;${recColor}">${e.recommendedAction}</span>
+                                    </div>
+                                ` : ''}
+                            </div>
                         </div>`;
                 }).join('')}
             </div>`;
@@ -1189,13 +1275,54 @@ async function renderEvaluationsTab() {
     }
 }
 
+// Handler for the Accordion Dropdown
+window.toggleEvalAccordion = (header) => {
+    const body    = header.nextElementSibling;
+    const chevron = header.querySelector('.fa-chevron-down');
+    body.classList.toggle('hidden');
+    body.classList.toggle('block');
+    if (chevron) chevron.style.transform = body.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';
+};
+
+// Handler for dynamic input toggling
+window.toggleInlEvalTypeFields = function() {
+    const type = document.getElementById('inlEvalType').value;
+    
+    const customContainer = document.getElementById('inlCustomTypeContainer');
+    if (type === 'Custom') {
+        customContainer.classList.remove('hidden');
+    } else {
+        customContainer.classList.add('hidden');
+        document.getElementById('inlCustomType').value = '';
+    }
+
+    const obsContainer = document.getElementById('inlObservationContainer');
+    if (type === 'Classroom Observation') {
+        obsContainer.classList.remove('hidden');
+    } else {
+        obsContainer.classList.add('hidden');
+        document.getElementById('inlEvalSubject').value = '';
+        document.getElementById('inlEvalStudent').value = '';
+    }
+};
+
 window.saveInlineEval = async () => {
-    const type     = document.getElementById('inlEvalType').value;
+    let type       = document.getElementById('inlEvalType').value;
+    if (type === 'Custom') type = document.getElementById('inlCustomType').value.trim();
+    
     const rating   = document.getElementById('inlEvalRating').value;
     const date     = document.getElementById('inlEvalDate').value;
+    const subject  = document.getElementById('inlEvalSubject').value.trim();
+    const student  = document.getElementById('inlEvalStudent').value.trim();
+    const strengths = document.getElementById('inlEvalStrengths').value.trim();
+    const imprv    = document.getElementById('inlEvalImprovements').value.trim();
     const comments = document.getElementById('inlEvalComments').value.trim();
+    const action   = document.getElementById('inlEvalAction').value;
 
-    if (!type || !rating || !date || !comments) { alert('All fields are required.'); return; }
+    if (!type || !rating || !date) { 
+        alert('Type, Rating, and Date are required fields.'); 
+        return; 
+    }
 
     const btn = document.getElementById('inlSaveEvalBtn');
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...';
@@ -1204,12 +1331,19 @@ window.saveInlineEval = async () => {
     try {
         await addDoc(collection(db, 'teachers', currentTeacherId, 'evaluations'), {
             type,
-            overallRating: parseInt(rating),
+            overallRating:        parseInt(rating),
+            performanceScore:     parseInt(rating), // Backwards compatibility
             date,
+            subjectObserved:      subject,
+            studentFocus:         student,
+            strengths,
+            areasForImprovement:  imprv,
             comments,
-            schoolId:    session.schoolId,
-            evaluatorId: session.adminId || 'Admin',
-            timestamp:   new Date().toISOString()
+            recommendedAction:    action,
+            schoolId:             session.schoolId,
+            evaluatorId:          session.adminId || 'Admin',
+            evaluatorName:        session.isSuperAdmin ? (session.schoolName || 'Super Admin') : (session.adminName || 'Sub-Admin'),
+            timestamp:            new Date().toISOString()
         });
         
         // Re-render tab to show new eval and hide form
