@@ -27,8 +27,8 @@ export const db = initializeFirestore(app, {
 export const storage = getStorage(app);
 export const auth    = getAuth(app);
 
-// App Check disabled during local development
-// Re-enable on production by uncommenting below
+// App Check disabled during local development.
+// Re-enable on production by uncommenting below.
 //
 // import { initializeAppCheck, ReCaptchaV3Provider }
 //     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check.js";
