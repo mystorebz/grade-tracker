@@ -170,7 +170,7 @@ function renderTable() {
                     </button>` : ''}
                     <button onclick="window.openStudentPanel('${s.id}')"
                         class="bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 font-black px-3 py-1.5 rounded-lg text-xs transition border border-emerald-200">
-                        Records
+                        Records & Info
                     </button>
                 </div>
             </td>
@@ -183,7 +183,7 @@ filterTeacherSelect.addEventListener('change', renderTable);
 filterStatusSelect.addEventListener('change', renderTable);
 document.getElementById('searchInput')?.addEventListener('input', renderTable);
 
-// ── 6. ADD / CLAIM STUDENT MODAL ──────────────────────────────────────────
+// ── 6. ADD / CLAIM STUDENT MODAL (CASCADING DROPDOWNS) ────────────────────
 window.openAddStudentModal = () => {
     ['sGlobalId','sName','sDob','sParentName','sParentPhone','sEmail'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
@@ -195,15 +195,49 @@ window.openAddStudentModal = () => {
     claimedStudentDoc = null;
 
     const sClass = document.getElementById('sClass');
-    sClass.innerHTML = '<option value="">-- Select Class (optional) --</option>' +
+    sClass.innerHTML = '<option value="">-- Select Class First --</option>' +
         getClassList().map(c => `<option value="${c}">${c}</option>`).join('');
 
     const sTeacher = document.getElementById('sTeacher');
-    sTeacher.innerHTML = '<option value="">-- Assign Later --</option>' +
-        allTeachersCache.map(t => `<option value="${t.id}">${escHtml(t.name)}</option>`).join('');
+    sTeacher.innerHTML = '<option value="">-- Waiting for class selection --</option>';
+    sTeacher.disabled = true;
 
     openOverlay('addStudentModal', 'addStudentModalInner');
 };
+
+document.getElementById('sClass').addEventListener('change', function() {
+    const selectedClass = this.value;
+    const teacherDropdown = document.getElementById('sTeacher');
+    
+    teacherDropdown.innerHTML = '';
+    
+    if (!selectedClass) {
+        teacherDropdown.innerHTML = '<option value="">-- Waiting for class selection --</option>';
+        teacherDropdown.disabled = true;
+        return;
+    }
+
+    const matchingTeachers = allTeachersCache.filter(teacher => 
+        teacher.classes && teacher.classes.includes(selectedClass)
+    );
+
+    if (matchingTeachers.length === 0) {
+        teacherDropdown.innerHTML = '<option value="">Unassigned (No teacher teaches this class)</option>';
+        teacherDropdown.disabled = false; 
+    } 
+    else if (matchingTeachers.length === 1) {
+        const t = matchingTeachers[0];
+        teacherDropdown.innerHTML = `<option value="${t.id}" selected>${t.name}</option>`;
+        teacherDropdown.disabled = false;
+    } 
+    else {
+        teacherDropdown.innerHTML = '<option value="">-- Select specific teacher --</option>';
+        matchingTeachers.forEach(t => {
+            teacherDropdown.innerHTML += `<option value="${t.id}">${t.name}</option>`;
+        });
+        teacherDropdown.disabled = false;
+    }
+});
 
 window.closeAddStudentModal = () => {
     closeOverlay('addStudentModal', 'addStudentModalInner');
@@ -211,9 +245,6 @@ window.closeAddStudentModal = () => {
 };
 
 // ── ID-Only Lookup ────────────────────────────────────────────────────────
-// Students are looked up by exact Student Global ID only.
-// No name search — privacy protection for the national registry.
-// A student is claimable ONLY if their currentSchoolId is empty.
 document.getElementById('lookupStudentBtn').addEventListener('click', async () => {
     const rawId   = document.getElementById('sGlobalId').value.trim().toUpperCase();
     const preview = document.getElementById('claimPreview');
@@ -242,7 +273,6 @@ document.getElementById('lookupStudentBtn').addEventListener('click', async () =
         } else {
             const d = { id: snap.id, ...snap.data() };
 
-            // ── Student is enrolled at another school — not claimable ──────
             if (d.currentSchoolId && d.currentSchoolId !== '') {
                 error.querySelector('p').textContent =
                     d.currentSchoolId === session.schoolId
@@ -250,12 +280,10 @@ document.getElementById('lookupStudentBtn').addEventListener('click', async () =
                         : 'This student is currently enrolled at another school. Their current school must close enrollment first. Contact ConnectUs if you believe this is an error.';
                 error.classList.remove('hidden');
             } else {
-                // ── Available to claim ────────────────────────────────────
                 claimedStudentDoc = d;
                 document.getElementById('claimPreviewName').textContent  = d.name || 'Unknown';
                 document.getElementById('claimPreviewDob').textContent   = d.dob ? `DOB: ${d.dob}` : 'DOB: Not on file';
 
-                // Show last school from academicHistory if available
                 const lastSchool = d.academicHistory?.length
                     ? `Last school: ${d.academicHistory[d.academicHistory.length - 1].schoolName || d.academicHistory[d.academicHistory.length - 1].schoolId}`
                     : 'No prior enrollment history';
@@ -284,7 +312,6 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processing...`;
 
     try {
-        // ── Check student limit before any add ────────────────────────────
         const limitCheck = await isStudentLimitReached();
         if (limitCheck.reached) {
             showMsg('addStudentMsg',
@@ -295,15 +322,11 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
         }
 
         if (claimedStudentDoc) {
-            // ── CLAIM WORKFLOW ─────────────────────────────────────────────
             await updateDoc(doc(db, 'students', claimedStudentDoc.id), {
                 currentSchoolId:  session.schoolId,
                 enrollmentStatus: 'Active'
-                // className and teacherId assigned via Reassign after claiming
             });
-
         } else {
-            // ── CREATE WORKFLOW ────────────────────────────────────────────
             const name        = document.getElementById('sName').value.trim();
             const dob         = document.getElementById('sDob').value;
             const email       = document.getElementById('sEmail')?.value.trim() || '';
@@ -433,6 +456,22 @@ window.openReassignModal = (id) => {
     tSelect.innerHTML = '<option value="">-- Unassigned --</option>' +
         allTeachersCache.map(t => `<option value="${t.id}" ${s?.teacherId === t.id ? 'selected' : ''}>${escHtml(t.name)}</option>`).join('');
 
+    // Add cascading logic to the reassign modal as well!
+    cSelect.addEventListener('change', function() {
+        const selectedClass = this.value;
+        tSelect.innerHTML = '<option value="">-- Unassigned --</option>';
+        if(!selectedClass) return;
+        
+        const matchingTeachers = allTeachersCache.filter(t => t.classes && t.classes.includes(selectedClass));
+        matchingTeachers.forEach(t => {
+            tSelect.innerHTML += `<option value="${t.id}">${escHtml(t.name)}</option>`;
+        });
+        
+        if(matchingTeachers.length === 1) {
+            tSelect.value = matchingTeachers[0].id;
+        }
+    });
+
     openOverlay('reassignStudentModal', 'reassignStudentModalInner');
 };
 
@@ -465,6 +504,17 @@ window.openStudentPanel = async (studentId) => {
     document.getElementById('sPanelName').textContent  = student?.name     || 'Student';
     document.getElementById('sPanelId').textContent    = studentId;
     document.getElementById('sPanelClass').textContent = student?.className || '—';
+
+    // Populate Edit Form
+    document.getElementById('editSName').value = student?.name || '';
+    document.getElementById('editSDob').value = student?.dob || '';
+    document.getElementById('editSParentName').value = student?.parentName || '';
+    document.getElementById('editSPhone').value = student?.parentPhone || '';
+    document.getElementById('editSEmail').value = student?.email || '';
+    
+    document.getElementById('spinReadonly').textContent = student?.pin || '—';
+    window.toggleStudentEdit(false);
+    window.togglePinResetUI(false);
 
     const printBtn = document.getElementById('sPanelPrintBtn');
     if (printBtn) printBtn.onclick = () => window.printStudentRecord(studentId);
@@ -535,39 +585,8 @@ window.openStudentPanel = async (studentId) => {
                 const w = gradeTypeWeights[type] || 0;
                 if (w > 0) { wSum += typeAvg * w; wTotal += w; }
             });
-            // Normalize by weights actually present
             return wTotal > 0 ? wSum / wTotal
                 : grades.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / grades.length;
-        }
-
-        // Build weight breakdown HTML for the info card
-        function buildWeightBreakdown(grades) {
-            if (!hasWeights) return '';
-            const byType = {};
-            grades.forEach(g => {
-                const t = g.type || 'Other';
-                if (!byType[t]) byType[t] = [];
-                byType[t].push(g.max ? Math.round((g.score / g.max) * 100) : 0);
-            });
-            const rows = Object.entries(gradeTypeWeights)
-                .filter(([type]) => byType[type])
-                .map(([type, w]) => {
-                    const avg = Math.round(byType[type].reduce((a, b) => a + b, 0) / byType[type].length);
-                    const cnt = byType[type].length;
-                    const col = avg >= 75 ? 'var(--green-600)' : avg >= 60 ? '#b45309' : '#e31b4a';
-                    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">'
-                        + '<span style="font-size:12px;color:var(--text-secondary);font-weight:500">' + type + ' <span style="color:var(--text-faint);font-size:11px">(' + cnt + ' entry' + (cnt !== 1 ? 'ies' : 'y') + ')</span></span>'
-                        + '<div style="display:flex;align-items:center;gap:8px">'
-                        + '<span style="font-size:11px;color:var(--text-muted);font-weight:600">' + w + '% weight</span>'
-                        + '<span style="font-size:13px;font-weight:700;color:' + col + '">' + avg + '%</span>'
-                        + '</div></div>';
-                }).join('');
-            if (!rows) return '';
-            return '<div style="background:var(--blue-50);border:1px solid var(--blue-100);border-radius:var(--r-md);padding:14px 16px;margin-bottom:14px">'
-                + '<p style="font-size:10.5px;font-weight:700;color:var(--blue-600);text-transform:uppercase;letter-spacing:0.08em;margin:0 0 8px">Grade Weight Breakdown</p>'
-                + rows
-                + '<p style="font-size:10.5px;color:var(--text-muted);margin:8px 0 0;font-weight:500">Weighted by types that have recorded grades — missing types do not reduce your average.</p>'
-                + '</div>';
         }
 
         const bySubject = {};
@@ -616,7 +635,7 @@ window.openStudentPanel = async (studentId) => {
                         <i class="fa-solid fa-chevron-down text-slate-400" style="transition:transform 0.2s"></i>
                     </div>
                 </div>
-                <div class="subject-body"><div class="px-4 pb-4 pt-2 bg-slate-50/70 space-y-2">${buildWeightBreakdown(grades)}${rows}</div></div>
+                <div class="subject-body"><div class="px-4 pb-4 pt-2 bg-slate-50/70 space-y-2">${rows}</div></div>
             </div>`;
         }).join('');
 
@@ -638,6 +657,60 @@ window.closeStudentPanel = () => {
     closeOverlay('studentPanel', 'studentPanelInner', true);
     document.getElementById('sPanelLoader').innerHTML =
         `<i class="fa-solid fa-circle-notch fa-spin text-4xl mb-3 text-emerald-500"></i><p class="font-semibold text-sm">Loading academic records...</p>`;
+};
+
+// ── Edit Profile inside Panel ──
+window.toggleStudentEdit = function(show) {
+    const form = document.getElementById('sEditForm');
+    const isVisible = show !== undefined ? show : form.classList.contains('hidden');
+    form.classList.toggle('hidden', !isVisible);
+    document.getElementById('editStudentMsg').classList.add('hidden');
+};
+
+document.getElementById('saveStudentEditBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('saveStudentEditBtn');
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
+    btn.disabled = true;
+
+    try {
+        const u = {
+            name:        document.getElementById('editSName').value.trim(),
+            dob:         document.getElementById('editSDob').value,
+            parentName:  document.getElementById('editSParentName').value.trim(),
+            parentPhone: document.getElementById('editSPhone').value.trim(),
+            email:       document.getElementById('editSEmail').value.trim(),
+        };
+        await updateDoc(doc(db, 'students', currentStudentId), u);
+        showMsg('editStudentMsg', 'Changes saved successfully.', false);
+        window.toggleStudentEdit(false);
+        document.getElementById('sPanelName').textContent = u.name;
+        loadStudents();
+    } catch (e) {
+        console.error('[Admin] saveStudentEdit:', e);
+        showMsg('editStudentMsg', 'Error saving changes.', true);
+    }
+    btn.textContent = 'Save Changes'; btn.disabled = false;
+});
+
+// ── Reset PIN inside Panel ──
+window.togglePinResetUI = function(show) {
+    document.getElementById('pinDisplayArea').classList.toggle('hidden',  show);
+    document.getElementById('pinEditArea').classList.toggle('hidden',    !show);
+    if (show) document.getElementById('inlineNewPin').value = '';
+};
+
+window.saveInlinePin = async function() {
+    const npin = document.getElementById('inlineNewPin').value.trim();
+    if (!npin || npin.length < 4) { alert('PIN must be 4–6 digits.'); return; }
+    const btn = document.getElementById('inlinePinSaveBtn');
+    btn.textContent = '…'; btn.disabled = true;
+    try {
+        await updateDoc(doc(db, 'students', currentStudentId), { pin: npin });
+        document.getElementById('spinReadonly').textContent = npin;
+        window.togglePinResetUI(false);
+        loadStudents();
+    } catch (e) { console.error('[Admin] saveInlinePin:', e); alert('Error saving PIN.'); }
+    btn.textContent = 'Save'; btn.disabled = false;
 };
 
 // ── 10. PRINT STUDENT RECORD ──────────────────────────────────────────────
