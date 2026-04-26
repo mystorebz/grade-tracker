@@ -148,10 +148,31 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
 
         if (tData.requiresPinReset) {
             console.log("Checkpoint 8: Opening Force Reset Modal...");
-            openOverlay('forceResetModal', 'forceResetModalInner');
+            resetLoginBtn(btn); // <-- STOPS THE SPINNING BUTTON
+            
+            // Failsafe: Force it open even if utils.js fails
+            const forceModal = document.getElementById('forceResetModal');
+            if(forceModal) {
+                forceModal.classList.add('open');
+                forceModal.style.opacity = '1';
+                forceModal.style.pointerEvents = 'all';
+            }
+            openOverlay('forceResetModal', 'forceResetModalInner'); 
+
         } else if (needsClasses) {
             console.log("Checkpoint 8: Opening Onboarding Modal...");
+            resetLoginBtn(btn); // <-- STOPS THE SPINNING BUTTON
+            
             triggerOnboarding();
+            
+            // Failsafe: Force it open even if utils.js fails
+            const onboardModal = document.getElementById('onboardModal');
+            if(onboardModal) {
+                onboardModal.classList.add('open');
+                onboardModal.style.opacity = '1';
+                onboardModal.style.pointerEvents = 'all';
+            }
+
         } else {
             console.log("Checkpoint 8: Running finalizeLogin()...");
             await finalizeLogin();
@@ -195,11 +216,19 @@ document.getElementById('saveForceCodeBtn').addEventListener('click', async () =
     }
 
     tempSession.teacherData.requiresPinReset = false;
+    
+    // Failsafe close
+    const forceModal = document.getElementById('forceResetModal');
+    if(forceModal) { forceModal.classList.remove('open'); forceModal.style.opacity = '0'; forceModal.style.pointerEvents = 'none'; }
     closeOverlay('forceResetModal', 'forceResetModalInner');
 
     setTimeout(async () => {
         const needsClasses = !tempSession.teacherData.classes || tempSession.teacherData.classes.length === 0;
-        if (needsClasses) triggerOnboarding();
+        if (needsClasses) {
+            triggerOnboarding();
+            const onboardModal = document.getElementById('onboardModal');
+            if(onboardModal) { onboardModal.classList.add('open'); onboardModal.style.opacity = '1'; onboardModal.style.pointerEvents = 'all'; }
+        }
         else await finalizeLogin();
     }, 350);
 
@@ -252,7 +281,11 @@ document.getElementById('saveClassBtn').addEventListener('click', async () => {
     tempSession.teacherData.classes   = selected;
     tempSession.teacherData.className = selected[0];
 
+    // Failsafe close
+    const onboardModal = document.getElementById('onboardModal');
+    if(onboardModal) { onboardModal.classList.remove('open'); onboardModal.style.opacity = '0'; onboardModal.style.pointerEvents = 'none'; }
     closeOverlay('onboardModal', 'onboardModalInner');
+    
     setTimeout(async () => await finalizeLogin(), 350);
 
     btn.innerHTML = `<i class="fa-solid fa-check mr-2"></i>Save & Enter Portal`;
