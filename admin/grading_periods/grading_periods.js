@@ -7,14 +7,14 @@ import { openOverlay, closeOverlay } from '../../assets/js/utils.js';
 // ── 1. INIT & AUTH ────────────────────────────────────────────────────────
 const session = requireAuth('admin', '../login.html');
 
-// Inject layout
 injectAdminLayout('semesters', 'Grading Periods', 'Manage active and historical grading periods', false, false);
 
 // ── 2. STATE & ELEMENTS ───────────────────────────────────────────────────
 let allSemesters = [];
 let currentEditSemId = null;
 
-const activeListEl = document.getElementById('semestersList');
+const activeListEl = document.getElementById('activePeriodList');
+const inactiveListEl = document.getElementById('inactiveSemestersList');
 const archivedListEl = document.getElementById('archivedSemestersList');
 
 // Accordion UI Logic
@@ -23,15 +23,55 @@ document.getElementById('toggleAddPeriodBtn').addEventListener('click', () => {
     document.getElementById('addPeriodIcon').classList.toggle('rotate-180');
 });
 
-// Dropdown UI Logic
+// Help Modal Logic
+document.getElementById('termHelpBtn').addEventListener('click', (e) => {
+    e.preventDefault();
+    openOverlay('helpSemModal', 'helpSemModalInner');
+});
+window.closeHelpSemModal = function() {
+    closeOverlay('helpSemModal', 'helpSemModalInner');
+};
+
+// Dropdown UI Logic & Auto-Populate Belize Dates
 document.getElementById('presetSemName').addEventListener('change', (e) => {
+    const val = e.target.value;
     const customInput = document.getElementById('customSemName');
-    if (e.target.value === 'custom') {
+    const startInput = document.getElementById('newSemStart');
+    const endInput = document.getElementById('newSemEnd');
+    const hintEl = document.getElementById('dateHint');
+    
+    const currentYear = new Date().getFullYear();
+
+    if (val === 'custom') {
         customInput.classList.remove('hidden');
         customInput.focus();
+        hintEl.textContent = '';
+        startInput.value = '';
+        endInput.value = '';
     } else {
         customInput.classList.add('hidden');
         customInput.value = '';
+
+        // Belize School Calendar Estimates
+        if (val === 'Term 1') {
+            startInput.value = `${currentYear}-09-01`; 
+            endInput.value = `${currentYear}-11-30`;
+            hintEl.textContent = "💡 Belize Term 1 typically runs from early September to late November.";
+        } else if (val === 'Term 2') {
+            const year = new Date().getMonth() > 6 ? currentYear + 1 : currentYear; 
+            startInput.value = `${year}-01-08`; 
+            endInput.value = `${year}-03-31`;
+            hintEl.textContent = "💡 Belize Term 2 typically runs from early January to late March.";
+        } else if (val === 'Term 3') {
+            const year = new Date().getMonth() > 6 ? currentYear + 1 : currentYear;
+            startInput.value = `${year}-04-15`; 
+            endInput.value = `${year}-06-30`;
+            hintEl.textContent = "💡 Belize Term 3 typically runs from mid-April to late June.";
+        } else {
+            hintEl.textContent = "";
+            startInput.value = '';
+            endInput.value = '';
+        }
     }
 });
 
@@ -44,38 +84,56 @@ async function loadSemesters() {
         allSemesters = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.order - b.order);
         
         const activeId = session.activeSemesterId || null;
-        const activePeriods = allSemesters.filter(s => !s.archived);
+        
+        const activePeriod = allSemesters.find(s => s.id === activeId);
+        const inactivePeriods = allSemesters.filter(s => !s.archived && s.id !== activeId);
         const archivedPeriods = allSemesters.filter(s => s.archived);
 
-        // Render Active List or Empty Guidance State
-        if (activePeriods.length === 0) {
+        // Render ACTIVE Period (Only the single active one, or empty state)
+        if (!activePeriod) {
             activeListEl.innerHTML = `
-                <div class="bg-blue-50/50 border border-blue-100 rounded-2xl p-8 text-center shadow-sm">
-                    <div class="w-14 h-14 bg-white text-blue-500 rounded-full flex items-center justify-center text-2xl mx-auto mb-4 shadow-sm"><i class="fa-solid fa-calendar-plus"></i></div>
-                    <h4 class="font-black text-slate-800 text-lg mb-2">No Grading Periods Found</h4>
-                    <p class="text-sm text-slate-500 font-semibold max-w-md mx-auto">Click "Add New Grading Period" above to create your first term. You must set a Start Date and End Date before you can set it as Active.</p>
-                </div>
-            `;
+                <div class="bg-amber-50/50 border border-amber-200 rounded-xl p-4 text-center">
+                    <p class="text-sm text-amber-700 font-bold"><i class="fa-solid fa-circle-exclamation mr-1"></i> No period is currently active.</p>
+                </div>`;
         } else {
-            activeListEl.innerHTML = activePeriods.map(s => `
-                <div class="flex items-center justify-between bg-white p-4 border rounded-2xl shadow-sm transition group hover:shadow-md ${s.id === activeId ? 'border-blue-300 bg-blue-50/40' : 'border-slate-200'}">
+            activeListEl.innerHTML = `
+                <div class="flex items-center justify-between bg-white p-4 border border-green-300 bg-green-50/20 rounded-2xl shadow-sm transition group">
+                    <div>
+                        <div class="flex items-center gap-3">
+                            <i class="fa-solid fa-check text-green-500"></i>
+                            <span class="font-black text-slate-800">${activePeriod.name}</span>
+                            <span class="badge badge-active ml-2 bg-green-100 text-green-700 border-green-200">Active</span>
+                            ${activePeriod.isLocked ? '<span class="bg-rose-100 text-rose-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ml-1"><i class="fa-solid fa-lock mr-1"></i>Locked</span>' : ''}
+                        </div>
+                        <p class="text-[10px] font-bold text-slate-500 mt-1 ml-7 uppercase tracking-wider">${activePeriod.startDate} TO ${activePeriod.endDate}</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="window.toggleLockSem('${activePeriod.id}', ${!!activePeriod.isLocked})" class="text-slate-400 hover:text-indigo-600 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-indigo-50" title="${activePeriod.isLocked ? 'Unlock Semester' : 'Lock Semester'}"><i class="fa-solid ${activePeriod.isLocked ? 'fa-lock text-rose-500' : 'fa-lock-open'}"></i></button>
+                        <button onclick="window.openEditSemModal('${activePeriod.id}')" class="text-slate-400 hover:text-amber-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-amber-50" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                    </div>
+                </div>`;
+        }
+
+        // Render INACTIVE Periods
+        if (inactivePeriods.length === 0) {
+            inactiveListEl.innerHTML = '<p class="text-sm text-slate-400 italic font-semibold">No inactive periods found.</p>';
+        } else {
+            inactiveListEl.innerHTML = inactivePeriods.map(s => `
+                <div class="flex items-center justify-between bg-white p-4 border border-slate-200 rounded-2xl shadow-sm transition group hover:shadow-md">
                     <div>
                         <div class="flex items-center gap-3">
                             <i class="fa-solid fa-grip-lines text-slate-300"></i>
-                            <span class="font-black text-slate-700">${s.name}</span>
-                            ${s.id === activeId ? '<span class="badge badge-active ml-2">Active</span>' : ''}
+                            <span class="font-black text-slate-600">${s.name}</span>
                             ${s.isLocked ? '<span class="bg-rose-100 text-rose-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ml-1"><i class="fa-solid fa-lock mr-1"></i>Locked</span>' : ''}
                         </div>
                         ${(s.startDate || s.endDate) ? `<p class="text-[10px] font-bold text-slate-400 mt-1 ml-6 uppercase tracking-wider">${s.startDate || '???'} TO ${s.endDate || '???'}</p>` : ''}
                     </div>
                     <div class="flex items-center gap-2">
-                        ${s.id !== activeId ? 
-                            (s.startDate && s.endDate ? 
-                                `<button onclick="window.setActivePeriod('${s.id}')" class="text-xs font-black text-blue-600 hover:bg-blue-600 hover:text-white border border-blue-300 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100">Set Active</button>` 
-                                : 
-                                `<button onclick="alert('Please click the edit (pen) icon to set the Start and End dates before making this period active.')" class="text-xs font-black text-slate-400 border border-slate-200 hover:bg-slate-50 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100" title="Dates required">Needs Dates</button>`
-                            ) 
-                        : ''}
+                        ${s.startDate && s.endDate ? 
+                            `<button onclick="window.setActivePeriod('${s.id}')" class="text-xs font-black text-blue-600 hover:bg-blue-600 hover:text-white border border-blue-300 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100">Set Active</button>` 
+                            : 
+                            `<button onclick="alert('Please click the edit (pen) icon to set the Start and End dates before making this period active.')" class="text-xs font-black text-slate-400 border border-slate-200 hover:bg-slate-50 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100" title="Dates required">Needs Dates</button>`
+                        }
                         <button onclick="window.toggleLockSem('${s.id}', ${!!s.isLocked})" class="text-slate-400 hover:text-indigo-600 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-indigo-50" title="${s.isLocked ? 'Unlock Semester' : 'Lock Semester'}"><i class="fa-solid ${s.isLocked ? 'fa-lock text-rose-500' : 'fa-lock-open'}"></i></button>
                         <button onclick="window.openEditSemModal('${s.id}')" class="text-slate-400 hover:text-amber-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-amber-50" title="Edit"><i class="fa-solid fa-pen"></i></button>
                         <button onclick="window.archiveSem('${s.id}')" class="text-slate-400 hover:text-red-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-red-50" title="Archive"><i class="fa-solid fa-box-archive"></i></button>
@@ -83,7 +141,7 @@ async function loadSemesters() {
                 </div>`).join('');
         }
 
-        // Render Archived List
+        // Render ARCHIVED List
         archivedListEl.innerHTML = archivedPeriods.length ? archivedPeriods.map(s => `
             <div class="flex items-center justify-between bg-slate-50 p-4 border border-slate-200 rounded-2xl shadow-sm">
                 <div>
@@ -156,6 +214,7 @@ document.getElementById('addSemBtn').addEventListener('click', async () => {
         document.getElementById('customSemName').classList.add('hidden');
         document.getElementById('newSemStart').value = ''; 
         document.getElementById('newSemEnd').value = '';
+        document.getElementById('dateHint').textContent = '';
         
         document.getElementById('addPeriodForm').classList.add('hidden');
         document.getElementById('addPeriodIcon').classList.remove('rotate-180');
