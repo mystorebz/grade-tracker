@@ -1,33 +1,42 @@
-import { db } from '../assets/js/firebase-init.js';
-import { collection, query, where, getDocs, getDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { db, auth } from '../assets/js/firebase-init.js';
+import { collection, query, where, getDocs, getDoc, doc, updateDoc }
+    from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { signInWithCustomToken }
+    from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getFunctions, httpsCallable }
+    from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
 import { setSessionData } from '../assets/js/auth.js';
-import { openOverlay, closeOverlay, showMsg } from '../assets/js/utils.js';
+import { openOverlay, closeOverlay } from '../assets/js/utils.js';
 
-// ── STATE & CONSTANTS ──────────────────────────────────────────────────────
-let tempSession = { schoolId: null, teacherId: null, teacherData: null };
-let schoolType  = 'Primary';
-let isGlobalTeacher = false; // tracks which path we authenticated against
+// ── Functions instance ────────────────────────────────────────────────────────
+const functions        = getFunctions();
+const mintTeacherToken = httpsCallable(functions, 'mintTeacherToken');
+
+// ── State & Constants ─────────────────────────────────────────────────────────
+let tempSession     = { schoolId: null, teacherId: null, teacherData: null };
+let schoolType      = 'Primary';
+let isGlobalTeacher = false;
 
 const CLASSES = {
-    'Primary':       ['Infant 1', 'Infant 2', 'Standard 1', 'Standard 2', 'Standard 3', 'Standard 4', 'Standard 5', 'Standard 6'],
-    'High School':   ['First Form', 'Second Form', 'Third Form', 'Fourth Form'],
-    'Junior College':['Year 1', 'Year 2']
+    'Primary':        ['Infant 1', 'Infant 2', 'Standard 1', 'Standard 2', 'Standard 3', 'Standard 4', 'Standard 5', 'Standard 6'],
+    'High School':    ['First Form', 'Second Form', 'Third Form', 'Fourth Form'],
+    'Junior College': ['Year 1', 'Year 2']
 };
 
 const DEFAULT_SUBJECTS = [
-    { id: 'ds1', name: 'Mathematics',         description: '', archived: false, archivedAt: null },
-    { id: 'ds2', name: 'English Language Arts',description: '', archived: false, archivedAt: null },
-    { id: 'ds3', name: 'Science',             description: '', archived: false, archivedAt: null },
-    { id: 'ds4', name: 'Social Studies',      description: '', archived: false, archivedAt: null },
-    { id: 'ds5', name: 'Spanish',             description: '', archived: false, archivedAt: null },
-    { id: 'ds6', name: 'Art',                 description: '', archived: false, archivedAt: null },
-    { id: 'ds7', name: 'Physical Education',  description: '', archived: false, archivedAt: null },
-    { id: 'ds8', name: 'Health & Family Life',description: '', archived: false, archivedAt: null }
+    { id: 'ds1', name: 'Mathematics',          description: '', archived: false, archivedAt: null },
+    { id: 'ds2', name: 'English Language Arts', description: '', archived: false, archivedAt: null },
+    { id: 'ds3', name: 'Science',              description: '', archived: false, archivedAt: null },
+    { id: 'ds4', name: 'Social Studies',       description: '', archived: false, archivedAt: null },
+    { id: 'ds5', name: 'Spanish',              description: '', archived: false, archivedAt: null },
+    { id: 'ds6', name: 'Art',                  description: '', archived: false, archivedAt: null },
+    { id: 'ds7', name: 'Physical Education',   description: '', archived: false, archivedAt: null },
+    { id: 'ds8', name: 'Health & Family Life', description: '', archived: false, archivedAt: null }
 ];
 
 function genId() { return 'sub_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 5); }
 
-// ── 1. MAIN LOGIN ──────────────────────────────────────────────────────────
+// ── 1. MAIN LOGIN ─────────────────────────────────────────────────────────────
 document.getElementById('loginBtn').addEventListener('click', async () => {
     const rawId = document.getElementById('loginSchoolId').value.trim();
     const code  = document.getElementById('loginTeacherCode').value.trim().toUpperCase();
@@ -42,7 +51,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         return;
     }
 
-    btn.disabled = true;
+    btn.disabled  = true;
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Authenticating...`;
 
     try {
@@ -51,10 +60,10 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         let tData         = null;
         isGlobalTeacher   = false;
 
-        // ── Try global /teachers first (new system) ────────────────────────
+        // ── Try global /teachers first ────────────────────────────────────────
         for (const schoolId of [rawId.toUpperCase(), rawId.toLowerCase(), rawId]) {
             try {
-                const globalQ = query(
+                const globalQ    = query(
                     collection(db, 'teachers'),
                     where('currentSchoolId', '==', schoolId),
                     where('pin', '==', code)
@@ -67,14 +76,14 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
                     isGlobalTeacher = true;
                     break;
                 }
-            } catch (e) { /* composite index may not exist yet — fall through */ }
+            } catch (e) { /* composite index may not exist yet */ }
         }
 
-        // ── Fall back to legacy siloed path ────────────────────────────────
+        // ── Fall back to legacy siloed path ───────────────────────────────────
         if (!foundSchoolId) {
             for (const schoolId of [rawId.toUpperCase(), rawId.toLowerCase(), rawId]) {
                 try {
-                    const legacyQ = query(
+                    const legacyQ    = query(
                         collection(db, 'schools', schoolId, 'teachers'),
                         where('loginCode', '==', code)
                     );
@@ -96,7 +105,6 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
             return;
         }
 
-        // ── Archived check ─────────────────────────────────────────────────
         if (tData.archived) {
             msgEl.textContent = 'Your account has been archived. Contact your administrator.';
             msgEl.classList.remove('hidden');
@@ -104,7 +112,6 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
             return;
         }
 
-        // ── School verification ────────────────────────────────────────────
         const schoolSnap = await getDoc(doc(db, 'schools', foundSchoolId));
         if (!schoolSnap.exists() || schoolSnap.data().isVerified !== true) {
             msgEl.textContent = 'School account is pending approval.';
@@ -125,7 +132,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         } else if (needsClasses) {
             triggerOnboarding();
         } else {
-            finalizeLogin();
+            await finalizeLogin();
         }
 
     } catch (e) {
@@ -137,22 +144,22 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
 });
 
 function resetLoginBtn(btn) {
-    btn.disabled = false;
+    btn.disabled  = false;
     btn.innerHTML = `<i class="fa-solid fa-arrow-right-to-bracket"></i> Access Portal`;
 }
 
-// ── 2. FORCE RESET LOGIN CODE ──────────────────────────────────────────────
+// ── 2. FORCE RESET ────────────────────────────────────────────────────────────
 document.getElementById('saveForceCodeBtn').addEventListener('click', async () => {
     const n   = document.getElementById('newForceCode').value.trim();
     const c   = document.getElementById('confirmForceCode').value.trim();
     const msg = document.getElementById('forceResetMsg');
 
-    if (!n || !c) { msg.textContent = 'Fill both fields.'; msg.classList.remove('hidden'); return; }
-    if (n !== c)  { msg.textContent = 'Codes do not match.'; msg.classList.remove('hidden'); return; }
+    if (!n || !c)     { msg.textContent = 'Fill both fields.';    msg.classList.remove('hidden'); return; }
+    if (n !== c)      { msg.textContent = 'Codes do not match.';  msg.classList.remove('hidden'); return; }
     if (n.length < 5) { msg.textContent = 'Minimum 5 characters.'; msg.classList.remove('hidden'); return; }
 
     const btn = document.getElementById('saveForceCodeBtn');
-    btn.disabled = true;
+    btn.disabled  = true;
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
 
     if (isGlobalTeacher) {
@@ -166,20 +173,19 @@ document.getElementById('saveForceCodeBtn').addEventListener('click', async () =
     }
 
     tempSession.teacherData.requiresPinReset = false;
-
     closeOverlay('forceResetModal', 'forceResetModalInner');
 
-    setTimeout(() => {
+    setTimeout(async () => {
         const needsClasses = !tempSession.teacherData.classes || tempSession.teacherData.classes.length === 0;
         if (needsClasses) triggerOnboarding();
-        else finalizeLogin();
+        else await finalizeLogin();
     }, 350);
 
     btn.innerHTML = `Save & Continue <i class="fa-solid fa-arrow-right"></i>`;
     btn.disabled  = false;
 });
 
-// ── 3. CLASS SELECTION ONBOARDING ─────────────────────────────────────────
+// ── 3. CLASS SELECTION ────────────────────────────────────────────────────────
 function triggerOnboarding() {
     const classList = CLASSES[schoolType] || CLASSES['Primary'];
     document.getElementById('onboardSubtitle').textContent =
@@ -195,7 +201,7 @@ function triggerOnboarding() {
     openOverlay('onboardModal', 'onboardModalInner');
 }
 
-window.toggleClassCb = function (safeId, className) {
+window.toggleClassCb = function(safeId, className) {
     const cb   = document.getElementById('cb-' + safeId);
     const wrap = document.getElementById('wrap-' + safeId);
     cb.checked = !cb.checked;
@@ -225,17 +231,18 @@ document.getElementById('saveClassBtn').addEventListener('click', async () => {
     tempSession.teacherData.className = selected[0];
 
     closeOverlay('onboardModal', 'onboardModalInner');
-    setTimeout(() => finalizeLogin(), 350);
+    setTimeout(async () => await finalizeLogin(), 350);
 
     btn.innerHTML = `<i class="fa-solid fa-check mr-2"></i>Save & Enter Portal`;
     btn.disabled  = false;
 });
 
-// ── 4. FINALIZE LOGIN & REDIRECT ───────────────────────────────────────────
+// ── 4. FINALIZE LOGIN ─────────────────────────────────────────────────────────
 async function finalizeLogin() {
-    // Safety: ensure classes array exists
+
+    // ── Safety: ensure classes array ──────────────────────────────────────────
     if (!tempSession.teacherData.classes || tempSession.teacherData.classes.length === 0) {
-        const classes = tempSession.teacherData.className ? [tempSession.teacherData.className] : [];
+        const classes   = tempSession.teacherData.className ? [tempSession.teacherData.className] : [];
         const updateRef = isGlobalTeacher
             ? doc(db, 'teachers', tempSession.teacherId)
             : doc(db, 'schools', tempSession.schoolId, 'teachers', tempSession.teacherId);
@@ -245,9 +252,9 @@ async function finalizeLogin() {
 
     localStorage.setItem('connectus_cached_classes', JSON.stringify(tempSession.teacherData.classes));
 
-    // Safety: migrate legacy string subjects to object structure
+    // ── Safety: migrate legacy string subjects ────────────────────────────────
     if (tempSession.teacherData.subjects?.length && typeof tempSession.teacherData.subjects[0] === 'string') {
-        const migrated = tempSession.teacherData.subjects.map(name =>
+        const migrated  = tempSession.teacherData.subjects.map(name =>
             ({ id: genId(), name, description: '', archived: false, archivedAt: null })
         );
         const updateRef = isGlobalTeacher
@@ -257,7 +264,7 @@ async function finalizeLogin() {
         tempSession.teacherData.subjects = migrated;
     }
 
-    // Safety: default subjects if empty
+    // ── Safety: default subjects if empty ────────────────────────────────────
     if (!tempSession.teacherData.subjects || !tempSession.teacherData.subjects.length) {
         const updateRef = isGlobalTeacher
             ? doc(db, 'teachers', tempSession.teacherId)
@@ -266,17 +273,26 @@ async function finalizeLogin() {
         tempSession.teacherData.subjects = DEFAULT_SUBJECTS;
     }
 
-    // Save session — must happen BEFORE any gate redirect below
+    // ── Mint Firebase Auth token via Cloud Function ───────────────────────────
+    try {
+        const pin    = document.getElementById('loginTeacherCode').value.trim().toUpperCase();
+        const result = await mintTeacherToken({ schoolId: tempSession.schoolId, pin });
+        await signInWithCustomToken(auth, result.data.token);
+    } catch (e) {
+        console.error('[Teacher Login] mintTeacherToken failed:', e);
+        // Non-fatal during migration — log but continue
+    }
+
+    // ── Save session ──────────────────────────────────────────────────────────
     setSessionData('teacher', tempSession);
 
-    // ── Gate 1: Profile completion (address/district) ──────────────────────
+    // ── Gate 1: Profile completion ────────────────────────────────────────────
     if (isGlobalTeacher && tempSession.teacherData.profileComplete === false) {
         window.location.href = 'onboarding/onboarding.html';
         return;
     }
 
-    // ── Gate 2: Security questions (new accounts, global teachers only) ────
-    // Legacy siloed teachers skip this gate — they don't use the reset flow.
+    // ── Gate 2: Security questions ────────────────────────────────────────────
     if (isGlobalTeacher && !tempSession.teacherData.securityQuestionsSet) {
         window.location.href = '../onboarding/first-time-setup.html?role=teacher';
         return;
