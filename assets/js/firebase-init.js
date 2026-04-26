@@ -6,8 +6,6 @@ import { getStorage }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 import { getAuth }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { initializeAppCheck, ReCaptchaV3Provider }
-    from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check.js";
 
 // ── Firebase config ───────────────────────────────────────────────────────────
 const firebaseConfig = {
@@ -35,13 +33,19 @@ export const storage = getStorage(app);
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export const auth = getAuth(app);
 
-// ── App Check (reCAPTCHA v3) ──────────────────────────────────────────────────
-// DEBUG TOKEN — remove self.FIREBASE_APPCHECK_DEBUG_TOKEN before going to production
-self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+// ── App Check ────────────────────────────────────────────────────────────────
+// DISABLED during local development — re-enable on production.
+// To re-enable:
+//   1. Uncomment the two imports at the top
+//   2. Uncomment the initializeAppCheck block below
+//   3. Remove the debug script tag from all login HTML files
+//
+// import { initializeAppCheck, ReCaptchaV3Provider }
+//     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check.js";
+//
+// initializeAppCheck(app, {
+//     provider: new ReCaptchaV3Provider('6LfJsMosAAAAALY9ywfvWy_PxU1Z42DT0C62IIH0'),
+//     isTokenAutoRefreshEnabled: true
+// });
 
-initializeAppCheck(app, {
-    provider: new ReCaptchaV3Provider('6LfJsMosAAAAALY9ywfvWy_PxU1Z42DT0C62IIH0'),
-    isTokenAutoRefreshEnabled: true
-});
-
-console.log("Firebase initialized with Auth, App Check, and offline caching.");
+console.log("Firebase initialized with Auth and offline caching.");
