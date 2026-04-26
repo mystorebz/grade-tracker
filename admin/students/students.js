@@ -506,8 +506,8 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
     };
 
     if (!firstName || !lastName) { showMsg('First and last name are required.'); return; }
-    if (!dob)                     { showMsg('Date of birth is required.'); return; }
-    if (!email)                   { showMsg('Email address is required for first-time login and PIN recovery.'); return; }
+    if (!dob)                    { showMsg('Date of birth is required.'); return; }
+    if (!email)                  { showMsg('Email address is required for first-time login and PIN recovery.'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showMsg('Please enter a valid email address.'); return; }
 
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processing...';
@@ -679,7 +679,6 @@ function renderStudentOverviewTab() {
 
     pane.innerHTML = `
 
-        <!-- Profile Status Banner -->
         <div class="${complete
             ? 'bg-green-50 border-green-200 text-green-700'
             : 'bg-red-50 border-red-200 text-red-700'} border rounded-xl p-4 flex items-start gap-3">
@@ -694,7 +693,6 @@ function renderStudentOverviewTab() {
             </div>
         </div>
 
-        <!-- Personal Info (Read-Only) -->
         <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm">
             <div class="flex items-center justify-between mb-3">
                 <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Personal Information</h4>
@@ -715,7 +713,6 @@ function renderStudentOverviewTab() {
             </div>
         </div>
 
-        <!-- Parent / Guardian -->
         <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm">
             <div class="flex items-center justify-between mb-3">
                 <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Parent / Guardian</h4>
@@ -731,7 +728,6 @@ function renderStudentOverviewTab() {
             </div>
         </div>
 
-        <!-- Address -->
         <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm">
             <div class="flex items-center justify-between mb-3">
                 <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Address</h4>
@@ -796,7 +792,6 @@ async function renderStudentAcademicTab() {
         ).join('');
 
         pane.innerHTML = `
-            <!-- Current Term Banner -->
             <div class="bg-[#0d1f35] rounded-xl p-5 mb-4 flex items-center justify-between">
                 <div>
                     <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-0.5">Current Term</p>
@@ -809,7 +804,6 @@ async function renderStudentAcademicTab() {
             </div>
 
             ${pastTerms.length ? `
-            <!-- Past Term Switcher -->
             <div class="flex items-center gap-3 mb-5 bg-white border border-[#dce3ed] rounded-xl p-3">
                 <p class="text-[11px] font-bold text-[#6b84a0] whitespace-nowrap flex-shrink-0">
                     <i class="fa-solid fa-clock-rotate-left mr-1"></i> View past term:
@@ -822,7 +816,6 @@ async function renderStudentAcademicTab() {
                 </select>
             </div>` : ''}
 
-            <!-- Grades Area -->
             <div id="academicGradesArea" class="space-y-3"></div>`;
 
         // Wire past term selector
@@ -950,7 +943,6 @@ function renderGradesForTerm(termId, allTerms = false, termName = 'Term', autoEx
                 </div>
                 <div class="subject-body ${autoExpand ? 'open' : ''}">
                     <div class="px-5 pb-4 pt-3 bg-[#f8fafb] border-t border-[#f0f4f8]">
-                        <!-- Per-subject print -->
                         <div class="flex justify-end mb-3">
                             <button onclick="event.stopPropagation(); window.printSubjectReport('${safeSubject}', '${safeTerm}')"
                                 class="flex items-center gap-1.5 bg-white hover:bg-[#f4f7fb] text-[#374f6b] font-bold px-3 py-1.5 rounded text-[11px] border border-[#dce3ed] transition">
@@ -1238,7 +1230,6 @@ async function renderStudentEnrollmentTab() {
     pane.innerHTML = `
         ${warning}
 
-        <!-- Status -->
         <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm">
             <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Enrollment Status</h4>
             <div class="flex items-center gap-3">
@@ -1250,7 +1241,6 @@ async function renderStudentEnrollmentTab() {
         </div>
 
         ${isActive ? `
-        <!-- Class & Teacher Assignment -->
         <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm">
             <div class="flex items-center justify-between mb-3">
                 <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Class & Teacher Assignment</h4>
@@ -1560,4 +1550,16 @@ document.getElementById('exportCsvBtn').addEventListener('click', () => {
 
 
 // ── BOOT ──────────────────────────────────────────────────────────────────
-loadStudents();
+loadStudents().then(() => {
+    // ── Deep Link / URL Redirect Listener ─────────────────────────────────
+    const urlParams = new URLSearchParams(window.location.search);
+    const viewStudentId = urlParams.get('viewStudent');
+    
+    if (viewStudentId) {
+        // Open the specific student's panel
+        window.openStudentPanel(viewStudentId);
+        
+        // Clean up the URL so it looks neat and doesn't trigger again on a normal page refresh
+        window.history.replaceState(null, '', window.location.pathname);
+    }
+});
