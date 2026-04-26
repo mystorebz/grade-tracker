@@ -17,11 +17,6 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
     window.location.replace('../core/hq-login.html');
 });
 
-const EMAILJS_PUBLIC_KEY  = 'XfaGXU_eFA9dph-5G';
-const EMAILJS_SERVICE_ID  = 'service_s5qvpzh'; 
-const EMAILJS_TEMPLATE_ID = 'template_school_approved';
-emailjs.init(EMAILJS_PUBLIC_KEY);
-
 const tbody = document.getElementById('quotesTableBody');
 let allQuotes = []; 
 let currentQuote = null;
@@ -268,7 +263,7 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
             timestamp: timestamp
         });
 
-        // 2. Update Quote with Plan Limits
+        // 2. Update Quote with Plan Limits (This triggers the Cloud Function email)
         await updateDoc(doc(db, 'quote_requests', currentQuote.id), {
             paymentCleared: true,
             clearedAt: timestamp,
@@ -281,16 +276,6 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
                 studentLimit: selectedPlan.studentLimit,
                 teacherLimit: selectedPlan.teacherLimit
             }
-        });
-
-        btn.innerHTML = '<i class="fa-solid fa-envelope fa-spin mr-2"></i> Emailing School...';
-        const onboardingLink = `https://connectusonline.org/onboarding/onboarding.html?req=${currentQuote.id}`;
-        
-        await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-            to_email: currentQuote.workEmail,
-            contact_name: currentQuote.firstName,
-            school_name: currentQuote.schoolName,
-            onboarding_link: onboardingLink
         });
 
         closePaymentModal();
@@ -331,13 +316,8 @@ document.getElementById('resendLinkBtn').addEventListener('click', async () => {
     const originalText = btn.innerHTML;
     btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Sending...';
     try {
-        const onboardingLink = `https://connectusonline.org/onboarding/onboarding.html?req=${currentQuote.id}`;
-        await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-            to_email: currentQuote.workEmail,
-            contact_name: currentQuote.firstName,
-            school_name: currentQuote.schoolName,
-            onboarding_link: onboardingLink
-        });
+        // Trigger the Cloud Function to resend the email
+        await updateDoc(doc(db, 'quote_requests', currentQuote.id), { resendTrigger: Date.now() });
         btn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Email Sent!';
         setTimeout(() => btn.innerHTML = originalText, 3000);
     } catch(e) {
