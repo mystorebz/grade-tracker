@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Evaluations | Family Portal</title>
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/student.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body class="flex h-screen overflow-hidden bg-[#f5f3ff]">
+
+    <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
+
+    <main class="flex-1 flex flex-col h-full overflow-hidden">
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <div class="flex-1 overflow-y-auto p-7">
+            <div class="max-w-4xl mx-auto space-y-6">
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="evalStatsGrid">
+                    <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex items-center gap-4">
+                        <div class="h-12 w-12 bg-amber-50 text-amber-500 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-star"></i></div>
+                        <div>
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Average Score</p>
+                            <p id="statAvgRating" class="text-2xl font-black text-slate-800">—</p>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex items-center gap-4">
+                        <div class="h-12 w-12 bg-indigo-50 text-indigo-500 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-file-signature"></i></div>
+                        <div>
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Reviews</p>
+                            <p id="statTotalEvals" class="text-2xl font-black text-slate-800">0</p>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex items-center gap-4">
+                        <div class="h-12 w-12 bg-emerald-50 text-emerald-500 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-lock-open"></i></div>
+                        <div>
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Unlocked Records</p>
+                            <p id="statUnlocked" class="text-2xl font-black text-slate-800">0</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="evalsLoader" class="flex flex-col items-center justify-center py-20 text-slate-400">
+                    <i class="fa-solid fa-circle-notch fa-spin text-4xl mb-3 text-indigo-400"></i>
+                    <p class="font-semibold text-sm">Loading evaluations...</p>
+                </div>
+
+                <div id="noEvalsMsg" class="hidden text-center py-16 bg-white rounded-3xl border border-slate-200 shadow-sm">
+                    <div class="text-6xl mb-4 text-slate-200"><i class="fa-solid fa-folder-open"></i></div>
+                    <h3 class="text-xl font-black text-slate-700">No Evaluations Yet</h3>
+                    <p class="text-slate-500 mt-2 font-semibold">Your teachers haven't filed any performance reviews.</p>
+                </div>
+
+                <div id="evaluationsContainer" class="space-y-5"></div>
+
+            </div>
+        </div>
+    </main>
+
+    <script type="module" src="analytics.js"></script>
+</body>
+</html>
