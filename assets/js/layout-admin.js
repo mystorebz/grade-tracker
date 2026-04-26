@@ -16,7 +16,7 @@ export function injectAdminLayout(activePageId, pageTitle, pageSub, showSearch =
     const schoolName   = session.schoolName || 'Your School';
     const schoolId     = session.schoolId   || '—';
 
-    const displayName   = isSuperAdmin ? schoolName : (session.adminName || 'Administrator');
+    const displayName    = isSuperAdmin ? schoolName : (session.adminName || 'Administrator');
     const roleBadgeClass = isSuperAdmin ? 'sidebar-role-badge sidebar-role-super' : 'sidebar-role-badge sidebar-role-admin';
     const roleBadgeText  = isSuperAdmin ? 'Super Admin' : 'Administrator';
 
@@ -29,7 +29,7 @@ export function injectAdminLayout(activePageId, pageTitle, pageSub, showSearch =
 
         <div class="sidebar-brand">
           <div class="sidebar-brand-logo">
-            <img src="../../assets/images/logo.png" alt="ConnectUs" onerror="this.parentElement.textContent='C'">
+            <img src="/assets/logo.png" alt="ConnectUs" style="width: 55px; height: 55px; border-radius: 50%; object-fit: cover;" onerror="this.parentElement.textContent='C'">
           </div>
           <span class="sidebar-brand-text">ConnectUs</span>
         </div>
@@ -47,7 +47,7 @@ export function injectAdminLayout(activePageId, pageTitle, pageSub, showSearch =
         <nav class="sidebar-nav">
 
           <span class="nav-section-label">Main Menu</span>
-          <a href="../home/home.html"               id="nav-overview"    class="nav-item"><i class="fa-solid fa-chart-pie"></i> Overview</a>
+          <a href="../home/home.html"                id="nav-overview"    class="nav-item"><i class="fa-solid fa-chart-pie"></i> Overview</a>
           <a href="../teachers/teachers.html"        id="nav-teachers"    class="nav-item"><i class="fa-solid fa-chalkboard-user"></i> Teachers</a>
           <a href="../evaluations/evaluations.html"   id="nav-evaluations" class="nav-item"><i class="fa-solid fa-star-half-stroke"></i> Evaluations</a>
           <a href="../classes/classes.html"          id="nav-classes"     class="nav-item"><i class="fa-solid fa-school"></i> Classes</a>
@@ -110,7 +110,6 @@ export function injectAdminLayout(activePageId, pageTitle, pageSub, showSearch =
           </div>
           ` : ''}
 
-          <img src="../../assets/logo.png" alt="ConnectUs" style="width: 65px; height: 65px; border-radius: 50%; object-fit: cover;" onerror="this.parentElement.textContent='C'">
         </div>
       </header>
     `;
