@@ -123,6 +123,17 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         schoolType  = schoolSnap.data().schoolType || 'Primary';
         tempSession = { schoolId: foundSchoolId, teacherId: tId, teacherData: tData };
 
+        // ── Mint Firebase Auth token FIRST — before any Firestore writes ──────
+        // Rules now require request.auth != null for writes. Token must be
+        // established before finalizeLogin() attempts any updateDoc calls.
+        try {
+            const result = await mintTeacherToken({ schoolId: foundSchoolId, pin: code });
+            await signInWithCustomToken(auth, result.data.token);
+        } catch (e) {
+            console.error('[Teacher Login] mintTeacherToken failed:', e);
+            // Non-fatal — continue, but writes may fail if rules are strict
+        }
+
         document.querySelector('.login-shell').style.display = 'none';
 
         const needsClasses = !tData.classes || tData.classes.length === 0;
@@ -239,48 +250,43 @@ document.getElementById('saveClassBtn').addEventListener('click', async () => {
 
 // ── 4. FINALIZE LOGIN ─────────────────────────────────────────────────────────
 async function finalizeLogin() {
-
-    // ── Safety: ensure classes array ──────────────────────────────────────────
-    if (!tempSession.teacherData.classes || tempSession.teacherData.classes.length === 0) {
-        const classes   = tempSession.teacherData.className ? [tempSession.teacherData.className] : [];
-        const updateRef = isGlobalTeacher
-            ? doc(db, 'teachers', tempSession.teacherId)
-            : doc(db, 'schools', tempSession.schoolId, 'teachers', tempSession.teacherId);
-        await updateDoc(updateRef, { classes });
-        tempSession.teacherData.classes = classes;
-    }
-
-    localStorage.setItem('connectus_cached_classes', JSON.stringify(tempSession.teacherData.classes));
-
-    // ── Safety: migrate legacy string subjects ────────────────────────────────
-    if (tempSession.teacherData.subjects?.length && typeof tempSession.teacherData.subjects[0] === 'string') {
-        const migrated  = tempSession.teacherData.subjects.map(name =>
-            ({ id: genId(), name, description: '', archived: false, archivedAt: null })
-        );
-        const updateRef = isGlobalTeacher
-            ? doc(db, 'teachers', tempSession.teacherId)
-            : doc(db, 'schools', tempSession.schoolId, 'teachers', tempSession.teacherId);
-        await updateDoc(updateRef, { subjects: migrated });
-        tempSession.teacherData.subjects = migrated;
-    }
-
-    // ── Safety: default subjects if empty ────────────────────────────────────
-    if (!tempSession.teacherData.subjects || !tempSession.teacherData.subjects.length) {
-        const updateRef = isGlobalTeacher
-            ? doc(db, 'teachers', tempSession.teacherId)
-            : doc(db, 'schools', tempSession.schoolId, 'teachers', tempSession.teacherId);
-        await updateDoc(updateRef, { subjects: DEFAULT_SUBJECTS });
-        tempSession.teacherData.subjects = DEFAULT_SUBJECTS;
-    }
-
-    // ── Mint Firebase Auth token via Cloud Function ───────────────────────────
     try {
-        const pin    = document.getElementById('loginTeacherCode').value.trim().toUpperCase();
-        const result = await mintTeacherToken({ schoolId: tempSession.schoolId, pin });
-        await signInWithCustomToken(auth, result.data.token);
+        // ── Safety: ensure classes array ──────────────────────────────────────
+        if (!tempSession.teacherData.classes || tempSession.teacherData.classes.length === 0) {
+            const classes   = tempSession.teacherData.className ? [tempSession.teacherData.className] : [];
+            const updateRef = isGlobalTeacher
+                ? doc(db, 'teachers', tempSession.teacherId)
+                : doc(db, 'schools', tempSession.schoolId, 'teachers', tempSession.teacherId);
+            await updateDoc(updateRef, { classes });
+            tempSession.teacherData.classes = classes;
+        }
+
+        localStorage.setItem('connectus_cached_classes', JSON.stringify(tempSession.teacherData.classes));
+
+        // ── Safety: migrate legacy string subjects ────────────────────────────
+        if (tempSession.teacherData.subjects?.length && typeof tempSession.teacherData.subjects[0] === 'string') {
+            const migrated  = tempSession.teacherData.subjects.map(name =>
+                ({ id: genId(), name, description: '', archived: false, archivedAt: null })
+            );
+            const updateRef = isGlobalTeacher
+                ? doc(db, 'teachers', tempSession.teacherId)
+                : doc(db, 'schools', tempSession.schoolId, 'teachers', tempSession.teacherId);
+            await updateDoc(updateRef, { subjects: migrated });
+            tempSession.teacherData.subjects = migrated;
+        }
+
+        // ── Safety: default subjects if empty ────────────────────────────────
+        if (!tempSession.teacherData.subjects || !tempSession.teacherData.subjects.length) {
+            const updateRef = isGlobalTeacher
+                ? doc(db, 'teachers', tempSession.teacherId)
+                : doc(db, 'schools', tempSession.schoolId, 'teachers', tempSession.teacherId);
+            await updateDoc(updateRef, { subjects: DEFAULT_SUBJECTS });
+            tempSession.teacherData.subjects = DEFAULT_SUBJECTS;
+        }
+
     } catch (e) {
-        console.error('[Teacher Login] mintTeacherToken failed:', e);
-        // Non-fatal during migration — log but continue
+        // Log but don't block — these are safety migrations, not critical path
+        console.warn('[Teacher Login] finalizeLogin migration warning:', e.message);
     }
 
     // ── Save session ──────────────────────────────────────────────────────────
