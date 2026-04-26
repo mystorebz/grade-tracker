@@ -8,6 +8,12 @@
     <link rel="icon" type="image/x-icon" href="../assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="../assets/images/favicon-32x32.png">
 
+    <!-- MUST BE FIRST: App Check debug token for local testing -->
+    <!-- REMOVE THIS SCRIPT BLOCK BEFORE GOING TO PRODUCTION -->
+    <script>
+        self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+    </script>
+
     <link rel="stylesheet" href="../assets/css/global.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -31,7 +37,6 @@
             position: relative; overflow: hidden;
         }
 
-        /* ── Dot grid background ── */
         .hq-shell::before {
             content: '';
             position: absolute; inset: 0;
@@ -40,7 +45,6 @@
             pointer-events: none;
         }
 
-        /* ── Glow orb ── */
         .hq-shell::after {
             content: '';
             position: absolute;
@@ -68,11 +72,7 @@
 
         .hq-card-body { padding: 36px 36px 32px; }
 
-        /* ── Brand ── */
-        .hq-brand {
-            text-align: center;
-            margin-bottom: 32px;
-        }
+        .hq-brand { text-align: center; margin-bottom: 32px; }
 
         .hq-brand-logo {
             width: 52px; height: 52px;
@@ -84,10 +84,7 @@
             overflow: hidden;
         }
 
-        .hq-brand-logo img {
-            width: 100%; height: 100%;
-            object-fit: contain; padding: 8px;
-        }
+        .hq-brand-logo img { width: 100%; height: 100%; object-fit: contain; padding: 8px; }
 
         .hq-brand-title {
             font-size: 22px; font-weight: 700;
@@ -104,7 +101,6 @@
             margin: 0;
         }
 
-        /* ── Restricted badge ── */
         .hq-restricted {
             display: flex; align-items: center; justify-content: center; gap: 6px;
             background: rgba(239,68,68,0.07);
@@ -132,7 +128,6 @@
             text-transform: uppercase; letter-spacing: 0.14em;
         }
 
-        /* ── Form fields ── */
         .hq-field { margin-bottom: 18px; }
 
         .hq-label {
@@ -173,7 +168,6 @@
             background: rgba(255,255,255,0.06);
         }
 
-        /* ── Error message ── */
         .hq-error {
             display: none;
             margin-top: 0; margin-bottom: 18px;
@@ -187,7 +181,6 @@
 
         .hq-error.show { display: block; }
 
-        /* ── Auth button ── */
         .hq-btn {
             width: 100%;
             padding: 13px 20px;
@@ -202,11 +195,10 @@
             letter-spacing: 0.02em;
         }
 
-        .hq-btn:hover   { background: #08754d; box-shadow: 0 4px 14px rgba(11,143,94,0.35); transform: translateY(-1px); }
-        .hq-btn:active  { transform: none; }
+        .hq-btn:hover    { background: #08754d; box-shadow: 0 4px 14px rgba(11,143,94,0.35); transform: translateY(-1px); }
+        .hq-btn:active   { transform: none; }
         .hq-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
 
-        /* ── Footer ── */
         .hq-footer {
             margin-top: 24px; text-align: center;
             font-size: 11px; color: rgba(255,255,255,0.18);
