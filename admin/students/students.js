@@ -2,28 +2,24 @@ import { db } from '../../assets/js/firebase-init.js';
 import {
     collection, query, where,
     getDocs, getDoc, doc,
-    setDoc, updateDoc, writeBatch,
-    arrayUnion
+    setDoc, updateDoc, addDoc, writeBatch,
+    arrayUnion, orderBy
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
-import { openOverlay, closeOverlay, showMsg, letterGrade } from '../../assets/js/utils.js';
+import { openOverlay, closeOverlay, letterGrade } from '../../assets/js/utils.js';
 
-// ── 1. AUTH & INIT ─────────────────────────────────────────────────────────
+// ── 1. INIT & AUTH ─────────────────────────────────────────────────────────
 const session = requireAuth('admin', '../login.html');
-injectAdminLayout('students', 'National Student Registry', 'Lifelong student identities and academic records', true, false);
+injectAdminLayout('students', 'Student Registry', 'Enroll, claim, and manage lifelong student identities.', true, false);
 
 // ── 2. STATE ───────────────────────────────────────────────────────────────
 let allStudentsCache  = [];
 let allTeachersCache  = [];
 let currentStudentId  = null;
+let currentStudentData = null;
 let claimedStudentDoc = null;
-
-const CLASSES = {
-    'Primary':       ['Infant 1','Infant 2','Standard 1','Standard 2','Standard 3','Standard 4','Standard 5','Standard 6'],
-    'High School':   ['First Form','Second Form','Third Form','Fourth Form'],
-    'Junior College':['Year 1','Year 2']
-};
+let sSlipData         = { name: '', id: '', pin: '' };
 
 const tbody               = document.getElementById('studentsTableBody');
 const filterClassSelect   = document.getElementById('filterStudentClass');
@@ -39,37 +35,105 @@ function generateStudentId() {
     return `S${year}-${rand}`;
 }
 
-function generatePin() { return Math.floor(1000 + Math.random() * 9000).toString(); }
+function generatePin() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
 function escHtml(str) {
     if (!str) return '';
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function statusBadge(status) {
-    const map = { Active:'status-active', Transferred:'status-transferred', Graduated:'status-graduated', Archived:'status-archived' };
+    const map = {
+        Active:      'status-active',
+        Transferred: 'status-transferred',
+        Graduated:   'status-graduated',
+        Archived:    'status-archived'
+    };
     return `<span class="text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ${map[status] || 'status-archived'}">${status || 'Unknown'}</span>`;
 }
 
-function getClassList() {
-    return CLASSES[session.schoolType || 'Primary'] || CLASSES['Primary'];
+function getClassOptions() {
+    const type = (session.schoolType || '').toLowerCase();
+    if (type === 'highschool' || type === 'secondary') {
+        return ['First Form', 'Second Form', 'Third Form', 'Fourth Form', 'Fifth Form', 'Sixth Form'];
+    } else if (type === 'juniorcollege' || type === 'tertiary') {
+        return ['Year 1 — Semester 1', 'Year 1 — Semester 2', 'Year 2 — Semester 1', 'Year 2 — Semester 2'];
+    }
+    return ['Infant 1', 'Infant 2', 'Standard 1', 'Standard 2', 'Standard 3', 'Standard 4', 'Standard 5', 'Standard 6'];
 }
 
-// ── Check student limit ────────────────────────────────────────────────────
+function isStudentProfileComplete(s) {
+    return !!(s.dob && s.parentName && s.parentPhone && s.address?.city);
+}
+
+function blankStudentDoc(overrides = {}) {
+    return {
+        // ── System ──────────────────────────────────────────
+        pin:                  generatePin(),
+        requiresPinReset:     true,
+        profileComplete:      false,
+        securityQuestionsSet: false,
+        currentSchoolId:      session.schoolId,
+        enrollmentStatus:     'Active',
+        academicHistory:      [],
+        createdAt:            new Date().toISOString(),
+
+        // ── Basic (admin fills, locked after first login) ────
+        firstName:            '',
+        lastName:             '',
+        name:                 '',
+        dob:                  '',
+        email:                '',
+        gender:               '',
+        nationality:          'Belizean',
+
+        // ── Parent / Guardian ────────────────────────────────
+        parentName:           '',
+        parentPhone:          '',
+        parentEmail:          '',
+        parentRelationship:   '',
+
+        // ── Address (student fills during onboarding) ────────
+        address: {
+            line1:    '',
+            line2:    '',
+            city:     '',
+            district: '',
+            country:  'Belize'
+        },
+
+        // ── School Assignment ────────────────────────────────
+        className:  '',
+        teacherId:  '',
+
+        ...overrides
+    };
+}
+
+function infoCell(label, value) {
+    return `
+        <div class="bg-[#f8fafb] border border-[#f0f4f8] rounded-lg p-3">
+            <p class="text-[9px] font-bold text-[#9ab0c6] uppercase tracking-widest mb-1">${label}</p>
+            <p class="font-bold text-[#0d1f35] text-[12px] leading-snug">${value}</p>
+        </div>`;
+}
+
 async function isStudentLimitReached() {
     const studentLimit = session.studentLimit || 50;
     const snap = await getDocs(
         query(collection(db, 'students'),
-              where('currentSchoolId', '==', session.schoolId),
-              where('enrollmentStatus', '==', 'Active'))
+            where('currentSchoolId', '==', session.schoolId),
+            where('enrollmentStatus', '==', 'Active'))
     );
     return { reached: snap.size >= studentLimit, current: snap.size, limit: studentLimit };
 }
 
 // ── 4. LOAD STUDENTS ────────────────────────────────────────────────────────
 async function loadStudents() {
-    tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center text-slate-400 font-semibold">
-        <i class="fa-solid fa-spinner fa-spin text-emerald-400 text-2xl mb-3 block"></i>Loading students...
+    tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center text-[#9ab0c6] italic font-semibold">
+        <i class="fa-solid fa-spinner fa-spin mr-2 text-[#2563eb]"></i>Loading student records...
     </td></tr>`;
 
     try {
@@ -86,10 +150,12 @@ async function loadStudents() {
         });
 
         allStudentsCache = sSnap.docs.map(d => ({
-            id: d.id, ...d.data(),
+            id: d.id,
+            ...d.data(),
             teacherName: teacherMap[d.data().teacherId] || '—'
         }));
 
+        // Populate filter dropdowns (once)
         if (filterTeacherSelect.options.length <= 1) {
             filterTeacherSelect.innerHTML = '<option value="">All Teachers</option>' +
                 allTeachersCache.map(t => `<option value="${t.id}">${escHtml(t.name)}</option>`).join('');
@@ -97,14 +163,14 @@ async function loadStudents() {
         if (filterClassSelect.options.length <= 2) {
             filterClassSelect.innerHTML =
                 '<option value="">All Classes</option><option value="unassigned">Unassigned Only</option>' +
-                getClassList().map(c => `<option value="${c}">${c}</option>`).join('');
+                getClassOptions().map(c => `<option value="${c}">${c}</option>`).join('');
         }
 
         renderTable();
     } catch (e) {
         console.error('[Students] loadStudents:', e);
-        tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center text-red-500 font-bold">
-            Failed to load student data.
+        tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center text-[#e31b4a] font-semibold">
+            Database connection error. Please refresh.
         </td></tr>`;
     }
 }
@@ -112,54 +178,61 @@ async function loadStudents() {
 // ── 5. RENDER TABLE ────────────────────────────────────────────────────────
 function renderTable() {
     let filtered = [...allStudentsCache];
-    const term       = (document.getElementById('searchInput')?.value || '').toLowerCase();
-    const filterT    = filterTeacherSelect.value;
-    const filterC    = filterClassSelect.value;
-    const filterStat = filterStatusSelect.value;
+    const term      = (document.getElementById('searchInput')?.value || '').toLowerCase();
+    const filterT   = filterTeacherSelect.value;
+    const filterC   = filterClassSelect.value;
+    const filterSt  = filterStatusSelect.value;
 
-    if (filterT)                  filtered = filtered.filter(s => s.teacherId === filterT);
-    if (filterC === 'unassigned') filtered = filtered.filter(s => !s.className || !s.teacherId);
-    else if (filterC)             filtered = filtered.filter(s => s.className === filterC);
-    if (filterStat)               filtered = filtered.filter(s => (s.enrollmentStatus || 'Active') === filterStat);
-    if (term)                     filtered = filtered.filter(s => (s.name || '').toLowerCase().includes(term));
+    if (filterT)                   filtered = filtered.filter(s => s.teacherId === filterT);
+    if (filterC === 'unassigned')  filtered = filtered.filter(s => !s.className || !s.teacherId);
+    else if (filterC)              filtered = filtered.filter(s => s.className === filterC);
+    if (filterSt)                  filtered = filtered.filter(s => (s.enrollmentStatus || 'Active') === filterSt);
+    if (term)                      filtered = filtered.filter(s => (s.name || '').toLowerCase().includes(term));
 
     if (!filtered.length) {
-        tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center text-slate-400 italic font-semibold">
-            No students match the selected criteria.
+        tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center text-[#9ab0c6] italic font-semibold">
+            No students match the selected filters.
         </td></tr>`;
         return;
     }
 
     tbody.innerHTML = filtered.map(s => {
-        const status      = s.enrollmentStatus || 'Active';
-        const classBadge  = s.className
-            ? s.className
-            : '<span class="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">Unassigned</span>';
-        const teacherBadge = s.teacherName !== '—'
-            ? escHtml(s.teacherName)
-            : '<span class="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">Unassigned</span>';
+        const status   = s.enrollmentStatus || 'Active';
+        const complete = isStudentProfileComplete(s);
+
+        const classBadge = s.className
+            ? `<span class="text-[11px] font-semibold text-[#374f6b]">${escHtml(s.className)}</span>`
+            : `<span class="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">Unassigned</span>`;
+
+        const teacherBadge = s.teacherName && s.teacherName !== '—'
+            ? `<span class="text-[11px] font-semibold text-[#374f6b]">${escHtml(s.teacherName)}</span>`
+            : `<span class="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">Unassigned</span>`;
+
+        const profileBadge = complete
+            ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-green-700 bg-green-50 border border-green-200 px-2 py-1 rounded-md"><i class="fa-solid fa-circle-check text-[9px]"></i> Complete</span>`
+            : `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-1 rounded-md"><i class="fa-solid fa-circle-exclamation text-[9px]"></i> Incomplete</span>`;
 
         return `
-        <tr class="border-b border-slate-100 hover:bg-slate-50 transition">
+        <tr class="border-b border-[#f0f4f8] hover:bg-[#f8fafb] transition">
             <td class="px-6 py-4">
                 <div class="flex items-center gap-3">
-                    <div class="h-10 w-10 bg-gradient-to-br from-emerald-400 to-teal-500 text-white rounded-xl flex items-center justify-center font-black text-sm shadow-sm flex-shrink-0">
-                        ${(s.name || '?').charAt(0).toUpperCase()}
+                    <div class="h-10 w-10 bg-[#0d1f35] text-white rounded-lg flex items-center justify-center font-black text-sm flex-shrink-0">
+                        ${escHtml(s.name || '?').charAt(0).toUpperCase()}
                     </div>
                     <div>
-                        <p class="font-black text-slate-700 leading-tight">${escHtml(s.name || 'Unnamed')}</p>
-                        <p class="text-[10px] font-mono font-bold text-emerald-600 uppercase tracking-tight">${s.id}</p>
+                        <p class="font-bold text-[#0d1f35] text-[13px] leading-tight">${escHtml(s.name || 'Unknown')}</p>
+                        <p class="text-[10.5px] font-mono text-[#6b84a0] uppercase tracking-widest mt-0.5">${s.id}</p>
                     </div>
                 </div>
             </td>
             <td class="px-6 py-4">${statusBadge(status)}</td>
-            <td class="px-6 py-4 text-slate-600 font-semibold text-sm">${classBadge}</td>
-            <td class="px-6 py-4 text-slate-600 font-semibold text-sm">${teacherBadge}</td>
-            <td class="px-6 py-4 text-slate-600 font-semibold text-sm">${escHtml(s.parentPhone) || '—'}</td>
+            <td class="px-6 py-4">${classBadge}</td>
+            <td class="px-6 py-4">${teacherBadge}</td>
+            <td class="px-6 py-4 text-center">${profileBadge}</td>
             <td class="px-6 py-4 text-right">
                 <button onclick="window.openStudentPanel('${s.id}')"
-                    class="bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 font-black px-4 py-2 rounded-lg text-xs transition border border-emerald-200 shadow-sm">
-                    <i class="fa-solid fa-eye mr-1"></i> View Record
+                    class="bg-white hover:bg-[#eef4ff] text-[#2563eb] font-bold px-4 py-2 rounded text-[12px] transition border border-[#c7d9fd]">
+                    Manage
                 </button>
             </td>
         </tr>`;
@@ -171,490 +244,547 @@ filterTeacherSelect.addEventListener('change', renderTable);
 filterStatusSelect.addEventListener('change', renderTable);
 document.getElementById('searchInput')?.addEventListener('input', renderTable);
 
-// ── 6. ADD / CLAIM STUDENT MODAL ──────────────────────────────────────────
-window.openAddStudentModal = () => {
-    ['sGlobalId','sName','sDob','sParentName','sParentPhone','sEmail'].forEach(id => {
-        const el = document.getElementById(id); if (el) el.value = '';
-    });
-    document.getElementById('claimPreview').classList.add('hidden');
-    document.getElementById('claimError').classList.add('hidden');
-    document.getElementById('addStudentMsg').classList.add('hidden');
-    document.getElementById('saveStudentBtn').textContent = 'Enroll into National Registry';
-    claimedStudentDoc = null;
 
-    const sClass = document.getElementById('sClass');
-    sClass.innerHTML = '<option value="">-- Select Class First --</option>' +
-        getClassList().map(c => `<option value="${c}">${c}</option>`).join('');
+// ── 6. ADD / CLAIM MODAL ───────────────────────────────────────────────────
 
-    const sTeacher = document.getElementById('sTeacher');
-    sTeacher.innerHTML = '<option value="">-- Waiting for class selection --</option>';
-    sTeacher.disabled = true;
+function populateCreateClassDropdown() {
+    const sel = document.getElementById('sClass');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— Optional —</option>' +
+        getClassOptions().map(c => `<option value="${c}">${c}</option>`).join('');
+}
 
-    openOverlay('addStudentModal', 'addStudentModalInner');
-};
+document.getElementById('sClass').addEventListener('change', function () {
+    const cls     = this.value;
+    const tSelect = document.getElementById('sTeacher');
+    tSelect.innerHTML = '';
 
-document.getElementById('sClass').addEventListener('change', function() {
-    const selectedClass = this.value;
-    const teacherDropdown = document.getElementById('sTeacher');
-    
-    teacherDropdown.innerHTML = '';
-    
-    if (!selectedClass) {
-        teacherDropdown.innerHTML = '<option value="">-- Waiting for class selection --</option>';
-        teacherDropdown.disabled = true;
+    if (!cls) {
+        tSelect.innerHTML = '<option value="">— Select a class first —</option>';
+        tSelect.disabled  = true;
         return;
     }
 
-    const matchingTeachers = allTeachersCache.filter(teacher => 
-        teacher.classes && teacher.classes.includes(selectedClass)
-    );
-
-    if (matchingTeachers.length === 0) {
-        teacherDropdown.innerHTML = '<option value="">Unassigned (No teacher teaches this class)</option>';
-        teacherDropdown.disabled = false; 
-    } 
-    else if (matchingTeachers.length === 1) {
-        const t = matchingTeachers[0];
-        teacherDropdown.innerHTML = `<option value="${t.id}" selected>${t.name}</option>`;
-        teacherDropdown.disabled = false;
-    } 
-    else {
-        teacherDropdown.innerHTML = '<option value="">-- Select specific teacher --</option>';
-        matchingTeachers.forEach(t => {
-            teacherDropdown.innerHTML += `<option value="${t.id}">${t.name}</option>`;
-        });
-        teacherDropdown.disabled = false;
+    const matches = allTeachersCache.filter(t => t.classes?.includes(cls));
+    if (!matches.length) {
+        tSelect.innerHTML = '<option value="">No teacher assigned to this class yet</option>';
+    } else {
+        tSelect.innerHTML = '<option value="">— Select teacher —</option>' +
+            matches.map(t => `<option value="${t.id}">${escHtml(t.name)}</option>`).join('');
+        if (matches.length === 1) tSelect.value = matches[0].id;
     }
+    tSelect.disabled = false;
 });
+
+window.openAddStudentModal = () => {
+    ['sFirstName', 'sLastName', 'sDob', 'sEmail', 'sParentName', 'sParentPhone', 'studentSearchInput'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+    });
+    document.getElementById('sGender').value = '';
+    ['studentSearchResults', 'claimStudentPreview', 'claimStudentEmpty', 'addStudentMsg'].forEach(id =>
+        document.getElementById(id)?.classList.add('hidden')
+    );
+    document.getElementById('sTeacher').innerHTML = '<option value="">— Select a class first —</option>';
+    document.getElementById('sTeacher').disabled  = true;
+    claimedStudentDoc = null;
+    populateCreateClassDropdown();
+    openOverlay('addStudentModal', 'addStudentModalInner');
+};
 
 window.closeAddStudentModal = () => {
     closeOverlay('addStudentModal', 'addStudentModalInner');
     claimedStudentDoc = null;
 };
 
-document.getElementById('lookupStudentBtn').addEventListener('click', async () => {
-    const rawId   = document.getElementById('sGlobalId').value.trim().toUpperCase();
-    const preview = document.getElementById('claimPreview');
-    const error   = document.getElementById('claimError');
-    preview.classList.add('hidden');
-    error.classList.add('hidden');
+// ── Search Unassigned Students ─────────────────────────────────────────────
+document.getElementById('searchStudentBtn').addEventListener('click', async () => {
+    const input     = document.getElementById('studentSearchInput').value.trim();
+    const resultsEl = document.getElementById('studentSearchResults');
+    const emptyEl   = document.getElementById('claimStudentEmpty');
+    const previewEl = document.getElementById('claimStudentPreview');
+
+    resultsEl.classList.add('hidden');
+    emptyEl.classList.add('hidden');
+    previewEl.classList.add('hidden');
     claimedStudentDoc = null;
 
-    if (!rawId) { alert('Enter a Student Global ID first.'); return; }
+    if (!input) { alert('Enter a name or Student ID to search.'); return; }
 
-    if (!/^S\d{2}-[A-Z0-9]{5}$/.test(rawId)) {
-        error.querySelector('p').textContent = 'Invalid format. Student ID should look like S26-XXXXX.';
-        error.classList.remove('hidden'); return;
-    }
-
-    const btn = document.getElementById('lookupStudentBtn');
-    btn.textContent = '...';
-    btn.disabled = true;
+    const btn = document.getElementById('searchStudentBtn');
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    btn.disabled  = true;
 
     try {
-        const snap = await getDoc(doc(db, 'students', rawId));
+        let results    = [];
+        const lower    = input.toLowerCase();
+        const looksLikeId = input.includes('-');
 
-        if (!snap.exists()) {
-            error.querySelector('p').textContent = 'No student found with that ID. Check the credential slip and try again.';
-            error.classList.remove('hidden');
-        } else {
-            const d = { id: snap.id, ...snap.data() };
-
-            if (d.currentSchoolId && d.currentSchoolId !== '') {
-                error.querySelector('p').textContent =
-                    d.currentSchoolId === session.schoolId
-                        ? 'This student is already enrolled at your school.'
-                        : 'This student is currently enrolled at another school. Their current school must close enrollment first. Contact ConnectUs if you believe this is an error.';
-                error.classList.remove('hidden');
-            } else {
-                claimedStudentDoc = d;
-                document.getElementById('claimPreviewName').textContent  = d.name || 'Unknown';
-                document.getElementById('claimPreviewDob').textContent   = d.dob ? `DOB: ${d.dob}` : 'DOB: Not on file';
-
-                const lastSchool = d.academicHistory?.length
-                    ? `Last school: ${d.academicHistory[d.academicHistory.length - 1].schoolName || d.academicHistory[d.academicHistory.length - 1].schoolId}`
-                    : 'No prior enrollment history';
-                const emailNote = !d.email
-                    ? '<br><span style="color:#d97706;font-size:10.5px;font-weight:700;">⚠ No email on file — student must add one during first login setup.</span>'
-                    : '<br><span style="color:#059669;font-size:10.5px;font-weight:600;">✓ Email on file</span>';
-                document.getElementById('claimPreviewSchool').innerHTML = lastSchool + emailNote;
-
-                preview.classList.remove('hidden');
-                document.getElementById('saveStudentBtn').textContent = `Claim ${d.name} into This School`;
+        if (looksLikeId) {
+            const normalizedId = input.toUpperCase().replace(/\s/g, '');
+            const snap = await getDoc(doc(db, 'students', normalizedId));
+            if (snap.exists()) {
+                const d = { id: snap.id, ...snap.data() };
+                if (!d.currentSchoolId || d.currentSchoolId === '') {
+                    results = [d];
+                } else if (d.currentSchoolId === session.schoolId) {
+                    document.getElementById('claimStudentEmpty').querySelector('p').textContent =
+                        'That student is already enrolled at your school.';
+                    emptyEl.classList.remove('hidden');
+                    btn.innerHTML = '<i class="fa-solid fa-magnifying-glass mr-1"></i> Search';
+                    btn.disabled  = false;
+                    return;
+                } else {
+                    document.getElementById('claimStudentEmpty').querySelector('p').textContent =
+                        'That student is currently enrolled at another school. Their school must release them first.';
+                    emptyEl.classList.remove('hidden');
+                    btn.innerHTML = '<i class="fa-solid fa-magnifying-glass mr-1"></i> Search';
+                    btn.disabled  = false;
+                    return;
+                }
             }
         }
+
+        if (!results.length) {
+            const snap = await getDocs(
+                query(collection(db, 'students'), where('currentSchoolId', '==', ''))
+            );
+            results = snap.docs
+                .map(d => ({ id: d.id, ...d.data() }))
+                .filter(s => (s.name || '').toLowerCase().includes(lower));
+        }
+
+        if (!results.length) {
+            emptyEl.classList.remove('hidden');
+        } else {
+            resultsEl.innerHTML = results.map(s => `
+                <div onclick="window.selectStudentResult('${s.id}')"
+                    class="px-4 py-3 hover:bg-[#eef4ff] cursor-pointer border-b border-[#f0f4f8] last:border-0 flex items-center justify-between transition">
+                    <div>
+                        <p class="font-bold text-[#0d1f35] text-[13px]">${escHtml(s.name || 'Unknown')}</p>
+                        <p class="font-mono text-[10px] text-[#9ab0c6] uppercase mt-0.5">${s.id}</p>
+                    </div>
+                    <i class="fa-solid fa-chevron-right text-[#c5d0db] text-[11px]"></i>
+                </div>
+            `).join('');
+            resultsEl.classList.remove('hidden');
+        }
     } catch (e) {
-        console.error('[Students] lookup:', e);
-        alert('Lookup failed. Try again.');
+        console.error('[Students] search:', e);
+        alert('Search failed. Please try again.');
     }
 
-    btn.textContent = 'Look Up';
-    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-magnifying-glass mr-1"></i> Search';
+    btn.disabled  = false;
 });
 
-document.getElementById('saveStudentBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('saveStudentBtn');
-    btn.disabled = true;
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processing...`;
+window.selectStudentResult = async (studentId) => {
+    document.getElementById('studentSearchResults').classList.add('hidden');
+
+    try {
+        const snap = await getDoc(doc(db, 'students', studentId));
+        if (!snap.exists()) return;
+
+        claimedStudentDoc = { id: snap.id, ...snap.data() };
+        const s = claimedStudentDoc;
+
+        document.getElementById('claimSPreviewName').textContent = s.name || 'Unknown';
+        document.getElementById('claimSPreviewId').textContent   = s.id;
+
+        const lastSchool = s.academicHistory?.length
+            ? s.academicHistory[s.academicHistory.length - 1].schoolName || s.academicHistory[s.academicHistory.length - 1].schoolId
+            : null;
+
+        const details = [
+            ['Date of Birth', s.dob || null],
+            ['Gender',        s.gender || null],
+            ['Email',         s.email || null],
+            ['Parent Name',   s.parentName || null],
+            ['Parent Phone',  s.parentPhone || null],
+            ['Last School',   lastSchool],
+        ];
+
+        document.getElementById('claimSPreviewDetails').innerHTML = details.map(([label, val]) => `
+            <div class="bg-white rounded-lg p-2.5 border border-[#dce3ed]">
+                <p class="text-[9px] font-bold text-[#9ab0c6] uppercase tracking-widest mb-0.5">${label}</p>
+                <p class="text-[12px] font-bold text-[#0d1f35]">
+                    ${val ? escHtml(val) : '<span class="text-[#c5d0db] italic text-[11px] font-semibold">Not on file</span>'}
+                </p>
+            </div>
+        `).join('');
+
+        const warningEl   = document.getElementById('claimSPreviewWarning');
+        const warningText = document.getElementById('claimSPreviewWarningText');
+        if (!s.email) {
+            warningText.textContent = 'No email on file — the student should add one during their first login setup.';
+            warningEl.classList.remove('hidden');
+        } else {
+            warningEl.classList.add('hidden');
+        }
+
+        document.getElementById('claimStudentPreview').classList.remove('hidden');
+    } catch (e) {
+        console.error('[Students] selectStudentResult:', e);
+        alert('Could not load student details. Please try again.');
+    }
+};
+
+window.clearStudentSelection = () => {
+    document.getElementById('claimStudentPreview').classList.add('hidden');
+    document.getElementById('studentSearchInput').value = '';
+    claimedStudentDoc = null;
+};
+
+// ── Claim Student ──────────────────────────────────────────────────────────
+document.getElementById('claimStudentBtn').addEventListener('click', async () => {
+    if (!claimedStudentDoc) return;
+    const btn = document.getElementById('claimStudentBtn');
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Claiming...';
+    btn.disabled  = true;
 
     try {
         const limitCheck = await isStudentLimitReached();
         if (limitCheck.reached) {
-            showMsg('addStudentMsg', `Student limit reached (${limitCheck.current} of ${limitCheck.limit}). Contact ConnectUs to upgrade your plan.`, true);
-            btn.disabled = false;
-            btn.textContent = claimedStudentDoc ? `Claim ${claimedStudentDoc.name} into This School` : 'Enroll into National Registry';
+            alert(`Student limit reached (${limitCheck.current}/${limitCheck.limit}). Contact ConnectUs to upgrade.`);
+            btn.disabled  = false;
+            btn.innerHTML = '<i class="fa-solid fa-handshake mr-2"></i> Claim This Student';
             return;
         }
 
-        if (claimedStudentDoc) {
-            await updateDoc(doc(db, 'students', claimedStudentDoc.id), {
-                currentSchoolId:  session.schoolId,
-                enrollmentStatus: 'Active'
-            });
-        } else {
-            const name        = document.getElementById('sName').value.trim();
-            const dob         = document.getElementById('sDob').value;
-            const email       = document.getElementById('sEmail')?.value.trim() || '';
-            const parentName  = document.getElementById('sParentName').value.trim();
-            const parentPhone = document.getElementById('sParentPhone').value.trim();
-            const className   = document.getElementById('sClass').value;
-            const teacherId   = document.getElementById('sTeacher').value;
+        const tempPin = generatePin();
+        await updateDoc(doc(db, 'students', claimedStudentDoc.id), {
+            currentSchoolId:  session.schoolId,
+            enrollmentStatus: 'Active',
+            pin:              tempPin,
+            requiresPinReset: true
+        });
 
-            if (!name || !dob) {
-                showMsg('addStudentMsg', 'Student name and date of birth are required.', true);
-                btn.disabled = false; btn.textContent = 'Enroll into National Registry'; return;
-            }
-            if (!email) {
-                showMsg('addStudentMsg', 'Email address is required so the student can recover their PIN.', true);
-                btn.disabled = false; btn.textContent = 'Enroll into National Registry'; return;
-            }
-            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-                showMsg('addStudentMsg', 'Please enter a valid email address.', true);
-                btn.disabled = false; btn.textContent = 'Enroll into National Registry'; return;
-            }
-
-            const newId = generateStudentId();
-            await setDoc(doc(db, 'students', newId), {
-                studentIdNum:        newId,
-                name,
-                dob,
-                email,
-                pin:                 generatePin(),
-                parentName,
-                parentPhone,
-                className:           className || '',
-                teacherId:           teacherId || '',
-                currentSchoolId:     session.schoolId,
-                enrollmentStatus:    'Active',
-                securityQuestionsSet: false,
-                medicalNotes:        '',
-                academicHistory:     [],
-                createdAt:           new Date().toISOString()
-            });
-        }
-
+        sSlipData = { name: claimedStudentDoc.name, id: claimedStudentDoc.id, pin: tempPin };
         window.closeAddStudentModal();
+        window.showStudentCredentialSlip();
         loadStudents();
+
     } catch (e) {
-        console.error('[Students] save:', e);
-        alert('Action failed. Check console.');
+        console.error('[Students] claim:', e);
+        alert('Error claiming student. Please try again.');
     }
 
-    btn.disabled = false;
-    btn.textContent = 'Enroll into National Registry';
-});
-
-// ── 7. ARCHIVE / CLOSE ENROLLMENT MODAL (HYBRID) ──────────────────────────
-window.openArchiveModal = (id) => {
-    currentStudentId = id;
-    const s = allStudentsCache.find(x => x.id === id);
-    document.getElementById('archiveStudentName').textContent = s?.name || 'this student';
-    
-    // Reset modal UI to default (Internal Archive)
-    document.getElementById('optArchive').checked = true;
-    window.toggleArchiveType();
-
-    // Reset fields
-    document.getElementById('releaseReason').value = '';
-    document.getElementById('archiveNotes').value  = '';
-    
-    openOverlay('archiveModal', 'archiveModalInner');
-};
-
-window.closeArchiveModal = () => closeOverlay('archiveModal', 'archiveModalInner');
-
-window.toggleArchiveType = () => {
-    const isRelease = document.getElementById('optRelease').checked;
-    const releaseFields = document.getElementById('releaseFields');
-    
-    if (isRelease) {
-        releaseFields.classList.remove('hidden');
-    } else {
-        releaseFields.classList.add('hidden');
-    }
-};
-
-document.getElementById('confirmArchiveBtn').addEventListener('click', async () => {
-    const isRelease = document.getElementById('optRelease').checked;
-    const releaseReason = document.getElementById('releaseReason').value;
-    const notes = document.getElementById('archiveNotes').value.trim();
-    
-    if (isRelease && !releaseReason) { 
-        alert('Please select a departure reason to close enrollment.'); 
-        return; 
-    }
-
-    const btn = document.getElementById('confirmArchiveBtn');
-    btn.disabled = true;
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processing...`;
-
-    try {
-        const s = allStudentsCache.find(x => x.id === currentStudentId);
-        const batch = writeBatch(db);
-        
-        // Define what status they receive and if they are released from the school
-        let finalStatus = 'Archived';
-        let leaveSchool = false;
-        let historyReason = 'Internally Archived';
-
-        if (isRelease) {
-            leaveSchool = true;
-            historyReason = releaseReason;
-            if (releaseReason === 'Transferred') finalStatus = 'Transferred';
-            else if (releaseReason === 'Graduated') finalStatus = 'Graduated';
-            else finalStatus = 'Archived'; // For Dropped Out/Expelled, status becomes Archived but they are released
-        }
-
-        // Create the history snapshot
-        const snapshot = {
-            schoolId: session.schoolId, 
-            schoolName: session.schoolName || session.schoolId,
-            teacherId: s?.teacherId || '', 
-            className: s?.className || '',
-            leftAt: new Date().toISOString(), 
-            reason: historyReason,
-            ...(notes ? { notes } : {})
-        };
-
-        batch.update(doc(db, 'students', currentStudentId), {
-            enrollmentStatus: finalStatus,
-            currentSchoolId:  leaveSchool ? '' : session.schoolId, // <-- The key release mechanism
-            teacherId: '', 
-            className: '',
-            academicHistory: arrayUnion(snapshot)
-        });
-        
-        if (leaveSchool) {
-            batch.set(doc(collection(db, 'schools', session.schoolId, 'notifications')), {
-                type: 'student_enrollment_closed', studentId: currentStudentId,
-                studentName: s?.name || '', reason: historyReason,
-                closedBy: session.adminId || 'Admin', closedAt: new Date().toISOString()
-            });
-        }
-
-        await batch.commit();
-        
-        window.closeArchiveModal();
-        window.closeStudentPanel(); // Close the side panel if it was open
-        loadStudents();
-    } catch (e) {
-        console.error('[Students] archive/transfer:', e);
-        alert('Critical failure. Record preserved.');
-    }
-
-    btn.disabled = false;
-    btn.innerHTML = `<i class="fa-solid fa-box-archive mr-2"></i>Confirm Action`;
-});
-
-
-// ── 8. REASSIGN MODAL ─────────────────────────────────────────────────────
-window.openReassignModal = (id) => {
-    currentStudentId = id;
-    const s = allStudentsCache.find(x => x.id === id);
-    document.getElementById('rsName').value = s?.name || '';
-    document.getElementById('reassignMsg').classList.add('hidden');
-
-    const cSelect = document.getElementById('rsClass');
-    cSelect.innerHTML = '<option value="">-- Unassigned --</option>' +
-        getClassList().map(c => `<option value="${c}" ${s?.className === c ? 'selected' : ''}>${c}</option>`).join('');
-
-    const tSelect = document.getElementById('rsTeacher');
-    tSelect.innerHTML = '<option value="">-- Unassigned --</option>' +
-        allTeachersCache.map(t => `<option value="${t.id}" ${s?.teacherId === t.id ? 'selected' : ''}>${escHtml(t.name)}</option>`).join('');
-
-    cSelect.addEventListener('change', function() {
-        const selectedClass = this.value;
-        tSelect.innerHTML = '<option value="">-- Unassigned --</option>';
-        if(!selectedClass) return;
-        
-        const matchingTeachers = allTeachersCache.filter(t => t.classes && t.classes.includes(selectedClass));
-        matchingTeachers.forEach(t => {
-            tSelect.innerHTML += `<option value="${t.id}">${escHtml(t.name)}</option>`;
-        });
-        
-        if(matchingTeachers.length === 1) {
-            tSelect.value = matchingTeachers[0].id;
-        }
-    });
-
-    openOverlay('reassignStudentModal', 'reassignStudentModalInner');
-};
-
-window.closeReassignModal = () => closeOverlay('reassignStudentModal', 'reassignStudentModalInner');
-
-document.getElementById('saveReassignBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('saveReassignBtn');
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
-    btn.disabled  = true;
-    try {
-        await updateDoc(doc(db, 'students', currentStudentId), {
-            name:      document.getElementById('rsName').value.trim(),
-            className: document.getElementById('rsClass').value,
-            teacherId: document.getElementById('rsTeacher').value
-        });
-        window.closeReassignModal();
-        await loadStudents(); // Wait for data to update
-        window.openStudentPanel(currentStudentId); // Refresh the side panel to show new class
-    } catch (e) {
-        showMsg('reassignMsg', 'Error updating student record.', true);
-        console.error('[Students] reassign:', e);
-    }
-    btn.innerHTML = 'Save Changes';
     btn.disabled  = false;
+    btn.innerHTML = '<i class="fa-solid fa-handshake mr-2"></i> Claim This Student';
 });
 
-// ── 9. STUDENT RECORDS PANEL ──────────────────────────────────────────────
+// ── Create New Student ─────────────────────────────────────────────────────
+document.getElementById('saveStudentBtn').addEventListener('click', async () => {
+    const btn   = document.getElementById('saveStudentBtn');
+    const msgEl = document.getElementById('addStudentMsg');
+    msgEl.classList.add('hidden');
+
+    const firstName   = document.getElementById('sFirstName').value.trim();
+    const lastName    = document.getElementById('sLastName').value.trim();
+    const dob         = document.getElementById('sDob').value;
+    const email       = document.getElementById('sEmail').value.trim();
+    const gender      = document.getElementById('sGender').value;
+    const parentName  = document.getElementById('sParentName').value.trim();
+    const parentPhone = document.getElementById('sParentPhone').value.trim();
+    const className   = document.getElementById('sClass').value;
+    const teacherId   = document.getElementById('sTeacher').value;
+
+    const showMsg = (text, isError = true) => {
+        msgEl.textContent = text;
+        msgEl.className   = `text-[11px] font-bold mb-2 ${isError ? 'text-red-600' : 'text-green-600'}`;
+        msgEl.classList.remove('hidden');
+    };
+
+    if (!firstName || !lastName) { showMsg('First and last name are required.'); return; }
+    if (!dob)                     { showMsg('Date of birth is required.'); return; }
+    if (!email)                   { showMsg('Email address is required for first-time login and PIN recovery.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showMsg('Please enter a valid email address.'); return; }
+
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processing...';
+    btn.disabled  = true;
+
+    try {
+        const limitCheck = await isStudentLimitReached();
+        if (limitCheck.reached) {
+            alert(`Student limit reached (${limitCheck.current}/${limitCheck.limit}). Contact ConnectUs to upgrade.`);
+            btn.disabled  = false; btn.innerHTML = '<i class="fa-solid fa-user-plus mr-2"></i> Register'; return;
+        }
+
+        const newId    = generateStudentId();
+        const fullName = `${firstName} ${lastName}`;
+        const docData  = blankStudentDoc({
+            firstName, lastName, name: fullName,
+            dob, email, gender,
+            parentName, parentPhone,
+            className: className || '',
+            teacherId: teacherId || ''
+        });
+
+        await setDoc(doc(db, 'students', newId), docData);
+
+        sSlipData = { name: fullName, id: newId, pin: docData.pin };
+        window.closeAddStudentModal();
+        window.showStudentCredentialSlip();
+        loadStudents();
+
+    } catch (e) {
+        console.error('[Students] create:', e);
+        showMsg('System error. Please try again.');
+    }
+
+    btn.disabled  = false;
+    btn.innerHTML = '<i class="fa-solid fa-user-plus mr-2"></i> Register';
+});
+
+
+// ── 7. CREDENTIAL SLIP ────────────────────────────────────────────────────
+window.showStudentCredentialSlip = () => {
+    document.getElementById('sSlipName').textContent = sSlipData.name;
+    document.getElementById('sSlipId').textContent   = sSlipData.id;
+    document.getElementById('sSlipPin').textContent  = sSlipData.pin;
+    openOverlay('studentCredentialSlipModal', 'studentCredentialSlipModalInner');
+};
+
+window.closeStudentCredentialSlip = () =>
+    closeOverlay('studentCredentialSlipModal', 'studentCredentialSlipModalInner');
+
+window.printStudentCredentialSlip = () => {
+    const { name, id, pin } = sSlipData;
+    const html = `<!DOCTYPE html><html><head><title>Student Credential Slip</title>
+    <style>
+        body{font-family:'Helvetica Neue',Arial,sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f4f7fb}
+        .slip{background:white;border:2px solid #dce3ed;border-top:4px solid #059669;border-radius:12px;padding:32px 40px;max-width:340px;text-align:center}
+        .logo{font-size:11px;font-weight:900;letter-spacing:0.3em;color:#6b84a0;text-transform:uppercase;margin-bottom:20px}
+        h2{font-size:17px;color:#0d1f35;font-weight:900;margin:0 0 20px 0}
+        .lbl{font-size:9px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;color:#6b84a0;margin-top:12px;margin-bottom:3px}
+        .id{font-family:monospace;font-size:22px;font-weight:900;letter-spacing:0.2em;color:#0d1f35}
+        .pin{font-family:monospace;font-size:32px;font-weight:900;letter-spacing:0.4em;color:#059669}
+        .note{font-size:10px;color:#b45309;font-weight:700;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px 12px;margin-top:16px;line-height:1.5}
+        .ft{font-size:9px;color:#9ab0c6;margin-top:16px;border-top:1px solid #f0f4f8;padding-top:12px}
+    </style></head><body>
+    <div class="slip">
+        <div class="logo">ConnectUs Student Registry</div>
+        <h2>${escHtml(name)}</h2>
+        <p class="lbl">Global Student ID</p><p class="id">${escHtml(id)}</p>
+        <p class="lbl">Temporary Login PIN</p><p class="pin">${escHtml(pin)}</p>
+        <div class="note">⚠ Temporary PIN — reset required on first login.<br>Security questions must also be set.</div>
+        <p class="ft">Keep this slip confidential.<br>Present at the ConnectUs Student Portal.</p>
+    </div></body></html>`;
+
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+    setTimeout(() => w.print(), 400);
+};
+
+
+// ── 8. STUDENT PANEL ──────────────────────────────────────────────────────
 window.openStudentPanel = async (studentId) => {
-    currentStudentId = studentId;
-    const student = allStudentsCache.find(s => s.id === studentId);
-    
-    document.getElementById('sPanelName').textContent  = student?.name     || 'Student';
-    document.getElementById('sPanelId').textContent    = studentId;
-    document.getElementById('sPanelClass').textContent = student?.className || '—';
+    currentStudentId   = studentId;
+    currentStudentData = null;
 
-    // Set up Administrative Actions based on enrollment status
-    const isActive = (student?.enrollmentStatus || 'Active') === 'Active';
-    const enrollActions = document.getElementById('panelEnrollmentActions');
-    if (isActive) {
-        enrollActions.style.display = 'flex';
-        document.getElementById('panelActionReassign').onclick = () => window.openReassignModal(studentId);
-        document.getElementById('panelActionArchive').onclick = () => window.openArchiveModal(studentId);
-    } else {
-        enrollActions.style.display = 'none';
-    }
+    document.getElementById('sPanelLoader').classList.remove('hidden');
+    document.getElementById('sPanelLoader').innerHTML = '<i class="fa-solid fa-spinner fa-spin text-3xl text-[#2563eb]"></i>';
+    document.getElementById('sPanelTabs').classList.add('hidden');
+    document.querySelectorAll('#studentPanelInner .tab-pane').forEach(p => p.classList.add('hidden'));
 
-    // Populate Edit Form
-    document.getElementById('editSName').value = student?.name || '';
-    document.getElementById('editSDob').value = student?.dob || '';
-    document.getElementById('editSParentName').value = student?.parentName || '';
-    document.getElementById('editSPhone').value = student?.parentPhone || '';
-    document.getElementById('editSEmail').value = student?.email || '';
-    
-    document.getElementById('spinReadonly').textContent = student?.pin || '—';
-    window.toggleStudentEdit(false);
-    window.togglePinResetUI(false);
+    // Close dropdown if open
+    document.getElementById('sEnrollDropdown').classList.add('hidden');
 
-    const printBtn = document.getElementById('sPanelPrintBtn');
-    if (printBtn) printBtn.onclick = () => window.printStudentRecord(studentId);
-
-    const history  = student?.academicHistory || [];
-    const histBar  = document.getElementById('academicHistoryBar');
-    const histList = document.getElementById('academicHistoryList');
-    if (history.length) {
-        histList.innerHTML = history.map(h => `
-            <div class="flex items-center gap-3 text-xs">
-                <span class="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0"></span>
-                <span class="font-bold text-blue-800">${escHtml(h.schoolName || h.schoolId)}</span>
-                <span class="text-blue-400">·</span>
-                <span class="text-blue-600">${escHtml(h.className || '—')}</span>
-                <span class="text-blue-400">·</span>
-                <span class="text-blue-500">${h.leftAt ? new Date(h.leftAt).toLocaleDateString() : '—'}</span>
-                <span class="ml-auto font-black text-blue-700">${escHtml(h.reason || '')}</span>
-            </div>`).join('');
-        histBar.classList.remove('hidden');
-    } else {
-        histBar.classList.add('hidden');
-    }
-
-    const loader     = document.getElementById('sPanelLoader');
-    const accordions = document.getElementById('subjectAccordions');
-    loader.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-4xl mb-3 text-emerald-500"></i><p class="font-semibold text-sm">Loading academic records...</p>`;
-    loader.classList.remove('hidden');
-    accordions.classList.add('hidden');
-    accordions.innerHTML = '';
-    
     openOverlay('studentPanel', 'studentPanelInner', true);
 
     try {
-        let gradesSnap = await getDocs(collection(db, 'students', studentId, 'grades'));
-        if (gradesSnap.empty) {
-            gradesSnap = await getDocs(collection(db, 'schools', session.schoolId, 'students', studentId, 'grades'));
-        }
-        if (gradesSnap.empty) {
-            loader.innerHTML = `<div class="text-center py-16"><div class="text-5xl mb-3">📂</div><p class="text-slate-400 font-semibold">No grades recorded yet.</p></div>`;
+        const snap = await getDoc(doc(db, 'students', studentId));
+        if (!snap.exists()) {
+            document.getElementById('sPanelLoader').innerHTML =
+                `<p class="text-[#e31b4a] font-bold px-8 text-center">Student not found in registry.</p>`;
             return;
         }
 
-        let gradeTypeWeights = {};
+        currentStudentData = { id: snap.id, ...snap.data() };
+        const s = currentStudentData;
+        const teacherName = allTeachersCache.find(t => t.id === s.teacherId)?.name || '—';
+
+        document.getElementById('sPanelName').textContent  = s.name || 'Unknown Student';
+        document.getElementById('sPanelId').textContent    = s.id;
+        document.getElementById('sPanelClass').textContent =
+            [s.className || 'No class assigned', teacherName !== '—' ? `with ${teacherName}` : ''].filter(Boolean).join(' · ');
+
+        // Print button
+        document.getElementById('sPanelPrintBtn').onclick = () => window.printStudentRecord(studentId);
+
+        // Hide actions if not Active
+        const isActive = (s.enrollmentStatus || 'Active') === 'Active';
+        document.getElementById('sEnrollActionsWrapper').style.display = isActive ? 'block' : 'none';
+
+        document.getElementById('sPanelLoader').classList.add('hidden');
+        document.getElementById('sPanelTabs').classList.remove('hidden');
+
+        switchStudentTab('overview');
+
+    } catch (e) {
+        console.error('[Students] openStudentPanel:', e);
+        document.getElementById('sPanelLoader').innerHTML =
+            `<p class="text-[#e31b4a] font-bold px-8 text-center">Error loading student. Please try again.</p>`;
+    }
+};
+
+window.closeStudentPanel = () => closeOverlay('studentPanel', 'studentPanelInner', true);
+
+// ── Enrollment Actions Dropdown ───────────────────────────────────────────
+window.toggleSEnrollDropdown = () => {
+    document.getElementById('sEnrollDropdown').classList.toggle('hidden');
+};
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+    const wrapper = document.getElementById('sEnrollActionsWrapper');
+    if (wrapper && !wrapper.contains(e.target)) {
+        document.getElementById('sEnrollDropdown')?.classList.add('hidden');
+    }
+});
+
+// ── Tab Switching ─────────────────────────────────────────────────────────
+document.querySelectorAll('#studentPanelInner .panel-tab').forEach(btn => {
+    btn.addEventListener('click', () => switchStudentTab(btn.dataset.tab));
+});
+
+function switchStudentTab(tabName) {
+    document.querySelectorAll('#studentPanelInner .panel-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#studentPanelInner .tab-pane').forEach(p => p.classList.add('hidden'));
+
+    document.querySelector(`#studentPanelInner .panel-tab[data-tab="${tabName}"]`)?.classList.add('active');
+    document.getElementById(`tab-${tabName}`)?.classList.remove('hidden');
+
+    if (tabName === 'overview')    renderStudentOverviewTab();
+    if (tabName === 'academic')    renderStudentAcademicTab();
+    if (tabName === 'history')     renderStudentHistoryTab();
+    if (tabName === 'enrollment')  renderStudentEnrollmentTab();
+}
+
+
+// ── 9. OVERVIEW TAB ───────────────────────────────────────────────────────
+function renderStudentOverviewTab() {
+    const s    = currentStudentData;
+    if (!s) return;
+    const pane = document.getElementById('tab-overview');
+    const complete = isStudentProfileComplete(s);
+
+    pane.innerHTML = `
+
+        <!-- Profile Status Banner -->
+        <div class="${complete
+            ? 'bg-green-50 border-green-200 text-green-700'
+            : 'bg-red-50 border-red-200 text-red-700'} border rounded-xl p-4 flex items-start gap-3">
+            <i class="fa-solid ${complete ? 'fa-circle-check text-green-500' : 'fa-circle-exclamation text-red-500'} text-xl mt-0.5 flex-shrink-0"></i>
+            <div>
+                <p class="font-black text-[13px] mb-0.5">${complete ? 'Profile Complete' : 'Profile Incomplete'}</p>
+                <p class="text-[11px] font-semibold opacity-80">
+                    ${complete
+                        ? 'All required profile information is on file.'
+                        : 'The student has not completed their profile. They will be prompted during their next login.'}
+                </p>
+            </div>
+        </div>
+
+        <!-- Personal Info (Read-Only) -->
+        <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm">
+            <div class="flex items-center justify-between mb-3">
+                <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Personal Information</h4>
+                <span class="text-[10px] font-bold text-[#9ab0c6] bg-[#f8fafb] border border-[#dce3ed] px-2 py-0.5 rounded">
+                    <i class="fa-solid fa-lock text-[9px] mr-1"></i>Read Only
+                </span>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                ${infoCell('Global ID', `<span class="font-mono tracking-widest text-[11px]">${s.id}</span>`)}
+                ${infoCell('Full Name', escHtml(s.name) || '—')}
+                ${infoCell('Date of Birth', escHtml(s.dob) || '—')}
+                ${infoCell('Gender', escHtml(s.gender) || '—')}
+                ${infoCell('Nationality', escHtml(s.nationality) || '—')}
+                ${infoCell('Email', s.email
+                    ? `<a href="mailto:${escHtml(s.email)}" class="text-[#2563eb] hover:underline break-all">${escHtml(s.email)}</a>`
+                    : '<span class="text-amber-500 font-black text-[11px]">⚠ Not set</span>')}
+                ${infoCell('Enrollment Status', statusBadge(s.enrollmentStatus || 'Active'))}
+            </div>
+        </div>
+
+        <!-- Parent / Guardian -->
+        <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm">
+            <div class="flex items-center justify-between mb-3">
+                <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Parent / Guardian</h4>
+                <span class="text-[10px] font-bold text-[#9ab0c6] bg-[#f8fafb] border border-[#dce3ed] px-2 py-0.5 rounded">
+                    <i class="fa-solid fa-lock text-[9px] mr-1"></i>Read Only
+                </span>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                ${infoCell('Parent / Guardian', escHtml(s.parentName) || '—')}
+                ${infoCell('Relationship', escHtml(s.parentRelationship) || '—')}
+                ${infoCell('Parent Phone', escHtml(s.parentPhone) || '—')}
+                ${infoCell('Parent Email', escHtml(s.parentEmail) || '—')}
+            </div>
+        </div>
+
+        <!-- Address -->
+        <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm">
+            <div class="flex items-center justify-between mb-3">
+                <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Address</h4>
+                <span class="text-[10px] font-bold text-[#9ab0c6] bg-[#f8fafb] border border-[#dce3ed] px-2 py-0.5 rounded">
+                    <i class="fa-solid fa-lock text-[9px] mr-1"></i>Student-managed
+                </span>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                ${infoCell('Street Address', escHtml(s.address?.line1) || '—')}
+                ${infoCell('Apt / Unit', escHtml(s.address?.line2) || '—')}
+                ${infoCell('City / Town', escHtml(s.address?.city) || '—')}
+                ${infoCell('District', escHtml(s.address?.district) || '—')}
+                ${infoCell('Country', escHtml(s.address?.country) || 'Belize')}
+            </div>
+        </div>`;
+}
+
+
+// ── 10. ACADEMIC TAB ──────────────────────────────────────────────────────
+async function renderStudentAcademicTab() {
+    const pane = document.getElementById('tab-academic');
+    pane.innerHTML = `<div class="flex items-center justify-center py-16">
+        <i class="fa-solid fa-spinner fa-spin text-2xl text-[#2563eb]"></i></div>`;
+
+    try {
+        // Get current active term
+        let termName = 'Current Term';
         try {
-            const cacheKey = 'connectus_gradeTypes_' + session.schoolId;
-            const cached = localStorage.getItem(cacheKey);
-            const types = cached ? JSON.parse(cached)
-                : (await getDocs(collection(db, 'schools', session.schoolId, 'gradeTypes'))).docs.map(d => ({ id: d.id, ...d.data() }));
-            types.forEach(t => { if (t.weight) gradeTypeWeights[t.name] = t.weight; });
-        } catch(_) {}
+            const termSnap = await getDocs(
+                query(collection(db, 'terms'),
+                    where('schoolId', '==', session.schoolId),
+                    where('isActive', '==', true))
+            );
+            if (!termSnap.empty) termName = termSnap.docs[0].data().name || termName;
+        } catch (_) {}
 
-        const hasWeights = Object.keys(gradeTypeWeights).length > 0;
-
-        function calcWeightedAvg(grades) {
-            if (!hasWeights) {
-                return grades.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / grades.length;
-            }
-            const byType = {};
-            grades.forEach(g => {
-                const t = g.type || 'Other';
-                if (!byType[t]) byType[t] = [];
-                byType[t].push(g.max ? (g.score / g.max) * 100 : 0);
-            });
-            let wSum = 0, wTotal = 0;
-            Object.entries(byType).forEach(([type, scores]) => {
-                const typeAvg = scores.reduce((a, b) => a + b, 0) / scores.length;
-                const w = gradeTypeWeights[type] || 0;
-                if (w > 0) { wSum += typeAvg * w; wTotal += w; }
-            });
-            return wTotal > 0 ? wSum / wTotal
-                : grades.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / grades.length;
+        // Fetch grades
+        let gradesSnap = await getDocs(collection(db, 'students', currentStudentId, 'grades'));
+        if (gradesSnap.empty) {
+            gradesSnap = await getDocs(
+                collection(db, 'schools', session.schoolId, 'students', currentStudentId, 'grades')
+            );
         }
 
-        function buildWeightBreakdown(grades) {
-            if (!hasWeights) return '';
-            const byType = {};
-            grades.forEach(g => {
-                const t = g.type || 'Other';
-                if (!byType[t]) byType[t] = [];
-                byType[t].push(g.max ? Math.round((g.score / g.max) * 100) : 0);
-            });
-            const rows = Object.entries(gradeTypeWeights)
-                .filter(([type]) => byType[type])
-                .map(([type, w]) => {
-                    const avg = Math.round(byType[type].reduce((a, b) => a + b, 0) / byType[type].length);
-                    const cnt = byType[type].length;
-                    const col = avg >= 75 ? 'var(--green-600)' : avg >= 60 ? '#b45309' : '#e31b4a';
-                    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e2e8f0">'
-                        + '<span style="font-size:12px;color:#475569;font-weight:500">' + type + ' <span style="color:#94a3b8;font-size:11px">(' + cnt + ' entry' + (cnt !== 1 ? 'ies' : 'y') + ')</span></span>'
-                        + '<div style="display:flex;align-items:center;gap:8px">'
-                        + '<span style="font-size:11px;color:#64748b;font-weight:600">' + w + '% weight</span>'
-                        + '<span style="font-size:13px;font-weight:700;color:' + col + '">' + avg + '%</span>'
-                        + '</div></div>';
-                }).join('');
-            if (!rows) return '';
-            return '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 16px;margin-bottom:14px">'
-                + '<p style="font-size:10.5px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:0.08em;margin:0 0 8px">Grade Weight Breakdown</p>'
-                + rows
-                + '<p style="font-size:10.5px;color:#64748b;margin:8px 0 0;font-weight:500">Weighted by types that have recorded grades — missing types do not reduce your average.</p>'
-                + '</div>';
+        if (gradesSnap.empty) {
+            pane.innerHTML = `
+                <div class="bg-white border border-[#dce3ed] rounded-xl p-4 mb-5 flex items-center gap-3">
+                    <i class="fa-solid fa-calendar-week text-[#2563eb] text-lg"></i>
+                    <div>
+                        <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Current Term</p>
+                        <p class="font-bold text-[#0d1f35] text-[13px]">${escHtml(termName)}</p>
+                    </div>
+                </div>
+                <div class="text-center py-16 text-[#9ab0c6]">
+                    <i class="fa-solid fa-folder-open text-4xl mb-3 block"></i>
+                    <p class="italic font-semibold text-[13px]">No grades recorded yet for this student.</p>
+                </div>`;
+            return;
         }
 
+        // Group by subject
         const bySubject = {};
         gradesSnap.forEach(d => {
             const g = { id: d.id, ...d.data() };
@@ -663,123 +793,402 @@ window.openStudentPanel = async (studentId) => {
             bySubject[subj].push(g);
         });
 
-        accordions.innerHTML = Object.entries(bySubject).map(([subject, grades]) => {
-            const avg = calcWeightedAvg(grades);
-            const ac  = avg >= 75 ? 'text-green-600' : avg >= 60 ? 'text-amber-600' : 'text-red-600';
-            const ab  = avg >= 75 ? 'bg-green-50 border-green-200' : avg >= 60 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200';
-            const rows = grades.map(g => {
-                const pct = g.max ? Math.round(g.score / g.max * 100) : null;
-                const c   = pct == null ? 'text-slate-600' : pct >= 75 ? 'text-green-600' : pct >= 60 ? 'text-amber-600' : 'text-red-600';
-                const adminTag = g.enteredByAdmin
-                    ? `<span class="text-[9px] font-black text-blue-500 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded ml-1">Admin entry</span>`
-                    : '';
-                return `<div class="border border-slate-200 rounded-xl bg-white hover:shadow-sm transition">
-                    <div class="px-4 py-3 flex items-center justify-between">
-                        <div class="flex-1 min-w-0">
-                            <p class="font-bold text-slate-700 text-sm truncate">${escHtml(g.title || 'Assessment')}${adminTag}</p>
-                            <p class="text-xs text-slate-400 font-semibold mt-0.5">${escHtml(g.type || '')} ${g.date ? '· ' + g.date : ''}</p>
+        const accordionHtml = Object.entries(bySubject).map(([subject, grades]) => {
+            const avg = grades.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / grades.length;
+            const avgRound = Math.round(avg);
+            const lg  = typeof letterGrade === 'function' ? letterGrade(avgRound) : (avgRound >= 90 ? 'A' : avgRound >= 80 ? 'B' : avgRound >= 70 ? 'C' : avgRound >= 60 ? 'D' : 'F');
+            const avgClass = avg >= 75 ? 'text-green-600 bg-green-50 border-green-200'
+                           : avg >= 60 ? 'text-amber-600 bg-amber-50 border-amber-200'
+                           : 'text-red-600 bg-red-50 border-red-200';
+
+            // Group grades by type within the subject
+            const byType = {};
+            grades.forEach(g => {
+                const t = g.type || 'Assessment';
+                if (!byType[t]) byType[t] = [];
+                byType[t].push(g);
+            });
+
+            const typeRows = Object.entries(byType).map(([type, tGrades]) => {
+                const typeAvg = Math.round(tGrades.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / tGrades.length);
+                const tColor = typeAvg >= 75 ? '#16a34a' : typeAvg >= 60 ? '#d97706' : '#dc2626';
+
+                const gradeRows = tGrades.map(g => {
+                    const pct   = g.max ? Math.round((g.score / g.max) * 100) : null;
+                    const pColor = pct == null ? '#374f6b' : pct >= 75 ? '#16a34a' : pct >= 60 ? '#d97706' : '#dc2626';
+                    return `
+                        <div class="flex items-center justify-between py-2.5 border-b border-[#f0f4f8] last:border-0">
+                            <div class="flex-1 min-w-0 mr-3">
+                                <p class="font-semibold text-[12px] text-[#0d1f35] truncate">${escHtml(g.title || 'Assessment')}</p>
+                                <p class="text-[10px] text-[#9ab0c6] font-semibold mt-0.5">${g.date ? g.date : '—'}</p>
+                                ${g.comments ? `<p class="text-[11px] text-[#6b84a0] italic mt-1 leading-snug">"${escHtml(g.comments)}"</p>` : ''}
+                            </div>
+                            <div class="text-right flex-shrink-0">
+                                <p class="font-black text-[13px]" style="color:${pColor}">${g.score}/${g.max || '?'}</p>
+                                ${pct != null ? `<p class="text-[10px] font-bold" style="color:${pColor}">${pct}%</p>` : ''}
+                            </div>
+                        </div>`;
+                }).join('');
+
+                return `
+                    <div class="mb-3 last:mb-0">
+                        <div class="flex items-center justify-between mb-2 px-1">
+                            <p class="text-[10px] font-black text-[#6b84a0] uppercase tracking-widest">${escHtml(type)} <span class="text-[#9ab0c6]">(${tGrades.length})</span></p>
+                            <p class="text-[11px] font-black" style="color:${tColor}">${typeAvg}% avg</p>
                         </div>
-                        <span class="${c} font-black text-sm ml-3">${g.score}/${g.max || '?'}</span>
-                    </div>
-                </div>`;
+                        <div class="bg-white border border-[#dce3ed] rounded-lg px-4">${gradeRows}</div>
+                    </div>`;
             }).join('');
 
-            return `<div class="rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                <div class="flex items-center justify-between px-5 py-4 bg-white cursor-pointer hover:bg-slate-50 transition"
-                    onclick="window.toggleSubjectAccordion(this)">
-                    <div class="flex items-center gap-3">
-                        <div class="w-9 h-9 bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl flex items-center justify-center font-black text-xs shadow-sm">
-                            ${subject.charAt(0).toUpperCase()}
+            return `
+                <div class="bg-white border border-[#dce3ed] rounded-xl overflow-hidden shadow-sm">
+                    <div class="flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-[#f8fafb] transition"
+                        onclick="window.toggleSubjectAccordion(this)">
+                        <div class="flex items-center gap-3">
+                            <div class="w-9 h-9 bg-[#0d1f35] text-white rounded-lg flex items-center justify-center font-black text-xs flex-shrink-0">
+                                ${subject.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                                <p class="font-black text-[#0d1f35] text-[13px]">${escHtml(subject)}</p>
+                                <p class="text-[10px] text-[#9ab0c6] font-semibold">${grades.length} assessment${grades.length !== 1 ? 's' : ''}</p>
+                            </div>
                         </div>
-                        <div>
-                            <p class="font-black text-slate-800">${escHtml(subject)}</p>
-                            <p class="text-xs text-slate-400 font-semibold">${grades.length} assessment${grades.length !== 1 ? 's' : ''}</p>
+                        <div class="flex items-center gap-2">
+                            <span class="px-2.5 py-1 rounded-lg border font-black text-[11px] ${avgClass}">${avgRound}% · ${lg}</span>
+                            <i class="fa-solid fa-chevron-down text-[#c5d0db] transition-transform"></i>
                         </div>
                     </div>
-                    <div class="flex items-center gap-3">
-                        <span class="px-3 py-1 rounded-lg ${ab} ${ac} font-black text-xs">${avg.toFixed(0)}% avg</span>
-                        <i class="fa-solid fa-chevron-down text-slate-400" style="transition:transform 0.2s"></i>
+                    <div class="subject-body">
+                        <div class="px-5 pb-5 pt-2 bg-[#f8fafb] border-t border-[#f0f4f8]">${typeRows}</div>
                     </div>
-                </div>
-                <div class="subject-body"><div class="px-4 pb-4 pt-2 bg-slate-50/70 space-y-2">${buildWeightBreakdown(grades)}${rows}</div></div>
-            </div>`;
+                </div>`;
         }).join('');
 
-        loader.classList.add('hidden');
-        accordions.classList.remove('hidden');
+        pane.innerHTML = `
+            <div class="bg-white border border-[#dce3ed] rounded-xl p-4 mb-4 flex items-center gap-3">
+                <i class="fa-solid fa-calendar-week text-[#2563eb] text-lg"></i>
+                <div>
+                    <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Current Term</p>
+                    <p class="font-bold text-[#0d1f35] text-[13px]">${escHtml(termName)}</p>
+                </div>
+            </div>
+            <div class="space-y-3">${accordionHtml}</div>`;
+
     } catch (e) {
-        console.error('[Students] openStudentPanel:', e);
-        loader.innerHTML = `<p class="text-red-500 font-bold text-center py-10">Error loading records.</p>`;
+        console.error('[Students] academicTab:', e);
+        pane.innerHTML = `<div class="text-center py-16 text-[#e31b4a] font-semibold">Error loading academic records.</div>`;
     }
+}
+
+window.toggleSubjectAccordion = (header) => {
+    const body    = header.nextElementSibling;
+    const chevron = header.querySelector('.fa-chevron-down');
+    body.classList.toggle('open');
+    if (chevron) chevron.style.transform = body.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0deg)';
 };
 
-window.toggleSubjectAccordion = (h) => {
-    const b = h.nextElementSibling;
-    b.classList.toggle('open');
-    h.querySelector('.fa-chevron-down').style.transform = b.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0deg)';
+
+// ── 11. HISTORY TAB ───────────────────────────────────────────────────────
+function renderStudentHistoryTab() {
+    const s    = currentStudentData;
+    if (!s) return;
+    const pane = document.getElementById('tab-history');
+    const history = s.academicHistory || [];
+
+    if (!history.length) {
+        pane.innerHTML = `<div class="text-center py-16 text-[#9ab0c6] italic font-semibold text-[13px]">
+            No academic history recorded. This may be the student's first school.
+        </div>`;
+        return;
+    }
+
+    pane.innerHTML = `
+        <div class="mb-4">
+            <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Academic History</p>
+            <p class="text-[11px] text-[#9ab0c6] font-semibold">Showing all previous schools and enrollment records.</p>
+        </div>
+        <div class="space-y-3">
+            ${history.map((h, i) => {
+                const dateStr = h.leftAt
+                    ? new Date(h.leftAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : '—';
+                const isCurrentSchool = h.schoolId === session.schoolId;
+                return `
+                    <div class="bg-white border border-[#dce3ed] rounded-xl p-5 ${isCurrentSchool ? 'border-[#c7d9fd]' : ''}">
+                        <div class="flex items-start justify-between mb-3">
+                            <div>
+                                <p class="font-black text-[#0d1f35] text-[13px]">${escHtml(h.schoolName || h.schoolId)}</p>
+                                <p class="text-[10px] font-mono text-[#9ab0c6] uppercase mt-0.5">${h.schoolId || '—'}</p>
+                            </div>
+                            <div class="flex items-center gap-2 flex-shrink-0 ml-3">
+                                ${isCurrentSchool
+                                    ? `<span class="text-[10px] font-bold text-[#2563eb] bg-[#eef4ff] border border-[#c7d9fd] px-2 py-0.5 rounded">Your School</span>`
+                                    : `<span class="text-[10px] font-bold text-[#9ab0c6] bg-[#f8fafb] border border-[#dce3ed] px-2 py-0.5 rounded flex items-center gap-1"><i class="fa-solid fa-lock text-[8px]"></i> Sealed</span>`}
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div class="bg-[#f8fafb] rounded-lg p-2.5 border border-[#f0f4f8]">
+                                <p class="text-[9px] font-bold text-[#9ab0c6] uppercase tracking-widest mb-0.5">Class</p>
+                                <p class="font-bold text-[#0d1f35] text-[12px]">${escHtml(h.className) || '—'}</p>
+                            </div>
+                            <div class="bg-[#f8fafb] rounded-lg p-2.5 border border-[#f0f4f8]">
+                                <p class="text-[9px] font-bold text-[#9ab0c6] uppercase tracking-widest mb-0.5">Left</p>
+                                <p class="font-bold text-[#0d1f35] text-[12px]">${dateStr}</p>
+                            </div>
+                            <div class="bg-[#f8fafb] rounded-lg p-2.5 border border-[#f0f4f8]">
+                                <p class="text-[9px] font-bold text-[#9ab0c6] uppercase tracking-widest mb-0.5">Reason</p>
+                                <p class="font-bold text-[#0d1f35] text-[12px]">${escHtml(h.reason) || '—'}</p>
+                            </div>
+                        </div>
+                        ${!isCurrentSchool ? `
+                            <div class="mt-3 flex items-center gap-2 bg-[#f8fafb] rounded-lg p-3 border border-[#f0f4f8]">
+                                <i class="fa-solid fa-lock text-[#c5d0db] text-sm"></i>
+                                <p class="text-[11px] text-[#9ab0c6] font-semibold italic">Detailed records from this school are sealed. Upgrade to ConnectUs Pro to view full academic history.</p>
+                            </div>` : ''}
+                    </div>`;
+            }).join('')}
+        </div>`;
+}
+
+
+// ── 12. ENROLLMENT TAB ────────────────────────────────────────────────────
+function renderStudentEnrollmentTab() {
+    const s    = currentStudentData;
+    if (!s) return;
+    const pane = document.getElementById('tab-enrollment');
+    const isActive = (s.enrollmentStatus || 'Active') === 'Active';
+
+    const noClassOrTeacher = !s.className || !s.teacherId;
+    const warning = noClassOrTeacher && isActive ? `
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+            <i class="fa-solid fa-triangle-exclamation text-amber-500 text-lg mt-0.5 flex-shrink-0"></i>
+            <div>
+                <p class="font-black text-[13px] text-amber-800">Assignment Incomplete</p>
+                <p class="text-[11px] font-semibold text-amber-600 mt-0.5">
+                    ${!s.className && !s.teacherId
+                        ? 'This student has no class and no teacher assigned.'
+                        : !s.className
+                            ? 'This student has no class assigned.'
+                            : 'This student has no teacher assigned.'}
+                    <strong>Grades cannot be recorded until both are assigned.</strong>
+                </p>
+            </div>
+        </div>` : '';
+
+    // Class/Teacher assignment dropdowns
+    const classOptions = getClassOptions().map(c =>
+        `<option value="${c}" ${s.className === c ? 'selected' : ''}>${c}</option>`
+    ).join('');
+
+    const teacherOptions = allTeachersCache.map(t =>
+        `<option value="${t.id}" ${s.teacherId === t.id ? 'selected' : ''}>${escHtml(t.name)}</option>`
+    ).join('');
+
+    pane.innerHTML = `
+        ${warning}
+
+        <!-- Status -->
+        <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm">
+            <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Enrollment Status</h4>
+            <div class="flex items-center gap-3">
+                ${statusBadge(s.enrollmentStatus || 'Active')}
+                <span class="text-[11px] font-semibold text-[#6b84a0]">
+                    Enrolled ${s.createdAt ? 'since ' + new Date(s.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : ''}
+                </span>
+            </div>
+        </div>
+
+        ${isActive ? `
+        <!-- Class & Teacher Assignment -->
+        <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm">
+            <div class="flex items-center justify-between mb-3">
+                <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Class & Teacher Assignment</h4>
+                <button onclick="window.saveStudentAssignment()"
+                    class="text-[11px] font-bold text-[#2563eb] bg-[#eef4ff] border border-[#c7d9fd] px-3 py-1.5 rounded hover:bg-[#dbeafe] transition">
+                    <i class="fa-solid fa-floppy-disk mr-1"></i> Save
+                </button>
+            </div>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Class</label>
+                    <select id="enrollClassSelect"
+                        class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]"
+                        onchange="window.filterEnrollTeachers(this.value)">
+                        <option value="">— Unassigned —</option>
+                        ${classOptions}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Teacher</label>
+                    <select id="enrollTeacherSelect"
+                        class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">
+                        <option value="">— Unassigned —</option>
+                        ${teacherOptions}
+                    </select>
+                </div>
+            </div>
+            <p id="assignMsg" class="text-[11px] hidden mt-3 font-bold"></p>
+        </div>` : `
+        <!-- Inactive notice -->
+        <div class="bg-[#f8fafb] border border-[#dce3ed] rounded-xl p-5 text-center">
+            <i class="fa-solid fa-box-archive text-[#9ab0c6] text-3xl mb-3"></i>
+            <p class="font-bold text-[#374f6b] text-[13px]">This student is no longer active.</p>
+            <p class="text-[11px] text-[#9ab0c6] font-semibold mt-1">Enrollment actions are not available for archived or transferred students.</p>
+        </div>`}`;
+
+    // Wire class dropdown to filter teachers
+    if (isActive) {
+        const classSelEl = document.getElementById('enrollClassSelect');
+        if (classSelEl) {
+            classSelEl.addEventListener('change', function() {
+                window.filterEnrollTeachers(this.value);
+            });
+        }
+    }
+}
+
+window.filterEnrollTeachers = (selectedClass) => {
+    const tSelect = document.getElementById('enrollTeacherSelect');
+    if (!tSelect) return;
+    const current = tSelect.value;
+
+    tSelect.innerHTML = '<option value="">— Unassigned —</option>';
+
+    if (!selectedClass) {
+        // Show all teachers when no class selected
+        allTeachersCache.forEach(t => {
+            tSelect.innerHTML += `<option value="${t.id}">${escHtml(t.name)}</option>`;
+        });
+    } else {
+        const matches = allTeachersCache.filter(t => t.classes?.includes(selectedClass));
+        if (matches.length) {
+            matches.forEach(t => {
+                tSelect.innerHTML += `<option value="${t.id}">${escHtml(t.name)}</option>`;
+            });
+            if (matches.length === 1) tSelect.value = matches[0].id;
+        } else {
+            tSelect.innerHTML += '<option value="" disabled>No teacher assigned to this class yet</option>';
+        }
+    }
+
+    if (current) tSelect.value = current;
 };
 
-window.closeStudentPanel = () => {
-    closeOverlay('studentPanel', 'studentPanelInner', true);
-    document.getElementById('sPanelLoader').innerHTML =
-        `<i class="fa-solid fa-circle-notch fa-spin text-4xl mb-3 text-emerald-500"></i><p class="font-semibold text-sm">Loading academic records...</p>`;
-};
-
-// ── Edit Profile inside Panel ──
-window.toggleStudentEdit = function(show) {
-    const form = document.getElementById('sEditForm');
-    const isVisible = show !== undefined ? show : form.classList.contains('hidden');
-    form.classList.toggle('hidden', !isVisible);
-    document.getElementById('editStudentMsg').classList.add('hidden');
-};
-
-document.getElementById('saveStudentEditBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('saveStudentEditBtn');
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
-    btn.disabled = true;
+window.saveStudentAssignment = async () => {
+    const className = document.getElementById('enrollClassSelect')?.value || '';
+    const teacherId = document.getElementById('enrollTeacherSelect')?.value || '';
+    const msgEl     = document.getElementById('assignMsg');
 
     try {
-        const u = {
-            name:        document.getElementById('editSName').value.trim(),
-            dob:         document.getElementById('editSDob').value,
-            parentName:  document.getElementById('editSParentName').value.trim(),
-            parentPhone: document.getElementById('editSPhone').value.trim(),
-            email:       document.getElementById('editSEmail').value.trim(),
-        };
-        await updateDoc(doc(db, 'students', currentStudentId), u);
-        showMsg('editStudentMsg', 'Changes saved successfully.', false);
-        window.toggleStudentEdit(false);
-        await loadStudents(); // reload background data
-        window.openStudentPanel(currentStudentId); // refresh the panel seamlessly
+        await updateDoc(doc(db, 'students', currentStudentId), { className, teacherId });
+
+        // Update caches
+        if (currentStudentData) { currentStudentData.className = className; currentStudentData.teacherId = teacherId; }
+        const idx = allStudentsCache.findIndex(s => s.id === currentStudentId);
+        if (idx > -1) {
+            allStudentsCache[idx].className   = className;
+            allStudentsCache[idx].teacherId   = teacherId;
+            allStudentsCache[idx].teacherName = allTeachersCache.find(t => t.id === teacherId)?.name || '—';
+        }
+
+        // Update panel header
+        const teacherName = allTeachersCache.find(t => t.id === teacherId)?.name || '—';
+        document.getElementById('sPanelClass').textContent =
+            [className || 'No class assigned', teacherName !== '—' ? `with ${teacherName}` : ''].filter(Boolean).join(' · ');
+
+        renderTable();
+        msgEl.textContent = 'Assignment saved.';
+        msgEl.className   = 'text-[11px] mt-3 font-bold text-green-600';
+        msgEl.classList.remove('hidden');
+        setTimeout(() => msgEl.classList.add('hidden'), 2500);
     } catch (e) {
-        console.error('[Admin] saveStudentEdit:', e);
-        showMsg('editStudentMsg', 'Error saving changes.', true);
+        console.error('[Students] saveAssignment:', e);
+        msgEl.textContent = 'Error saving. Try again.';
+        msgEl.className   = 'text-[11px] mt-3 font-bold text-red-600';
+        msgEl.classList.remove('hidden');
     }
-    btn.textContent = 'Save Changes'; btn.disabled = false;
+};
+
+// Inline reassign (from dropdown)
+window.openSReassignInline = () => {
+    document.getElementById('sEnrollDropdown').classList.add('hidden');
+    switchStudentTab('enrollment');
+};
+
+
+// ── 13. ARCHIVE / TRANSFER MODAL ─────────────────────────────────────────
+window.openArchiveStudentModal = () => {
+    document.getElementById('sEnrollDropdown').classList.add('hidden');
+    document.getElementById('archiveSName').textContent = currentStudentData?.name || 'this student';
+    document.getElementById('sOptArchive').checked     = true;
+    document.getElementById('sReleaseReason').value    = '';
+    document.getElementById('sArchiveNotes').value     = '';
+    window.toggleSArchiveType();
+    openOverlay('archiveStudentModal', 'archiveStudentModalInner');
+};
+
+window.closeArchiveStudentModal = () => closeOverlay('archiveStudentModal', 'archiveStudentModalInner');
+
+window.toggleSArchiveType = () => {
+    const isTransfer = document.getElementById('sOptTransfer').checked;
+    document.getElementById('sReleaseFields').classList.toggle('hidden', !isTransfer);
+};
+
+document.getElementById('confirmArchiveStudentBtn').addEventListener('click', async () => {
+    const isTransfer = document.getElementById('sOptTransfer').checked;
+    const reason     = document.getElementById('sReleaseReason').value;
+    const notes      = document.getElementById('sArchiveNotes').value.trim();
+
+    if (isTransfer && !reason) {
+        alert('Please select a departure reason to release this student.');
+        return;
+    }
+
+    const btn = document.getElementById('confirmArchiveStudentBtn');
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processing...';
+    btn.disabled  = true;
+
+    try {
+        const s       = currentStudentData;
+        const batch   = writeBatch(db);
+        const sRef    = doc(db, 'students', currentStudentId);
+
+        const snapshot = {
+            schoolId:   session.schoolId,
+            schoolName: session.schoolName || session.schoolId,
+            teacherId:  s?.teacherId  || '',
+            className:  s?.className  || '',
+            leftAt:     new Date().toISOString(),
+            reason:     isTransfer ? reason : 'Archived',
+            ...(notes ? { notes } : {})
+        };
+
+        const updates = {
+            enrollmentStatus: isTransfer ? (reason === 'Graduated' ? 'Graduated' : reason === 'Transferred' ? 'Transferred' : 'Archived') : 'Archived',
+            currentSchoolId:  isTransfer ? '' : session.schoolId,
+            teacherId:        '',
+            className:        '',
+            academicHistory:  arrayUnion(snapshot)
+        };
+
+        batch.update(sRef, updates);
+        await batch.commit();
+
+        window.closeArchiveStudentModal();
+        window.closeStudentPanel();
+        loadStudents();
+
+    } catch (e) {
+        console.error('[Students] archive:', e);
+        alert('Error processing action. Please try again.');
+    }
+
+    btn.innerHTML = '<i class="fa-solid fa-box-archive mr-2"></i> Confirm Action';
+    btn.disabled  = false;
 });
 
-// ── Reset PIN inside Panel ──
-window.togglePinResetUI = function(show) {
-    document.getElementById('pinDisplayArea').classList.toggle('hidden',  show);
-    document.getElementById('pinEditArea').classList.toggle('hidden',    !show);
-    if (show) document.getElementById('inlineNewPin').value = '';
-};
 
-window.saveInlinePin = async function() {
-    const npin = document.getElementById('inlineNewPin').value.trim();
-    if (!npin || npin.length < 4) { alert('PIN must be 4–6 digits.'); return; }
-    const btn = document.getElementById('inlinePinSaveBtn');
-    btn.textContent = '…'; btn.disabled = true;
-    try {
-        await updateDoc(doc(db, 'students', currentStudentId), { pin: npin });
-        window.togglePinResetUI(false);
-        await loadStudents();
-        window.openStudentPanel(currentStudentId); // refresh panel data
-    } catch (e) { console.error('[Admin] saveInlinePin:', e); alert('Error saving PIN.'); }
-    btn.textContent = 'Save'; btn.disabled = false;
-};
-
-// ── 10. PRINT STUDENT RECORD ──────────────────────────────────────────────
+// ── 14. PRINT STUDENT RECORD ─────────────────────────────────────────────
 window.printStudentRecord = async (studentId) => {
     const sDoc = await getDoc(doc(db, 'students', studentId));
     if (!sDoc.exists()) { alert('Student not found.'); return; }
@@ -789,55 +1198,95 @@ window.printStudentRecord = async (studentId) => {
     if (gradesSnap.empty) {
         gradesSnap = await getDocs(collection(db, 'schools', session.schoolId, 'students', studentId, 'grades'));
     }
-    const bySem = {};
+
+    const bySub = {};
     gradesSnap.forEach(d => {
-        const g = d.data();
-        const sem = g.semesterId || 'General';
-        const sub = g.subject    || 'Uncategorized';
-        if (!bySem[sem]) bySem[sem] = {};
-        if (!bySem[sem][sub]) bySem[sem][sub] = [];
-        bySem[sem][sub].push(g);
+        const g    = d.data();
+        const sub  = g.subject || 'Uncategorized';
+        if (!bySub[sub]) bySub[sub] = [];
+        bySub[sub].push(g);
     });
 
-    let gradesHtml = Object.keys(bySem).length === 0
-        ? `<p style="text-align:center;color:#64748b;font-style:italic;padding:40px;">No academic grades recorded.</p>`
-        : Object.entries(bySem).map(([sem, subjects]) => {
-            let rows = '', total = 0, count = 0;
-            for (const sub in subjects) {
-                const avg = Math.round(subjects[sub].reduce((a, g) => a + (g.max ? g.score/g.max*100 : 0), 0) / subjects[sub].length);
-                total += avg; count++;
-                rows += `<tr><td style="border:1px solid #e2e8f0;padding:10px 15px;">${sub}</td><td style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;">${subjects[sub].length}</td><td style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;">${avg}%</td><td style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;">${letterGrade(avg)}</td></tr>`;
-            }
-            const avg = Math.round(total/count);
-            rows += `<tr style="background:#f8fafc;font-weight:bold;"><td colspan="2" style="border:1px solid #e2e8f0;padding:10px 15px;text-align:right;">PERIOD AVERAGE:</td><td style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;">${avg}%</td><td style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;">${letterGrade(avg)}</td></tr>`;
-            return `<div style="margin-bottom:40px;page-break-inside:avoid;"><h3 style="font-size:13px;font-weight:bold;background:#334155;color:white;padding:8px 15px;border-radius:4px;margin-bottom:10px;">Period: ${sem}</h3><table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="background:#f1f5f9;"><th style="border:1px solid #e2e8f0;padding:10px 15px;text-align:left;">Subject</th><th style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;">Assessments</th><th style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;">Average</th><th style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;">Grade</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-        }).join('');
+    const lg = (avg) => avg >= 90 ? 'A' : avg >= 80 ? 'B' : avg >= 70 ? 'C' : avg >= 60 ? 'D' : 'F';
+
+    const gradesHtml = Object.keys(bySub).length === 0
+        ? `<p style="text-align:center;color:#64748b;font-style:italic;padding:40px 0;">No grades recorded.</p>`
+        : `<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:20px;">
+            <thead>
+                <tr style="background:#f8fafc;">
+                    <th style="border:1px solid #e2e8f0;padding:10px 15px;text-align:left;">Subject</th>
+                    <th style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;">Assessments</th>
+                    <th style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;">Average</th>
+                    <th style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;">Grade</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${Object.entries(bySub).map(([sub, grades]) => {
+                    const avg = Math.round(grades.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / grades.length);
+                    return `<tr><td style="border:1px solid #e2e8f0;padding:10px 15px;">${sub}</td>
+                        <td style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;">${grades.length}</td>
+                        <td style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;">${avg}%</td>
+                        <td style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;font-weight:bold;">${lg(avg)}</td></tr>`;
+                }).join('')}
+            </tbody>
+           </table>`;
 
     const w = window.open('', '_blank');
-    w.document.write(`<html><head><title>Student Record — ${s.name}</title><style>body{font-family:'Helvetica Neue',sans-serif;padding:40px;color:#1e293b;line-height:1.5}.header{text-align:center;border-bottom:2px solid #cbd5e1;padding-bottom:20px;margin-bottom:30px}.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:30px;background:#f8fafc;padding:18px;border-radius:8px;border:1px solid #e2e8f0}.info-item label{display:block;font-size:10px;text-transform:uppercase;color:#64748b;font-weight:bold}.info-item span{font-size:13px;font-weight:bold;color:#0f172a}.footer{margin-top:50px;text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:15px}</style></head><body><div class="header"><h1 style="margin:0 0 4px;font-size:22px;text-transform:uppercase;">${session.schoolName || 'ConnectUs School'}</h1><h2 style="margin:0;font-size:13px;color:#64748b;font-weight:normal;letter-spacing:2px;">OFFICIAL ACADEMIC PASSPORT — NATIONAL STUDENT RECORD</h2></div><div class="info-grid"><div class="info-item"><label>Student Name</label><span>${s.name}</span></div><div class="info-item"><label>Global ID</label><span>${s.studentIdNum || studentId}</span></div><div class="info-item"><label>Date of Birth</label><span>${s.dob || 'N/A'}</span></div><div class="info-item"><label>Enrollment Status</label><span>${s.enrollmentStatus || 'Active'}</span></div><div class="info-item"><label>Current Class</label><span>${s.className || 'Unassigned'}</span></div><div class="info-item"><label>Parent / Guardian</label><span>${s.parentName || 'N/A'}</span></div></div>${gradesHtml}<div class="footer">Printed ${new Date().toLocaleDateString()} via ConnectUs National Registry<br>Issued by: ${session.schoolName || session.schoolId}</div></body></html>`);
+    w.document.write(`<!DOCTYPE html><html><head><title>Student Record — ${s.name}</title>
+    <style>
+        body{font-family:'Helvetica Neue',sans-serif;padding:40px;color:#1e293b;line-height:1.5}
+        .header{text-align:center;border-bottom:2px solid #cbd5e1;padding-bottom:20px;margin-bottom:30px}
+        .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:30px;background:#f8fafc;padding:18px;border-radius:8px;border:1px solid #e2e8f0}
+        .info-item label{display:block;font-size:10px;text-transform:uppercase;color:#64748b;font-weight:bold;letter-spacing:0.08em}
+        .info-item span{font-size:13px;font-weight:bold;color:#0f172a}
+        .footer{margin-top:50px;text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:15px}
+    </style></head><body>
+    <div class="header">
+        <h1 style="margin:0 0 4px;font-size:22px;text-transform:uppercase;">${session.schoolName || 'ConnectUs School'}</h1>
+        <h2 style="margin:0;font-size:12px;color:#64748b;font-weight:normal;letter-spacing:2px;text-transform:uppercase;">Official Academic Record — Student Registry</h2>
+    </div>
+    <div class="info-grid">
+        <div class="info-item"><label>Student Name</label><span>${s.name || '—'}</span></div>
+        <div class="info-item"><label>Global Student ID</label><span style="font-family:monospace">${s.id || studentId}</span></div>
+        <div class="info-item"><label>Date of Birth</label><span>${s.dob || 'N/A'}</span></div>
+        <div class="info-item"><label>Gender</label><span>${s.gender || 'N/A'}</span></div>
+        <div class="info-item"><label>Current Class</label><span>${s.className || 'Unassigned'}</span></div>
+        <div class="info-item"><label>Enrollment Status</label><span>${s.enrollmentStatus || 'Active'}</span></div>
+        <div class="info-item"><label>Parent / Guardian</label><span>${s.parentName || 'N/A'}</span></div>
+        <div class="info-item"><label>Parent Phone</label><span>${s.parentPhone || 'N/A'}</span></div>
+    </div>
+    <h3 style="font-size:13px;font-weight:bold;background:#0d1f35;color:white;padding:8px 15px;border-radius:4px;">Academic Summary</h3>
+    ${gradesHtml}
+    <div class="footer">
+        Printed ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} via ConnectUs Student Registry<br>
+        Issued by: ${session.schoolName || session.schoolId}
+    </div>
+    </body></html>`);
     w.document.close();
     setTimeout(() => w.print(), 500);
 };
 
-// ── 11. CSV & PRINT ────────────────────────────────────────────────────────
+
+// ── 15. CSV EXPORT ────────────────────────────────────────────────────────
 document.getElementById('exportCsvBtn').addEventListener('click', () => {
     const rows = [
-        ['Global ID','Name','Status','Class','Teacher','Parent Phone','DOB'],
-        ...allStudentsCache.map(s => [s.id, s.name||'', s.enrollmentStatus||'Active', s.className||'', s.teacherName||'', s.parentPhone||'', s.dob||''])
+        ['Global ID', 'Name', 'Status', 'Class', 'Teacher', 'DOB', 'Email', 'Parent Name', 'Parent Phone', 'Profile Complete'],
+        ...allStudentsCache.map(s => [
+            s.id, s.name || '', s.enrollmentStatus || 'Active',
+            s.className || '', s.teacherName || '',
+            s.dob || '', s.email || '',
+            s.parentName || '', s.parentPhone || '',
+            isStudentProfileComplete(s) ? 'Yes' : 'No'
+        ])
     ];
-    const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(',')).join('\n');
+    const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = Object.assign(document.createElement('a'), {
-        href: URL.createObjectURL(new Blob([csv],{type:'text/csv'})),
-        download: `${session.schoolId}_students_${new Date().toISOString().slice(0,10)}.csv`
+        href:     URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
+        download: `${session.schoolId}_students_${new Date().toISOString().slice(0, 10)}.csv`
     });
     document.body.appendChild(a); a.click(); a.remove();
 });
 
-document.getElementById('printListBtn').addEventListener('click', () => {
-    const w = window.open('', '_blank');
-    w.document.write(`<html><head><title>Student Directory</title><style>body{font-family:sans-serif;padding:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #e2e8f0;padding:8px 12px;font-size:12px;text-align:left}th{background:#f8fafc;font-weight:700}</style></head><body><h2>${session.schoolName||'School'} — Student Directory</h2><p style="color:#64748b;font-size:11px;margin-bottom:14px">Printed ${new Date().toLocaleDateString()}</p><table><thead><tr><th>Global ID</th><th>Name</th><th>Status</th><th>Class</th><th>Teacher</th><th>Parent Phone</th></tr></thead><tbody>${allStudentsCache.map(s=>`<tr><td style="font-family:monospace">${s.id}</td><td>${s.name||''}</td><td>${s.enrollmentStatus||'Active'}</td><td>${s.className||''}</td><td>${s.teacherName||''}</td><td>${s.parentPhone||'—'}</td></tr>`).join('')}</tbody></table></body></html>`);
-    w.document.close(); w.print();
-});
 
 // ── BOOT ──────────────────────────────────────────────────────────────────
 loadStudents();
