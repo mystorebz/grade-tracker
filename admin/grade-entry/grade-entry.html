@@ -107,7 +107,7 @@
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 bg-[#f59e0b] text-white rounded-lg flex items-center justify-center"><i class="fa-solid fa-pen-to-square"></i></div>
                     <div>
-                        <h3 class="font-black text-lg text-[#b45309] leading-tight">Admin Grade Override</h3>
+                        <h3 id="panelHeaderTitle" class="font-black text-lg text-[#b45309] leading-tight">Admin Grade Override</h3>
                         <p id="panelStudentName" class="text-xs text-[#d97706] font-bold mt-0.5">Student Name</p>
                     </div>
                 </div>
@@ -120,7 +120,7 @@
                 <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
                     <i class="fa-solid fa-triangle-exclamation text-amber-500 mt-0.5 text-sm"></i>
                     <p class="text-[11px] text-amber-800 font-semibold leading-relaxed">
-                        Grades entered here bypass the teacher's gradebook. This action is permanently logged and tagged as an <span class="font-black">Admin Entry</span>.
+                        Grades entered here bypass the teacher's gradebook. This action is permanently logged and tagged as an <span class="font-black">Admin Entry/Edit</span>.
                     </p>
                 </div>
 
@@ -131,14 +131,14 @@
                     </div>
                     <div>
                         <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Grade Type <span class="text-[#e31b4a]">*</span></label>
-                        <select id="agType" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#f59e0b]">
+                        <select id="agType" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#f59e0b] disabled:bg-[#f8fafb] disabled:text-[#9ab0c6] disabled:cursor-not-allowed">
                             </select>
                     </div>
                 </div>
 
                 <div>
                     <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Assignment Title <span class="text-[#e31b4a]">*</span></label>
-                    <input type="text" id="agTitle" placeholder="e.g. Formal Re-evaluation / Make-up Exam" class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#f59e0b]">
+                    <input type="text" id="agTitle" placeholder="e.g. Formal Re-evaluation / Make-up Exam" class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#f59e0b] read-only:bg-[#f8fafb] read-only:text-[#9ab0c6] read-only:cursor-not-allowed read-only:border-[#f0f4f8]">
                 </div>
 
                 <div class="grid grid-cols-3 gap-4">
@@ -166,7 +166,7 @@
 
                 <div>
                     <label class="block text-[10px] font-bold text-[#e31b4a] uppercase tracking-widest mb-1.5">Mandatory Audit Note <span class="text-[#e31b4a]">*</span></label>
-                    <textarea id="agNotes" placeholder="Reason for admin entry (e.g., Grade dispute resolution, medical absence override)..." 
+                    <textarea id="agNotes" placeholder="Reason for admin entry or edit (e.g., Grade dispute resolution, medical absence override)..." 
                         class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded text-[13px] h-24 resize-none outline-none focus:border-[#e31b4a]"></textarea>
                     <p class="text-[10px] text-[#9ab0c6] font-semibold mt-1">This note is permanently visible to the teacher and attached to the student's academic record.</p>
                 </div>
@@ -177,7 +177,7 @@
             
             <div class="p-6 border-t border-[#f0f4f8] bg-[#f8fafb] flex-shrink-0">
                 <button id="saveGradeBtn" class="w-full bg-[#0d1f35] hover:bg-[#f59e0b] text-white font-bold py-4 rounded-xl transition shadow-md text-[13px] uppercase tracking-widest flex justify-center items-center gap-2">
-                    <i class="fa-solid fa-triangle-exclamation"></i> Commit Admin Override
+                    <i class="fa-solid fa-triangle-exclamation"></i> <span id="saveGradeText">Commit Admin Override</span>
                 </button>
             </div>
         </div>
