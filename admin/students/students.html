@@ -22,6 +22,9 @@
         .status-transferred { background:#dbeafe; color:#2563eb; border:1px solid #bfdbfe; }
         .status-graduated { background:#f3e8ff; color:#9333ea; border:1px solid #e9d5ff; }
         .status-archived  { background:#fee2e2; color:#dc2626; border:1px solid #fecaca; }
+        
+        .subject-body { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; }
+        .subject-body.open { max-height: 1000px; }
     </style>
 </head>
 <body class="flex w-full h-screen overflow-hidden">
@@ -34,7 +37,6 @@
         <div class="flex-1 overflow-y-auto p-7">
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
 
-                <!-- ── PAGE HEADER ─────────────────────────────────────────── -->
                 <div class="p-6 border-b border-slate-100 flex flex-wrap gap-4 justify-between items-center bg-gradient-to-r from-white to-emerald-50/40">
                     <div class="flex items-center gap-3">
                         <div class="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center text-lg">
@@ -58,7 +60,6 @@
                     </div>
                 </div>
 
-                <!-- ── FILTERS ─────────────────────────────────────────────── -->
                 <div class="p-4 border-b border-slate-100 bg-slate-50 flex gap-3 flex-wrap">
                     <select id="filterStudentClass" class="form-input w-auto p-2 text-sm bg-white rounded-lg border-slate-200 outline-none">
                         <option value="">All Classes</option>
@@ -76,7 +77,6 @@
                     </select>
                 </div>
 
-                <!-- ── TABLE ──────────────────────────────────────────────── -->
                 <div class="overflow-x-auto">
                     <table class="w-full text-left text-sm">
                         <thead class="bg-slate-50 text-slate-500 uppercase text-xs tracking-wider border-b border-slate-200">
@@ -101,9 +101,6 @@
     </main>
 
 
-    <!-- ══════════════════════════════════════════════════════════════════
-         MODAL: ADD / CLAIM STUDENT
-    ══════════════════════════════════════════════════════════════════ -->
     <div id="addStudentModal" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0">
         <div id="addStudentModalInner" class="bg-white rounded-2xl shadow-2xl max-w-lg w-full m-4 overflow-hidden transform scale-95 border-t-4 border-emerald-600">
             <div class="p-6 border-b border-slate-100 flex justify-between items-center">
@@ -114,7 +111,6 @@
             </div>
             <div class="p-6 space-y-5">
 
-                <!-- DOOR 1: CLAIM EXISTING -->
                 <div class="bg-emerald-50 border border-emerald-100 p-4 rounded-xl">
                     <label class="block text-[10px] font-bold text-emerald-700 uppercase tracking-widest mb-1.5">Transfer Existing ID?</label>
                     <div class="flex gap-2">
@@ -125,7 +121,6 @@
                         </button>
                     </div>
                     <p class="text-[9px] text-emerald-500 mt-2 font-medium italic">If the student already has a ConnectUs ID, enter it to claim their full academic history.</p>
-                    <!-- Lookup result preview -->
                     <div id="claimPreview" class="hidden mt-3 p-3 bg-white rounded-lg border border-emerald-200">
                         <p class="text-[10px] text-emerald-600 font-black uppercase tracking-widest mb-1">Found in National Registry</p>
                         <p id="claimPreviewName" class="font-black text-slate-800 text-sm"></p>
@@ -143,7 +138,6 @@
                     <hr class="flex-1 border-slate-200">
                 </div>
 
-                <!-- DOOR 2: CREATE NEW -->
                 <div id="createStudentForm" class="space-y-4">
                     <div class="grid grid-cols-2 gap-4">
                         <div class="col-span-2">
@@ -196,9 +190,6 @@
     </div>
 
 
-    <!-- ══════════════════════════════════════════════════════════════════
-         MODAL: TRANSFER / CLOSE ENROLLMENT
-    ══════════════════════════════════════════════════════════════════ -->
     <div id="transferModal" class="overlay fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[60] flex items-center justify-center hidden opacity-0">
         <div id="transferModalInner" class="bg-white rounded-2xl shadow-2xl max-w-lg w-full m-4 overflow-hidden transform scale-95 border-t-4 border-amber-500">
             <div class="p-6 bg-amber-50 border-b border-amber-100 flex items-center justify-between gap-4">
@@ -262,9 +253,6 @@
     </div>
 
 
-    <!-- ══════════════════════════════════════════════════════════════════
-         MODAL: REASSIGN STUDENT
-    ══════════════════════════════════════════════════════════════════ -->
     <div id="reassignStudentModal" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0">
         <div id="reassignStudentModalInner" class="bg-white rounded-2xl shadow-2xl max-w-md w-full m-4 overflow-hidden transform scale-95">
             <div class="h-1 bg-gradient-to-r from-emerald-500 to-teal-400"></div>
@@ -294,9 +282,6 @@
     </div>
 
 
-    <!-- ══════════════════════════════════════════════════════════════════
-         SIDE PANEL: STUDENT ACADEMIC RECORDS
-    ══════════════════════════════════════════════════════════════════ -->
     <div id="studentPanel" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-end hidden opacity-0">
         <div id="studentPanelInner" class="side-panel bg-[#f8faff] w-full max-w-2xl h-full shadow-2xl flex flex-col translate-x-full">
             <div class="h-1 bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-500 flex-shrink-0"></div>
@@ -316,7 +301,61 @@
                 </div>
             </div>
 
-            <!-- Academic History Timeline (shown if student has been at multiple schools) -->
+            <div class="px-7 py-4 bg-white border-b border-slate-100 flex items-start gap-6">
+                <div class="flex-1 bg-blue-50 border border-blue-100 rounded-xl p-4">
+                    <div id="pinDisplayArea" class="flex justify-between items-center">
+                        <div>
+                            <p class="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-0.5">Student PIN</p>
+                            <p id="spinReadonly" class="font-mono text-lg font-bold text-slate-800">----</p>
+                        </div>
+                        <button onclick="window.togglePinResetUI(true)" class="bg-white text-blue-600 text-xs font-bold px-3 py-1.5 rounded shadow-sm hover:bg-blue-600 hover:text-white transition">Reset</button>
+                    </div>
+                    <div id="pinEditArea" class="hidden flex gap-2">
+                        <input type="password" id="inlineNewPin" placeholder="New PIN" class="w-24 p-2 font-mono text-sm border border-blue-200 rounded outline-none text-center">
+                        <button id="inlinePinSaveBtn" onclick="window.saveInlinePin()" class="bg-blue-600 text-white font-bold text-sm px-4 rounded hover:bg-blue-700 transition">Save</button>
+                        <button onclick="window.togglePinResetUI(false)" class="text-blue-500 hover:text-blue-800 text-sm font-semibold px-2">Cancel</button>
+                    </div>
+                </div>
+
+                <div class="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-4 flex justify-between items-center">
+                    <div>
+                        <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5">Profile Tools</p>
+                        <p class="text-sm font-bold text-slate-700">Update Information</p>
+                    </div>
+                    <button onclick="window.toggleStudentEdit(true)" class="bg-white text-slate-600 text-xs font-bold px-3 py-1.5 rounded shadow-sm hover:bg-slate-600 hover:text-white transition border border-slate-200">Edit Details</button>
+                </div>
+            </div>
+
+            <div id="sEditForm" class="hidden px-7 py-5 bg-slate-50 border-b border-slate-200">
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Full Name</label>
+                        <input type="text" id="editSName" class="w-full p-2.5 bg-white border border-slate-200 rounded text-sm outline-none focus:border-emerald-500">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Date of Birth</label>
+                        <input type="date" id="editSDob" class="w-full p-2.5 bg-white border border-slate-200 rounded text-sm outline-none focus:border-emerald-500">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Parent / Guardian</label>
+                        <input type="text" id="editSParentName" class="w-full p-2.5 bg-white border border-slate-200 rounded text-sm outline-none focus:border-emerald-500">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Parent Phone</label>
+                        <input type="text" id="editSPhone" class="w-full p-2.5 bg-white border border-slate-200 rounded text-sm outline-none focus:border-emerald-500">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Student Email</label>
+                        <input type="email" id="editSEmail" class="w-full p-2.5 bg-white border border-slate-200 rounded text-sm outline-none focus:border-emerald-500">
+                    </div>
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button onclick="window.toggleStudentEdit(false)" class="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-800 transition">Cancel</button>
+                    <button id="saveStudentEditBtn" class="px-5 py-2 bg-emerald-600 text-white font-bold rounded-lg text-sm hover:bg-emerald-700 shadow-sm transition">Save Changes</button>
+                </div>
+                <p id="editStudentMsg" class="hidden mt-3 p-3 text-sm font-bold rounded-lg text-center bg-red-50 text-red-600 border border-red-100"></p>
+            </div>
+
             <div id="academicHistoryBar" class="hidden px-7 py-4 bg-blue-50 border-b border-blue-100">
                 <p class="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-2"><i class="fa-solid fa-clock-rotate-left mr-1"></i>Academic History</p>
                 <div id="academicHistoryList" class="space-y-1"></div>
@@ -333,9 +372,6 @@
     </div>
 
 
-    <!-- ══════════════════════════════════════════════════════════════════
-         MODAL: ASSIGNMENT DETAIL
-    ══════════════════════════════════════════════════════════════════ -->
     <div id="assignmentModal" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0">
         <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200" id="assignmentModalInner">
             <div class="h-1 bg-gradient-to-r from-blue-500 to-cyan-400"></div>
