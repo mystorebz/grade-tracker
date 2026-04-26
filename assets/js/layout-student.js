@@ -9,7 +9,7 @@ import { logout } from './auth.js';
 export function injectStudentLayout(activePageId, pageTitle, pageSub) {
     // 1. The Family/Student Sidebar HTML
     const sidebarHTML = `
-      <aside id="sidebar" class="text-slate-300 flex flex-col shadow-2xl z-20 flex-shrink-0 h-screen" style="width:272px">
+      <aside id="sidebar" class="text-slate-300 flex flex-col shadow-2xl z-20 flex-shrink-0 h-screen" style="width:272px; background: linear-gradient(180deg, #1e1b4b 0%, #312e81 50%, #3730a3 100%); border-right: 1px solid rgba(255,255,255,0.04);">
         <div class="p-5 border-b border-white/5">
           <div class="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col items-center text-center">
             <div id="studentAvatar" class="h-14 w-14 bg-indigo-600 border border-indigo-400/50 rounded-xl flex items-center justify-center text-2xl font-black text-white mb-3 shadow-inner">S</div>
@@ -22,6 +22,9 @@ export function injectStudentLayout(activePageId, pageTitle, pageSub) {
           <a href="../home/home.html" id="nav-overview" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-house w-5 text-base opacity-90"></i> Dashboard</a>
           <a href="../gradebook/gradebook.html" id="nav-gradebook" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-book-open w-5 text-base opacity-70"></i> Current Grades</a>
           <a href="../history/history.html" id="nav-history" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-clock-rotate-left w-5 text-base opacity-70"></i> Academic History</a>
+          
+          <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-3 mt-6 mb-2">Records & Reports</p>
+          <a href="../analytics/analytics.html" id="nav-analytics" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-star-half-stroke w-5 text-base opacity-70"></i> My Evaluations</a>
         </nav>
         <div class="p-4 border-t border-white/5 space-y-3">
           <div class="rounded-xl p-3 text-center" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.2)">
@@ -53,19 +56,16 @@ export function injectStudentLayout(activePageId, pageTitle, pageSub) {
       </header>
     `;
 
-    // 3. Inject into the page
     document.getElementById('layout-sidebar-container').innerHTML = sidebarHTML;
     document.getElementById('layout-topbar-container').innerHTML = topbarHTML;
 
-    // 4. Highlight the Active Tab
     const activeNav = document.getElementById(`nav-${activePageId}`);
     if (activeNav) {
         activeNav.classList.remove('text-slate-400');
         activeNav.classList.add('active');
     }
 
-    // 5. Attach the Logout Button functionality
     document.getElementById('logoutBtn').addEventListener('click', () => {
-        logout('../../student/login.html'); // Redirect to Student Login
+        logout('../../student/login.html');
     });
 }
