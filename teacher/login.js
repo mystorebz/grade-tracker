@@ -134,7 +134,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
             // Non-fatal — continue, but writes may fail if rules are strict
         }
 
-        document.querySelector('.login-shell').style.display = 'none';
+        //document.querySelector('.login-shell').style.display = 'none';
 
         const needsClasses = !tData.classes || tData.classes.length === 0;
 
