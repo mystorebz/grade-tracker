@@ -7,9 +7,8 @@ import { getStorage }
 import { getAuth }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-// ── Firebase config ───────────────────────────────────────────────────────────
 const firebaseConfig = {
-    apiKey:            "AIzaSyDTIREbDTGkVc1cWJRrG9q7YN_fv0XMr5w",
+    apiKey:            "PASTE_YOUR_EXACT_KEY_HERE",
     authDomain:        "school-grade-tracker.firebaseapp.com",
     projectId:         "school-grade-tracker",
     storageBucket:     "school-grade-tracker.firebasestorage.app",
@@ -17,32 +16,22 @@ const firebaseConfig = {
     appId:             "1:326406075140:web:cff69a1ea0c20a66b21651"
 };
 
-// ── Initialize app ────────────────────────────────────────────────────────────
 const app = initializeApp(firebaseConfig);
 
-// ── Firestore with offline caching ────────────────────────────────────────────
 export const db = initializeFirestore(app, {
     localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager()
     })
 });
 
-// ── Storage ───────────────────────────────────────────────────────────────────
 export const storage = getStorage(app);
+export const auth    = getAuth(app);
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
-export const auth = getAuth(app);
-
-// ── App Check ────────────────────────────────────────────────────────────────
-// DISABLED during local development — re-enable on production.
-// To re-enable:
-//   1. Uncomment the two imports at the top
-//   2. Uncomment the initializeAppCheck block below
-//   3. Remove the debug script tag from all login HTML files
+// App Check disabled during local development
+// Re-enable on production by uncommenting below
 //
 // import { initializeAppCheck, ReCaptchaV3Provider }
 //     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check.js";
-//
 // initializeAppCheck(app, {
 //     provider: new ReCaptchaV3Provider('6LfJsMosAAAAALY9ywfvWy_PxU1Z42DT0C62IIH0'),
 //     isTokenAutoRefreshEnabled: true
