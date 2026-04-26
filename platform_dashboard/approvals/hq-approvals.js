@@ -1,5 +1,5 @@
 import { db, storage } from '../../assets/js/firebase-init.js'; 
-import { collection, query, getDocs, doc, updateDoc, setDoc, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, query, where, getDocs, doc, updateDoc, setDoc, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
 // ── Boot Sequence & Setup ────────────────────────────────────────────────
@@ -21,6 +21,40 @@ const tbody = document.getElementById('quotesTableBody');
 let allQuotes = []; 
 let currentQuote = null;
 let availablePlans = []; // Store fetched subscription plans
+
+// ── GLOBAL EMAIL SCANNER ──────────────────────────────────────────────────
+async function checkEmailGlobalUse(email, currentReqId) {
+    if (!email) return null;
+    const targetEmail = email.toLowerCase().trim();
+    let conflicts = [];
+
+    try {
+        // 1. Check Teachers
+        const tSnap = await getDocs(query(collection(db, 'teachers'), where('email', '==', targetEmail)));
+        tSnap.forEach(doc => conflicts.push(`Teacher Account (ID: ${doc.id})`));
+
+        // 2. Check Students
+        const sSnap = await getDocs(query(collection(db, 'students'), where('email', '==', targetEmail)));
+        sSnap.forEach(doc => conflicts.push(`Student Account (ID: ${doc.id})`));
+
+        // 3. Check Active Schools (Admins)
+        const schSnap = await getDocs(query(collection(db, 'schools'), where('contactEmail', '==', targetEmail)));
+        schSnap.forEach(doc => conflicts.push(`School Admin (School ID: ${doc.id})`));
+
+        // 4. Check Pending Quote Requests
+        const qSnap = await getDocs(query(collection(db, 'quote_requests'), where('workEmail', '==', targetEmail)));
+        qSnap.forEach(doc => {
+            if (doc.id !== currentReqId) {
+                conflicts.push(`Other Pending Quote (Quote ID: ${doc.id})`);
+            }
+        });
+
+        return conflicts.length > 0 ? conflicts : null;
+    } catch(e) {
+        console.error("Email check failed:", e);
+        return ["Error checking database for conflicts."];
+    }
+}
 
 // ── Load Subscription Plans ──────────────────────────────────────────────
 async function loadSubscriptionPlans() {
@@ -118,11 +152,18 @@ window.openApprovalModal = (reqId) => {
     currentQuote = allQuotes.find(q => q.id === reqId);
     if (!currentQuote) return;
 
+    // Remove any old warning banners
+    const oldWarning = document.getElementById('duplicateEmailWarning');
+    if (oldWarning) oldWarning.remove();
+
     // 1. Populate UI - Left Side
     document.getElementById('vReqId').textContent = currentQuote.id;
     document.getElementById('vName').textContent = `${currentQuote.firstName} ${currentQuote.lastName}`;
     document.getElementById('vRole').textContent = currentQuote.jobTitle || 'N/A';
-    document.getElementById('vEmail').textContent = currentQuote.workEmail || 'N/A';
+    
+    // Set email with a loading spinner while we run the global check
+    document.getElementById('vEmail').innerHTML = `${currentQuote.workEmail || 'N/A'} <i class="fa-solid fa-circle-notch fa-spin text-slate-500 ml-2 text-[10px]" id="emailCheckSpin"></i>`;
+    
     document.getElementById('vPhone').textContent = currentQuote.phone || 'N/A';
     
     document.getElementById('vSchoolName').textContent = currentQuote.schoolName;
@@ -143,6 +184,34 @@ window.openApprovalModal = (reqId) => {
     
     document.getElementById('vSource').textContent = currentQuote.hearAboutUs || 'N/A';
     document.getElementById('vMessage').textContent = currentQuote.message || 'No additional message provided.';
+
+    // Run Background Check for duplicate email
+    if (currentQuote.workEmail) {
+        checkEmailGlobalUse(currentQuote.workEmail, reqId).then(conflicts => {
+            const spinner = document.getElementById('emailCheckSpin');
+            if (spinner) spinner.remove();
+
+            if (conflicts) {
+                // Highlight the email in red
+                document.getElementById('vEmail').innerHTML = `<span class="text-red-400 font-bold">${currentQuote.workEmail}</span>`;
+                
+                // Build the warning banner
+                const warnDiv = document.createElement('div');
+                warnDiv.id = 'duplicateEmailWarning';
+                warnDiv.className = 'mt-3 p-3 bg-red-900/40 border border-red-500/50 rounded-lg text-red-200 text-xs leading-relaxed';
+                warnDiv.innerHTML = `
+                    <p class="font-bold text-red-400 mb-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i> EMAIL ALREADY IN USE</p>
+                    <ul class="list-disc list-inside pl-1 space-y-1 text-[11px] font-mono">
+                        ${conflicts.map(c => `<li>${c}</li>`).join('')}
+                    </ul>
+                    <p class="mt-2 text-[10px] text-red-300/80 italic">Contact the applicant to provide an alternative email, or edit it using the panel on the right.</p>`;
+                
+                // Inject right under the email element's parent container
+                const emailContainer = document.getElementById('vEmail').parentNode;
+                emailContainer.appendChild(warnDiv);
+            }
+        });
+    }
 
     // 2. Logic Switch: Which right-side panel do we show?
     if (currentQuote.paymentCleared) {
@@ -298,10 +367,23 @@ document.getElementById('saveEmailBtn').addEventListener('click', async () => {
     if(!newEmail) return;
     const btn = document.getElementById('saveEmailBtn');
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    
+    // Check before allowing edit
+    const conflicts = await checkEmailGlobalUse(newEmail, currentQuote.id);
+    if (conflicts) {
+        alert("Cannot update to this email. It is already in use by:\n\n" + conflicts.join("\n"));
+        btn.innerHTML = 'Save';
+        return;
+    }
+
     try {
         await updateDoc(doc(db, 'quote_requests', currentQuote.id), { workEmail: newEmail });
         currentQuote.workEmail = newEmail; 
         document.getElementById('vEmail').textContent = newEmail;
+        
+        const oldWarning = document.getElementById('duplicateEmailWarning');
+        if (oldWarning) oldWarning.remove();
+
         btn.innerHTML = '<i class="fa-solid fa-check"></i> Saved';
         setTimeout(() => btn.innerHTML = 'Save', 2000);
     } catch(e) {
