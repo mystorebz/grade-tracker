@@ -132,7 +132,6 @@ function renderTable() {
 
     tbody.innerHTML = filtered.map(s => {
         const status      = s.enrollmentStatus || 'Active';
-        const isActive    = status === 'Active';
         const classBadge  = s.className
             ? s.className
             : '<span class="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">Unassigned</span>';
@@ -160,7 +159,7 @@ function renderTable() {
             <td class="px-6 py-4 text-right">
                 <button onclick="window.openStudentPanel('${s.id}')"
                     class="bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 font-black px-4 py-2 rounded-lg text-xs transition border border-emerald-200 shadow-sm">
-                    <i class="fa-solid fa-eye mr-1"></i> View
+                    <i class="fa-solid fa-eye mr-1"></i> View Record
                 </button>
             </td>
         </tr>`;
@@ -365,69 +364,108 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
     btn.textContent = 'Enroll into National Registry';
 });
 
-// ── 7. TRANSFER MODAL ─────────────────────────────────────────────────────
-window.openTransferModal = (id) => {
+// ── 7. ARCHIVE / CLOSE ENROLLMENT MODAL (HYBRID) ──────────────────────────
+window.openArchiveModal = (id) => {
     currentStudentId = id;
     const s = allStudentsCache.find(x => x.id === id);
-    document.getElementById('transferStudentName').textContent = s?.name || 'this student';
-    document.getElementById('tSnapSchool').textContent = session.schoolName || session.schoolId;
-    document.getElementById('tSnapClass').textContent  = s?.className || 'Unassigned';
-    document.getElementById('tSnapDate').textContent   = new Date().toLocaleDateString('en-BZ', { year:'numeric', month:'long', day:'numeric' });
-    document.getElementById('transferReason').value = '';
-    document.getElementById('transferGpa').value    = '';
-    document.getElementById('transferNotes').value  = '';
-    openOverlay('transferModal', 'transferModalInner');
+    document.getElementById('archiveStudentName').textContent = s?.name || 'this student';
+    
+    // Reset modal UI to default (Internal Archive)
+    document.getElementById('optArchive').checked = true;
+    window.toggleArchiveType();
+
+    // Reset fields
+    document.getElementById('releaseReason').value = '';
+    document.getElementById('archiveNotes').value  = '';
+    
+    openOverlay('archiveModal', 'archiveModalInner');
 };
 
-window.closeTransferModal = () => closeOverlay('transferModal', 'transferModalInner');
+window.closeArchiveModal = () => closeOverlay('archiveModal', 'archiveModalInner');
 
-document.getElementById('confirmTransferBtn').addEventListener('click', async () => {
-    const reason = document.getElementById('transferReason').value;
-    const gpa    = document.getElementById('transferGpa').value;
-    const notes  = document.getElementById('transferNotes').value.trim();
-    if (!reason) { alert('Please select a departure reason.'); return; }
+window.toggleArchiveType = () => {
+    const isRelease = document.getElementById('optRelease').checked;
+    const releaseFields = document.getElementById('releaseFields');
+    
+    if (isRelease) {
+        releaseFields.classList.remove('hidden');
+    } else {
+        releaseFields.classList.add('hidden');
+    }
+};
 
-    const btn = document.getElementById('confirmTransferBtn');
+document.getElementById('confirmArchiveBtn').addEventListener('click', async () => {
+    const isRelease = document.getElementById('optRelease').checked;
+    const releaseReason = document.getElementById('releaseReason').value;
+    const notes = document.getElementById('archiveNotes').value.trim();
+    
+    if (isRelease && !releaseReason) { 
+        alert('Please select a departure reason to close enrollment.'); 
+        return; 
+    }
+
+    const btn = document.getElementById('confirmArchiveBtn');
     btn.disabled = true;
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Sealing Record...`;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processing...`;
 
     try {
-        const s     = allStudentsCache.find(x => x.id === currentStudentId);
+        const s = allStudentsCache.find(x => x.id === currentStudentId);
         const batch = writeBatch(db);
+        
+        // Define what status they receive and if they are released from the school
+        let finalStatus = 'Archived';
+        let leaveSchool = false;
+        let historyReason = 'Internally Archived';
+
+        if (isRelease) {
+            leaveSchool = true;
+            historyReason = releaseReason;
+            if (releaseReason === 'Transferred') finalStatus = 'Transferred';
+            else if (releaseReason === 'Graduated') finalStatus = 'Graduated';
+            else finalStatus = 'Archived'; // For Dropped Out/Expelled, status becomes Archived but they are released
+        }
+
+        // Create the history snapshot
         const snapshot = {
-            schoolId: session.schoolId, schoolName: session.schoolName || session.schoolId,
-            teacherId: s?.teacherId || '', className: s?.className || '',
-            leftAt: new Date().toISOString(), reason,
-            ...(gpa   ? { gpa: parseFloat(gpa) } : {}),
-            ...(notes ? { notes }               : {})
+            schoolId: session.schoolId, 
+            schoolName: session.schoolName || session.schoolId,
+            teacherId: s?.teacherId || '', 
+            className: s?.className || '',
+            leftAt: new Date().toISOString(), 
+            reason: historyReason,
+            ...(notes ? { notes } : {})
         };
-        const isTransfer = reason === 'Transferred';
-        const newStatus  = reason === 'Graduated' ? 'Graduated' : isTransfer ? 'Transferred' : 'Archived';
 
         batch.update(doc(db, 'students', currentStudentId), {
-            enrollmentStatus: newStatus,
-            currentSchoolId:  isTransfer ? '' : session.schoolId,
-            teacherId: '', className: '',
+            enrollmentStatus: finalStatus,
+            currentSchoolId:  leaveSchool ? '' : session.schoolId, // <-- The key release mechanism
+            teacherId: '', 
+            className: '',
             academicHistory: arrayUnion(snapshot)
         });
-        batch.set(doc(collection(db, 'schools', session.schoolId, 'notifications')), {
-            type: 'student_enrollment_closed', studentId: currentStudentId,
-            studentName: s?.name || '', reason,
-            closedBy: session.adminId || 'Admin', closedAt: new Date().toISOString()
-        });
+        
+        if (leaveSchool) {
+            batch.set(doc(collection(db, 'schools', session.schoolId, 'notifications')), {
+                type: 'student_enrollment_closed', studentId: currentStudentId,
+                studentName: s?.name || '', reason: historyReason,
+                closedBy: session.adminId || 'Admin', closedAt: new Date().toISOString()
+            });
+        }
+
         await batch.commit();
         
-        window.closeTransferModal();
+        window.closeArchiveModal();
         window.closeStudentPanel(); // Close the side panel if it was open
         loadStudents();
     } catch (e) {
-        console.error('[Students] transfer:', e);
+        console.error('[Students] archive/transfer:', e);
         alert('Critical failure. Record preserved.');
     }
 
     btn.disabled = false;
-    btn.innerHTML = `<i class="fa-solid fa-lock mr-2"></i>Seal Snapshot & Close Enrollment`;
+    btn.innerHTML = `<i class="fa-solid fa-box-archive mr-2"></i>Confirm Action`;
 });
+
 
 // ── 8. REASSIGN MODAL ─────────────────────────────────────────────────────
 window.openReassignModal = (id) => {
@@ -500,7 +538,7 @@ window.openStudentPanel = async (studentId) => {
     if (isActive) {
         enrollActions.style.display = 'flex';
         document.getElementById('panelActionReassign').onclick = () => window.openReassignModal(studentId);
-        document.getElementById('panelActionTransfer').onclick = () => window.openTransferModal(studentId);
+        document.getElementById('panelActionArchive').onclick = () => window.openArchiveModal(studentId);
     } else {
         enrollActions.style.display = 'none';
     }
