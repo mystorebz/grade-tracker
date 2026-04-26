@@ -467,8 +467,11 @@ document.getElementById('saveTeacherBtn').addEventListener('click', async () => 
     };
 
     if (!firstName || !lastName) { showMsg('First and last name are required.'); return; }
-    if (!email)                   { showMsg('Email address is required for PIN recovery.'); return; }
+    if (!email)                  { showMsg('Email address is required for PIN recovery.'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showMsg('Please enter a valid email address.'); return; }
+    
+    // NEW MANDATORY CLASS ASSIGNMENT CHECK
+    if (selectedClasses.length === 0) { showMsg('You must assign the teacher to at least one class.'); return; }
 
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processing...';
     btn.disabled  = true;
@@ -674,7 +677,6 @@ async function renderOverviewTab() {
 
     pane.innerHTML = `
 
-        <!-- Profile Status Banner -->
         <div class="${complete
             ? 'bg-green-50 border-green-200 text-green-700'
             : 'bg-red-50 border-red-200 text-red-700'} border rounded-xl p-4 flex items-start gap-3">
@@ -689,7 +691,6 @@ async function renderOverviewTab() {
             </div>
         </div>
 
-        <!-- Identity & Contact -->
         <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm">
             <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Identity & Contact</h4>
             <div class="grid grid-cols-2 gap-2">
@@ -705,7 +706,6 @@ async function renderOverviewTab() {
             </div>
         </div>
 
-        <!-- Professional Credentials -->
         <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm">
             <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Professional Credentials</h4>
             <div class="grid grid-cols-2 gap-2">
@@ -718,7 +718,6 @@ async function renderOverviewTab() {
             </div>
         </div>
 
-        <!-- Academic Qualifications -->
         <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm">
             <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Academic Qualifications</h4>
             <div class="grid grid-cols-2 gap-2">
@@ -729,7 +728,6 @@ async function renderOverviewTab() {
             </div>
         </div>
 
-        <!-- Class Assignment (editable) -->
         <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm">
             <div class="flex items-center justify-between mb-3">
                 <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Assigned Classes</h4>
