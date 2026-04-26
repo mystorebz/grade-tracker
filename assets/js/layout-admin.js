@@ -29,7 +29,7 @@ export function injectAdminLayout(activePageId, pageTitle, pageSub, showSearch =
 
         <div class="sidebar-brand">
           <div class="sidebar-brand-logo">
-            <img src="../../assets/images/logo.png" alt="ConnectUs" style="width: 55px; height: 55px; border-radius: 50%; object-fit: cover;" onerror="this.parentElement.textContent='C'">
+            <img src="../../assets/images/logo.png" alt="ConnectUs" style="width: 50px; height: 50px; min-width: 50px; border-radius: 50%; object-fit: contain; flex-shrink: 0;" onerror="this.parentElement.textContent='C'">
           </div>
           <span class="sidebar-brand-text">ConnectUs</span>
         </div>
