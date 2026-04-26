@@ -48,7 +48,6 @@
         <div class="flex-1 overflow-y-auto p-8 view-section">
             <div class="max-w-6xl mx-auto space-y-6">
 
-                <!-- ── PAGE HEADER ───────────────────────────────────────── -->
                 <div class="flex items-end justify-between border-b-2 border-[#0d1f35] pb-4 mb-6">
                     <div>
                         <h1 class="text-xl font-bold text-[#0d1f35] tracking-tight mb-1">Teaching Staff</h1>
@@ -64,7 +63,6 @@
                     </div>
                 </div>
 
-                <!-- ── TABLE ─────────────────────────────────────────────── -->
                 <div class="bg-white rounded-xl shadow-sm border border-[#dce3ed] overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="w-full text-left text-[13px] text-[#374f6b]">
@@ -92,9 +90,6 @@
     </main>
 
 
-    <!-- ══════════════════════════════════════════════════════════════════
-         MODAL: ADD / CLAIM TEACHER
-    ══════════════════════════════════════════════════════════════════ -->
     <div id="addTeacherModal" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
         <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200 flex flex-col max-h-[92vh]" id="addTeacherModalInner">
             <div class="h-1 bg-[#2563eb] flex-shrink-0"></div>
@@ -107,7 +102,6 @@
 
             <div class="overflow-y-auto flex-1 p-7 space-y-6">
 
-                <!-- ── SECTION 1: CLAIM EXISTING ─────────────────────── -->
                 <div>
                     <div class="flex items-center gap-2.5 mb-1">
                         <div class="h-6 w-6 rounded-full bg-[#2563eb] text-white text-[11px] font-black flex items-center justify-center flex-shrink-0">1</div>
@@ -127,12 +121,10 @@
                         </button>
                     </div>
 
-                    <!-- Search Results List -->
                     <div id="teacherSearchResults"
                         class="hidden ml-9 mt-2 border border-[#dce3ed] rounded-lg overflow-hidden max-h-44 overflow-y-auto shadow-sm">
                     </div>
 
-                    <!-- Selected Teacher Preview -->
                     <div id="claimTeacherPreview" class="hidden ml-9 mt-3 bg-[#eef4ff] border border-[#c7d9fd] rounded-xl p-4">
                         <div class="flex items-start justify-between mb-3">
                             <div>
@@ -157,20 +149,17 @@
                         </button>
                     </div>
 
-                    <!-- No Results -->
                     <div id="claimSearchEmpty" class="hidden ml-9 mt-3 p-4 bg-[#f8fafb] rounded-lg border border-[#dce3ed] text-center">
                         <p class="text-[12px] text-[#9ab0c6] font-semibold italic">No unassigned teachers found. Try a different search or create a new profile below.</p>
                     </div>
                 </div>
 
-                <!-- ── DIVIDER ─────────────────────────────────────────── -->
                 <div class="flex items-center gap-3">
                     <hr class="flex-1 border-[#f0f4f8]">
                     <span class="text-[10px] text-[#9ab0c6] font-bold uppercase tracking-widest px-1">Or Create New</span>
                     <hr class="flex-1 border-[#f0f4f8]">
                 </div>
 
-                <!-- ── SECTION 2: CREATE NEW ──────────────────────────── -->
                 <div>
                     <div class="flex items-center gap-2.5 mb-4">
                         <div class="h-6 w-6 rounded-full bg-[#0d1f35] text-white text-[11px] font-black flex items-center justify-center flex-shrink-0">2</div>
@@ -201,11 +190,10 @@
                                 class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
                         </div>
                         <div>
-                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Assign to Class(es)</label>
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Assign to Class(es) <span class="text-[#e31b4a]">*</span></label>
                             <div id="classCheckboxGroup" class="grid grid-cols-2 gap-2 p-3 bg-[#f8fafb] border border-[#dce3ed] rounded-lg max-h-36 overflow-y-auto">
-                                <!-- Populated by JS based on school type -->
-                            </div>
-                            <p class="text-[10px] text-[#9ab0c6] mt-1 font-semibold">Optional — can be assigned later from Manage.</p>
+                                </div>
+                            <p class="text-[10px] text-[#9ab0c6] mt-1 font-semibold">Required — principal must assign the initial class.</p>
                         </div>
 
                         <div>
@@ -223,9 +211,6 @@
     </div>
 
 
-    <!-- ══════════════════════════════════════════════════════════════════
-         MODAL: CREDENTIAL SLIP
-    ══════════════════════════════════════════════════════════════════ -->
     <div id="credentialSlipModal" class="overlay fixed inset-0 bg-[#0d1f35]/70 backdrop-blur-sm z-[70] flex items-center justify-center hidden opacity-0 transition-opacity">
         <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200" id="credentialSlipModalInner">
             <div class="h-1 bg-[#0ea871]"></div>
@@ -242,7 +227,6 @@
                 </button>
             </div>
             <div class="p-7">
-                <!-- Slip Card -->
                 <div class="bg-[#f4f7fb] border-2 border-dashed border-[#c5d0db] rounded-xl p-6 text-center mb-5">
                     <p id="slipTeacherName" class="font-black text-[#0d1f35] text-[17px] mb-4"></p>
                     <p class="text-[9px] text-[#6b84a0] font-bold uppercase tracking-widest">Global Teacher ID</p>
@@ -250,7 +234,6 @@
                     <p class="text-[9px] text-[#6b84a0] font-bold uppercase tracking-widest">Temporary Login PIN</p>
                     <p id="slipTeacherPin" class="font-mono font-black text-[#2563eb] text-[32px] tracking-[0.4em]"></p>
                 </div>
-                <!-- Warning -->
                 <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-5">
                     <p class="text-[11px] text-amber-700 font-bold leading-relaxed">
                         <i class="fa-solid fa-triangle-exclamation mr-1.5"></i>
@@ -272,9 +255,6 @@
     </div>
 
 
-    <!-- ══════════════════════════════════════════════════════════════════
-         MODAL: ARCHIVE BLOCKED
-    ══════════════════════════════════════════════════════════════════ -->
     <div id="archiveBlockedModal" class="overlay fixed inset-0 bg-[#0d1f35]/70 backdrop-blur-sm z-[70] flex items-center justify-center hidden opacity-0 transition-opacity">
         <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200 border-t-4 border-amber-400" id="archiveBlockedModalInner">
             <div class="px-7 py-5 border-b border-[#f0f4f8] flex justify-between items-center bg-amber-50">
@@ -297,9 +277,6 @@
     </div>
 
 
-    <!-- ══════════════════════════════════════════════════════════════════
-         MODAL: EXIT EVALUATION (Mandatory Archive)
-    ══════════════════════════════════════════════════════════════════ -->
     <div id="exitModal" class="overlay fixed inset-0 bg-[#0d1f35]/80 backdrop-blur-md z-[60] flex items-center justify-center hidden opacity-0 transition-opacity">
         <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full m-4 overflow-hidden border-t-4 border-[#e31b4a] transform scale-95 transition-transform duration-200" id="exitModalInner">
             <div class="px-7 py-5 border-b border-[#f0f4f8] flex justify-between items-center bg-[#fff0f3]">
@@ -356,9 +333,6 @@
     </div>
 
 
-    <!-- ══════════════════════════════════════════════════════════════════
-         MODAL: ADD EVALUATION
-    ══════════════════════════════════════════════════════════════════ -->
     <div id="addEvalModal" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-[55] flex items-center justify-center hidden opacity-0 transition-opacity">
         <div class="bg-white rounded-xl shadow-2xl max-w-md w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200" id="addEvalModalInner">
             <div class="h-1 bg-[#2563eb]"></div>
@@ -412,14 +386,10 @@
     </div>
 
 
-    <!-- ══════════════════════════════════════════════════════════════════
-         SIDE PANEL: MANAGE TEACHER
-    ══════════════════════════════════════════════════════════════════ -->
     <div id="teacherPanel" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-40 flex justify-end hidden opacity-0 transition-opacity">
         <div id="teacherPanelInner" class="side-panel bg-white w-full max-w-2xl h-full shadow-2xl flex flex-col translate-x-full transition-transform">
             <div class="h-1 bg-[#2563eb] flex-shrink-0"></div>
 
-            <!-- Panel Header -->
             <div class="px-7 py-4 border-b border-[#f0f4f8] flex justify-between items-center bg-[#f8fafb] flex-shrink-0">
                 <div class="min-w-0 mr-4">
                     <h3 id="tPanelName" class="font-bold text-xl text-[#0d1f35] truncate">Loading...</h3>
@@ -431,12 +401,10 @@
                 </button>
             </div>
 
-            <!-- Loading -->
             <div id="tPanelLoader" class="flex-1 flex items-center justify-center">
                 <i class="fa-solid fa-spinner fa-spin text-3xl text-[#2563eb]"></i>
             </div>
 
-            <!-- Tab Bar -->
             <div id="tPanelTabs" class="hidden flex-shrink-0 border-b-2 border-[#f0f4f8] bg-white overflow-x-auto">
                 <div class="flex">
                     <button class="panel-tab active" data-tab="overview">
@@ -457,7 +425,6 @@
                 </div>
             </div>
 
-            <!-- Tab Panes -->
             <div id="tab-overview"    class="tab-pane flex-1 overflow-y-auto p-6 bg-[#f4f7fb] space-y-4 hidden"></div>
             <div id="tab-students"    class="tab-pane flex-1 overflow-y-auto p-6 bg-[#f4f7fb] hidden"></div>
             <div id="tab-subjects"    class="tab-pane flex-1 overflow-y-auto p-6 bg-[#f4f7fb] hidden"></div>
