@@ -29,7 +29,7 @@ export function injectAdminLayout(activePageId, pageTitle, pageSub, showSearch =
 
         <div class="sidebar-brand">
           <div class="sidebar-brand-logo">
-            <img src="../../assets/images/logo2.png" alt="ConnectUs" onerror="this.parentElement.textContent='C'">
+            <img src="../../assets/images/logo.png" alt="ConnectUs" onerror="this.parentElement.textContent='C'">
           </div>
           <span class="sidebar-brand-text">ConnectUs</span>
         </div>
@@ -110,7 +110,7 @@ export function injectAdminLayout(activePageId, pageTitle, pageSub, showSearch =
           </div>
           ` : ''}
 
-          <img src="../../assets/images/logo2.png" alt="ConnectUs" class="topbar-logo">
+          <img src="../../assets/images/logo.png" alt="ConnectUs" class="topbar-logo">
         </div>
       </header>
     `;
