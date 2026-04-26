@@ -1,7 +1,7 @@
 import { db } from '../../assets/js/firebase-init.js';
 import { collection, doc, getDocs, addDoc, updateDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
-import { injectAdminLayout } from '../../assets/js/layout-admin.js'; // Corrected to singular!
+import { injectAdminLayout } from '../../assets/js/layout-admin.js'; 
 import { openOverlay, closeOverlay } from '../../assets/js/utils.js';
 
 // ── 1. INIT & AUTH ────────────────────────────────────────────────────────
@@ -54,7 +54,13 @@ async function loadSemesters() {
                     ${(s.startDate || s.endDate) ? `<p class="text-[10px] font-bold text-slate-400 mt-1 ml-6 uppercase tracking-wider">${s.startDate || '???'} TO ${s.endDate || '???'}</p>` : ''}
                 </div>
                 <div class="flex items-center gap-2">
-                    ${s.id !== activeId ? `<button onclick="window.setActivePeriod('${s.id}')" class="text-xs font-black text-blue-600 hover:bg-blue-600 hover:text-white border border-blue-300 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100">Set Active</button>` : ''}
+                    ${s.id !== activeId ? 
+                        (s.startDate && s.endDate ? 
+                            `<button onclick="window.setActivePeriod('${s.id}')" class="text-xs font-black text-blue-600 hover:bg-blue-600 hover:text-white border border-blue-300 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100">Set Active</button>` 
+                            : 
+                            `<button onclick="alert('Please click the edit (pen) icon to set the Start and End dates before making this period active.')" class="text-xs font-black text-slate-400 border border-slate-200 hover:bg-slate-50 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100" title="Dates required">Needs Dates</button>`
+                        ) 
+                    : ''}
                     <button onclick="window.toggleLockSem('${s.id}', ${!!s.isLocked})" class="text-slate-400 hover:text-indigo-600 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-indigo-50" title="${s.isLocked ? 'Unlock Semester' : 'Lock Semester'}"><i class="fa-solid ${s.isLocked ? 'fa-lock text-rose-500' : 'fa-lock-open'}"></i></button>
                     <button onclick="window.openEditSemModal('${s.id}')" class="text-slate-400 hover:text-amber-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-amber-50" title="Edit"><i class="fa-solid fa-pen"></i></button>
                     <button onclick="window.archiveSem('${s.id}')" class="text-slate-400 hover:text-red-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-red-50" title="Archive"><i class="fa-solid fa-box-archive"></i></button>
@@ -82,6 +88,14 @@ async function loadSemesters() {
 // ── 4. GLOBAL ACTIVE PERIOD SETTER ────────────────────────────────────────
 window.setActivePeriod = async function(id) {
     try {
+        const sem = allSemesters.find(s => s.id === id);
+        
+        // Final logic guard: Block activation if dates are empty
+        if (!sem || !sem.startDate || !sem.endDate) {
+            alert("You must set a Start Date and End Date for this period before making it active.");
+            return;
+        }
+
         await updateDoc(doc(db, 'schools', session.schoolId), { activeSemesterId: id });
         
         // Update local session to instantly reflect the badge
