@@ -277,6 +277,14 @@ window.closeAddTeacherModal = () => {
     claimedTeacherDoc = null;
 };
 
+// ── Search "Enter" Key Listener ───────────────────────────────────────────
+document.getElementById('teacherSearchInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('searchTeacherBtn').click();
+    }
+});
+
 // ── Search Unassigned Teachers ────────────────────────────────────────────
 document.getElementById('searchTeacherBtn').addEventListener('click', async () => {
     const input    = document.getElementById('teacherSearchInput').value.trim();
@@ -289,7 +297,7 @@ document.getElementById('searchTeacherBtn').addEventListener('click', async () =
     previewEl.classList.add('hidden');
     claimedTeacherDoc = null;
 
-    if (!input) { alert('Enter a name or Teacher ID to search.'); return; }
+    if (!input) { alert('Enter a name, email, or Teacher ID to search.'); return; }
 
     const btn = document.getElementById('searchTeacherBtn');
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
@@ -319,13 +327,17 @@ document.getElementById('searchTeacherBtn').addEventListener('click', async () =
         }
 
         if (!results.length) {
-            // Query all unassigned and filter by name client-side
+            // Query all unassigned and filter by name/email/id client-side
             const snap = await getDocs(
                 query(collection(db, 'teachers'), where('currentSchoolId', '==', ''))
             );
             results = snap.docs
                 .map(d => ({ id: d.id, ...d.data() }))
-                .filter(t => (t.name || '').toLowerCase().includes(lower));
+                .filter(t => 
+                    (t.name || '').toLowerCase().includes(lower) || 
+                    (t.email || '').toLowerCase().includes(lower) ||
+                    t.id.toLowerCase().includes(lower)
+                );
         }
 
         if (!results.length) {
@@ -336,7 +348,7 @@ document.getElementById('searchTeacherBtn').addEventListener('click', async () =
                     class="px-4 py-3 hover:bg-[#eef4ff] cursor-pointer border-b border-[#f0f4f8] last:border-0 flex items-center justify-between transition">
                     <div>
                         <p class="font-bold text-[#0d1f35] text-[13px]">${escHtml(t.name || 'Unknown')}</p>
-                        <p class="font-mono text-[10px] text-[#9ab0c6] uppercase mt-0.5">${t.id}</p>
+                        <p class="font-mono text-[10px] text-[#9ab0c6] uppercase mt-0.5">${t.id} ${t.email ? `• ${t.email}` : ''}</p>
                     </div>
                     <i class="fa-solid fa-chevron-right text-[#c5d0db] text-[11px]"></i>
                 </div>
@@ -470,13 +482,22 @@ document.getElementById('saveTeacherBtn').addEventListener('click', async () => 
     if (!email)                  { showMsg('Email address is required for PIN recovery.'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showMsg('Please enter a valid email address.'); return; }
     
-    // NEW MANDATORY CLASS ASSIGNMENT CHECK
     if (selectedClasses.length === 0) { showMsg('You must assign the teacher to at least one class.'); return; }
 
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processing...';
     btn.disabled  = true;
 
     try {
+        // Strict Email Validation Check
+        const emailCheckQuery = query(collection(db, 'teachers'), where('email', '==', email));
+        const emailCheckSnap = await getDocs(emailCheckQuery);
+        if (!emailCheckSnap.empty) {
+            showMsg('This email is already registered to a teacher.');
+            btn.innerHTML = '<i class="fa-solid fa-user-plus mr-2"></i> Register';
+            btn.disabled = false;
+            return;
+        }
+
         const limitCheck = await isTeacherLimitReached();
         if (limitCheck.reached) {
             alert(`Teacher limit reached (${limitCheck.current}/${limitCheck.limit}). Contact ConnectUs to upgrade.`);
@@ -485,7 +506,7 @@ document.getElementById('saveTeacherBtn').addEventListener('click', async () => 
             return;
         }
 
-        const newId   = generateTeacherId();
+        const newId    = generateTeacherId();
         const fullName = `${firstName} ${lastName}`;
         const docData = blankTeacherDoc({
             firstName, lastName,
@@ -625,7 +646,7 @@ async function renderOverviewTab() {
     // ── Check for active term and active students per class ───────────────
     let hasActiveTerm = false;
     let activeTermName = '';
-    let studentsByClass = {};   // { 'Standard 1': 3, 'Infant 2': 0, ... }
+    let studentsByClass = {};
 
     try {
         const [termSnap, studSnap] = await Promise.all([
@@ -644,7 +665,7 @@ async function renderOverviewTab() {
         }
 
         studSnap.forEach(d => {
-            const cls = d.data().className || '';
+            const cls = d.data().className || d.data().class || '';
             if (cls) studentsByClass[cls] = (studentsByClass[cls] || 0) + 1;
         });
     } catch (_) {}
@@ -749,7 +770,7 @@ window.saveClassAssignment = async () => {
     const msgEl          = document.getElementById('classAssignMsg');
     msgEl.classList.add('hidden');
 
-    // ── Guard: check if any currently-assigned class is being removed ─────
+    // Guard against removal
     const removed = currentClasses.filter(c => !selected.includes(c));
 
     if (removed.length > 0) {
@@ -769,7 +790,7 @@ window.saveClassAssignment = async () => {
                 const activeStudents = studSnap.docs.map(d => d.data());
 
                 for (const cls of removed) {
-                    const count = activeStudents.filter(s => s.className === cls).length;
+                    const count = activeStudents.filter(s => (s.className || s.class) === cls).length;
                     if (count > 0) {
                         msgEl.innerHTML =
                             `<i class="fa-solid fa-lock mr-1"></i>
@@ -788,7 +809,6 @@ window.saveClassAssignment = async () => {
         }
     }
 
-    // ── Safe to save ──────────────────────────────────────────────────────
     try {
         await updateDoc(doc(db, 'teachers', currentTeacherId), {
             classes:   selected,
@@ -855,10 +875,6 @@ async function renderStudentsTab() {
                             <span class="text-[10px] font-bold bg-[#f8fafb] border border-[#dce3ed] px-2 py-0.5 rounded text-[#374f6b]">
                                 ${escHtml(s.class || s.className || '—')}
                             </span>
-                            <button onclick="window.reassignStudent('${s.id}', '${escHtml(s.name)}')"
-                                class="text-[11px] font-bold text-[#6b84a0] hover:text-[#2563eb] bg-[#f8fafb] border border-[#dce3ed] px-3 py-1.5 rounded transition">
-                                Reassign
-                            </button>
                         </div>
                     </div>
                 `).join('')}
@@ -869,16 +885,6 @@ async function renderStudentsTab() {
     }
 }
 
-window.reassignStudent = (studentId, studentName) => {
-    const newTeacherId = prompt(`Reassign "${studentName}" to which Teacher ID?`);
-    if (!newTeacherId?.trim()) return;
-    if (!confirm(`Confirm: reassign ${studentName} to teacher ${newTeacherId.trim()}?`)) return;
-
-    updateDoc(doc(db, 'students', studentId), { teacherId: newTeacherId.trim() })
-        .then(() => { renderStudentsTab(); loadTeachers(); })
-        .catch(e => { console.error('[Teachers] reassign:', e); alert('Reassignment failed.'); });
-};
-
 
 // ── 11. SUBJECTS TAB ──────────────────────────────────────────────────────
 function renderSubjectsTab() {
@@ -886,64 +892,91 @@ function renderSubjectsTab() {
     if (!t) return;
     const pane     = document.getElementById('tab-subjects');
     const subjects  = t.subjects || [];
-    const active    = subjects.filter(s => !s.archived);
-    const archived  = subjects.filter(s => s.archived);
+    // We completely dropped the archive subject functionality. Showing all subjects.
 
     pane.innerHTML = `
         <div class="flex items-center justify-between mb-4">
             <p class="text-[12px] font-bold text-[#374f6b]">
-                ${active.length} active subject${active.length !== 1 ? 's' : ''}
+                ${subjects.length} active subject${subjects.length !== 1 ? 's' : ''}
             </p>
-            <button onclick="window.promptAddSubject()"
+            <button onclick="window.openAddSubjectModal()"
                 class="flex items-center gap-1.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold px-4 py-2 rounded text-[12px] transition">
                 <i class="fa-solid fa-plus"></i> Add Subject
             </button>
         </div>
 
         <div class="space-y-2 mb-5">
-            ${active.length
-                ? active.map(s => subjectRow(s, false)).join('')
+            ${subjects.length
+                ? subjects.map(s => subjectRow(s)).join('')
                 : `<div class="text-center py-8 text-[#9ab0c6] italic font-semibold text-[12px]">No active subjects.</div>`}
-        </div>
-
-        ${archived.length ? `
-            <details class="bg-white border border-[#dce3ed] rounded-xl overflow-hidden">
-                <summary class="px-5 py-3 text-[11px] font-bold text-[#9ab0c6] uppercase tracking-widest cursor-pointer hover:bg-[#f8fafb] transition select-none">
-                    <i class="fa-solid fa-box-archive mr-1.5"></i>
-                    ${archived.length} Archived Subject${archived.length !== 1 ? 's' : ''}
-                </summary>
-                <div class="p-4 space-y-2 border-t border-[#f0f4f8]">
-                    ${archived.map(s => subjectRow(s, true)).join('')}
-                </div>
-            </details>
-        ` : ''}`;
-}
-
-function subjectRow(s, isArchived) {
-    return `
-        <div class="bg-white border border-[#dce3ed] rounded-xl p-4 flex items-center justify-between">
-            <div class="min-w-0 mr-3">
-                <p class="font-bold text-[13px] ${isArchived ? 'text-[#9ab0c6] line-through' : 'text-[#0d1f35]'}">
-                    ${escHtml(s.name)}
-                </p>
-                ${s.description ? `<p class="text-[11px] text-[#6b84a0] font-semibold mt-0.5">${escHtml(s.description)}</p>` : ''}
-            </div>
-            <button onclick="window.toggleSubjectArchive('${s.id}', ${isArchived})"
-                class="flex-shrink-0 text-[11px] font-bold px-3 py-1.5 rounded border transition
-                    ${isArchived
-                        ? 'text-[#2563eb] border-[#c7d9fd] hover:bg-[#eef4ff]'
-                        : 'text-[#9ab0c6] border-[#f0f4f8] hover:text-[#e31b4a] hover:border-red-100 hover:bg-red-50'}">
-                ${isArchived ? 'Restore' : 'Archive'}
-            </button>
         </div>`;
 }
 
-window.promptAddSubject = () => {
-    const name = prompt('Subject name:');
-    if (!name?.trim()) return;
-    const desc = prompt('Description (optional):') || '';
-    addSubject(name.trim(), desc.trim());
+function subjectRow(s) {
+    return `
+        <div class="bg-white border border-[#dce3ed] rounded-xl p-4 flex items-center justify-between">
+            <div class="min-w-0 mr-3 w-full">
+                <p class="font-bold text-[13px] text-[#0d1f35]">
+                    ${escHtml(s.name)}
+                </p>
+                ${s.description ? `<p class="text-[11px] text-[#6b84a0] font-semibold mt-0.5">${escHtml(s.description)}</p>` : ''}
+                
+                <div class="flex items-center gap-4 mt-2 border-t border-[#f0f4f8] pt-2">
+                    <div class="bg-[#f8fafb] border border-[#f0f4f8] rounded px-2 py-1 flex items-center gap-1.5">
+                        <i class="fa-solid fa-chart-pie text-[#9ab0c6] text-[10px]"></i>
+                        <span class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Avg:</span>
+                        <span class="text-[11px] font-black text-[#0d1f35]">--</span>
+                    </div>
+                    <div class="bg-[#f8fafb] border border-[#f0f4f8] rounded px-2 py-1 flex items-center gap-1.5">
+                        <i class="fa-solid fa-bullseye text-[#9ab0c6] text-[10px]"></i>
+                        <span class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Med:</span>
+                        <span class="text-[11px] font-black text-[#0d1f35]">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+}
+
+// ── Custom Modal Logic for Subject Adding 
+window.openAddSubjectModal = () => {
+    document.getElementById('subjectSelect').value = '';
+    document.getElementById('customSubjectName').value = '';
+    document.getElementById('customSubjectContainer').classList.add('hidden');
+    document.getElementById('subjectDesc').value = '';
+    openOverlay('addSubjectModal', 'addSubjectModalInner');
 };
+
+window.closeAddSubjectModal = () => closeOverlay('addSubjectModal', 'addSubjectModalInner');
+
+document.getElementById('subjectSelect').addEventListener('change', (e) => {
+    const container = document.getElementById('customSubjectContainer');
+    if (e.target.value === 'Custom') {
+        container.classList.remove('hidden');
+    } else {
+        container.classList.add('hidden');
+    }
+});
+
+document.getElementById('saveSubjectBtn').addEventListener('click', async () => {
+    const selectVal = document.getElementById('subjectSelect').value;
+    let name = selectVal;
+    if (name === 'Custom') {
+        name = document.getElementById('customSubjectName').value.trim();
+    }
+    const desc = document.getElementById('subjectDesc').value.trim();
+
+    if (!name) { alert('Subject name is required.'); return; }
+
+    const btn = document.getElementById('saveSubjectBtn');
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...';
+    btn.disabled = true;
+
+    await addSubject(name, desc);
+
+    btn.innerHTML = 'Save Subject';
+    btn.disabled = false;
+    window.closeAddSubjectModal();
+});
 
 async function addSubject(name, description = '') {
     const newSubject = { id: `sub_${Date.now()}`, name, archived: false, description };
@@ -960,23 +993,6 @@ async function addSubject(name, description = '') {
         alert('Error adding subject.');
     }
 }
-
-window.toggleSubjectArchive = async (subjectId, currentlyArchived) => {
-    const updated = (currentTeacherData.subjects || []).map(s =>
-        s.id === subjectId ? { ...s, archived: !currentlyArchived } : s
-    );
-    try {
-        await updateDoc(doc(db, 'teachers', currentTeacherId), { subjects: updated });
-        currentTeacherData.subjects = updated;
-        const idx = allTeachersCache.findIndex(t => t.id === currentTeacherId);
-        if (idx > -1) allTeachersCache[idx].subjects = updated;
-        renderSubjectsTab();
-        renderTable();
-    } catch (e) {
-        console.error('[Teachers] toggleSubject:', e);
-        alert('Error updating subject.');
-    }
-};
 
 
 // ── 12. EVALUATIONS TAB ───────────────────────────────────────────────────
@@ -1145,7 +1161,6 @@ window.initiateArchive = async () => {
             .filter(s => s.enrollmentStatus !== 'Archived');
 
         if (activeStudents.length > 0) {
-            // Try to get active term name
             let termName = 'the current term';
             try {
                 const termSnap = await getDocs(
@@ -1160,7 +1175,7 @@ window.initiateArchive = async () => {
                 `<strong>${escHtml(currentTeacherData?.name)}</strong> currently has
                  <strong>${activeStudents.length} active student${activeStudents.length !== 1 ? 's' : ''}</strong>
                  in <strong>${escHtml(termName)}</strong>.<br><br>
-                 Please reassign all students before archiving this teacher.`;
+                 You must go to the main Students tab to reassign these students before you can archive this teacher.`;
             openOverlay('archiveBlockedModal', 'archiveBlockedModalInner');
             return;
         }
