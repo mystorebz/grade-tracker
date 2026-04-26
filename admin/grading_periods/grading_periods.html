@@ -38,22 +38,47 @@
                     
                     <div class="p-6">
                         
-                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6">
-                            <h4 class="text-xs font-black text-slate-500 uppercase tracking-wider mb-3">Add New Period</h4>
-                            <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                                <div class="sm:col-span-2">
-                                    <input type="text" id="newSemName" placeholder="Name (e.g. Semester 1, Midterm)" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none">
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl mb-8 overflow-hidden shadow-sm">
+                            <button id="toggleAddPeriodBtn" class="w-full flex items-center justify-between p-4 bg-white hover:bg-slate-50 transition outline-none">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center"><i class="fa-solid fa-plus"></i></div>
+                                    <span class="font-black text-slate-700 uppercase tracking-wider text-sm">Add New Grading Period</span>
                                 </div>
-                                <div>
-                                    <input type="date" id="newSemStart" title="Start Date" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 outline-none">
-                                </div>
-                                <div>
-                                    <input type="date" id="newSemEnd" title="End Date" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 outline-none">
-                                </div>
-                            </div>
-                            <button id="addSemBtn" class="mt-3 w-full bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-black text-sm shadow-md transition flex items-center justify-center gap-2">
-                                <i class="fa-solid fa-plus"></i> Add Period
+                                <i id="addPeriodIcon" class="fa-solid fa-chevron-down text-slate-400 transition-transform duration-200"></i>
                             </button>
+                            
+                            <div id="addPeriodForm" class="hidden p-5 border-t border-slate-200">
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div class="sm:col-span-2">
+                                        <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Period Name *</label>
+                                        <div class="flex gap-2 flex-col sm:flex-row">
+                                            <select id="presetSemName" class="form-input w-full sm:w-1/2 p-2.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none">
+                                                <option value="" disabled selected>Choose a period...</option>
+                                                <option value="Term 1">Term 1</option>
+                                                <option value="Term 2">Term 2</option>
+                                                <option value="Term 3">Term 3</option>
+                                                <option value="Semester 1">Semester 1</option>
+                                                <option value="Semester 2">Semester 2</option>
+                                                <option value="Midterm">Midterm</option>
+                                                <option value="custom">Custom Name...</option>
+                                            </select>
+                                            <input type="text" id="customSemName" placeholder="Type custom name..." class="hidden form-input w-full sm:w-1/2 p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none">
+                                        </div>
+                                    </div>
+                                    
+                                    <div>
+                                        <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Start Date *</label>
+                                        <input type="date" id="newSemStart" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 outline-none">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">End Date *</label>
+                                        <input type="date" id="newSemEnd" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 outline-none">
+                                    </div>
+                                </div>
+                                <button id="addSemBtn" class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-xl font-black text-sm shadow-md transition flex items-center justify-center gap-2">
+                                    <i class="fa-solid fa-check"></i> Create Period
+                                </button>
+                            </div>
                         </div>
 
                         <h4 class="text-xs font-black text-blue-600 uppercase tracking-wider mb-3">Active Periods</h4>
