@@ -8,7 +8,7 @@ import { getAuth }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 const firebaseConfig = {
-    apiKey:            "PASTE_YOUR_EXACT_KEY_HERE",
+    apiKey:            "AIzaSyDTIREBdTGkVc1cWJRrG9q7YN_fv0XMr5w",
     authDomain:        "school-grade-tracker.firebaseapp.com",
     projectId:         "school-grade-tracker",
     storageBucket:     "school-grade-tracker.firebasestorage.app",
