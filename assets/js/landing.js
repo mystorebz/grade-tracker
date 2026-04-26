@@ -116,39 +116,6 @@ if (registerBtn) {
                 createdAt:      timestamp,
             });
 
-            // ── Send 1: Confirmation email to the client (EmailJS) ──
-            await emailjs.send('service_kgk97jd', 'template_i5vrfdf', {
-                req_id: reqId,
-                first_name: firstName,
-                school_name: schoolName,
-                school_type: schoolType,
-                city: city,
-                country: country,
-                students_count: studentsCount,
-                teachers_count: teachersCount,
-                contract_summary: contractSummary,
-                user_email: workEmail
-            }, { publicKey: '0J9RlI4x1fQ8P9IG9' });
-
-            // ── Send 2: Notification email to ConnectUs team (EmailJS) ──
-            await emailjs.send('service_kgk97jd', 'template_5gr6dlw', {
-                req_id: reqId,
-                full_name: fullName,
-                job_title: jobTitle,
-                user_email: workEmail,
-                phone: phone,
-                school_name: schoolName,
-                school_type: schoolType,
-                city: city,
-                state_province: stateProvince || '—',
-                country: country,
-                students_count: studentsCount,
-                teachers_count: teachersCount,
-                contract_summary: contractSummary,
-                hear_about_us: hearAboutUs || '—',
-                message: message || '—'
-            }, { publicKey: '0J9RlI4x1fQ8P9IG9' });
-
             // Show success screen
             document.getElementById('registrationFormContainer').classList.add('hidden');
             document.getElementById('successScreen').classList.remove('hidden');
