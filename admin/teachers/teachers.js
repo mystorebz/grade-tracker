@@ -612,20 +612,65 @@ function switchPanelTab(tabName) {
 
 
 // ── 9. OVERVIEW TAB ───────────────────────────────────────────────────────
-function renderOverviewTab() {
+async function renderOverviewTab() {
     const t = currentTeacherData;
     if (!t) return;
     const pane     = document.getElementById('tab-overview');
     const classes  = getTeacherClasses(t);
     const complete = isProfileComplete(t);
 
-    const classCheckboxes = getClassOptions().map(c => `
-        <label class="flex items-center gap-2 cursor-pointer select-none">
-            <input type="checkbox" class="manage-class-checkbox accent-[#2563eb]"
-                value="${escHtml(c)}" ${classes.includes(c) ? 'checked' : ''}>
-            <span class="text-[12px] font-semibold text-[#374f6b]">${escHtml(c)}</span>
-        </label>
-    `).join('');
+    // ── Check for active term and active students per class ───────────────
+    let hasActiveTerm = false;
+    let activeTermName = '';
+    let studentsByClass = {};   // { 'Standard 1': 3, 'Infant 2': 0, ... }
+
+    try {
+        const [termSnap, studSnap] = await Promise.all([
+            getDocs(query(collection(db, 'terms'),
+                where('schoolId', '==', session.schoolId),
+                where('isActive', '==', true))),
+            getDocs(query(collection(db, 'students'),
+                where('teacherId', '==', currentTeacherId),
+                where('currentSchoolId', '==', session.schoolId),
+                where('enrollmentStatus', '==', 'Active')))
+        ]);
+
+        if (!termSnap.empty) {
+            hasActiveTerm  = true;
+            activeTermName = termSnap.docs[0].data().name || 'the current term';
+        }
+
+        studSnap.forEach(d => {
+            const cls = d.data().className || '';
+            if (cls) studentsByClass[cls] = (studentsByClass[cls] || 0) + 1;
+        });
+    } catch (_) {}
+
+    // ── Build checkboxes — locked if class has active students in active term
+    const classCheckboxes = getClassOptions().map(c => {
+        const isAssigned   = classes.includes(c);
+        const studentCount = studentsByClass[c] || 0;
+        const isLocked     = isAssigned && hasActiveTerm && studentCount > 0;
+
+        if (isLocked) {
+            return `
+                <label class="flex items-center gap-2 select-none cursor-not-allowed" title="Cannot remove — ${studentCount} active student${studentCount !== 1 ? 's' : ''} in ${activeTermName}">
+                    <input type="checkbox" class="manage-class-checkbox accent-[#2563eb]"
+                        value="${escHtml(c)}" checked disabled>
+                    <span class="text-[12px] font-semibold text-[#374f6b]">${escHtml(c)}</span>
+                    <span class="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded ml-auto">
+                        <i class="fa-solid fa-lock text-[8px]"></i> ${studentCount} student${studentCount !== 1 ? 's' : ''}
+                    </span>
+                </label>`;
+        }
+
+        return `
+            <label class="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" class="manage-class-checkbox accent-[#2563eb]"
+                    value="${escHtml(c)}" ${isAssigned ? 'checked' : ''}>
+                <span class="text-[12px] font-semibold text-[#374f6b]">${escHtml(c)}</span>
+            </label>`;
+    }).join('');
 
     pane.innerHTML = `
 
@@ -701,8 +746,51 @@ function renderOverviewTab() {
 }
 
 window.saveClassAssignment = async () => {
-    const selected = [...document.querySelectorAll('.manage-class-checkbox:checked')].map(cb => cb.value);
-    const msgEl    = document.getElementById('classAssignMsg');
+    const currentClasses = getTeacherClasses(currentTeacherData);
+    const selected       = [...document.querySelectorAll('.manage-class-checkbox:checked')].map(cb => cb.value);
+    const msgEl          = document.getElementById('classAssignMsg');
+    msgEl.classList.add('hidden');
+
+    // ── Guard: check if any currently-assigned class is being removed ─────
+    const removed = currentClasses.filter(c => !selected.includes(c));
+
+    if (removed.length > 0) {
+        try {
+            const [termSnap, studSnap] = await Promise.all([
+                getDocs(query(collection(db, 'terms'),
+                    where('schoolId', '==', session.schoolId),
+                    where('isActive', '==', true))),
+                getDocs(query(collection(db, 'students'),
+                    where('teacherId', '==', currentTeacherId),
+                    where('currentSchoolId', '==', session.schoolId),
+                    where('enrollmentStatus', '==', 'Active')))
+            ]);
+
+            if (!termSnap.empty) {
+                const termName      = termSnap.docs[0].data().name || 'the current term';
+                const activeStudents = studSnap.docs.map(d => d.data());
+
+                for (const cls of removed) {
+                    const count = activeStudents.filter(s => s.className === cls).length;
+                    if (count > 0) {
+                        msgEl.innerHTML =
+                            `<i class="fa-solid fa-lock mr-1"></i>
+                             Cannot remove <strong>${escHtml(cls)}</strong> —
+                             ${count} active student${count !== 1 ? 's' : ''} ${count !== 1 ? 'are' : 'is'} assigned to this teacher
+                             in <strong>${escHtml(termName)}</strong>.
+                             Reassign or archive the student${count !== 1 ? 's' : ''} first.`;
+                        msgEl.className = 'text-[11px] mt-3 font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg p-3 leading-relaxed';
+                        msgEl.classList.remove('hidden');
+                        return;
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[Teachers] saveClasses guard:', e);
+        }
+    }
+
+    // ── Safe to save ──────────────────────────────────────────────────────
     try {
         await updateDoc(doc(db, 'teachers', currentTeacherId), {
             classes:   selected,
