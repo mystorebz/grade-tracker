@@ -1,5 +1,5 @@
 import { db } from '../assets/js/firebase-init.js';
-import { doc, getDoc, updateDoc, writeBatch, collection } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { doc, getDoc, updateDoc, writeBatch, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // DOM Elements
 const loadingState  = document.getElementById('loadingState');
@@ -38,6 +38,36 @@ function generateAdminId() {
     let rand = '';
     for (let i = 0; i < 5; i++) rand += chars.charAt(Math.floor(Math.random() * chars.length));
     return `A${year}-${rand}`;
+}
+
+// ── GLOBAL EMAIL CHECK ───────────────────────────────────────────────────────
+async function isEmailInUse(email, currentReqId) {
+    if (!email) return false;
+    const targetEmail = email.toLowerCase().trim();
+
+    // 1. Check Teachers
+    const tSnap = await getDocs(query(collection(db, 'teachers'), where('email', '==', targetEmail)));
+    if (!tSnap.empty) return true;
+
+    // 2. Check Students
+    const sSnap = await getDocs(query(collection(db, 'students'), where('email', '==', targetEmail)));
+    if (!sSnap.empty) return true;
+
+    // 3. Check Active Schools (Admins)
+    const schSnap = await getDocs(query(collection(db, 'schools'), where('contactEmail', '==', targetEmail)));
+    if (!schSnap.empty) return true;
+
+    // 4. Check Pending Quote Requests (excluding the one we are currently approving)
+    const qSnap = await getDocs(query(collection(db, 'quote_requests'), where('workEmail', '==', targetEmail)));
+    let inUseInQuotes = false;
+    qSnap.forEach(doc => {
+        if (doc.id !== currentReqId) {
+            inUseInQuotes = true;
+        }
+    });
+    if (inUseInQuotes) return true;
+
+    return false;
 }
 
 // ── 1. Boot Sequence: Verify Request ID ───────────────────────────────────────
@@ -115,6 +145,18 @@ initializeBtn.addEventListener('click', async () => {
     initializeBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Deploying Infrastructure...';
 
     try {
+        // ── LAYER 1: STRICT GLOBAL EMAIL VALIDATION ──
+        const emailToCheck = requestData.workEmail ? requestData.workEmail.trim() : null;
+        if (emailToCheck) {
+            const emailExists = await isEmailInUse(emailToCheck, reqId);
+            if (emailExists) {
+                showValidation("This email is already associated with an existing account or pending request. Please contact support.");
+                initializeBtn.disabled = false;
+                initializeBtn.innerHTML = 'Initialize Infrastructure →';
+                return;
+            }
+        }
+
         const [hashedCode, hashedA1, hashedA2] = await Promise.all([
             sha256(code),
             sha256(secA1),
@@ -133,12 +175,12 @@ initializeBtn.addEventListener('click', async () => {
             schoolType,
             superAdminId:         newSuperAdminId, 
             adminCode:            hashedCode,      
-            securityQ1:           secQ1,           
-            securityA1:           hashedA1,        
-            securityQ2:           secQ2,           
-            securityA2:           hashedA2,        
-            securityQuestionsSet: true,            
-            isSuperAdmin:         true,            
+            securityQ1:           secQ1,            
+            securityA1:           hashedA1,         
+            securityQ2:           secQ2,            
+            securityA2:           hashedA2,         
+            securityQuestionsSet: true,             
+            isSuperAdmin:         true,             
             isVerified:           true,
             requiresPinReset:     false,
             
