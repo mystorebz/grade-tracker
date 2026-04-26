@@ -55,6 +55,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Authenticating...`;
 
     try {
+        console.log("Checkpoint 1: Starting database queries...");
         let foundSchoolId = null;
         let tId           = null;
         let tData         = null;
@@ -79,6 +80,8 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
             } catch (e) { /* composite index may not exist yet */ }
         }
 
+        console.log("Checkpoint 2: Global query finished. foundSchoolId =", foundSchoolId);
+
         // ── Fall back to legacy siloed path ───────────────────────────────────
         if (!foundSchoolId) {
             for (const schoolId of [rawId.toUpperCase(), rawId.toLowerCase(), rawId]) {
@@ -98,6 +101,8 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
             }
         }
 
+        console.log("Checkpoint 3: Legacy query finished. foundSchoolId =", foundSchoolId);
+
         if (!foundSchoolId || !tData) {
             msgEl.textContent = 'Invalid School ID or Teacher Code.';
             msgEl.classList.remove('hidden');
@@ -112,6 +117,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
             return;
         }
 
+        console.log("Checkpoint 4: Checking School Verification...");
         const schoolSnap = await getDoc(doc(db, 'schools', foundSchoolId));
         if (!schoolSnap.exists() || schoolSnap.data().isVerified !== true) {
             msgEl.textContent = 'School account is pending approval.';
@@ -124,10 +130,10 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         tempSession = { schoolId: foundSchoolId, teacherId: tId, teacherData: tData };
 
         // ── Mint Firebase Auth token FIRST — before any Firestore writes ──────
-        // Rules now require request.auth != null for writes. Token must be
-        // established before finalizeLogin() attempts any updateDoc calls.
+        console.log("Checkpoint 5: Minting Cloud Function Token...");
         try {
             const result = await mintTeacherToken({ schoolId: foundSchoolId, pin: code });
+            console.log("Checkpoint 6: Token Minted. Signing into Firebase Auth...");
             await signInWithCustomToken(auth, result.data.token);
         } catch (e) {
             console.error('[Teacher Login] mintTeacherToken failed:', e);
@@ -137,20 +143,22 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
             return; // <-- FIX: Stops execution to prevent infinite spin and failed writes
         }
 
-        // FIX: The line hiding the login-shell has been completely removed.
-
+        console.log("Checkpoint 7: Authentication successful. Checking routing paths...");
         const needsClasses = !tData.classes || tData.classes.length === 0;
 
         if (tData.requiresPinReset) {
+            console.log("Checkpoint 8: Opening Force Reset Modal...");
             openOverlay('forceResetModal', 'forceResetModalInner');
         } else if (needsClasses) {
+            console.log("Checkpoint 8: Opening Onboarding Modal...");
             triggerOnboarding();
         } else {
+            console.log("Checkpoint 8: Running finalizeLogin()...");
             await finalizeLogin();
         }
 
     } catch (e) {
-        console.error('[Teacher Login]', e);
+        console.error('[Teacher Login] Outer Catch Triggered:', e);
         msgEl.textContent = 'Connection error. Please try again.';
         msgEl.classList.remove('hidden');
         resetLoginBtn(btn);
@@ -253,6 +261,7 @@ document.getElementById('saveClassBtn').addEventListener('click', async () => {
 
 // ── 4. FINALIZE LOGIN ─────────────────────────────────────────────────────────
 async function finalizeLogin() {
+    console.log("Checkpoint 9: finalizeLogin() triggered.");
     try {
         // ── Safety: ensure classes array ──────────────────────────────────────
         if (!tempSession.teacherData.classes || tempSession.teacherData.classes.length === 0) {
@@ -297,15 +306,18 @@ async function finalizeLogin() {
 
     // ── Gate 1: Profile completion ────────────────────────────────────────────
     if (isGlobalTeacher && tempSession.teacherData.profileComplete === false) {
+        console.log("Checkpoint 10: Redirecting to Onboarding...");
         window.location.href = 'onboarding/onboarding.html';
         return;
     }
 
     // ── Gate 2: Security questions ────────────────────────────────────────────
     if (isGlobalTeacher && !tempSession.teacherData.securityQuestionsSet) {
+        console.log("Checkpoint 10: Redirecting to Setup...");
         window.location.href = '../onboarding/first-time-setup.html?role=teacher';
         return;
     }
 
+    console.log("Checkpoint 10: Redirecting to Home...");
     window.location.href = 'home/home.html';
 }
