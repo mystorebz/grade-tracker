@@ -271,7 +271,7 @@ document.getElementById('saveTeacherBtn').addEventListener('click', async () => 
                 archivedSchoolIds: [],
                 profileComplete:   false,
                 securityQuestionsSet: false,
-                requiresPinReset:  false,
+                requiresPinReset:  true, // <--- CHANGED TO TRUE: Forces PIN reset on first login
                 subjects: [
                     { id: `sub_${Date.now()}_1`, name: 'Mathematics',           archived: false, description: '' },
                     { id: `sub_${Date.now()}_2`, name: 'English Language Arts', archived: false, description: '' },
