@@ -40,10 +40,8 @@ export const storage = getStorage(app);
 export const auth = getAuth(app);
 
 // ── App Check (reCAPTCHA v3) ──────────────────────────────────────────────────
-// Replace YOUR_RECAPTCHA_V3_SITE_KEY with the key from Firebase Console
-// Set self.FIREBASE_APPCHECK_DEBUG_TOKEN = true in browser console for local testing
 initializeAppCheck(app, {
-    provider: new ReCaptchaV3Provider('YOUR_RECAPTCHA_V3_SITE_KEY'),
+    provider: new ReCaptchaV3Provider('6LfJsMosAAAAALY9ywfvWy_PxU1Z42DT0C62IIH0'),
     isTokenAutoRefreshEnabled: true
 });
 
