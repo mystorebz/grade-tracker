@@ -1,5 +1,5 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { collection, doc, getDocs, addDoc, updateDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, doc, getDocs, addDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js'; 
 import { openOverlay, closeOverlay } from '../../assets/js/utils.js';
@@ -7,7 +7,7 @@ import { openOverlay, closeOverlay } from '../../assets/js/utils.js';
 // ── 1. INIT & AUTH ────────────────────────────────────────────────────────
 const session = requireAuth('admin', '../login.html');
 
-// Inject layout: Page ID 'semesters' matches the ID in layout-admin.js
+// Inject layout
 injectAdminLayout('semesters', 'Grading Periods', 'Manage active and historical grading periods', false, false);
 
 // ── 2. STATE & ELEMENTS ───────────────────────────────────────────────────
@@ -17,57 +17,71 @@ let currentEditSemId = null;
 const activeListEl = document.getElementById('semestersList');
 const archivedListEl = document.getElementById('archivedSemestersList');
 
+// Accordion UI Logic
+document.getElementById('toggleAddPeriodBtn').addEventListener('click', () => {
+    document.getElementById('addPeriodForm').classList.toggle('hidden');
+    document.getElementById('addPeriodIcon').classList.toggle('rotate-180');
+});
+
+// Dropdown UI Logic
+document.getElementById('presetSemName').addEventListener('change', (e) => {
+    const customInput = document.getElementById('customSemName');
+    if (e.target.value === 'custom') {
+        customInput.classList.remove('hidden');
+        customInput.focus();
+    } else {
+        customInput.classList.add('hidden');
+        customInput.value = '';
+    }
+});
+
 // ── 3. LOAD SEMESTERS ─────────────────────────────────────────────────────
 async function loadSemesters() {
     try {
         const sRef = collection(db, 'schools', session.schoolId, 'semesters');
-        let snap = await getDocs(sRef);
-        
-        // Backwards compatibility / initial setup if empty
-        if (snap.empty) {
-            const defaultSems = [
-                { id: 'sem1', name: 'Semester 1', startDate: '', endDate: '', order: 1, archived: false, isLocked: false },
-                { id: 'sem2', name: 'Midterm', startDate: '', endDate: '', order: 2, archived: false, isLocked: false },
-                { id: 'sem3', name: 'Semester 2', startDate: '', endDate: '', order: 3, archived: false, isLocked: false },
-                { id: 'sem4', name: 'Semester 3', startDate: '', endDate: '', order: 4, archived: false, isLocked: false }
-            ];
-            await Promise.all(defaultSems.map(s => setDoc(doc(db, 'schools', session.schoolId, 'semesters', s.id), s)));
-            snap = await getDocs(sRef);
-        }
+        const snap = await getDocs(sRef);
         
         allSemesters = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.order - b.order);
         
-        // STRICT FIX: No automatic fallback. If it's not set in the session/DB, nothing is active.
         const activeId = session.activeSemesterId || null;
-
         const activePeriods = allSemesters.filter(s => !s.archived);
         const archivedPeriods = allSemesters.filter(s => s.archived);
 
-        // Render Active List
-        activeListEl.innerHTML = activePeriods.map(s => `
-            <div class="flex items-center justify-between bg-white p-4 border rounded-2xl shadow-sm transition group hover:shadow-md ${s.id === activeId ? 'border-blue-300 bg-blue-50/40' : 'border-slate-200'}">
-                <div>
-                    <div class="flex items-center gap-3">
-                        <i class="fa-solid fa-grip-lines text-slate-300"></i>
-                        <span class="font-black text-slate-700">${s.name}</span>
-                        ${s.id === activeId ? '<span class="badge badge-active ml-2">Active</span>' : ''}
-                        ${s.isLocked ? '<span class="bg-rose-100 text-rose-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ml-1"><i class="fa-solid fa-lock mr-1"></i>Locked</span>' : ''}
+        // Render Active List or Empty Guidance State
+        if (activePeriods.length === 0) {
+            activeListEl.innerHTML = `
+                <div class="bg-blue-50/50 border border-blue-100 rounded-2xl p-8 text-center shadow-sm">
+                    <div class="w-14 h-14 bg-white text-blue-500 rounded-full flex items-center justify-center text-2xl mx-auto mb-4 shadow-sm"><i class="fa-solid fa-calendar-plus"></i></div>
+                    <h4 class="font-black text-slate-800 text-lg mb-2">No Grading Periods Found</h4>
+                    <p class="text-sm text-slate-500 font-semibold max-w-md mx-auto">Click "Add New Grading Period" above to create your first term. You must set a Start Date and End Date before you can set it as Active.</p>
+                </div>
+            `;
+        } else {
+            activeListEl.innerHTML = activePeriods.map(s => `
+                <div class="flex items-center justify-between bg-white p-4 border rounded-2xl shadow-sm transition group hover:shadow-md ${s.id === activeId ? 'border-blue-300 bg-blue-50/40' : 'border-slate-200'}">
+                    <div>
+                        <div class="flex items-center gap-3">
+                            <i class="fa-solid fa-grip-lines text-slate-300"></i>
+                            <span class="font-black text-slate-700">${s.name}</span>
+                            ${s.id === activeId ? '<span class="badge badge-active ml-2">Active</span>' : ''}
+                            ${s.isLocked ? '<span class="bg-rose-100 text-rose-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ml-1"><i class="fa-solid fa-lock mr-1"></i>Locked</span>' : ''}
+                        </div>
+                        ${(s.startDate || s.endDate) ? `<p class="text-[10px] font-bold text-slate-400 mt-1 ml-6 uppercase tracking-wider">${s.startDate || '???'} TO ${s.endDate || '???'}</p>` : ''}
                     </div>
-                    ${(s.startDate || s.endDate) ? `<p class="text-[10px] font-bold text-slate-400 mt-1 ml-6 uppercase tracking-wider">${s.startDate || '???'} TO ${s.endDate || '???'}</p>` : ''}
-                </div>
-                <div class="flex items-center gap-2">
-                    ${s.id !== activeId ? 
-                        (s.startDate && s.endDate ? 
-                            `<button onclick="window.setActivePeriod('${s.id}')" class="text-xs font-black text-blue-600 hover:bg-blue-600 hover:text-white border border-blue-300 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100">Set Active</button>` 
-                            : 
-                            `<button onclick="alert('Please click the edit (pen) icon to set the Start and End dates before making this period active.')" class="text-xs font-black text-slate-400 border border-slate-200 hover:bg-slate-50 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100" title="Dates required">Needs Dates</button>`
-                        ) 
-                    : ''}
-                    <button onclick="window.toggleLockSem('${s.id}', ${!!s.isLocked})" class="text-slate-400 hover:text-indigo-600 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-indigo-50" title="${s.isLocked ? 'Unlock Semester' : 'Lock Semester'}"><i class="fa-solid ${s.isLocked ? 'fa-lock text-rose-500' : 'fa-lock-open'}"></i></button>
-                    <button onclick="window.openEditSemModal('${s.id}')" class="text-slate-400 hover:text-amber-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-amber-50" title="Edit"><i class="fa-solid fa-pen"></i></button>
-                    <button onclick="window.archiveSem('${s.id}')" class="text-slate-400 hover:text-red-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-red-50" title="Archive"><i class="fa-solid fa-box-archive"></i></button>
-                </div>
-            </div>`).join('');
+                    <div class="flex items-center gap-2">
+                        ${s.id !== activeId ? 
+                            (s.startDate && s.endDate ? 
+                                `<button onclick="window.setActivePeriod('${s.id}')" class="text-xs font-black text-blue-600 hover:bg-blue-600 hover:text-white border border-blue-300 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100">Set Active</button>` 
+                                : 
+                                `<button onclick="alert('Please click the edit (pen) icon to set the Start and End dates before making this period active.')" class="text-xs font-black text-slate-400 border border-slate-200 hover:bg-slate-50 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100" title="Dates required">Needs Dates</button>`
+                            ) 
+                        : ''}
+                        <button onclick="window.toggleLockSem('${s.id}', ${!!s.isLocked})" class="text-slate-400 hover:text-indigo-600 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-indigo-50" title="${s.isLocked ? 'Unlock Semester' : 'Lock Semester'}"><i class="fa-solid ${s.isLocked ? 'fa-lock text-rose-500' : 'fa-lock-open'}"></i></button>
+                        <button onclick="window.openEditSemModal('${s.id}')" class="text-slate-400 hover:text-amber-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-amber-50" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                        <button onclick="window.archiveSem('${s.id}')" class="text-slate-400 hover:text-red-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-red-50" title="Archive"><i class="fa-solid fa-box-archive"></i></button>
+                    </div>
+                </div>`).join('');
+        }
 
         // Render Archived List
         archivedListEl.innerHTML = archivedPeriods.length ? archivedPeriods.map(s => `
@@ -92,7 +106,6 @@ window.setActivePeriod = async function(id) {
     try {
         const sem = allSemesters.find(s => s.id === id);
         
-        // Final logic guard: Block activation if dates are empty
         if (!sem || !sem.startDate || !sem.endDate) {
             alert("You must set a Start Date and End Date for this period before making it active.");
             return;
@@ -100,7 +113,6 @@ window.setActivePeriod = async function(id) {
 
         await updateDoc(doc(db, 'schools', session.schoolId), { activeSemesterId: id });
         
-        // Update local session to instantly reflect the badge
         session.activeSemesterId = id;
         setSessionData('admin', session);
         
@@ -113,11 +125,16 @@ window.setActivePeriod = async function(id) {
 
 // ── 5. ADD NEW PERIOD ─────────────────────────────────────────────────────
 document.getElementById('addSemBtn').addEventListener('click', async () => {
-    const n = document.getElementById('newSemName').value.trim();
+    const preset = document.getElementById('presetSemName').value;
+    const custom = document.getElementById('customSemName').value.trim();
     const start = document.getElementById('newSemStart').value;
     const end = document.getElementById('newSemEnd').value;
     
-    if (!n) { alert("Period Name is required"); return; }
+    let finalName = preset === 'custom' ? custom : preset;
+    
+    if (!finalName) { alert("Please select or type a Period Name."); return; }
+    if (!start || !end) { alert("Start and End dates are required."); return; }
+    if (new Date(start) >= new Date(end)) { alert("End date must be after the Start date."); return; }
     
     const btn = document.getElementById('addSemBtn'); 
     btn.disabled = true; 
@@ -125,7 +142,7 @@ document.getElementById('addSemBtn').addEventListener('click', async () => {
     
     try {
         await addDoc(collection(db, 'schools', session.schoolId, 'semesters'), {
-            name: n, 
+            name: finalName, 
             startDate: start, 
             endDate: end, 
             order: Date.now(), 
@@ -133,9 +150,15 @@ document.getElementById('addSemBtn').addEventListener('click', async () => {
             isLocked: false
         });
         
-        document.getElementById('newSemName').value = ''; 
+        // Reset Form & Close Accordion
+        document.getElementById('presetSemName').value = ''; 
+        document.getElementById('customSemName').value = '';
+        document.getElementById('customSemName').classList.add('hidden');
         document.getElementById('newSemStart').value = ''; 
         document.getElementById('newSemEnd').value = '';
+        
+        document.getElementById('addPeriodForm').classList.add('hidden');
+        document.getElementById('addPeriodIcon').classList.remove('rotate-180');
         
         loadSemesters();
     } catch (e) {
@@ -144,7 +167,7 @@ document.getElementById('addSemBtn').addEventListener('click', async () => {
     }
     
     btn.disabled = false; 
-    btn.innerHTML = '<i class="fa-solid fa-plus"></i> Add Period';
+    btn.innerHTML = '<i class="fa-solid fa-check"></i> Create Period';
 });
 
 // ── 6. LOCK/UNLOCK PERIOD ─────────────────────────────────────────────────
@@ -185,7 +208,8 @@ document.getElementById('saveSemEditBtn').addEventListener('click', async () => 
     const startDate = document.getElementById('editSemStart').value;
     const endDate = document.getElementById('editSemEnd').value;
     
-    if (!name) return;
+    if (!name) { alert("Name is required"); return; }
+    if (startDate && endDate && new Date(startDate) >= new Date(endDate)) { alert("End date must be after Start date."); return; }
     
     const btn = document.getElementById('saveSemEditBtn'); 
     btn.disabled = true; 
