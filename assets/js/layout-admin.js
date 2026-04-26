@@ -110,7 +110,7 @@ export function injectAdminLayout(activePageId, pageTitle, pageSub, showSearch =
           </div>
           ` : ''}
 
-          <img src="../../assets/images/logo.png" alt="ConnectUs" class="topbar-logo">
+          <img src="../../assets/logo.png" alt="ConnectUs" style="width: 65px; height: 65px; border-radius: 50%; object-fit: cover;" onerror="this.parentElement.textContent='C'">
         </div>
       </header>
     `;
