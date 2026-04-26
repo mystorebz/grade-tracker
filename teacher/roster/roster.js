@@ -374,13 +374,26 @@ window.searchStudentRegistry = async function() {
 
         const s = { id: snap.id, ...snap.data() };
 
+        // --- NEW SMARTER LOGIC FOR CLAIMING ---
         if (s.currentSchoolId && s.currentSchoolId !== '') {
-            const msg = s.currentSchoolId === session.schoolId
-                ? 'This student is already enrolled at your school.'
-                : 'This student is currently enrolled at another school. Their current school must close enrollment first. Contact ConnectUs if you believe this is an error.';
-            resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">${msg}</div>`;
-            btn.textContent = 'Search'; btn.disabled = false; return;
+            if (s.currentSchoolId !== session.schoolId) {
+                // They belong to a completely different school
+                resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">This student is currently enrolled at another school. Their current school must close enrollment first.</div>`;
+                btn.textContent = 'Search'; btn.disabled = false; return;
+            } else {
+                // They belong to THIS school. Let's see if they already have a teacher.
+                if (s.teacherId && s.teacherId !== '') {
+                    if (s.teacherId === session.teacherId) {
+                        resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">This student is already in your active roster!</div>`;
+                    } else {
+                        resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">This student is already assigned to another teacher's roster at this school.</div>`;
+                    }
+                    btn.textContent = 'Search'; btn.disabled = false; return;
+                }
+                // If we get here, they are at the school but have NO teacher. We proceed!
+            }
         }
+        // -------------------------
 
         const lastSchool = s.academicHistory?.length
             ? `Last school: ${s.academicHistory[s.academicHistory.length-1].schoolName || s.academicHistory[s.academicHistory.length-1].schoolId}`
