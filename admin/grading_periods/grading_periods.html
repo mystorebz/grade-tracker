@@ -50,7 +50,12 @@
                             <div id="addPeriodForm" class="hidden p-5 border-t border-slate-200">
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div class="sm:col-span-2">
-                                        <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Period Name *</label>
+                                        <div class="flex items-center gap-2 mb-1.5">
+                                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider">Period Name *</label>
+                                            <button id="termHelpBtn" class="text-blue-500 hover:text-blue-700 transition outline-none" title="View standard term dates">
+                                                <i class="fa-solid fa-circle-question"></i>
+                                            </button>
+                                        </div>
                                         <div class="flex gap-2 flex-col sm:flex-row">
                                             <select id="presetSemName" class="form-input w-full sm:w-1/2 p-2.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none">
                                                 <option value="" disabled selected>Choose a period...</option>
@@ -75,15 +80,21 @@
                                         <input type="date" id="newSemEnd" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 outline-none">
                                     </div>
                                 </div>
+                                <p id="dateHint" class="text-xs text-blue-600 font-bold mt-3 h-4"></p>
                                 <button id="addSemBtn" class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-xl font-black text-sm shadow-md transition flex items-center justify-center gap-2">
                                     <i class="fa-solid fa-check"></i> Create Period
                                 </button>
                             </div>
                         </div>
 
-                        <h4 class="text-xs font-black text-blue-600 uppercase tracking-wider mb-3">Active Periods</h4>
-                        <div id="semestersList" class="space-y-3 mb-8">
-                            <div class="flex justify-center py-8"><i class="fa-solid fa-spinner fa-spin text-2xl text-blue-400"></i></div>
+                        <h4 class="text-xs font-black text-green-600 uppercase tracking-wider mb-3"><i class="fa-solid fa-circle-check mr-1"></i> Currently Active Period</h4>
+                        <div id="activePeriodList" class="space-y-3 mb-8">
+                            <div class="flex justify-center py-4"><i class="fa-solid fa-spinner fa-spin text-2xl text-slate-300"></i></div>
+                        </div>
+
+                        <h4 class="text-xs font-black text-slate-500 uppercase tracking-wider mb-3 pt-4 border-t border-slate-100">Inactive / Available Periods</h4>
+                        <div id="inactiveSemestersList" class="space-y-3 mb-8">
+                            <div class="flex justify-center py-4"><i class="fa-solid fa-spinner fa-spin text-2xl text-slate-300"></i></div>
                         </div>
 
                         <h4 class="text-xs font-black text-amber-600 uppercase tracking-wider mb-3 pt-6 border-t border-slate-100">Archived Periods</h4>
@@ -98,6 +109,37 @@
 
         </div>
     </main>
+
+    <div id="helpSemModal" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200" id="helpSemModalInner">
+            <div class="h-1 bg-gradient-to-r from-blue-500 to-cyan-400"></div>
+            <div class="px-7 py-5 border-b border-slate-100 flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-circle-info"></i></div>
+                    <h3 class="font-black text-xl text-slate-800">Term Guide</h3>
+                </div>
+                <button onclick="window.closeHelpSemModal()" class="text-slate-400 hover:text-red-500 h-8 w-8 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="p-7 space-y-4 bg-slate-50/50">
+                <p class="text-sm text-slate-600 font-semibold leading-relaxed">Standard grading periods in Belize typically follow this schedule:</p>
+                <div class="space-y-3 mt-4">
+                    <div class="bg-white border border-slate-200 p-3 rounded-xl shadow-sm">
+                        <p class="text-xs font-black text-blue-600 uppercase tracking-wider mb-1">Term 1</p>
+                        <p class="text-sm text-slate-700 font-medium">Early September &mdash; Late November</p>
+                    </div>
+                    <div class="bg-white border border-slate-200 p-3 rounded-xl shadow-sm">
+                        <p class="text-xs font-black text-blue-600 uppercase tracking-wider mb-1">Term 2</p>
+                        <p class="text-sm text-slate-700 font-medium">Early January &mdash; Late March</p>
+                    </div>
+                    <div class="bg-white border border-slate-200 p-3 rounded-xl shadow-sm">
+                        <p class="text-xs font-black text-blue-600 uppercase tracking-wider mb-1">Term 3</p>
+                        <p class="text-sm text-slate-700 font-medium">Mid-April &mdash; Late June</p>
+                    </div>
+                </div>
+                <p class="text-xs italic text-slate-500 mt-4 font-medium">Note: You can always select "Custom Name" if your institution uses Semesters or Trimesters instead.</p>
+            </div>
+        </div>
+    </div>
 
     <div id="editSemModal" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0">
         <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200" id="editSemModalInner">
