@@ -158,21 +158,10 @@ function renderTable() {
             <td class="px-6 py-4 text-slate-600 font-semibold text-sm">${teacherBadge}</td>
             <td class="px-6 py-4 text-slate-600 font-semibold text-sm">${escHtml(s.parentPhone) || '—'}</td>
             <td class="px-6 py-4 text-right">
-                <div class="flex items-center justify-end gap-2">
-                    ${isActive ? `
-                    <button onclick="window.openReassignModal('${s.id}')"
-                        class="bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 font-black px-3 py-1.5 rounded-lg text-xs transition border border-blue-200">
-                        Reassign
-                    </button>
-                    <button onclick="window.openTransferModal('${s.id}')"
-                        class="bg-amber-50 hover:bg-amber-500 hover:text-white text-amber-600 font-black px-3 py-1.5 rounded-lg text-xs transition border border-amber-200">
-                        Close Enrollment
-                    </button>` : ''}
-                    <button onclick="window.openStudentPanel('${s.id}')"
-                        class="bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 font-black px-3 py-1.5 rounded-lg text-xs transition border border-emerald-200">
-                        Records & Info
-                    </button>
-                </div>
+                <button onclick="window.openStudentPanel('${s.id}')"
+                    class="bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 font-black px-4 py-2 rounded-lg text-xs transition border border-emerald-200 shadow-sm">
+                    <i class="fa-solid fa-eye mr-1"></i> View
+                </button>
             </td>
         </tr>`;
     }).join('');
@@ -183,7 +172,7 @@ filterTeacherSelect.addEventListener('change', renderTable);
 filterStatusSelect.addEventListener('change', renderTable);
 document.getElementById('searchInput')?.addEventListener('input', renderTable);
 
-// ── 6. ADD / CLAIM STUDENT MODAL (CASCADING DROPDOWNS) ────────────────────
+// ── 6. ADD / CLAIM STUDENT MODAL ──────────────────────────────────────────
 window.openAddStudentModal = () => {
     ['sGlobalId','sName','sDob','sParentName','sParentPhone','sEmail'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
@@ -244,7 +233,6 @@ window.closeAddStudentModal = () => {
     claimedStudentDoc = null;
 };
 
-// ── ID-Only Lookup ────────────────────────────────────────────────────────
 document.getElementById('lookupStudentBtn').addEventListener('click', async () => {
     const rawId   = document.getElementById('sGlobalId').value.trim().toUpperCase();
     const preview = document.getElementById('claimPreview');
@@ -305,7 +293,6 @@ document.getElementById('lookupStudentBtn').addEventListener('click', async () =
     btn.disabled = false;
 });
 
-// ── Save (Claim or Create) ─────────────────────────────────────────────────
 document.getElementById('saveStudentBtn').addEventListener('click', async () => {
     const btn = document.getElementById('saveStudentBtn');
     btn.disabled = true;
@@ -314,8 +301,7 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
     try {
         const limitCheck = await isStudentLimitReached();
         if (limitCheck.reached) {
-            showMsg('addStudentMsg',
-                `Student limit reached (${limitCheck.current} of ${limitCheck.limit}). Contact ConnectUs to upgrade your plan.`, true);
+            showMsg('addStudentMsg', `Student limit reached (${limitCheck.current} of ${limitCheck.limit}). Contact ConnectUs to upgrade your plan.`, true);
             btn.disabled = false;
             btn.textContent = claimedStudentDoc ? `Claim ${claimedStudentDoc.name} into This School` : 'Enroll into National Registry';
             return;
@@ -430,7 +416,9 @@ document.getElementById('confirmTransferBtn').addEventListener('click', async ()
             closedBy: session.adminId || 'Admin', closedAt: new Date().toISOString()
         });
         await batch.commit();
+        
         window.closeTransferModal();
+        window.closeStudentPanel(); // Close the side panel if it was open
         loadStudents();
     } catch (e) {
         console.error('[Students] transfer:', e);
@@ -456,7 +444,6 @@ window.openReassignModal = (id) => {
     tSelect.innerHTML = '<option value="">-- Unassigned --</option>' +
         allTeachersCache.map(t => `<option value="${t.id}" ${s?.teacherId === t.id ? 'selected' : ''}>${escHtml(t.name)}</option>`).join('');
 
-    // Add cascading logic to the reassign modal as well!
     cSelect.addEventListener('change', function() {
         const selectedClass = this.value;
         tSelect.innerHTML = '<option value="">-- Unassigned --</option>';
@@ -488,7 +475,8 @@ document.getElementById('saveReassignBtn').addEventListener('click', async () =>
             teacherId: document.getElementById('rsTeacher').value
         });
         window.closeReassignModal();
-        loadStudents();
+        await loadStudents(); // Wait for data to update
+        window.openStudentPanel(currentStudentId); // Refresh the side panel to show new class
     } catch (e) {
         showMsg('reassignMsg', 'Error updating student record.', true);
         console.error('[Students] reassign:', e);
@@ -501,9 +489,21 @@ document.getElementById('saveReassignBtn').addEventListener('click', async () =>
 window.openStudentPanel = async (studentId) => {
     currentStudentId = studentId;
     const student = allStudentsCache.find(s => s.id === studentId);
+    
     document.getElementById('sPanelName').textContent  = student?.name     || 'Student';
     document.getElementById('sPanelId').textContent    = studentId;
     document.getElementById('sPanelClass').textContent = student?.className || '—';
+
+    // Set up Administrative Actions based on enrollment status
+    const isActive = (student?.enrollmentStatus || 'Active') === 'Active';
+    const enrollActions = document.getElementById('panelEnrollmentActions');
+    if (isActive) {
+        enrollActions.style.display = 'flex';
+        document.getElementById('panelActionReassign').onclick = () => window.openReassignModal(studentId);
+        document.getElementById('panelActionTransfer').onclick = () => window.openTransferModal(studentId);
+    } else {
+        enrollActions.style.display = 'none';
+    }
 
     // Populate Edit Form
     document.getElementById('editSName').value = student?.name || '';
@@ -544,6 +544,7 @@ window.openStudentPanel = async (studentId) => {
     loader.classList.remove('hidden');
     accordions.classList.add('hidden');
     accordions.innerHTML = '';
+    
     openOverlay('studentPanel', 'studentPanelInner', true);
 
     try {
@@ -556,7 +557,6 @@ window.openStudentPanel = async (studentId) => {
             return;
         }
 
-        // Load grade types for weighted calc (cache or Firestore)
         let gradeTypeWeights = {};
         try {
             const cacheKey = 'connectus_gradeTypes_' + session.schoolId;
@@ -568,7 +568,6 @@ window.openStudentPanel = async (studentId) => {
 
         const hasWeights = Object.keys(gradeTypeWeights).length > 0;
 
-        // Helper: weighted average for a set of grades
         function calcWeightedAvg(grades) {
             if (!hasWeights) {
                 return grades.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / grades.length;
@@ -587,6 +586,35 @@ window.openStudentPanel = async (studentId) => {
             });
             return wTotal > 0 ? wSum / wTotal
                 : grades.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / grades.length;
+        }
+
+        function buildWeightBreakdown(grades) {
+            if (!hasWeights) return '';
+            const byType = {};
+            grades.forEach(g => {
+                const t = g.type || 'Other';
+                if (!byType[t]) byType[t] = [];
+                byType[t].push(g.max ? Math.round((g.score / g.max) * 100) : 0);
+            });
+            const rows = Object.entries(gradeTypeWeights)
+                .filter(([type]) => byType[type])
+                .map(([type, w]) => {
+                    const avg = Math.round(byType[type].reduce((a, b) => a + b, 0) / byType[type].length);
+                    const cnt = byType[type].length;
+                    const col = avg >= 75 ? 'var(--green-600)' : avg >= 60 ? '#b45309' : '#e31b4a';
+                    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e2e8f0">'
+                        + '<span style="font-size:12px;color:#475569;font-weight:500">' + type + ' <span style="color:#94a3b8;font-size:11px">(' + cnt + ' entry' + (cnt !== 1 ? 'ies' : 'y') + ')</span></span>'
+                        + '<div style="display:flex;align-items:center;gap:8px">'
+                        + '<span style="font-size:11px;color:#64748b;font-weight:600">' + w + '% weight</span>'
+                        + '<span style="font-size:13px;font-weight:700;color:' + col + '">' + avg + '%</span>'
+                        + '</div></div>';
+                }).join('');
+            if (!rows) return '';
+            return '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 16px;margin-bottom:14px">'
+                + '<p style="font-size:10.5px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:0.08em;margin:0 0 8px">Grade Weight Breakdown</p>'
+                + rows
+                + '<p style="font-size:10.5px;color:#64748b;margin:8px 0 0;font-weight:500">Weighted by types that have recorded grades — missing types do not reduce your average.</p>'
+                + '</div>';
         }
 
         const bySubject = {};
@@ -631,11 +659,11 @@ window.openStudentPanel = async (studentId) => {
                         </div>
                     </div>
                     <div class="flex items-center gap-3">
-                        <span class="badge ${ab} ${ac} border font-black">${avg.toFixed(0)}% avg</span>
+                        <span class="px-3 py-1 rounded-lg ${ab} ${ac} font-black text-xs">${avg.toFixed(0)}% avg</span>
                         <i class="fa-solid fa-chevron-down text-slate-400" style="transition:transform 0.2s"></i>
                     </div>
                 </div>
-                <div class="subject-body"><div class="px-4 pb-4 pt-2 bg-slate-50/70 space-y-2">${rows}</div></div>
+                <div class="subject-body"><div class="px-4 pb-4 pt-2 bg-slate-50/70 space-y-2">${buildWeightBreakdown(grades)}${rows}</div></div>
             </div>`;
         }).join('');
 
@@ -683,8 +711,8 @@ document.getElementById('saveStudentEditBtn').addEventListener('click', async ()
         await updateDoc(doc(db, 'students', currentStudentId), u);
         showMsg('editStudentMsg', 'Changes saved successfully.', false);
         window.toggleStudentEdit(false);
-        document.getElementById('sPanelName').textContent = u.name;
-        loadStudents();
+        await loadStudents(); // reload background data
+        window.openStudentPanel(currentStudentId); // refresh the panel seamlessly
     } catch (e) {
         console.error('[Admin] saveStudentEdit:', e);
         showMsg('editStudentMsg', 'Error saving changes.', true);
@@ -706,9 +734,9 @@ window.saveInlinePin = async function() {
     btn.textContent = '…'; btn.disabled = true;
     try {
         await updateDoc(doc(db, 'students', currentStudentId), { pin: npin });
-        document.getElementById('spinReadonly').textContent = npin;
         window.togglePinResetUI(false);
-        loadStudents();
+        await loadStudents();
+        window.openStudentPanel(currentStudentId); // refresh panel data
     } catch (e) { console.error('[Admin] saveInlinePin:', e); alert('Error saving PIN.'); }
     btn.textContent = 'Save'; btn.disabled = false;
 };
