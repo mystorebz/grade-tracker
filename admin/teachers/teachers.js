@@ -698,18 +698,24 @@ async function renderOverviewTab() {
 
     pane.innerHTML = `
 
-        <div class="${complete
-            ? 'bg-green-50 border-green-200 text-green-700'
-            : 'bg-red-50 border-red-200 text-red-700'} border rounded-xl p-4 flex items-start gap-3">
-            <i class="fa-solid ${complete ? 'fa-circle-check text-green-500' : 'fa-circle-exclamation text-red-500'} text-xl mt-0.5 flex-shrink-0"></i>
-            <div>
-                <p class="font-black text-[13px] mb-0.5">${complete ? 'Profile Complete' : 'Profile Incomplete'}</p>
-                <p class="text-[11px] font-semibold opacity-80">
-                    ${complete
-                        ? 'All required professional information is on file.'
-                        : 'This teacher has not completed their professional profile. They will be prompted to complete it on their next login.'}
-                </p>
+        <div class="flex items-center justify-between mb-4">
+            <div class="${complete
+                ? 'bg-green-50 border-green-200 text-green-700'
+                : 'bg-red-50 border-red-200 text-red-700'} border rounded-xl px-4 py-3 flex items-center gap-3 flex-1 mr-4">
+                <i class="fa-solid ${complete ? 'fa-circle-check text-green-500' : 'fa-circle-exclamation text-red-500'} text-lg flex-shrink-0"></i>
+                <div>
+                    <p class="font-black text-[12px] leading-tight">${complete ? 'Profile Complete' : 'Profile Incomplete'}</p>
+                    <p class="text-[10px] font-semibold opacity-80 mt-0.5">
+                        ${complete
+                            ? 'All required professional information is on file.'
+                            : 'Pending teacher completion on next login.'}
+                    </p>
+                </div>
             </div>
+            <button onclick="window.printTeacherPortfolio('${t.id}')"
+                class="flex-shrink-0 flex items-center gap-1.5 bg-white hover:bg-[#eef4ff] text-[#2563eb] font-bold px-4 py-2.5 rounded-lg text-[11px] transition shadow-sm border border-[#c7d9fd]">
+                <i class="fa-solid fa-print"></i> Print Portfolio
+            </button>
         </div>
 
         <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm">
@@ -853,32 +859,50 @@ async function renderStudentsTab() {
             return;
         }
 
+        // Group students visually by class name
+        const studentsByClass = students.reduce((acc, s) => {
+            const cName = s.class || s.className || 'Unassigned';
+            if (!acc[cName]) acc[cName] = [];
+            acc[cName].push(s);
+            return acc;
+        }, {});
+
         pane.innerHTML = `
             <div class="flex items-center justify-between mb-4">
                 <p class="text-[12px] font-bold text-[#374f6b]">
                     ${students.length} student${students.length !== 1 ? 's' : ''} assigned
                 </p>
             </div>
-            <div class="space-y-2">
-                ${students.map(s => `
-                    <div class="bg-white border border-[#dce3ed] rounded-xl p-4 flex items-center justify-between">
-                        <div class="flex items-center gap-3">
-                            <div class="h-9 w-9 bg-[#eef4ff] text-[#2563eb] rounded-lg flex items-center justify-center font-black text-sm flex-shrink-0">
-                                ${escHtml(s.name || '?').charAt(0).toUpperCase()}
+            ${Object.keys(studentsByClass).sort().map(cName => `
+                <div class="mb-5">
+                    <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-2 px-1">${escHtml(cName)}</h4>
+                    <div class="space-y-2">
+                        ${studentsByClass[cName].map(s => `
+                            <div class="bg-white border border-[#dce3ed] rounded-xl p-4 flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <div class="h-9 w-9 bg-[#eef4ff] text-[#2563eb] rounded-lg flex items-center justify-center font-black text-sm flex-shrink-0">
+                                        ${escHtml(s.name || '?').charAt(0).toUpperCase()}
+                                    </div>
+                                    <div>
+                                        <p class="font-bold text-[#0d1f35] text-[13px]">${escHtml(s.name)}</p>
+                                        <p class="text-[10px] font-mono text-[#9ab0c6] uppercase mt-0.5">${s.id}</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <span class="text-[10px] font-bold bg-[#f8fafb] border border-[#dce3ed] px-2 py-0.5 rounded text-[#374f6b]">
+                                        ${escHtml(cName)}
+                                    </span>
+                                    <button onclick="window.location.href='../students/students.html?viewStudent=${s.id}'"
+                                        class="bg-white hover:bg-[#eef4ff] text-[#2563eb] font-bold px-3 py-1.5 rounded text-[11px] transition border border-[#c7d9fd]">
+                                        View Student
+                                    </button>
+                                </div>
                             </div>
-                            <div>
-                                <p class="font-bold text-[#0d1f35] text-[13px]">${escHtml(s.name)}</p>
-                                <p class="text-[10px] font-mono text-[#9ab0c6] uppercase mt-0.5">${s.id}</p>
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span class="text-[10px] font-bold bg-[#f8fafb] border border-[#dce3ed] px-2 py-0.5 rounded text-[#374f6b]">
-                                ${escHtml(s.class || s.className || '—')}
-                            </span>
-                        </div>
+                        `).join('')}
                     </div>
-                `).join('')}
-            </div>`;
+                </div>
+            `).join('')}
+        `;
     } catch (e) {
         console.error('[Teachers] studentsTab:', e);
         pane.innerHTML = `<div class="text-center py-16 text-[#e31b4a] font-semibold">Error loading students.</div>`;
@@ -887,32 +911,74 @@ async function renderStudentsTab() {
 
 
 // ── 11. SUBJECTS TAB ──────────────────────────────────────────────────────
-function renderSubjectsTab() {
+async function renderSubjectsTab() {
     const t = currentTeacherData;
     if (!t) return;
     const pane     = document.getElementById('tab-subjects');
     const subjects  = t.subjects || [];
-    // We completely dropped the archive subject functionality. Showing all subjects.
 
-    pane.innerHTML = `
-        <div class="flex items-center justify-between mb-4">
-            <p class="text-[12px] font-bold text-[#374f6b]">
-                ${subjects.length} active subject${subjects.length !== 1 ? 's' : ''}
-            </p>
-            <button onclick="window.openAddSubjectModal()"
-                class="flex items-center gap-1.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold px-4 py-2 rounded text-[12px] transition">
-                <i class="fa-solid fa-plus"></i> Add Subject
-            </button>
-        </div>
+    pane.innerHTML = `<div class="flex items-center justify-center py-16"><i class="fa-solid fa-spinner fa-spin text-2xl text-[#2563eb]"></i></div>`;
 
-        <div class="space-y-2 mb-5">
-            ${subjects.length
-                ? subjects.map(s => subjectRow(s)).join('')
-                : `<div class="text-center py-8 text-[#9ab0c6] italic font-semibold text-[12px]">No active subjects.</div>`}
-        </div>`;
+    try {
+        // Fetch active students for this teacher to compute grade stats locally
+        const studSnap = await getDocs(
+            query(collection(db, 'students'), 
+                where('teacherId', '==', currentTeacherId), 
+                where('currentSchoolId', '==', session.schoolId), 
+                where('enrollmentStatus', '==', 'Active'))
+        );
+        const studentIds = studSnap.docs.map(d => d.id);
+
+        let allGrades = [];
+        if (studentIds.length > 0) {
+            // Batch parallel grade queries across all the teacher's active students
+            const gradePromises = studentIds.map(sid => getDocs(collection(db, 'students', sid, 'grades')));
+            const fallbackPromises = studentIds.map(sid => getDocs(collection(db, 'schools', session.schoolId, 'students', sid, 'grades')));
+            const results = await Promise.all([...gradePromises, ...fallbackPromises]);
+            results.forEach(snap => snap.forEach(d => allGrades.push(d.data())));
+        }
+
+        // Compute median & average natively per subject
+        const statsBySubject = {};
+        subjects.forEach(s => {
+            const sGrades = allGrades.filter(g => g.subject === s.name && g.max);
+            if (sGrades.length === 0) {
+                statsBySubject[s.name] = { avg: '--', med: '--' };
+                return;
+            }
+            
+            const scores = sGrades.map(g => (g.score / g.max) * 100).sort((a, b) => a - b);
+            const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+            
+            const mid = Math.floor(scores.length / 2);
+            const med = scores.length % 2 !== 0 ? scores[mid] : (scores[mid - 1] + scores[mid]) / 2;
+            
+            statsBySubject[s.name] = { avg: Math.round(avg) + '%', med: Math.round(med) + '%' };
+        });
+
+        pane.innerHTML = `
+            <div class="flex items-center justify-between mb-4">
+                <p class="text-[12px] font-bold text-[#374f6b]">
+                    ${subjects.length} active subject${subjects.length !== 1 ? 's' : ''}
+                </p>
+                <button onclick="window.openAddSubjectModal()"
+                    class="flex items-center gap-1.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold px-4 py-2 rounded text-[12px] transition">
+                    <i class="fa-solid fa-plus"></i> Add Subject
+                </button>
+            </div>
+
+            <div class="space-y-2 mb-5">
+                ${subjects.length
+                    ? subjects.map(s => subjectRow(s, statsBySubject[s.name])).join('')
+                    : `<div class="text-center py-8 text-[#9ab0c6] italic font-semibold text-[12px]">No active subjects.</div>`}
+            </div>`;
+    } catch (e) {
+        console.error('[Teachers] subjectsTab:', e);
+        pane.innerHTML = `<div class="text-center py-16 text-[#e31b4a] font-semibold">Error loading subjects.</div>`;
+    }
 }
 
-function subjectRow(s) {
+function subjectRow(s, stats = { avg: '--', med: '--' }) {
     return `
         <div class="bg-white border border-[#dce3ed] rounded-xl p-4 flex items-center justify-between">
             <div class="min-w-0 mr-3 w-full">
@@ -925,12 +991,12 @@ function subjectRow(s) {
                     <div class="bg-[#f8fafb] border border-[#f0f4f8] rounded px-2 py-1 flex items-center gap-1.5">
                         <i class="fa-solid fa-chart-pie text-[#9ab0c6] text-[10px]"></i>
                         <span class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Avg:</span>
-                        <span class="text-[11px] font-black text-[#0d1f35]">--</span>
+                        <span class="text-[11px] font-black text-[#0d1f35]">${stats.avg}</span>
                     </div>
                     <div class="bg-[#f8fafb] border border-[#f0f4f8] rounded px-2 py-1 flex items-center gap-1.5">
                         <i class="fa-solid fa-bullseye text-[#9ab0c6] text-[10px]"></i>
                         <span class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Med:</span>
-                        <span class="text-[11px] font-black text-[#0d1f35]">--</span>
+                        <span class="text-[11px] font-black text-[#0d1f35]">${stats.med}</span>
                     </div>
                 </div>
             </div>
@@ -1019,6 +1085,54 @@ async function renderEvaluationsTab() {
               ).join('')
             : null;
 
+        const inlineFormHtml = `
+            <div id="inlineEvalFormContainer" class="hidden mb-6 bg-white border-2 border-[#2563eb] rounded-xl p-5 shadow-sm">
+                <div class="flex items-center justify-between mb-4 border-b border-[#f0f4f8] pb-3">
+                    <h4 class="text-[12px] font-bold text-[#0d1f35] uppercase tracking-widest">
+                        <i class="fa-solid fa-plus-circle text-[#2563eb] mr-1"></i> New Evaluation
+                    </h4>
+                    <button onclick="document.getElementById('inlineEvalFormContainer').classList.add('hidden')" class="text-[#9ab0c6] hover:text-[#e31b4a] transition">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Evaluation Type <span class="text-[#e31b4a]">*</span></label>
+                        <select id="inlEvalType" class="form-input w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">
+                            <option value="">— Select Type —</option>
+                            <option value="Classroom Observation">Classroom Observation</option>
+                            <option value="Mid-Year Review">Mid-Year Review</option>
+                            <option value="Annual Review">Annual Review</option>
+                            <option value="Probationary Review">Probationary Review</option>
+                            <option value="Peer Review">Peer Review</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Overall Rating (1–5) <span class="text-[#e31b4a]">*</span></label>
+                        <select id="inlEvalRating" class="form-input w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">
+                            <option value="">— Select —</option>
+                            <option value="5">5 — Excellent</option>
+                            <option value="4">4 — Good</option>
+                            <option value="3">3 — Satisfactory</option>
+                            <option value="2">2 — Needs Improvement</option>
+                            <option value="1">1 — Unsatisfactory</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Date of Evaluation <span class="text-[#e31b4a]">*</span></label>
+                    <input type="date" id="inlEvalDate" value="${new Date().toISOString().split('T')[0]}" class="form-input w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
+                </div>
+                <div class="mb-5">
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Comments <span class="text-[#e31b4a]">*</span></label>
+                    <textarea id="inlEvalComments" placeholder="Evaluation notes and observations..." class="form-input w-full p-3 bg-[#f8fafb] border border-[#dce3ed] rounded text-[13px] h-20 resize-none outline-none focus:border-[#2563eb]"></textarea>
+                </div>
+                <button id="inlSaveEvalBtn" onclick="window.saveInlineEval()" class="w-full bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-3 rounded transition text-[12px] uppercase tracking-widest shadow-sm">
+                    Submit Evaluation
+                </button>
+            </div>
+        `;
+
         pane.innerHTML = `
             <div class="flex items-center justify-between mb-5">
                 <div>
@@ -1034,11 +1148,13 @@ async function renderEvaluationsTab() {
                         : `<p class="text-[13px] text-[#9ab0c6] italic font-semibold">No evaluations on record yet.</p>`
                     }
                 </div>
-                <button onclick="window.openAddEvalModal()"
+                <button onclick="document.getElementById('inlineEvalFormContainer').classList.remove('hidden')"
                     class="flex items-center gap-1.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold px-4 py-2 rounded text-[12px] transition">
                     <i class="fa-solid fa-plus"></i> Add Evaluation
                 </button>
             </div>
+
+            ${inlineFormHtml}
 
             <div class="space-y-3">
                 ${evals.map(e => {
@@ -1073,24 +1189,15 @@ async function renderEvaluationsTab() {
     }
 }
 
-window.openAddEvalModal = () => {
-    ['evalType', 'evalRating', 'evalComments'].forEach(id => {
-        const el = document.getElementById(id); if (el) el.value = '';
-    });
-    document.getElementById('evalDate').value = new Date().toISOString().split('T')[0];
-    openOverlay('addEvalModal', 'addEvalModalInner');
-};
-window.closeAddEvalModal = () => closeOverlay('addEvalModal', 'addEvalModalInner');
-
-document.getElementById('saveEvalBtn').addEventListener('click', async () => {
-    const type     = document.getElementById('evalType').value;
-    const rating   = document.getElementById('evalRating').value;
-    const date     = document.getElementById('evalDate').value;
-    const comments = document.getElementById('evalComments').value.trim();
+window.saveInlineEval = async () => {
+    const type     = document.getElementById('inlEvalType').value;
+    const rating   = document.getElementById('inlEvalRating').value;
+    const date     = document.getElementById('inlEvalDate').value;
+    const comments = document.getElementById('inlEvalComments').value.trim();
 
     if (!type || !rating || !date || !comments) { alert('All fields are required.'); return; }
 
-    const btn = document.getElementById('saveEvalBtn');
+    const btn = document.getElementById('inlSaveEvalBtn');
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...';
     btn.disabled  = true;
 
@@ -1104,16 +1211,19 @@ document.getElementById('saveEvalBtn').addEventListener('click', async () => {
             evaluatorId: session.adminId || 'Admin',
             timestamp:   new Date().toISOString()
         });
-        window.closeAddEvalModal();
+        
+        // Re-render tab to show new eval and hide form
         renderEvaluationsTab();
     } catch (e) {
-        console.error('[Teachers] saveEval:', e);
+        console.error('[Teachers] saveInlineEval:', e);
         alert('Error saving evaluation.');
+        btn.innerHTML = 'Submit Evaluation';
+        btn.disabled  = false;
     }
+};
 
-    btn.innerHTML = 'Save Evaluation';
-    btn.disabled  = false;
-});
+// We keep the old modal close trigger active just in case it is still registered elsewhere
+window.closeAddEvalModal = () => closeOverlay('addEvalModal', 'addEvalModalInner');
 
 
 // ── 13. ARCHIVE TAB ───────────────────────────────────────────────────────
@@ -1251,7 +1361,135 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
 });
 
 
-// ── 15. CSV EXPORT ────────────────────────────────────────────────────────
+// ── 15. TEACHER PORTFOLIO PRINT ───────────────────────────────────────────
+window.printTeacherPortfolio = async (tId) => {
+    const t = currentTeacherData; 
+    if (!t || t.id !== tId) return;
+
+    const w = window.open('', '_blank');
+    w.document.write('<div style="font-family: sans-serif; padding: 40px; color: #64748b;">Generating National Portfolio Data...</div>');
+
+    try {
+        // Fetch evaluations
+        const evalSnap = await getDocs(query(collection(db, 'teachers', tId, 'evaluations'), where('schoolId', '==', session.schoolId)));
+        const evals = evalSnap.docs.map(d => d.data()).sort((a, b) => new Date(b.timestamp || b.date || 0) - new Date(a.timestamp || a.date || 0));
+        
+        // Fetch Active Students
+        const studSnap = await getDocs(query(collection(db, 'students'), where('teacherId', '==', tId), where('currentSchoolId', '==', session.schoolId), where('enrollmentStatus', '==', 'Active')));
+        const students = studSnap.docs.map(d => d.data());
+        
+        // Setup blocks
+        const schoolName = session.schoolName || session.schoolId || 'ConnectUs School';
+        const classesAssigned = getTeacherClasses(t).join(', ') || 'None';
+        const subjectsAssigned = getSubjectNames(t.subjects).join(', ') || 'None';
+
+        const evalsHtml = evals.length === 0 
+            ? `<p style="color:#94a3b8; font-style:italic;">No formal evaluations filed at this institution.</p>` 
+            : evals.map(e => `
+                <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-bottom: 12px; background: #f8fafc;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
+                        <div style="font-size: 13px; font-weight: bold; color: #0f172a;">${escHtml(e.type || 'Evaluation')}</div>
+                        <div style="font-size: 12px; font-weight: bold; color: #2563eb;">Score: ${e.overallRating || e.performanceScore}/5</div>
+                    </div>
+                    <div style="font-size: 11px; color: #64748b; margin-bottom: 8px;">
+                        Date: ${e.date || new Date(e.timestamp).toLocaleDateString()} ${e.reason ? `&nbsp; | &nbsp; Reason: ${escHtml(e.reason)}` : ''}
+                    </div>
+                    ${e.comments ? `<div style="font-size: 12px; color: #334155; line-height: 1.4; border-top: 1px solid #e2e8f0; padding-top: 8px;">${escHtml(e.comments)}</div>` : ''}
+                </div>`).join('');
+
+        const studentGroups = students.reduce((acc, s) => {
+            const cName = s.class || s.className || 'Unassigned';
+            if (!acc[cName]) acc[cName] = [];
+            acc[cName].push(s);
+            return acc;
+        }, {});
+
+        const studentsHtml = students.length === 0 
+            ? `<p style="color:#94a3b8; font-style:italic;">No active students assigned to this teacher.</p>`
+            : Object.entries(studentGroups).map(([cName, sList]) => `
+                <h5 style="font-size: 12px; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin: 16px 0 8px;">${escHtml(cName)} (${sList.length} Students)</h5>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px;">
+                    ${sList.map(s => `<div style="font-size: 12px; padding: 8px; background: #fff; border: 1px solid #e2e8f0; border-radius: 4px;"><strong>${escHtml(s.name)}</strong> <span style="color:#94a3b8; font-family: monospace; float: right;">${s.id}</span></div>`).join('')}
+                </div>
+            `).join('');
+
+        const html = `<!DOCTYPE html>
+        <html>
+        <head>
+            <title>Teacher Portfolio - ${escHtml(t.name)}</title>
+            <style>
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 48px 40px; color: #1e293b; line-height: 1.5; font-size: 13px; }
+                .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #0d1f35; padding-bottom: 18px; margin-bottom: 24px; }
+                .school-name { font-size: 20px; font-weight: 900; text-transform: uppercase; color: #0d1f35; }
+                .doc-type { font-size: 11px; font-weight: 700; color: #6b84a0; letter-spacing: 0.12em; text-transform: uppercase; margin-top: 3px; }
+                .section-title { font-size: 13px; font-weight: 900; background: #0d1f35; color: white; padding: 10px 16px; border-radius: 6px; letter-spacing: 0.05em; text-transform: uppercase; margin: 24px 0 14px; }
+                .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 24px; background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; }
+                .info-item label { display: block; font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; font-weight: 700; margin-bottom: 2px; }
+                .info-item span { font-size: 13px; font-weight: 700; color: #0f172a; }
+                .footer { margin-top: 40px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 14px; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <div>
+                    <div class="school-name">${escHtml(schoolName)}</div>
+                    <div class="doc-type">Official Educator Portfolio</div>
+                </div>
+                <div style="text-align:right; font-size: 11px; color: #64748b;">
+                    <div style="font-weight: 700;">Printed Data</div>
+                    <div>${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
+                </div>
+            </div>
+
+            <div class="info-grid">
+                <div class="info-item"><label>Teacher Name</label><span>${escHtml(t.name)}</span></div>
+                <div class="info-item"><label>Global Teacher ID</label><span style="font-family: monospace;">${escHtml(t.id)}</span></div>
+                <div class="info-item"><label>Email</label><span>${escHtml(t.email) || 'N/A'}</span></div>
+                <div class="info-item"><label>Phone</label><span>${escHtml(t.phone) || 'N/A'}</span></div>
+                <div class="info-item"><label>Employment Type</label><span>${escHtml(t.employmentType) || 'N/A'}</span></div>
+                <div class="info-item"><label>Profile Status</label><span>${isProfileComplete(t) ? 'Complete' : 'Incomplete'}</span></div>
+            </div>
+
+            <div class="section-title">Professional & Academic Credentials</div>
+            <div class="info-grid">
+                <div class="info-item"><label>License Number</label><span>${escHtml(t.teacherLicenseNumber) || 'N/A'}</span></div>
+                <div class="info-item"><label>License Type</label><span>${escHtml(t.licenseType) || 'N/A'}</span></div>
+                <div class="info-item"><label>Highest Education</label><span>${escHtml(t.highestEducationLevel) || 'N/A'}</span></div>
+                <div class="info-item"><label>Field of Study</label><span>${escHtml(t.fieldOfStudy) || 'N/A'}</span></div>
+            </div>
+
+            <div class="section-title">Active Assignments</div>
+            <div class="info-grid">
+                <div class="info-item"><label>Assigned Classes</label><span>${escHtml(classesAssigned)}</span></div>
+                <div class="info-item"><label>Active Subjects</label><span>${escHtml(subjectsAssigned)}</span></div>
+            </div>
+
+            <div class="section-title">Evaluation History</div>
+            <div>${evalsHtml}</div>
+
+            <div class="section-title">Active Student Roster</div>
+            <div>${studentsHtml}</div>
+
+            <div class="footer">
+                Issued by ${escHtml(schoolName)} · ConnectUs National Registry · ${new Date().toLocaleDateString()}
+            </div>
+        </body>
+        </html>`;
+
+        w.document.open();
+        w.document.write(html);
+        w.document.close();
+        setTimeout(() => w.print(), 500);
+
+    } catch (err) {
+        console.error('[Teachers] Portfolio print error:', err);
+        w.document.body.innerHTML = `<p style="color: red; padding: 40px; font-family: sans-serif;">Failed to generate portfolio data.</p>`;
+    }
+};
+
+
+// ── 16. CSV EXPORT ────────────────────────────────────────────────────────
 document.getElementById('exportCsvBtn').addEventListener('click', () => {
     const rows = [
         ['Global ID', 'Name', 'Email', 'Phone', 'Classes', 'Active Subjects', 'Students', 'License #', 'License Type', 'Employment Type', 'Education Level', 'Profile Complete'],
