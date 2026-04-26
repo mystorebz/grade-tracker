@@ -1,5 +1,5 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { collection, query, where, getDocs, getDoc, doc, updateDoc, addDoc, setDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, query, where, getDocs, getDoc, doc, updateDoc, addDoc, setDoc, arrayUnion, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { openOverlay, closeOverlay, showMsg, gradeColorClass, standingBadge, standingText, gradeFill, letterGrade, downloadCSV } from '../../assets/js/utils.js';
@@ -189,9 +189,7 @@ async function loadStudents() {
             where('enrollmentStatus', '==', 'Active')
         ));
         const allActive = allActSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        
-        // Bulletproof filter: strictly only shows students who have this teacher's ID
-        allStudentsCache        = allActive.filter(s => s.teacherId && s.teacherId === session.teacherId);
+        allStudentsCache        = allActive.filter(s => s.teacherId === session.teacherId);
         unassignedStudentsCache = allActive.filter(s => !s.teacherId || !s.className);
 
         studentMap = {};
@@ -376,7 +374,6 @@ window.searchStudentRegistry = async function() {
 
         const s = { id: snap.id, ...snap.data() };
 
-        // --- NEW SMARTER LOGIC FOR CLAIMING ---
         if (s.currentSchoolId && s.currentSchoolId !== '') {
             if (s.currentSchoolId !== session.schoolId) {
                 // They belong to a completely different school
@@ -392,10 +389,8 @@ window.searchStudentRegistry = async function() {
                     }
                     btn.textContent = 'Search'; btn.disabled = false; return;
                 }
-                // If we get here, they are at the school but have NO teacher. We proceed to let the teacher claim them!
             }
         }
-        // -------------------------
 
         const lastSchool = s.academicHistory?.length
             ? `Last school: ${s.academicHistory[s.academicHistory.length-1].schoolName || s.academicHistory[s.academicHistory.length-1].schoolId}`
@@ -1020,35 +1015,99 @@ window.openAssignmentModal = function(gradeId) {
 
 window.closeAssignmentModal = function() { closeOverlay('assignmentModal', 'assignmentModalInner'); };
 
-// ── 14. ARCHIVE ───────────────────────────────────────────────────────────────
+// ── 14. ARCHIVE / CLOSE ENROLLMENT HYBRID ────────────────────────────────
 window.archiveStudent = function() {
     const s = allStudentsCache.find(x => x.id === currentStudentId);
     document.getElementById('archiveStudentName').textContent = s ? s.name : 'this student';
-    document.getElementById('archiveReasonSelect').value = 'Transferred to another school';
-    document.getElementById('archiveReasonOther').value  = '';
-    document.getElementById('archiveReasonOther').classList.add('hidden');
-    openOverlay('archiveReasonModal', 'archiveReasonModalInner');
+    
+    // Reset modal UI to default (Internal Archive)
+    document.getElementById('optArchive').checked = true;
+    window.toggleArchiveType();
+
+    // Reset fields
+    document.getElementById('releaseReason').value = '';
+    document.getElementById('archiveNotes').value  = '';
+    
+    openOverlay('archiveModal', 'archiveModalInner');
 };
 
-window.closeArchiveReasonModal = function() { closeOverlay('archiveReasonModal', 'archiveReasonModalInner'); };
+window.closeArchiveModal = function() { closeOverlay('archiveModal', 'archiveModalInner'); };
+
+window.toggleArchiveType = function() {
+    const isRelease = document.getElementById('optRelease').checked;
+    const releaseFields = document.getElementById('releaseFields');
+    if (isRelease) releaseFields.classList.remove('hidden');
+    else releaseFields.classList.add('hidden');
+};
 
 document.getElementById('confirmArchiveBtn').addEventListener('click', async () => {
-    const sel    = document.getElementById('archiveReasonSelect').value;
-    const reason = sel === 'Other' ? document.getElementById('archiveReasonOther').value.trim() : sel;
-    const btn    = document.getElementById('confirmArchiveBtn');
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Archiving…'; btn.disabled = true;
+    const isRelease = document.getElementById('optRelease').checked;
+    const releaseReason = document.getElementById('releaseReason').value;
+    const notes = document.getElementById('archiveNotes').value.trim();
+    
+    if (isRelease && !releaseReason) { 
+        alert('Please select a departure reason to close enrollment.'); 
+        return; 
+    }
+
+    const btn = document.getElementById('confirmArchiveBtn');
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Processing…'; 
+    btn.disabled = true;
+
     try {
-        const s          = allStudentsCache.find(x => x.id === currentStudentId);
-        const isTransfer = reason === 'Transferred to another school';
-        const newStatus  = reason === 'Graduated' ? 'Graduated' : isTransfer ? 'Transferred' : 'Archived';
-        const snapshot   = { schoolId: session.schoolId, teacherId: s?.teacherId||'', className: s?.className||'', leftAt: new Date().toISOString(), reason: reason||'Not specified' };
-        await updateDoc(doc(db, 'students', currentStudentId), {
-            enrollmentStatus: newStatus, currentSchoolId: isTransfer ? '' : session.schoolId,
-            teacherId: '', className: '', academicHistory: arrayUnion(snapshot)
+        const s = allStudentsCache.find(x => x.id === currentStudentId);
+        const batch = writeBatch(db);
+        
+        let finalStatus = 'Archived';
+        let leaveSchool = false;
+        let historyReason = 'Internally Archived';
+
+        if (isRelease) {
+            leaveSchool = true;
+            historyReason = releaseReason;
+            if (releaseReason === 'Transferred') finalStatus = 'Transferred';
+            else if (releaseReason === 'Graduated') finalStatus = 'Graduated';
+            else finalStatus = 'Archived';
+        }
+
+        const snapshot = {
+            schoolId: session.schoolId, 
+            schoolName: session.schoolName || session.schoolId,
+            teacherId: s?.teacherId || '', 
+            className: s?.className || '',
+            leftAt: new Date().toISOString(), 
+            reason: historyReason,
+            ...(notes ? { notes } : {})
+        };
+
+        batch.update(doc(db, 'students', currentStudentId), {
+            enrollmentStatus: finalStatus,
+            currentSchoolId:  leaveSchool ? '' : session.schoolId,
+            teacherId: '', 
+            className: '',
+            academicHistory: arrayUnion(snapshot)
         });
-        window.closeArchiveReasonModal(); window.closeStudentPanel(); await loadStudents();
-    } catch (e) { console.error('[Roster] archiveStudent:', e); alert('Error archiving student. Please try again.'); }
-    btn.textContent = 'Confirm & Archive'; btn.disabled = false;
+        
+        if (leaveSchool) {
+            batch.set(doc(collection(db, 'schools', session.schoolId, 'notifications')), {
+                type: 'student_enrollment_closed', studentId: currentStudentId,
+                studentName: s?.name || '', reason: historyReason,
+                closedBy: session.teacherData?.name || 'Teacher', closedAt: new Date().toISOString()
+            });
+        }
+
+        await batch.commit();
+        
+        window.closeArchiveModal(); 
+        window.closeStudentPanel(); 
+        await loadStudents();
+    } catch (e) { 
+        console.error('[Roster] archive/transfer:', e); 
+        alert('Critical failure. Record preserved.'); 
+    }
+
+    btn.innerHTML = '<i class="fa-solid fa-box-archive mr-2"></i>Confirm Action'; 
+    btn.disabled = false;
 });
 
 // ── 15. EXPORT & PROFESSIONAL UNOFFICIAL TERM REPORT ──────────────────────────
