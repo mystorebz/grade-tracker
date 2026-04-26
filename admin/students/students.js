@@ -620,9 +620,6 @@ window.openStudentPanel = async (studentId) => {
         document.getElementById('sPanelClass').textContent =
             [s.className || 'No class assigned', teacherName !== '—' ? `with ${teacherName}` : ''].filter(Boolean).join(' · ');
 
-        // Print button
-        document.getElementById('sPanelPrintBtn').onclick = () => window.printStudentRecord(studentId);
-
         // Hide actions if not Active
         const isActive = (s.enrollmentStatus || 'Active') === 'Active';
         document.getElementById('sEnrollActionsWrapper').style.display = isActive ? 'block' : 'none';
@@ -755,8 +752,8 @@ function renderStudentOverviewTab() {
 
 // ── 10. ACADEMIC TAB ──────────────────────────────────────────────────────
 
-// Cached grade docs so term switching doesn't re-fetch
 let _academicGradesCache = [];
+let _activeTermForPrint  = { id: null, name: 'Current Term' };
 
 async function renderStudentAcademicTab() {
     const pane = document.getElementById('tab-academic');
@@ -764,25 +761,25 @@ async function renderStudentAcademicTab() {
         <i class="fa-solid fa-spinner fa-spin text-2xl text-[#2563eb]"></i></div>`;
 
     try {
-        // ── Fetch all terms for this school ──────────────────────────────
-        let allTerms    = [];
-        let activeTermId = null;
+        // ── Fetch all terms ───────────────────────────────────────────────
+        let allTerms   = [];
+        let activeTerm = null;
         try {
             const termSnap = await getDocs(
                 query(collection(db, 'terms'), where('schoolId', '==', session.schoolId))
             );
             allTerms = termSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-            // Sort: active first, then by createdAt/name descending
             allTerms.sort((a, b) => {
                 if (a.isActive && !b.isActive) return -1;
                 if (!a.isActive && b.isActive) return 1;
-                return (b.createdAt || b.name || '').localeCompare(a.createdAt || a.name || '');
+                return (b.createdAt || '').localeCompare(a.createdAt || '');
             });
-            const active = allTerms.find(t => t.isActive);
-            if (active) activeTermId = active.id;
+            activeTerm = allTerms.find(t => t.isActive) || null;
         } catch (_) {}
 
-        // ── Fetch all grades for this student (once, cache for term switching)
+        _activeTermForPrint = { id: activeTerm?.id || null, name: activeTerm?.name || 'Current Term' };
+
+        // ── Fetch all grades once ─────────────────────────────────────────
         _academicGradesCache = [];
         let gradesSnap = await getDocs(collection(db, 'students', currentStudentId, 'grades'));
         if (gradesSnap.empty) {
@@ -792,36 +789,57 @@ async function renderStudentAcademicTab() {
         }
         gradesSnap.forEach(d => _academicGradesCache.push({ id: d.id, ...d.data() }));
 
-        // ── Build term selector options ───────────────────────────────────
-        const termOptions = allTerms.length
-            ? allTerms.map(t => {
-                const label = t.isActive ? `${t.name} (Current)` : t.name;
-                return `<option value="${t.id}" ${t.id === activeTermId ? 'selected' : ''}>${escHtml(label)}</option>`;
-              }).join('')
-            : `<option value="">All Grades</option>`;
+        // ── Past terms dropdown (excludes active) ─────────────────────────
+        const pastTerms = allTerms.filter(t => !t.isActive);
+        const pastOptions = pastTerms.map(t =>
+            `<option value="${t.id}">${escHtml(t.name)}</option>`
+        ).join('');
 
-        // ── Render shell with term selector ──────────────────────────────
         pane.innerHTML = `
-            <div class="bg-white border border-[#dce3ed] rounded-xl p-4 mb-4 flex items-center gap-3">
-                <i class="fa-solid fa-calendar-week text-[#2563eb] text-xl flex-shrink-0"></i>
-                <div class="flex-1 min-w-0">
-                    <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Viewing Term</p>
-                    <select id="academicTermSelect"
-                        class="form-input w-full p-2 bg-[#f4f7fb] border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">
-                        ${termOptions}
-                    </select>
+            <!-- Current Term Banner -->
+            <div class="bg-[#0d1f35] rounded-xl p-5 mb-4 flex items-center justify-between">
+                <div>
+                    <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-0.5">Current Term</p>
+                    <p class="font-black text-white text-[19px]">${escHtml(activeTerm?.name || 'No Active Term')}</p>
                 </div>
+                <button onclick="window.printTermTranscript('${activeTerm?.id || ''}', '${escHtml(activeTerm?.name || 'Current Term')}')"
+                    class="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white font-bold px-4 py-2.5 rounded-lg text-[11px] transition border border-white/20 flex-shrink-0">
+                    <i class="fa-solid fa-print mr-1"></i> Print Transcript
+                </button>
             </div>
+
+            ${pastTerms.length ? `
+            <!-- Past Term Switcher -->
+            <div class="flex items-center gap-3 mb-5 bg-white border border-[#dce3ed] rounded-xl p-3">
+                <p class="text-[11px] font-bold text-[#6b84a0] whitespace-nowrap flex-shrink-0">
+                    <i class="fa-solid fa-clock-rotate-left mr-1"></i> View past term:
+                </p>
+                <select id="academicTermSelect"
+                    class="form-input flex-1 p-2 bg-[#f4f7fb] border border-[#dce3ed] rounded text-[12px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">
+                    <option value="${activeTerm?.id || ''}">— Select a past term —</option>
+                    ${pastOptions}
+                    <option value="all">All Terms</option>
+                </select>
+            </div>` : ''}
+
+            <!-- Grades Area -->
             <div id="academicGradesArea" class="space-y-3"></div>`;
 
-        // ── Wire term selector ────────────────────────────────────────────
-        const termSelect = document.getElementById('academicTermSelect');
-        termSelect.addEventListener('change', () => {
-            renderGradesForTerm(termSelect.value);
-        });
+        // Wire past term selector
+        if (pastTerms.length) {
+            document.getElementById('academicTermSelect').addEventListener('change', function () {
+                const val  = this.value;
+                const term = val === 'all' ? null : allTerms.find(t => t.id === val) || activeTerm;
+                _activeTermForPrint = {
+                    id:   val === 'all' ? null : val,
+                    name: val === 'all' ? 'All Terms' : (term?.name || 'Term')
+                };
+                renderGradesForTerm(val === 'all' ? null : val, val === 'all', term?.name || 'Term');
+            });
+        }
 
-        // ── Render initial grades ─────────────────────────────────────────
-        renderGradesForTerm(activeTermId || (allTerms[0]?.id || ''));
+        // Render current term grades (auto-expanded)
+        renderGradesForTerm(activeTerm?.id || null, false, activeTerm?.name || 'Current Term', true);
 
     } catch (e) {
         console.error('[Students] academicTab:', e);
@@ -829,24 +847,27 @@ async function renderStudentAcademicTab() {
     }
 }
 
-// Renders grade accordions for a given termId into #academicGradesArea
-function renderGradesForTerm(termId) {
+// autoExpand=true for current term, false for past terms
+function renderGradesForTerm(termId, allTerms = false, termName = 'Term', autoExpand = false) {
     const area = document.getElementById('academicGradesArea');
     if (!area) return;
 
-    // Filter: if termId provided, match on grade.termId; otherwise show all
-    const grades = termId
-        ? _academicGradesCache.filter(g => (g.termId || '') === termId)
-        : _academicGradesCache;
+    const grades = allTerms
+        ? _academicGradesCache
+        : termId
+            ? _academicGradesCache.filter(g => (g.termId || '') === termId)
+            : _academicGradesCache.filter(g => !g.termId || g.termId === ''); // fallback: ungrouped
 
     if (!grades.length) {
         area.innerHTML = `
             <div class="text-center py-16 text-[#9ab0c6]">
                 <i class="fa-solid fa-folder-open text-4xl mb-3 block"></i>
-                <p class="italic font-semibold text-[13px]">No grades recorded for this term.</p>
+                <p class="italic font-semibold text-[13px]">No grades recorded for ${escHtml(termName)}.</p>
             </div>`;
         return;
     }
+
+    const calcLg = (avg) => avg >= 90 ? 'A' : avg >= 80 ? 'B' : avg >= 70 ? 'C' : avg >= 60 ? 'D' : 'F';
 
     // Group by subject
     const bySubject = {};
@@ -855,8 +876,6 @@ function renderGradesForTerm(termId) {
         if (!bySubject[subj]) bySubject[subj] = [];
         bySubject[subj].push(g);
     });
-
-    const calcLg = (avg) => avg >= 90 ? 'A' : avg >= 80 ? 'B' : avg >= 70 ? 'C' : avg >= 60 ? 'D' : 'F';
 
     area.innerHTML = Object.entries(bySubject).map(([subject, sGrades]) => {
         const avg      = sGrades.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / sGrades.length;
@@ -882,7 +901,7 @@ function renderGradesForTerm(termId) {
                 const pct    = g.max ? Math.round((g.score / g.max) * 100) : null;
                 const pColor = pct == null ? '#374f6b' : pct >= 75 ? '#16a34a' : pct >= 60 ? '#d97706' : '#dc2626';
                 return `
-                    <div class="flex items-center justify-between py-2.5 border-b border-[#f0f4f8] last:border-0">
+                    <div class="flex items-start justify-between py-2.5 border-b border-[#f0f4f8] last:border-0">
                         <div class="flex-1 min-w-0 mr-3">
                             <p class="font-semibold text-[12px] text-[#0d1f35] truncate">${escHtml(g.title || 'Assessment')}</p>
                             <p class="text-[10px] text-[#9ab0c6] font-semibold mt-0.5">${g.date || '—'}</p>
@@ -907,6 +926,10 @@ function renderGradesForTerm(termId) {
                 </div>`;
         }).join('');
 
+        // Encode subject for onclick (safe)
+        const safeSubject = encodeURIComponent(subject);
+        const safeTerm    = encodeURIComponent(termName);
+
         return `
             <div class="bg-white border border-[#dce3ed] rounded-xl overflow-hidden shadow-sm">
                 <div class="flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-[#f8fafb] transition"
@@ -922,15 +945,175 @@ function renderGradesForTerm(termId) {
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="px-2.5 py-1 rounded-lg border font-black text-[11px] ${avgClass}">${avgRound}% · ${lg}</span>
-                        <i class="fa-solid fa-chevron-down text-[#c5d0db] transition-transform"></i>
+                        <i class="fa-solid fa-chevron-down text-[#c5d0db] transition-transform ${autoExpand ? 'rotate-180' : ''}"></i>
                     </div>
                 </div>
-                <div class="subject-body">
-                    <div class="px-5 pb-5 pt-2 bg-[#f8fafb] border-t border-[#f0f4f8]">${typeRows}</div>
+                <div class="subject-body ${autoExpand ? 'open' : ''}">
+                    <div class="px-5 pb-4 pt-3 bg-[#f8fafb] border-t border-[#f0f4f8]">
+                        <!-- Per-subject print -->
+                        <div class="flex justify-end mb-3">
+                            <button onclick="event.stopPropagation(); window.printSubjectReport('${safeSubject}', '${safeTerm}')"
+                                class="flex items-center gap-1.5 bg-white hover:bg-[#f4f7fb] text-[#374f6b] font-bold px-3 py-1.5 rounded text-[11px] border border-[#dce3ed] transition">
+                                <i class="fa-solid fa-print text-[10px]"></i> Print Subject Report
+                            </button>
+                        </div>
+                        ${typeRows}
+                    </div>
                 </div>
             </div>`;
     }).join('');
 }
+
+// ── Print: full term transcript ───────────────────────────────────────────
+window.printTermTranscript = (termId, termName) => {
+    const grades = termId
+        ? _academicGradesCache.filter(g => (g.termId || '') === termId)
+        : _academicGradesCache;
+    const s         = currentStudentData;
+    const school    = session.schoolName || session.schoolId || 'School';
+    const calcLg    = (avg) => avg >= 90 ? 'A' : avg >= 80 ? 'B' : avg >= 70 ? 'C' : avg >= 60 ? 'D' : 'F';
+
+    const bySubject = {};
+    grades.forEach(g => {
+        const subj = g.subject || 'Uncategorized';
+        if (!bySubject[subj]) bySubject[subj] = [];
+        bySubject[subj].push(g);
+    });
+
+    const tableRows = Object.entries(bySubject).map(([sub, sg]) => {
+        const avg  = Math.round(sg.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / sg.length);
+        const col  = avg >= 75 ? '#16a34a' : avg >= 60 ? '#d97706' : '#dc2626';
+        return `<tr>
+            <td style="border:1px solid #e2e8f0;padding:10px 15px;">${sub}</td>
+            <td style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;">${sg.length}</td>
+            <td style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;font-weight:700;color:${col}">${avg}%</td>
+            <td style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;font-weight:700;">${calcLg(avg)}</td>
+        </tr>`;
+    }).join('');
+
+    const allAvg  = grades.length ? Math.round(grades.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / grades.length) : 0;
+
+    const w = window.open('', '_blank');
+    w.document.write(`<!DOCTYPE html><html><head><title>${termName} Transcript — ${s?.name}</title>
+    <style>
+        *{box-sizing:border-box;margin:0;padding:0}
+        body{font-family:'Helvetica Neue',Arial,sans-serif;padding:48px 40px;color:#1e293b;line-height:1.5;font-size:13px}
+        .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0d1f35;padding-bottom:18px;margin-bottom:24px}
+        .school-name{font-size:20px;font-weight:900;text-transform:uppercase;color:#0d1f35}
+        .doc-type{font-size:11px;font-weight:700;color:#6b84a0;letter-spacing:0.12em;text-transform:uppercase;margin-top:3px}
+        .info-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:24px;background:#f8fafc;padding:16px;border-radius:8px;border:1px solid #e2e8f0}
+        .info-item label{display:block;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:#64748b;font-weight:700;margin-bottom:2px}
+        .info-item span{font-size:13px;font-weight:700;color:#0f172a}
+        .term-header{background:#0d1f35;color:white;padding:10px 16px;border-radius:6px;font-size:13px;font-weight:900;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:14px}
+        table{width:100%;border-collapse:collapse;margin-bottom:20px}
+        thead tr{background:#f1f5f9}
+        th{border:1px solid #e2e8f0;padding:10px 15px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#64748b}
+        .total-row{background:#f8fafc;font-weight:700}
+        .footer{margin-top:40px;text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:14px}
+    </style></head><body>
+    <div class="header">
+        <div>
+            <div class="school-name">${escHtml(school)}</div>
+            <div class="doc-type">Official Academic Transcript</div>
+        </div>
+        <div style="text-align:right;font-size:11px;color:#64748b">
+            <div style="font-weight:700">${termName}</div>
+            <div>Printed ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
+        </div>
+    </div>
+    <div class="info-grid">
+        <div class="info-item"><label>Student Name</label><span>${escHtml(s?.name || '—')}</span></div>
+        <div class="info-item"><label>Global Student ID</label><span style="font-family:monospace">${escHtml(s?.id || '—')}</span></div>
+        <div class="info-item"><label>Class</label><span>${escHtml(s?.className || 'Unassigned')}</span></div>
+        <div class="info-item"><label>Date of Birth</label><span>${escHtml(s?.dob || '—')}</span></div>
+        <div class="info-item"><label>Enrollment Status</label><span>${escHtml(s?.enrollmentStatus || 'Active')}</span></div>
+        <div class="info-item"><label>Parent / Guardian</label><span>${escHtml(s?.parentName || '—')}</span></div>
+    </div>
+    <div class="term-header">${escHtml(termName)}</div>
+    <table>
+        <thead><tr>
+            <th>Subject</th><th style="text-align:center">Assessments</th>
+            <th style="text-align:center">Average</th><th style="text-align:center">Grade</th>
+        </tr></thead>
+        <tbody>
+            ${tableRows}
+            <tr class="total-row">
+                <td colspan="2" style="border:1px solid #e2e8f0;padding:10px 15px;text-align:right;font-size:12px">OVERALL AVERAGE</td>
+                <td style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;font-weight:900;color:${allAvg>=75?'#16a34a':allAvg>=60?'#d97706':'#dc2626'}">${allAvg}%</td>
+                <td style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;font-weight:900">${calcLg(allAvg)}</td>
+            </tr>
+        </tbody>
+    </table>
+    <div class="footer">Issued by ${escHtml(school)} · ConnectUs Student Registry · ${new Date().toLocaleDateString()}</div>
+    </body></html>`);
+    w.document.close();
+    setTimeout(() => w.print(), 400);
+};
+
+// ── Print: single subject report ──────────────────────────────────────────
+window.printSubjectReport = (safeSubject, safeTerm) => {
+    const subject  = decodeURIComponent(safeSubject);
+    const termName = decodeURIComponent(safeTerm);
+    const s        = currentStudentData;
+    const school   = session.schoolName || session.schoolId || 'School';
+    const calcLg   = (avg) => avg >= 90 ? 'A' : avg >= 80 ? 'B' : avg >= 70 ? 'C' : avg >= 60 ? 'D' : 'F';
+
+    const termGrades = _activeTermForPrint.id
+        ? _academicGradesCache.filter(g => (g.termId || '') === _activeTermForPrint.id)
+        : _academicGradesCache;
+    const grades = termGrades.filter(g => (g.subject || 'Uncategorized') === subject);
+
+    if (!grades.length) { alert('No grades found for this subject.'); return; }
+
+    const byType = {};
+    grades.forEach(g => {
+        const t = g.type || 'Assessment';
+        if (!byType[t]) byType[t] = [];
+        byType[t].push(g);
+    });
+
+    const typeBlocks = Object.entries(byType).map(([type, tg]) => {
+        const typeAvg = Math.round(tg.reduce((a, g) => a + (g.max ? (g.score/g.max)*100 : 0), 0) / tg.length);
+        const rows = tg.map(g => {
+            const pct = g.max ? Math.round((g.score/g.max)*100) : null;
+            const col = pct == null ? '#374f6b' : pct >= 75 ? '#16a34a' : pct >= 60 ? '#d97706' : '#dc2626';
+            return `<tr>
+                <td style="border:1px solid #e2e8f0;padding:9px 14px">${escHtml(g.title||'Assessment')}</td>
+                <td style="border:1px solid #e2e8f0;padding:9px 14px;text-align:center">${g.date||'—'}</td>
+                <td style="border:1px solid #e2e8f0;padding:9px 14px;text-align:center;font-weight:700;color:${col}">${g.score}/${g.max||'?'}</td>
+                <td style="border:1px solid #e2e8f0;padding:9px 14px;text-align:center;font-weight:700;color:${col}">${pct!=null?pct+'%':'—'}</td>
+                <td style="border:1px solid #e2e8f0;padding:9px 14px;font-size:11px;color:#64748b;font-style:italic">${escHtml(g.comments||'')}</td>
+            </tr>`;
+        }).join('');
+        return `<h4 style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin:16px 0 8px">${type} <span style="font-weight:500;color:#94a3b8">(avg: ${typeAvg}%)</span></h4>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px">
+            <thead><tr style="background:#f8fafc"><th style="border:1px solid #e2e8f0;padding:8px 14px;text-align:left">Title</th><th style="border:1px solid #e2e8f0;padding:8px 14px;text-align:center">Date</th><th style="border:1px solid #e2e8f0;padding:8px 14px;text-align:center">Score</th><th style="border:1px solid #e2e8f0;padding:8px 14px;text-align:center">%</th><th style="border:1px solid #e2e8f0;padding:8px 14px;text-align:left">Teacher Comments</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+    }).join('');
+
+    const overall = Math.round(grades.reduce((a,g) => a+(g.max?(g.score/g.max)*100:0),0)/grades.length);
+
+    const w = window.open('', '_blank');
+    w.document.write(`<!DOCTYPE html><html><head><title>${subject} Report — ${s?.name}</title>
+    <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Helvetica Neue',Arial,sans-serif;padding:48px 40px;color:#1e293b;line-height:1.5}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0d1f35;padding-bottom:18px;margin-bottom:24px}
+    .school-name{font-size:20px;font-weight:900;text-transform:uppercase;color:#0d1f35}.doc-type{font-size:11px;font-weight:700;color:#6b84a0;letter-spacing:0.12em;text-transform:uppercase;margin-top:3px}
+    .summary{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center}
+    .footer{margin-top:40px;text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:14px}</style></head><body>
+    <div class="header"><div><div class="school-name">${escHtml(school)}</div><div class="doc-type">Subject Grade Report</div></div>
+    <div style="text-align:right;font-size:11px;color:#64748b"><div style="font-weight:700">${escHtml(termName)}</div><div>Printed ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div></div></div>
+    <div class="summary">
+        <div><div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:2px">Student</div><div style="font-size:15px;font-weight:900;color:#0d1f35">${escHtml(s?.name||'—')}</div><div style="font-size:11px;color:#64748b;font-family:monospace">${escHtml(s?.id||'')}</div></div>
+        <div style="text-align:center"><div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:2px">Subject</div><div style="font-size:17px;font-weight:900;color:#0d1f35">${escHtml(subject)}</div></div>
+        <div style="text-align:right"><div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:2px">Overall</div><div style="font-size:26px;font-weight:900;color:${overall>=75?'#16a34a':overall>=60?'#d97706':'#dc2626'}">${overall}% · ${calcLg(overall)}</div></div>
+    </div>
+    ${typeBlocks}
+    <div class="footer">Issued by ${escHtml(school)} · ConnectUs Student Registry · ${new Date().toLocaleDateString()}</div>
+    </body></html>`);
+    w.document.close();
+    setTimeout(() => w.print(), 400);
+};
 
 window.toggleSubjectAccordion = (header) => {
     const body    = header.nextElementSibling;
@@ -1004,12 +1187,31 @@ function renderStudentHistoryTab() {
 
 
 // ── 12. ENROLLMENT TAB ────────────────────────────────────────────────────
-function renderStudentEnrollmentTab() {
+async function renderStudentEnrollmentTab() {
     const s    = currentStudentData;
     if (!s) return;
-    const pane = document.getElementById('tab-enrollment');
+    const pane     = document.getElementById('tab-enrollment');
     const isActive = (s.enrollmentStatus || 'Active') === 'Active';
 
+    // ── Check active term to determine if assignment is locked ────────────
+    let hasActiveTerm = false;
+    let activeTermName = '';
+    try {
+        const termSnap = await getDocs(
+            query(collection(db, 'terms'),
+                where('schoolId', '==', session.schoolId),
+                where('isActive', '==', true))
+        );
+        if (!termSnap.empty) {
+            hasActiveTerm  = true;
+            activeTermName = termSnap.docs[0].data().name || 'the current term';
+        }
+    } catch (_) {}
+
+    // Assignment is locked if: active term exists AND student already has both class+teacher
+    const isLocked = isActive && hasActiveTerm && !!(s.className && s.teacherId);
+
+    // Incomplete warning (no class or teacher, active term)
     const noClassOrTeacher = !s.className || !s.teacherId;
     const warning = noClassOrTeacher && isActive ? `
         <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
@@ -1018,20 +1220,17 @@ function renderStudentEnrollmentTab() {
                 <p class="font-black text-[13px] text-amber-800">Assignment Incomplete</p>
                 <p class="text-[11px] font-semibold text-amber-600 mt-0.5">
                     ${!s.className && !s.teacherId
-                        ? 'This student has no class and no teacher assigned.'
-                        : !s.className
-                            ? 'This student has no class assigned.'
-                            : 'This student has no teacher assigned.'}
-                    <strong>Grades cannot be recorded until both are assigned.</strong>
+                        ? 'No class or teacher assigned.'
+                        : !s.className ? 'No class assigned.' : 'No teacher assigned.'}
+                    <strong>Grades cannot be recorded until both class and teacher are assigned.</strong>
                 </p>
             </div>
         </div>` : '';
 
-    // Class/Teacher assignment dropdowns
+    // Class/Teacher dropdowns
     const classOptions = getClassOptions().map(c =>
         `<option value="${c}" ${s.className === c ? 'selected' : ''}>${c}</option>`
     ).join('');
-
     const teacherOptions = allTeachersCache.map(t =>
         `<option value="${t.id}" ${s.teacherId === t.id ? 'selected' : ''}>${escHtml(t.name)}</option>`
     ).join('');
@@ -1055,47 +1254,63 @@ function renderStudentEnrollmentTab() {
         <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm">
             <div class="flex items-center justify-between mb-3">
                 <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Class & Teacher Assignment</h4>
-                <button onclick="window.saveStudentAssignment()"
-                    class="text-[11px] font-bold text-[#2563eb] bg-[#eef4ff] border border-[#c7d9fd] px-3 py-1.5 rounded hover:bg-[#dbeafe] transition">
-                    <i class="fa-solid fa-floppy-disk mr-1"></i> Save
-                </button>
+                ${isLocked
+                    ? `<span class="flex items-center gap-1.5 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-lg">
+                           <i class="fa-solid fa-lock text-[9px]"></i> Locked — ${escHtml(activeTermName)} is active
+                       </span>`
+                    : `<button onclick="window.saveStudentAssignment()"
+                           class="text-[11px] font-bold text-[#2563eb] bg-[#eef4ff] border border-[#c7d9fd] px-3 py-1.5 rounded hover:bg-[#dbeafe] transition">
+                           <i class="fa-solid fa-floppy-disk mr-1"></i> Save
+                       </button>`}
             </div>
-            <div class="space-y-3">
+
+            ${isLocked ? `
+            <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                <p class="text-[11px] text-amber-700 font-bold leading-relaxed">
+                    <i class="fa-solid fa-circle-info mr-1"></i>
+                    <strong>${escHtml(s.name)}</strong> is actively assigned to <strong>${escHtml(s.className)}</strong>
+                    during <strong>${escHtml(activeTermName)}</strong>. The assignment cannot be changed while the term is active.
+                    To move this student, use <strong>Archive / Transfer</strong> from the Actions menu.
+                </p>
+            </div>` : ''}
+
+            <div class="space-y-3 ${isLocked ? 'opacity-60 pointer-events-none' : ''}">
                 <div>
-                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Class</label>
-                    <select id="enrollClassSelect"
-                        class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]"
-                        onchange="window.filterEnrollTeachers(this.value)">
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">
+                        Class <span class="text-[#e31b4a]">*</span>
+                    </label>
+                    <select id="enrollClassSelect" ${isLocked ? 'disabled' : ''}
+                        class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">
                         <option value="">— Unassigned —</option>
                         ${classOptions}
                     </select>
                 </div>
                 <div>
-                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Teacher</label>
-                    <select id="enrollTeacherSelect"
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">
+                        Teacher <span class="text-[#e31b4a]">*</span>
+                    </label>
+                    <select id="enrollTeacherSelect" ${isLocked ? 'disabled' : ''}
                         class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">
                         <option value="">— Unassigned —</option>
                         ${teacherOptions}
                     </select>
+                    <p class="text-[10px] text-[#9ab0c6] mt-1.5 font-semibold">
+                        Class and teacher must always be assigned together.
+                    </p>
                 </div>
             </div>
             <p id="assignMsg" class="text-[11px] hidden mt-3 font-bold"></p>
         </div>` : `
-        <!-- Inactive notice -->
         <div class="bg-[#f8fafb] border border-[#dce3ed] rounded-xl p-5 text-center">
             <i class="fa-solid fa-box-archive text-[#9ab0c6] text-3xl mb-3"></i>
             <p class="font-bold text-[#374f6b] text-[13px]">This student is no longer active.</p>
-            <p class="text-[11px] text-[#9ab0c6] font-semibold mt-1">Enrollment actions are not available for archived or transferred students.</p>
+            <p class="text-[11px] text-[#9ab0c6] font-semibold mt-1">Enrollment actions are unavailable for archived or transferred students.</p>
         </div>`}`;
 
-    // Wire class dropdown to filter teachers
-    if (isActive) {
-        const classSelEl = document.getElementById('enrollClassSelect');
-        if (classSelEl) {
-            classSelEl.addEventListener('change', function() {
-                window.filterEnrollTeachers(this.value);
-            });
-        }
+    if (isActive && !isLocked) {
+        document.getElementById('enrollClassSelect')?.addEventListener('change', function () {
+            window.filterEnrollTeachers(this.value);
+        });
     }
 }
 
@@ -1103,26 +1318,20 @@ window.filterEnrollTeachers = (selectedClass) => {
     const tSelect = document.getElementById('enrollTeacherSelect');
     if (!tSelect) return;
     const current = tSelect.value;
-
     tSelect.innerHTML = '<option value="">— Unassigned —</option>';
-
     if (!selectedClass) {
-        // Show all teachers when no class selected
         allTeachersCache.forEach(t => {
             tSelect.innerHTML += `<option value="${t.id}">${escHtml(t.name)}</option>`;
         });
     } else {
         const matches = allTeachersCache.filter(t => t.classes?.includes(selectedClass));
         if (matches.length) {
-            matches.forEach(t => {
-                tSelect.innerHTML += `<option value="${t.id}">${escHtml(t.name)}</option>`;
-            });
+            matches.forEach(t => { tSelect.innerHTML += `<option value="${t.id}">${escHtml(t.name)}</option>`; });
             if (matches.length === 1) tSelect.value = matches[0].id;
         } else {
             tSelect.innerHTML += '<option value="" disabled>No teacher assigned to this class yet</option>';
         }
     }
-
     if (current) tSelect.value = current;
 };
 
@@ -1130,11 +1339,26 @@ window.saveStudentAssignment = async () => {
     const className = document.getElementById('enrollClassSelect')?.value || '';
     const teacherId = document.getElementById('enrollTeacherSelect')?.value || '';
     const msgEl     = document.getElementById('assignMsg');
+    msgEl.classList.add('hidden');
+
+    const showErr = (html) => {
+        msgEl.innerHTML = html;
+        msgEl.className = 'text-[11px] mt-3 font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg p-3 leading-relaxed';
+        msgEl.classList.remove('hidden');
+    };
+
+    // ── Rule: class and teacher must be set together ───────────────────
+    if (className && !teacherId) {
+        showErr('<i class="fa-solid fa-triangle-exclamation mr-1"></i> A teacher must be assigned with the class. A student cannot be in a class without a teacher.');
+        return;
+    }
+    if (!className && teacherId) {
+        showErr('<i class="fa-solid fa-triangle-exclamation mr-1"></i> A class must be assigned with the teacher.');
+        return;
+    }
 
     try {
         await updateDoc(doc(db, 'students', currentStudentId), { className, teacherId });
-
-        // Update caches
         if (currentStudentData) { currentStudentData.className = className; currentStudentData.teacherId = teacherId; }
         const idx = allStudentsCache.findIndex(s => s.id === currentStudentId);
         if (idx > -1) {
@@ -1142,12 +1366,9 @@ window.saveStudentAssignment = async () => {
             allStudentsCache[idx].teacherId   = teacherId;
             allStudentsCache[idx].teacherName = allTeachersCache.find(t => t.id === teacherId)?.name || '—';
         }
-
-        // Update panel header
         const teacherName = allTeachersCache.find(t => t.id === teacherId)?.name || '—';
         document.getElementById('sPanelClass').textContent =
             [className || 'No class assigned', teacherName !== '—' ? `with ${teacherName}` : ''].filter(Boolean).join(' · ');
-
         renderTable();
         msgEl.textContent = 'Assignment saved.';
         msgEl.className   = 'text-[11px] mt-3 font-bold text-green-600';
@@ -1155,9 +1376,7 @@ window.saveStudentAssignment = async () => {
         setTimeout(() => msgEl.classList.add('hidden'), 2500);
     } catch (e) {
         console.error('[Students] saveAssignment:', e);
-        msgEl.textContent = 'Error saving. Try again.';
-        msgEl.className   = 'text-[11px] mt-3 font-bold text-red-600';
-        msgEl.classList.remove('hidden');
+        showErr('Error saving. Please try again.');
     }
 };
 
