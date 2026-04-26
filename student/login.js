@@ -2,24 +2,24 @@ import { db } from '../assets/js/firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { setSessionData } from '../assets/js/auth.js';
 
-// ── ELEMENTS ──────────────────────────────────────────────────────────────────
+// ── ELEMENTS ─────────────────────────────────────────────────────────────────
 const loginBtn = document.getElementById('loginBtn');
 const msgEl    = document.getElementById('loginMsg');
 
 function showError(text) {
     msgEl.textContent = text;
-    msgEl.classList.remove('hidden');
+    msgEl.classList.add('show');
 }
 
 function hideError() {
-    msgEl.classList.add('hidden');
+    msgEl.classList.remove('show');
 }
 
 function setLoading(loading) {
     loginBtn.disabled = loading;
     loginBtn.innerHTML = loading
         ? `<i class="fa-solid fa-spinner fa-spin"></i> Verifying...`
-        : `View Progress <i class="fa-solid fa-arrow-right-to-bracket"></i>`;
+        : `<i class="fa-solid fa-arrow-right-to-bracket"></i> View My Progress`;
 }
 
 // ── LOGIN HANDLER ─────────────────────────────────────────────────────────────
@@ -76,8 +76,8 @@ async function handleLogin() {
 
         // ── Gate: Security questions not yet set ──────────────────────────
         // Triggers on first login for all students in the global system.
-        // Covers both: new students and existing students who never had email
-        // or security questions (they will be prompted to add them here).
+        // Covers both: new students and existing students who never had
+        // security questions set (they will be prompted to add them here).
         if (!studentData.securityQuestionsSet) {
             window.location.replace('../onboarding/first-time-setup.html?role=student');
             return;
