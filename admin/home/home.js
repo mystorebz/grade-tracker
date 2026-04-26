@@ -1,5 +1,5 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { doc, getDoc, getDocs, updateDoc, collection, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { doc, getDoc, getDocs, collection, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
 
@@ -17,13 +17,12 @@ const statLimitEl = document.getElementById('stat-limit');
 const planNameDisplay = document.getElementById('planNameDisplay');
 const capacityBar = document.getElementById('capacityBar');
 const capacityWarningBanner = document.getElementById('capacityWarningBanner');
-const activePeriodSelect = document.getElementById('activePeriodSelect');
-const activePeriodSaved = document.getElementById('activePeriodSaved');
+const activePeriodDisplay = document.getElementById('activePeriodDisplay');
 
 // ── 2. LOAD DASHBOARD STATS ───────────────────────────────────────────────
 async function loadOverviewStats() {
     try {
-        // CHANGED: query global collections
+        // Query global collections
         const [tSnap, sSnap] = await Promise.all([
             getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId))),
             getDocs(query(collection(db, 'students'),
@@ -65,57 +64,28 @@ async function loadOverviewStats() {
     }
 }
 
-// ── 3. LOAD & MANAGE ACTIVE GRADING PERIOD ────────────────────────────────
+// ── 3. LOAD & DISPLAY ACTIVE GRADING PERIOD (READ-ONLY) ───────────────────
 async function loadSemesters() {
     try {
-        const snap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
-        let allSemesters = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.order - b.order);
-        
-        // Filter out archived periods for the dropdown, unless it's currently the active one
-        const dropdownSems = allSemesters.filter(s => !s.archived || s.id === session.activeSemesterId);
-        
-        if (dropdownSems.length === 0) {
-            activePeriodSelect.innerHTML = '<option disabled>No periods found</option>';
+        if (!session.activeSemesterId) {
+            activePeriodDisplay.textContent = 'None Set';
             return;
         }
 
-        // Populate dropdown
-        activePeriodSelect.innerHTML = dropdownSems.map(s => 
-            `<option class="text-slate-800" value="${s.id}" ${s.id === session.activeSemesterId ? 'selected' : ''}>${s.name}</option>`
-        ).join('');
+        const docRef = doc(db, 'schools', session.schoolId, 'semesters', session.activeSemesterId);
+        const docSnap = await getDoc(docRef);
+        
+        if (docSnap.exists()) {
+            activePeriodDisplay.textContent = docSnap.data().name;
+        } else {
+            activePeriodDisplay.textContent = 'Unknown Period';
+        }
         
     } catch (error) {
-        console.error("Error loading semesters:", error);
-        activePeriodSelect.innerHTML = '<option disabled>Error loading</option>';
+        console.error("Error loading active semester:", error);
+        activePeriodDisplay.textContent = 'Error loading';
     }
 }
-
-// Handle change event for Active Grading Period
-activePeriodSelect.addEventListener('change', async (e) => {
-    const newActiveId = e.target.value;
-    activePeriodSelect.disabled = true; // Prevent rapid clicking
-    
-    try {
-        // Update Firestore
-        await updateDoc(doc(db, 'schools', session.schoolId), { 
-            activeSemesterId: newActiveId 
-        });
-        
-        // Update local session
-        session.activeSemesterId = newActiveId;
-        setSessionData('admin', session);
-        
-        // Show success message
-        activePeriodSaved.classList.remove('hidden');
-        setTimeout(() => activePeriodSaved.classList.add('hidden'), 3000);
-        
-    } catch (error) {
-        console.error("Error updating active period:", error);
-        alert("Failed to update the active grading period. Please try again.");
-    } finally {
-        activePeriodSelect.disabled = false;
-    }
-});
 
 // ── INITIALIZE ────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
