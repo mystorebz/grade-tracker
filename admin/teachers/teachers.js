@@ -19,7 +19,7 @@ let currentTeacherId  = null;
 let currentTeacherData = null;
 let claimedTeacherDoc = null;
 let slipData          = { name: '', id: '', pin: '' };
-let dynamicEvalTypes  = new Set(); // Added to harvest custom eval types
+let dynamicEvalTypes  = new Set(); 
 
 const tbody = document.getElementById('teachersTableBody');
 
@@ -68,14 +68,12 @@ function getClassOptions() {
     } else if (type === 'juniorcollege' || type === 'tertiary') {
         return ['Year 1 — Semester 1', 'Year 1 — Semester 2', 'Year 2 — Semester 1', 'Year 2 — Semester 2'];
     }
-    // Default: primary
     return ['Infant 1', 'Infant 2', 'Standard 1', 'Standard 2', 'Standard 3', 'Standard 4', 'Standard 5', 'Standard 6'];
 }
 
 function blankTeacherDoc(overrides = {}) {
     const now = Date.now();
     return {
-        // ── System ──────────────────────────────────────────────
         pin:                    generatePin(),
         requiresPinReset:       true,
         profileComplete:        false,
@@ -84,7 +82,6 @@ function blankTeacherDoc(overrides = {}) {
         archivedSchoolIds:      [],
         createdAt:              new Date().toISOString(),
 
-        // ── Basic (admin fills) ──────────────────────────────────
         firstName:              '',
         lastName:               '',
         name:                   '',
@@ -92,7 +89,6 @@ function blankTeacherDoc(overrides = {}) {
         phone:                  '',
         phoneSecondary:         '',
 
-        // ── Address ──────────────────────────────────────────────
         address: {
             line1:    '',
             line2:    '',
@@ -101,21 +97,18 @@ function blankTeacherDoc(overrides = {}) {
             country:  'Belize'
         },
 
-        // ── Professional Credentials ─────────────────────────────
         teacherLicenseNumber:   '',
-        licenseType:            '',     // Trained | Untrained | Provisional
+        licenseType:            '', 
         licenseExpiryDate:      '',
         yearsOfExperience:      null,
 
-        // ── Academic Qualifications ──────────────────────────────
-        highestEducationLevel:  '',     // Associate's | Bachelor's | Master's | Doctorate
+        highestEducationLevel:  '', 
         fieldOfStudy:           '',
         institution:            '',
         yearGraduated:          null,
 
-        // ── Teaching Profile ─────────────────────────────────────
-        employmentType:         '',     // Full-time | Part-time | Contract | Substitute
-        gradeLevelSpec:         '',     // Primary | Secondary | Junior College
+        employmentType:         '', 
+        gradeLevelSpec:         '', 
         subjects: [
             { id: `sub_${now}_1`, name: 'Mathematics',           archived: false, description: '' },
             { id: `sub_${now}_2`, name: 'English Language Arts', archived: false, description: '' },
@@ -124,7 +117,6 @@ function blankTeacherDoc(overrides = {}) {
         classes:                [],
         className:              '',
 
-        // ── Grade Config ─────────────────────────────────────────
         customGradeTypes:   ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'],
         archivedGradeTypes: [],
 
@@ -278,7 +270,6 @@ window.closeAddTeacherModal = () => {
     claimedTeacherDoc = null;
 };
 
-// ── Search "Enter" Key Listener ───────────────────────────────────────────
 document.getElementById('teacherSearchInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
         e.preventDefault();
@@ -286,7 +277,6 @@ document.getElementById('teacherSearchInput').addEventListener('keydown', (e) =>
     }
 });
 
-// ── Search Unassigned Teachers ────────────────────────────────────────────
 document.getElementById('searchTeacherBtn').addEventListener('click', async () => {
     const input    = document.getElementById('teacherSearchInput').value.trim();
     const resultsEl = document.getElementById('teacherSearchResults');
@@ -310,7 +300,6 @@ document.getElementById('searchTeacherBtn').addEventListener('click', async () =
         const looksLikeId = input.includes('-');
 
         if (looksLikeId) {
-            // Normalize and try direct ID lookup
             const normalizedId = input.toUpperCase().replace(/\s/g, '');
             const snap = await getDoc(doc(db, 'teachers', normalizedId));
             if (snap.exists()) {
@@ -328,7 +317,6 @@ document.getElementById('searchTeacherBtn').addEventListener('click', async () =
         }
 
         if (!results.length) {
-            // Query all unassigned and filter by name/email/id client-side
             const snap = await getDocs(
                 query(collection(db, 'teachers'), where('currentSchoolId', '==', ''))
             );
@@ -365,7 +353,6 @@ document.getElementById('searchTeacherBtn').addEventListener('click', async () =
     btn.disabled  = false;
 });
 
-// ── Select a Teacher from Results ─────────────────────────────────────────
 window.selectTeacherResult = async (teacherId) => {
     document.getElementById('teacherSearchResults').classList.add('hidden');
 
@@ -419,7 +406,6 @@ window.clearTeacherSelection = () => {
     claimedTeacherDoc = null;
 };
 
-// ── Claim Teacher ─────────────────────────────────────────────────────────
 document.getElementById('claimTeacherBtn').addEventListener('click', async () => {
     if (!claimedTeacherDoc) return;
     const btn = document.getElementById('claimTeacherBtn');
@@ -461,7 +447,6 @@ document.getElementById('claimTeacherBtn').addEventListener('click', async () =>
     btn.innerHTML = '<i class="fa-solid fa-handshake mr-2"></i> Claim This Teacher';
 });
 
-// ── Create New Teacher ────────────────────────────────────────────────────
 document.getElementById('saveTeacherBtn').addEventListener('click', async () => {
     const btn   = document.getElementById('saveTeacherBtn');
     const msgEl = document.getElementById('addTeacherMsg');
@@ -489,7 +474,6 @@ document.getElementById('saveTeacherBtn').addEventListener('click', async () => 
     btn.disabled  = true;
 
     try {
-        // Strict Email Validation Check
         const emailCheckQuery = query(collection(db, 'teachers'), where('email', '==', email));
         const emailCheckSnap = await getDocs(emailCheckQuery);
         if (!emailCheckSnap.empty) {
@@ -604,7 +588,6 @@ window.openTeacherPanel = async (teacherId) => {
         document.getElementById('tPanelLoader').classList.add('hidden');
         document.getElementById('tPanelTabs').classList.remove('hidden');
 
-        // Activate Overview by default
         switchPanelTab('overview');
 
     } catch (e) {
@@ -616,7 +599,6 @@ window.openTeacherPanel = async (teacherId) => {
 
 window.closeTeacherPanel = () => closeOverlay('teacherPanel', 'teacherPanelInner', true);
 
-// ── Tab Switching ─────────────────────────────────────────────────────────
 document.querySelectorAll('.panel-tab').forEach(btn => {
     btn.addEventListener('click', () => switchPanelTab(btn.dataset.tab));
 });
@@ -644,7 +626,6 @@ async function renderOverviewTab() {
     const classes  = getTeacherClasses(t);
     const complete = isProfileComplete(t);
 
-    // ── Check for active term and active students per class ───────────────
     let hasActiveTerm = false;
     let activeTermName = '';
     let studentsByClass = {};
@@ -671,7 +652,6 @@ async function renderOverviewTab() {
         });
     } catch (_) {}
 
-    // ── Build checkboxes — locked if class has active students in active term
     const classCheckboxes = getClassOptions().map(c => {
         const isAssigned   = classes.includes(c);
         const studentCount = studentsByClass[c] || 0;
@@ -777,7 +757,6 @@ window.saveClassAssignment = async () => {
     const msgEl          = document.getElementById('classAssignMsg');
     msgEl.classList.add('hidden');
 
-    // Guard against removal
     const removed = currentClasses.filter(c => !selected.includes(c));
 
     if (removed.length > 0) {
@@ -860,7 +839,6 @@ async function renderStudentsTab() {
             return;
         }
 
-        // Group students visually by class name
         const studentsByClass = students.reduce((acc, s) => {
             const cName = s.class || s.className || 'Unassigned';
             if (!acc[cName]) acc[cName] = [];
@@ -921,7 +899,6 @@ async function renderSubjectsTab() {
     pane.innerHTML = `<div class="flex items-center justify-center py-16"><i class="fa-solid fa-spinner fa-spin text-2xl text-[#2563eb]"></i></div>`;
 
     try {
-        // Fetch active students for this teacher to compute grade stats locally
         const studSnap = await getDocs(
             query(collection(db, 'students'), 
                 where('teacherId', '==', currentTeacherId), 
@@ -932,14 +909,12 @@ async function renderSubjectsTab() {
 
         let allGrades = [];
         if (studentIds.length > 0) {
-            // Batch parallel grade queries across all the teacher's active students
             const gradePromises = studentIds.map(sid => getDocs(collection(db, 'students', sid, 'grades')));
             const fallbackPromises = studentIds.map(sid => getDocs(collection(db, 'schools', session.schoolId, 'students', sid, 'grades')));
             const results = await Promise.all([...gradePromises, ...fallbackPromises]);
             results.forEach(snap => snap.forEach(d => allGrades.push(d.data())));
         }
 
-        // Compute median & average natively per subject
         const statsBySubject = {};
         subjects.forEach(s => {
             const sGrades = allGrades.filter(g => g.subject === s.name && g.max);
@@ -1004,7 +979,6 @@ function subjectRow(s, stats = { avg: '--', med: '--' }) {
         </div>`;
 }
 
-// ── Custom Modal Logic for Subject Adding 
 window.openAddSubjectModal = () => {
     document.getElementById('subjectSelect').value = '';
     document.getElementById('customSubjectName').value = '';
@@ -1077,7 +1051,6 @@ async function renderEvaluationsTab() {
             .map(d => ({ id: d.id, ...d.data() }))
             .sort((a, b) => new Date(b.timestamp || b.date || 0) - new Date(a.timestamp || a.date || 0));
 
-        // Harvest dynamic evaluation types
         dynamicEvalTypes.clear();
         evals.forEach(ev => { if (ev.type) dynamicEvalTypes.add(ev.type); });
 
@@ -1090,7 +1063,6 @@ async function renderEvaluationsTab() {
               ).join('')
             : null;
 
-        // Build Dynamic Options
         const standardTypes = ["Classroom Observation", "Term Review", "Peer Review"];
         const allTypes = new Set([...standardTypes, ...Array.from(dynamicEvalTypes)]);
         let typeOptionsHtml = `<option value="">— Select Type —</option>`;
@@ -1275,7 +1247,6 @@ async function renderEvaluationsTab() {
     }
 }
 
-// Handler for the Accordion Dropdown
 window.toggleEvalAccordion = (header) => {
     const body    = header.nextElementSibling;
     const chevron = header.querySelector('.fa-chevron-down');
@@ -1284,7 +1255,6 @@ window.toggleEvalAccordion = (header) => {
     if (chevron) chevron.style.transform = body.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';
 };
 
-// Handler for dynamic input toggling
 window.toggleInlEvalTypeFields = function() {
     const type = document.getElementById('inlEvalType').value;
     
@@ -1332,7 +1302,7 @@ window.saveInlineEval = async () => {
         await addDoc(collection(db, 'teachers', currentTeacherId, 'evaluations'), {
             type,
             overallRating:        parseInt(rating),
-            performanceScore:     parseInt(rating), // Backwards compatibility
+            performanceScore:     parseInt(rating),
             date,
             subjectObserved:      subject,
             studentFocus:         student,
@@ -1346,7 +1316,6 @@ window.saveInlineEval = async () => {
             timestamp:            new Date().toISOString()
         });
         
-        // Re-render tab to show new eval and hide form
         renderEvaluationsTab();
     } catch (e) {
         console.error('[Teachers] saveInlineEval:', e);
@@ -1356,7 +1325,6 @@ window.saveInlineEval = async () => {
     }
 };
 
-// We keep the old modal close trigger active just in case it is still registered elsewhere
 window.closeAddEvalModal = () => closeOverlay('addEvalModal', 'addEvalModalInner');
 
 
@@ -1424,7 +1392,6 @@ window.initiateArchive = async () => {
             return;
         }
 
-        // Safe to proceed
         window.openExitModal();
 
     } catch (e) {
@@ -1504,15 +1471,12 @@ window.printTeacherPortfolio = async (tId) => {
     w.document.write('<div style="font-family: sans-serif; padding: 40px; color: #64748b;">Generating National Portfolio Data...</div>');
 
     try {
-        // Fetch evaluations
         const evalSnap = await getDocs(query(collection(db, 'teachers', tId, 'evaluations'), where('schoolId', '==', session.schoolId)));
         const evals = evalSnap.docs.map(d => d.data()).sort((a, b) => new Date(b.timestamp || b.date || 0) - new Date(a.timestamp || a.date || 0));
         
-        // Fetch Active Students
         const studSnap = await getDocs(query(collection(db, 'students'), where('teacherId', '==', tId), where('currentSchoolId', '==', session.schoolId), where('enrollmentStatus', '==', 'Active')));
         const students = studSnap.docs.map(d => d.data());
         
-        // Setup blocks
         const schoolName = session.schoolName || session.schoolId || 'ConnectUs School';
         const classesAssigned = getTeacherClasses(t).join(', ') || 'None';
         const subjectsAssigned = getSubjectNames(t.subjects).join(', ') || 'None';
@@ -1554,17 +1518,22 @@ window.printTeacherPortfolio = async (tId) => {
             <style>
                 * { box-sizing: border-box; margin: 0; padding: 0; }
                 body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 48px 40px; color: #1e293b; line-height: 1.5; font-size: 13px; }
-                .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #0d1f35; padding-bottom: 18px; margin-bottom: 24px; }
+                .header { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid #0d1f35; padding-bottom: 18px; margin-bottom: 24px; }
                 .school-name { font-size: 20px; font-weight: 900; text-transform: uppercase; color: #0d1f35; }
                 .doc-type { font-size: 11px; font-weight: 700; color: #6b84a0; letter-spacing: 0.12em; text-transform: uppercase; margin-top: 3px; }
                 .section-title { font-size: 13px; font-weight: 900; background: #0d1f35; color: white; padding: 10px 16px; border-radius: 6px; letter-spacing: 0.05em; text-transform: uppercase; margin: 24px 0 14px; }
                 .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 24px; background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; }
                 .info-item label { display: block; font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; font-weight: 700; margin-bottom: 2px; }
                 .info-item span { font-size: 13px; font-weight: 700; color: #0f172a; }
-                .footer { margin-top: 40px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 14px; }
+                .footer { margin-top: 40px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 14px; line-height: 1.6; }
             </style>
         </head>
         <body>
+        
+            <div style="text-align: center; margin-bottom: 30px;">
+                <img src="../../assets/images/logo.png" onerror="this.style.display='none'" style="height: 65px; object-fit: contain; margin-bottom: 10px;">
+            </div>
+
             <div class="header">
                 <div>
                     <div class="school-name">${escHtml(schoolName)}</div>
@@ -1606,7 +1575,8 @@ window.printTeacherPortfolio = async (tId) => {
             <div>${studentsHtml}</div>
 
             <div class="footer">
-                Issued by ${escHtml(schoolName)} · ConnectUs National Registry · ${new Date().toLocaleDateString()}
+                Issued by ${escHtml(schoolName)} · ConnectUs National Registry · ${new Date().toLocaleDateString()}<br>
+                <span style="font-weight: 700; color: #cbd5e1; font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; display: inline-block; margin-top: 8px;">Education Connected · Powered by Kismet Coder</span>
             </div>
         </body>
         </html>`;
@@ -1655,4 +1625,4 @@ document.getElementById('exportCsvBtn').addEventListener('click', () => {
 
 
 // ── BOOT ──────────────────────────────────────────────────────────────────
-loadTeachers();
+loadTeachers();Does this file have the print teacher's portfolio on it?
