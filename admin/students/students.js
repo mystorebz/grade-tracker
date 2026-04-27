@@ -827,10 +827,16 @@ async function renderStudentAcademicTab() {
                     <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-0.5">Current Term</p>
                     <p class="font-black text-white text-[19px]">${escHtml(activeTerm?.name || 'No Active Term')}</p>
                 </div>
-                <button onclick="window.printTermTranscript('${activeTerm?.id || ''}', '${escHtml(activeTerm?.name || 'Current Term')}')"
-                    class="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white font-bold px-4 py-2.5 rounded-lg text-[11px] transition border border-white/20 flex-shrink-0">
-                    <i class="fa-solid fa-print mr-1"></i> Print Transcript
-                </button>
+                <div class="flex gap-2">
+                    <button onclick="window.openAdminGradeModal()"
+                        class="flex items-center gap-1.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold px-4 py-2.5 rounded-lg text-[11px] transition shadow-md border border-[#1d4ed8] flex-shrink-0">
+                        <i class="fa-solid fa-plus mr-1"></i> Add Grade
+                    </button>
+                    <button onclick="window.printTermTranscript('${activeTerm?.id || ''}', '${escHtml(activeTerm?.name || 'Current Term')}')"
+                        class="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white font-bold px-4 py-2.5 rounded-lg text-[11px] transition border border-white/20 flex-shrink-0">
+                        <i class="fa-solid fa-print mr-1"></i> Print Transcript
+                    </button>
+                </div>
             </div>
 
             ${pastTerms.length ? `
@@ -923,16 +929,32 @@ function renderGradesForTerm(termId, allTerms = false, termName = 'Term', autoEx
             const gradeRows = tGrades.map(g => {
                 const pct    = g.max ? Math.round((g.score / g.max) * 100) : null;
                 const pColor = pct == null ? '#374f6b' : pct >= 75 ? '#16a34a' : pct >= 60 ? '#d97706' : '#dc2626';
+                
+                const adminBadge = g.enteredByAdmin ? `<span class="inline-block ml-2 text-[9px] font-bold text-[#2563eb] bg-[#eff6ff] border border-[#bfdbfe] px-1.5 py-0.5 rounded">Admin: ${escHtml(g.adminName)}</span>` : '';
+                const reasonText = g.changeReason ? `<p class="text-[10px] text-amber-700 font-semibold mt-1 bg-amber-50 p-1.5 rounded border border-amber-100">Reason: ${escHtml(g.changeReason)}</p>` : '';
+                
+                // Only allow edits if this admin OWNS the grade
+                const editBtn = (g.adminId && g.adminId === session.uid)
+                    ? `<button onclick="window.openAdminGradeModal('${g.id}')" class="text-[10px] bg-white border border-[#dce3ed] text-[#374f6b] hover:text-[#2563eb] px-2 py-1 rounded shadow-sm ml-3"><i class="fa-solid fa-pen"></i> Edit</button>`
+                    : '';
+
                 return `
                     <div class="flex items-start justify-between py-2.5 border-b border-[#f0f4f8] last:border-0">
                         <div class="flex-1 min-w-0 mr-3">
-                            <p class="font-semibold text-[12px] text-[#0d1f35] truncate">${escHtml(g.title || 'Assessment')}</p>
+                            <div class="flex items-center">
+                                <p class="font-semibold text-[12px] text-[#0d1f35] truncate">${escHtml(g.title || 'Assessment')}</p>
+                                ${adminBadge}
+                            </div>
                             <p class="text-[10px] text-[#9ab0c6] font-semibold mt-0.5">${g.date || '—'}</p>
                             ${g.comments ? `<p class="text-[11px] text-[#6b84a0] italic mt-1 leading-snug">"${escHtml(g.comments)}"</p>` : ''}
+                            ${reasonText}
                         </div>
-                        <div class="text-right flex-shrink-0">
-                            <p class="font-black text-[13px]" style="color:${pColor}">${g.score}/${g.max || '?'}</p>
-                            ${pct != null ? `<p class="text-[10px] font-bold" style="color:${pColor}">${pct}%</p>` : ''}
+                        <div class="text-right flex-shrink-0 flex items-center">
+                            <div>
+                                <p class="font-black text-[13px]" style="color:${pColor}">${g.score}/${g.max || '?'}</p>
+                                ${pct != null ? `<p class="text-[10px] font-bold" style="color:${pColor}">${pct}%</p>` : ''}
+                            </div>
+                            ${editBtn}
                         </div>
                     </div>`;
             }).join('');
@@ -987,6 +1009,107 @@ function renderGradesForTerm(termId, allTerms = false, termName = 'Term', autoEx
 }
 
 
+// ── Admin Grade Modal Functions ───────────────────────────────────────────
+window.openAdminGradeModal = (gradeId = null) => {
+    const msgEl = document.getElementById('agMsg');
+    msgEl.classList.add('hidden');
+
+    if (gradeId) {
+        const g = _academicGradesCache.find(x => x.id === gradeId);
+        if (!g || g.adminId !== session.uid) return; // Safety check
+
+        document.getElementById('agGradeId').value = g.id;
+        document.getElementById('agSubject').value = g.subject || '';
+        document.getElementById('agType').value = g.type || 'Assessment';
+        document.getElementById('agTitle').value = g.title || '';
+        document.getElementById('agScore').value = g.score || '';
+        document.getElementById('agMax').value = g.max || '100';
+        document.getElementById('agDate').value = g.date || '';
+        document.getElementById('agNotes').value = g.comments || g.notes || '';
+        document.getElementById('agReason').value = g.changeReason || '';
+        document.getElementById('agModalTitle').textContent = 'Edit Admin Grade';
+    } else {
+        document.getElementById('agGradeId').value = '';
+        document.getElementById('agSubject').value = '';
+        document.getElementById('agType').value = 'Assessment';
+        document.getElementById('agTitle').value = '';
+        document.getElementById('agScore').value = '';
+        document.getElementById('agMax').value = '100';
+        document.getElementById('agDate').value = new Date().toISOString().split('T')[0];
+        document.getElementById('agNotes').value = '';
+        document.getElementById('agReason').value = '';
+        document.getElementById('agModalTitle').textContent = 'Add Admin Grade';
+    }
+
+    openOverlay('adminGradeModal', 'adminGradeModalInner');
+};
+
+window.closeAdminGradeModal = () => closeOverlay('adminGradeModal', 'adminGradeModalInner');
+
+window.saveAdminGrade = async () => {
+    const gradeId = document.getElementById('agGradeId').value;
+    const subject = document.getElementById('agSubject').value.trim();
+    const type = document.getElementById('agType').value;
+    const title = document.getElementById('agTitle').value.trim();
+    const score = parseFloat(document.getElementById('agScore').value);
+    const max = parseFloat(document.getElementById('agMax').value);
+    const date = document.getElementById('agDate').value;
+    const notes = document.getElementById('agNotes').value.trim();
+    const reason = document.getElementById('agReason').value.trim();
+
+    const msgEl = document.getElementById('agMsg');
+
+    const showErr = (msg) => {
+        msgEl.textContent = msg;
+        msgEl.className = 'text-[11px] font-bold text-red-600 mb-2 block';
+        msgEl.classList.remove('hidden');
+    };
+
+    if (!subject || !title || isNaN(score) || isNaN(max) || !date) {
+        showErr('Please fill in all required grade fields.');
+        return;
+    }
+    if (!reason) {
+        showErr('You must provide a reason for adding or changing this grade.');
+        return;
+    }
+
+    const btn = document.getElementById('saveAdminGradeBtn');
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Saving...';
+    btn.disabled = true;
+
+    try {
+        const activeTermEl = document.getElementById('academicTermSelect');
+        const termId = activeTermEl ? activeTermEl.value : (_activeTermForPrint.id || '');
+
+        const payload = {
+            subject, type, title, score, max, date, comments: notes, changeReason: reason,
+            enteredByAdmin: true,
+            adminName: session.name,
+            adminRole: session.role,
+            adminId: session.uid,
+            schoolId: session.schoolId,
+            termId: termId === 'all' ? '' : termId
+        };
+
+        if (gradeId) {
+            await updateDoc(doc(db, 'students', currentStudentId, 'grades', gradeId), payload);
+        } else {
+            await addDoc(collection(db, 'students', currentStudentId, 'grades'), payload);
+        }
+
+        window.closeAdminGradeModal();
+        renderStudentAcademicTab(); // Refresh grades
+    } catch (e) {
+        console.error('[Admin] saveGrade:', e);
+        showErr('Error saving grade. Please try again.');
+    }
+
+    btn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-1"></i> Save Grade';
+    btn.disabled = false;
+};
+
+
 // ── Print Functions ───────────────────────────────────────────────────────
 window.printTermTranscript = (termId, termName) => {
     const grades = termId
@@ -1036,9 +1159,11 @@ window.printTermTranscript = (termId, termName) => {
         .watermark{text-align:center;font-size:12px;font-weight:900;letter-spacing:0.15em;color:#dc2626;border:2px dashed #fca5a5;background:#fef2f2;padding:10px;margin-bottom:20px;text-transform:uppercase;}
     </style></head><body>
     <div class="watermark">Unofficial Transcript — Internal Record Only</div>
+    <div style="width: 100%; text-align: left; margin-bottom: 20px;">
+        <img src="../../assets/images/logo.png" onerror="this.style.display='none'" style="max-height:80px; object-fit:contain;">
+    </div>
     <div class="header">
         <div style="display:flex; align-items:center; gap:15px;">
-            <img src="/assets/logo.png" onerror="this.style.display='none'" style="width:50px; height:50px; border-radius:50%; object-fit:contain;">
             <div>
                 <div class="school-name">${escHtml(school)}</div>
                 <div class="doc-type">Internal Academic Record</div>
@@ -1131,9 +1256,11 @@ window.printSubjectReport = (safeSubject, safeTerm) => {
     .watermark{text-align:center;font-size:12px;font-weight:900;letter-spacing:0.15em;color:#dc2626;border:2px dashed #fca5a5;background:#fef2f2;padding:10px;margin-bottom:20px;text-transform:uppercase;}
     </style></head><body>
     <div class="watermark">Unofficial Transcript — Internal Record Only</div>
+    <div style="width: 100%; text-align: left; margin-bottom: 20px;">
+        <img src="../../assets/images/logo.png" onerror="this.style.display='none'" style="max-height:80px; object-fit:contain;">
+    </div>
     <div class="header">
         <div style="display:flex; align-items:center; gap:15px;">
-            <img src="/assets/logo.png" onerror="this.style.display='none'" style="width:50px; height:50px; border-radius:50%; object-fit:contain;">
             <div>
                 <div class="school-name">${escHtml(school)}</div>
                 <div class="doc-type">Internal Subject Grade Report</div>
@@ -1572,9 +1699,11 @@ window.printStudentRecord = async (studentId) => {
         .watermark{text-align:center;font-size:12px;font-weight:900;letter-spacing:0.15em;color:#dc2626;border:2px dashed #fca5a5;background:#fef2f2;padding:10px;margin-bottom:20px;text-transform:uppercase;}
     </style></head><body>
     <div class="watermark">Unofficial Transcript — Internal Record Only</div>
+    <div style="width: 100%; text-align: center; margin-bottom: 20px;">
+        <img src="../../assets/images/logo.png" onerror="this.style.display='none'" style="max-height:80px; object-fit:contain;">
+    </div>
     <div class="header">
-        <img src="/assets/logo.png" onerror="this.style.display='none'" style="width:60px; height:60px; border-radius:50%; object-fit:contain;">
-        <div style="text-align:left;">
+        <div style="text-align:center;">
             <h1 style="margin:0 0 4px;font-size:22px;text-transform:uppercase;">${session.schoolName || 'ConnectUs School'}</h1>
             <h2 style="margin:0;font-size:12px;color:#64748b;font-weight:normal;letter-spacing:2px;text-transform:uppercase;">Official Academic Record — Student Registry</h2>
         </div>
