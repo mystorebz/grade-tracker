@@ -256,7 +256,7 @@ function renderGrid() {
                 <td class="px-6 py-4 text-right">
                     <button onclick="window.openGradePanel('${s.id}')"
                         class="bg-white hover:bg-amber-50 hover:border-amber-300 text-[#0d1f35] hover:text-[#b45309] font-bold px-3 py-1.5 rounded text-[11px] transition border border-[#dce3ed] shadow-sm flex items-center gap-1.5 ml-auto">
-                        <i class="fa-solid fa-plus"></i> Override
+                        <i class="fa-solid fa-plus"></i> Add Grade
                     </button>
                 </td>
             </tr>
