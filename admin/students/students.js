@@ -827,16 +827,10 @@ async function renderStudentAcademicTab() {
                     <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-0.5">Current Term</p>
                     <p class="font-black text-white text-[19px]">${escHtml(activeTerm?.name || 'No Active Term')}</p>
                 </div>
-                <div class="flex gap-2">
-                    <button onclick="window.openAdminGradeModal()"
-                        class="flex items-center gap-1.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold px-4 py-2.5 rounded-lg text-[11px] transition shadow-md border border-[#1d4ed8] flex-shrink-0">
-                        <i class="fa-solid fa-plus mr-1"></i> Add Grade
-                    </button>
-                    <button onclick="window.printTermTranscript('${activeTerm?.id || ''}', '${escHtml(activeTerm?.name || 'Current Term')}')"
-                        class="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white font-bold px-4 py-2.5 rounded-lg text-[11px] transition border border-white/20 flex-shrink-0">
-                        <i class="fa-solid fa-print mr-1"></i> Print Transcript
-                    </button>
-                </div>
+                <button onclick="window.printTermTranscript('${activeTerm?.id || ''}', '${escHtml(activeTerm?.name || 'Current Term')}')"
+                    class="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white font-bold px-4 py-2.5 rounded-lg text-[11px] transition border border-white/20 flex-shrink-0">
+                    <i class="fa-solid fa-print mr-1"></i> Print Transcript
+                </button>
             </div>
 
             ${pastTerms.length ? `
@@ -933,9 +927,9 @@ function renderGradesForTerm(termId, allTerms = false, termName = 'Term', autoEx
                 const adminBadge = g.enteredByAdmin ? `<span class="inline-block ml-2 text-[9px] font-bold text-[#2563eb] bg-[#eff6ff] border border-[#bfdbfe] px-1.5 py-0.5 rounded">Admin: ${escHtml(g.adminName)}</span>` : '';
                 const reasonText = g.changeReason ? `<p class="text-[10px] text-amber-700 font-semibold mt-1 bg-amber-50 p-1.5 rounded border border-amber-100">Reason: ${escHtml(g.changeReason)}</p>` : '';
                 
-                // Only allow edits if this admin OWNS the grade
+                // Strict Ownership Edit Pencil
                 const editBtn = (g.adminId && g.adminId === session.uid)
-                    ? `<button onclick="window.openAdminGradeModal('${g.id}')" class="text-[10px] bg-white border border-[#dce3ed] text-[#374f6b] hover:text-[#2563eb] px-2 py-1 rounded shadow-sm ml-3"><i class="fa-solid fa-pen"></i> Edit</button>`
+                    ? `<button onclick="window.openAdminEditGradeModal('${g.id}')" class="text-[10px] text-[#9ab0c6] hover:text-[#2563eb] transition ml-3" title="Edit your entry"><i class="fa-solid fa-pen"></i></button>`
                     : '';
 
                 return `
@@ -944,17 +938,15 @@ function renderGradesForTerm(termId, allTerms = false, termName = 'Term', autoEx
                             <div class="flex items-center">
                                 <p class="font-semibold text-[12px] text-[#0d1f35] truncate">${escHtml(g.title || 'Assessment')}</p>
                                 ${adminBadge}
+                                ${editBtn}
                             </div>
                             <p class="text-[10px] text-[#9ab0c6] font-semibold mt-0.5">${g.date || '—'}</p>
                             ${g.comments ? `<p class="text-[11px] text-[#6b84a0] italic mt-1 leading-snug">"${escHtml(g.comments)}"</p>` : ''}
                             ${reasonText}
                         </div>
-                        <div class="text-right flex-shrink-0 flex items-center">
-                            <div>
-                                <p class="font-black text-[13px]" style="color:${pColor}">${g.score}/${g.max || '?'}</p>
-                                ${pct != null ? `<p class="text-[10px] font-bold" style="color:${pColor}">${pct}%</p>` : ''}
-                            </div>
-                            ${editBtn}
+                        <div class="text-right flex-shrink-0">
+                            <p class="font-black text-[13px]" style="color:${pColor}">${g.score}/${g.max || '?'}</p>
+                            ${pct != null ? `<p class="text-[10px] font-bold" style="color:${pColor}">${pct}%</p>` : ''}
                         </div>
                     </div>`;
             }).join('');
@@ -1009,103 +1001,82 @@ function renderGradesForTerm(termId, allTerms = false, termName = 'Term', autoEx
 }
 
 
-// ── Admin Grade Modal Functions ───────────────────────────────────────────
-window.openAdminGradeModal = (gradeId = null) => {
-    const msgEl = document.getElementById('agMsg');
+// ── Admin Grade Edit Modal Functions ───────────────────────────────────────────
+window.openAdminEditGradeModal = (gradeId) => {
+    const msgEl = document.getElementById('agEditMsg');
     msgEl.classList.add('hidden');
 
-    if (gradeId) {
-        const g = _academicGradesCache.find(x => x.id === gradeId);
-        if (!g || g.adminId !== session.uid) return; // Safety check
+    const g = _academicGradesCache.find(x => x.id === gradeId);
+    if (!g || g.adminId !== session.uid) return; // Strict ownership check
 
-        document.getElementById('agGradeId').value = g.id;
-        document.getElementById('agSubject').value = g.subject || '';
-        document.getElementById('agType').value = g.type || 'Assessment';
-        document.getElementById('agTitle').value = g.title || '';
-        document.getElementById('agScore').value = g.score || '';
-        document.getElementById('agMax').value = g.max || '100';
-        document.getElementById('agDate').value = g.date || '';
-        document.getElementById('agNotes').value = g.comments || g.notes || '';
-        document.getElementById('agReason').value = g.changeReason || '';
-        document.getElementById('agModalTitle').textContent = 'Edit Admin Grade';
-    } else {
-        document.getElementById('agGradeId').value = '';
-        document.getElementById('agSubject').value = '';
-        document.getElementById('agType').value = 'Assessment';
-        document.getElementById('agTitle').value = '';
-        document.getElementById('agScore').value = '';
-        document.getElementById('agMax').value = '100';
-        document.getElementById('agDate').value = new Date().toISOString().split('T')[0];
-        document.getElementById('agNotes').value = '';
-        document.getElementById('agReason').value = '';
-        document.getElementById('agModalTitle').textContent = 'Add Admin Grade';
-    }
+    document.getElementById('agEditGradeId').value = g.id;
+    document.getElementById('agEditSubject').value = g.subject || '';
+    document.getElementById('agEditType').value = g.type || 'Assessment';
+    document.getElementById('agEditTitle').value = g.title || '';
+    document.getElementById('agEditScore').value = g.score || '';
+    document.getElementById('agEditMax').value = g.max || '100';
+    document.getElementById('agEditDate').value = g.date || '';
+    document.getElementById('agEditNotes').value = g.comments || g.notes || '';
+    document.getElementById('agEditReason').value = ''; // Force new reason
 
-    openOverlay('adminGradeModal', 'adminGradeModalInner');
+    openOverlay('adminEditGradeModal', 'adminEditGradeModalInner');
 };
 
-window.closeAdminGradeModal = () => closeOverlay('adminGradeModal', 'adminGradeModalInner');
+window.closeAdminEditGradeModal = () => closeOverlay('adminEditGradeModal', 'adminEditGradeModalInner');
 
-window.saveAdminGrade = async () => {
-    const gradeId = document.getElementById('agGradeId').value;
-    const subject = document.getElementById('agSubject').value.trim();
-    const type = document.getElementById('agType').value;
-    const title = document.getElementById('agTitle').value.trim();
-    const score = parseFloat(document.getElementById('agScore').value);
-    const max = parseFloat(document.getElementById('agMax').value);
-    const date = document.getElementById('agDate').value;
-    const notes = document.getElementById('agNotes').value.trim();
-    const reason = document.getElementById('agReason').value.trim();
+window.saveAdminEditGrade = async () => {
+    const gradeId = document.getElementById('agEditGradeId').value;
+    const score = parseFloat(document.getElementById('agEditScore').value);
+    const max = parseFloat(document.getElementById('agEditMax').value);
+    const date = document.getElementById('agEditDate').value;
+    const notes = document.getElementById('agEditNotes').value.trim();
+    const reason = document.getElementById('agEditReason').value.trim();
 
-    const msgEl = document.getElementById('agMsg');
+    const msgEl = document.getElementById('agEditMsg');
 
-    const showErr = (msg) => {
-        msgEl.textContent = msg;
-        msgEl.className = 'text-[11px] font-bold text-red-600 mb-2 block';
+    if (isNaN(score) || isNaN(max) || !date) {
+        msgEl.textContent = 'Score, Max, and Date are required.';
         msgEl.classList.remove('hidden');
-    };
-
-    if (!subject || !title || isNaN(score) || isNaN(max) || !date) {
-        showErr('Please fill in all required grade fields.');
         return;
     }
     if (!reason) {
-        showErr('You must provide a reason for adding or changing this grade.');
+        msgEl.textContent = 'You must provide a reason for editing this grade.';
+        msgEl.classList.remove('hidden');
         return;
     }
 
-    const btn = document.getElementById('saveAdminGradeBtn');
+    const btn = document.getElementById('saveAdminEditGradeBtn');
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Saving...';
     btn.disabled = true;
 
     try {
-        const activeTermEl = document.getElementById('academicTermSelect');
-        const termId = activeTermEl ? activeTermEl.value : (_activeTermForPrint.id || '');
-
-        const payload = {
-            subject, type, title, score, max, date, comments: notes, changeReason: reason,
-            enteredByAdmin: true,
-            adminName: session.name,
-            adminRole: session.role,
+        const g = _academicGradesCache.find(x => x.id === gradeId);
+        const historyEntry = {
+            dateChanged: new Date().toISOString(),
             adminId: session.uid,
-            schoolId: session.schoolId,
-            termId: termId === 'all' ? '' : termId
+            adminName: session.name,
+            oldScore: g.score,
+            oldMax: g.max,
+            oldDate: g.date,
+            newScore: score,
+            newMax: max,
+            note: reason // The mandatory reason
         };
 
-        if (gradeId) {
-            await updateDoc(doc(db, 'students', currentStudentId, 'grades', gradeId), payload);
-        } else {
-            await addDoc(collection(db, 'students', currentStudentId, 'grades'), payload);
-        }
+        await updateDoc(doc(db, 'students', currentStudentId, 'grades', gradeId), {
+            score, max, date, comments: notes, changeReason: reason,
+            historyLogs: arrayUnion(historyEntry)
+        });
 
-        window.closeAdminGradeModal();
-        renderStudentAcademicTab(); // Refresh grades
+        window.closeAdminEditGradeModal();
+        renderStudentAcademicTab(); // Refresh tab
     } catch (e) {
-        console.error('[Admin] saveGrade:', e);
-        showErr('Error saving grade. Please try again.');
+        console.error('[Admin] saveEditGrade:', e);
+        msgEl.textContent = 'Error saving grade. Please try again.';
+        msgEl.classList.remove('hidden');
     }
 
-    btn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-1"></i> Save Grade';
+    btn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-1"></i> Save Changes';
     btn.disabled = false;
 };
 
@@ -1157,22 +1128,16 @@ window.printTermTranscript = (termId, termName) => {
         .total-row{background:#f8fafc;font-weight:700}
         .footer{margin-top:40px;text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:14px}
         .watermark{text-align:center;font-size:12px;font-weight:900;letter-spacing:0.15em;color:#dc2626;border:2px dashed #fca5a5;background:#fef2f2;padding:10px;margin-bottom:20px;text-transform:uppercase;}
+        .header-block { text-align: center; margin-bottom: 24px; border-bottom: 3px solid #0d1f35; padding-bottom: 18px; }
+        .print-meta { font-size: 11px; color: #64748b; margin-top: 5px; font-weight: 700; }
     </style></head><body>
-    <div class="watermark">Unofficial Transcript — Internal Record Only</div>
-    <div style="width: 100%; text-align: left; margin-bottom: 20px;">
+    <div style="text-align: center; margin-bottom: 15px;">
         <img src="../../assets/images/logo.png" onerror="this.style.display='none'" style="max-height:80px; object-fit:contain;">
     </div>
-    <div class="header">
-        <div style="display:flex; align-items:center; gap:15px;">
-            <div>
-                <div class="school-name">${escHtml(school)}</div>
-                <div class="doc-type">Internal Academic Record</div>
-            </div>
-        </div>
-        <div style="text-align:right;font-size:11px;color:#64748b">
-            <div style="font-weight:700">${termName}</div>
-            <div>Printed ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
-        </div>
+    <div class="watermark">Unofficial Transcript — Internal Record Only</div>
+    <div class="header-block">
+        <div class="school-name">${escHtml(school)}</div>
+        <div class="print-meta">${escHtml(termName)} · Printed ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
     </div>
     <div class="info-grid">
         <div class="info-item"><label>Student Name</label><span>${escHtml(s?.name || '—')}</span></div>
@@ -1254,19 +1219,16 @@ window.printSubjectReport = (safeSubject, safeTerm) => {
     .summary{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center}
     .footer{margin-top:40px;text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:14px}
     .watermark{text-align:center;font-size:12px;font-weight:900;letter-spacing:0.15em;color:#dc2626;border:2px dashed #fca5a5;background:#fef2f2;padding:10px;margin-bottom:20px;text-transform:uppercase;}
+    .header-block { text-align: center; margin-bottom: 24px; border-bottom: 3px solid #0d1f35; padding-bottom: 18px; }
+    .print-meta { font-size: 11px; color: #64748b; margin-top: 5px; font-weight: 700; }
     </style></head><body>
-    <div class="watermark">Unofficial Transcript — Internal Record Only</div>
-    <div style="width: 100%; text-align: left; margin-bottom: 20px;">
+    <div style="text-align: center; margin-bottom: 15px;">
         <img src="../../assets/images/logo.png" onerror="this.style.display='none'" style="max-height:80px; object-fit:contain;">
     </div>
-    <div class="header">
-        <div style="display:flex; align-items:center; gap:15px;">
-            <div>
-                <div class="school-name">${escHtml(school)}</div>
-                <div class="doc-type">Internal Subject Grade Report</div>
-            </div>
-        </div>
-        <div style="text-align:right;font-size:11px;color:#64748b"><div style="font-weight:700">${escHtml(termName)}</div><div>Printed ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div></div>
+    <div class="watermark">Unofficial Transcript — Internal Record Only</div>
+    <div class="header-block">
+        <div class="school-name">${escHtml(school)}</div>
+        <div class="print-meta">${escHtml(termName)} · Printed ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
     </div>
     <div class="summary">
         <div><div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:2px">Student</div><div style="font-size:15px;font-weight:900;color:#0d1f35">${escHtml(s?.name||'—')}</div><div style="font-size:11px;color:#64748b;font-family:monospace">${escHtml(s?.id||'')}</div></div>
@@ -1691,22 +1653,21 @@ window.printStudentRecord = async (studentId) => {
     w.document.write(`<!DOCTYPE html><html><head><title>Student Record — ${s.name}</title>
     <style>
         body{font-family:'Helvetica Neue',sans-serif;padding:40px;color:#1e293b;line-height:1.5}
-        .header{border-bottom:2px solid #cbd5e1;padding-bottom:20px;margin-bottom:30px;display:flex;align-items:center;justify-content:center;gap:20px;}
+        .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0d1f35;padding-bottom:18px;margin-bottom:24px}
         .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:30px;background:#f8fafc;padding:18px;border-radius:8px;border:1px solid #e2e8f0}
         .info-item label{display:block;font-size:10px;text-transform:uppercase;color:#64748b;font-weight:bold;letter-spacing:0.08em}
         .info-item span{font-size:13px;font-weight:bold;color:#0f172a}
         .footer{margin-top:50px;text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:15px}
         .watermark{text-align:center;font-size:12px;font-weight:900;letter-spacing:0.15em;color:#dc2626;border:2px dashed #fca5a5;background:#fef2f2;padding:10px;margin-bottom:20px;text-transform:uppercase;}
+        .header-block { text-align: center; margin-bottom: 24px; border-bottom: 3px solid #0d1f35; padding-bottom: 18px; }
+        .school-name{font-size:20px;font-weight:900;text-transform:uppercase;color:#0d1f35}
     </style></head><body>
-    <div class="watermark">Unofficial Transcript — Internal Record Only</div>
-    <div style="width: 100%; text-align: center; margin-bottom: 20px;">
+    <div style="text-align: center; margin-bottom: 15px;">
         <img src="../../assets/images/logo.png" onerror="this.style.display='none'" style="max-height:80px; object-fit:contain;">
     </div>
-    <div class="header">
-        <div style="text-align:center;">
-            <h1 style="margin:0 0 4px;font-size:22px;text-transform:uppercase;">${session.schoolName || 'ConnectUs School'}</h1>
-            <h2 style="margin:0;font-size:12px;color:#64748b;font-weight:normal;letter-spacing:2px;text-transform:uppercase;">Official Academic Record — Student Registry</h2>
-        </div>
+    <div class="watermark">UNOFFICIAL TRANSCRIPT — INTERNAL RECORD ONLY</div>
+    <div class="header-block">
+        <div class="school-name">${session.schoolName || 'ConnectUs School'}</div>
     </div>
     <div class="info-grid">
         <div class="info-item"><label>Student Name</label><span>${s.name || '—'}</span></div>
