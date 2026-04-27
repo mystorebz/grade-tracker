@@ -307,6 +307,14 @@ window.closeAddStudentModal = () => {
     claimedStudentDoc = null;
 };
 
+// ── Search "Enter" Key Listener ───────────────────────────────────────────
+document.getElementById('studentSearchInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('searchStudentBtn').click();
+    }
+});
+
 // ── Search Unassigned Students ─────────────────────────────────────────────
 document.getElementById('searchStudentBtn').addEventListener('click', async () => {
     const input     = document.getElementById('studentSearchInput').value.trim();
@@ -319,7 +327,7 @@ document.getElementById('searchStudentBtn').addEventListener('click', async () =
     previewEl.classList.add('hidden');
     claimedStudentDoc = null;
 
-    if (!input) { alert('Enter a name or Student ID to search.'); return; }
+    if (!input) { alert('Enter a name, email, or Student ID to search.'); return; }
 
     const btn = document.getElementById('searchStudentBtn');
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
@@ -361,7 +369,11 @@ document.getElementById('searchStudentBtn').addEventListener('click', async () =
             );
             results = snap.docs
                 .map(d => ({ id: d.id, ...d.data() }))
-                .filter(s => (s.name || '').toLowerCase().includes(lower));
+                .filter(s => 
+                    (s.name || '').toLowerCase().includes(lower) ||
+                    (s.email || '').toLowerCase().includes(lower) ||
+                    s.id.toLowerCase().includes(lower)
+                );
         }
 
         if (!results.length) {
@@ -372,7 +384,7 @@ document.getElementById('searchStudentBtn').addEventListener('click', async () =
                     class="px-4 py-3 hover:bg-[#eef4ff] cursor-pointer border-b border-[#f0f4f8] last:border-0 flex items-center justify-between transition">
                     <div>
                         <p class="font-bold text-[#0d1f35] text-[13px]">${escHtml(s.name || 'Unknown')}</p>
-                        <p class="font-mono text-[10px] text-[#9ab0c6] uppercase mt-0.5">${s.id}</p>
+                        <p class="font-mono text-[10px] text-[#9ab0c6] uppercase mt-0.5">${s.id} ${s.email ? `• ${s.email}` : ''}</p>
                     </div>
                     <i class="fa-solid fa-chevron-right text-[#c5d0db] text-[11px]"></i>
                 </div>
@@ -514,6 +526,16 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
     btn.disabled  = true;
 
     try {
+        // Strict Email Validation Check
+        const emailCheckQuery = query(collection(db, 'students'), where('email', '==', email));
+        const emailCheckSnap = await getDocs(emailCheckQuery);
+        if (!emailCheckSnap.empty) {
+            showMsg('This email is already registered to a student.');
+            btn.innerHTML = '<i class="fa-solid fa-user-plus mr-2"></i> Register';
+            btn.disabled = false;
+            return;
+        }
+
         const limitCheck = await isStudentLimitReached();
         if (limitCheck.reached) {
             alert(`Student limit reached (${limitCheck.current}/${limitCheck.limit}). Contact ConnectUs to upgrade.`);
@@ -615,10 +637,18 @@ window.openStudentPanel = async (studentId) => {
         const s = currentStudentData;
         const teacherName = allTeachersCache.find(t => t.id === s.teacherId)?.name || '—';
 
+        // ── Billboard Header Update ──
         document.getElementById('sPanelName').textContent  = s.name || 'Unknown Student';
         document.getElementById('sPanelId').textContent    = s.id;
-        document.getElementById('sPanelClass').textContent =
-            [s.className || 'No class assigned', teacherName !== '—' ? `with ${teacherName}` : ''].filter(Boolean).join(' · ');
+        
+        // Show Class/Teacher Badge if Assigned
+        const badgeEl = document.getElementById('sPanelClassBadge');
+        if (s.className && s.teacherId) {
+            document.getElementById('sPanelClassText').textContent = `${s.className} with ${teacherName}`;
+            badgeEl.classList.remove('hidden');
+        } else {
+            badgeEl.classList.add('hidden');
+        }
 
         // Hide actions if not Active
         const isActive = (s.enrollmentStatus || 'Active') === 'Active';
@@ -956,7 +986,8 @@ function renderGradesForTerm(termId, allTerms = false, termName = 'Term', autoEx
     }).join('');
 }
 
-// ── Print: full term transcript ───────────────────────────────────────────
+
+// ── Print Functions ───────────────────────────────────────────────────────
 window.printTermTranscript = (termId, termName) => {
     const grades = termId
         ? _academicGradesCache.filter(g => (g.termId || '') === termId)
@@ -1002,11 +1033,16 @@ window.printTermTranscript = (termId, termName) => {
         th{border:1px solid #e2e8f0;padding:10px 15px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#64748b}
         .total-row{background:#f8fafc;font-weight:700}
         .footer{margin-top:40px;text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:14px}
+        .watermark{text-align:center;font-size:12px;font-weight:900;letter-spacing:0.15em;color:#dc2626;border:2px dashed #fca5a5;background:#fef2f2;padding:10px;margin-bottom:20px;text-transform:uppercase;}
     </style></head><body>
+    <div class="watermark">Unofficial Transcript — Internal Record Only</div>
     <div class="header">
-        <div>
-            <div class="school-name">${escHtml(school)}</div>
-            <div class="doc-type">Official Academic Transcript</div>
+        <div style="display:flex; align-items:center; gap:15px;">
+            <img src="/assets/logo.png" onerror="this.style.display='none'" style="width:50px; height:50px; border-radius:50%; object-fit:contain;">
+            <div>
+                <div class="school-name">${escHtml(school)}</div>
+                <div class="doc-type">Internal Academic Record</div>
+            </div>
         </div>
         <div style="text-align:right;font-size:11px;color:#64748b">
             <div style="font-weight:700">${termName}</div>
@@ -1042,7 +1078,6 @@ window.printTermTranscript = (termId, termName) => {
     setTimeout(() => w.print(), 400);
 };
 
-// ── Print: single subject report ──────────────────────────────────────────
 window.printSubjectReport = (safeSubject, safeTerm) => {
     const subject  = decodeURIComponent(safeSubject);
     const termName = decodeURIComponent(safeTerm);
@@ -1092,9 +1127,20 @@ window.printSubjectReport = (safeSubject, safeTerm) => {
     .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0d1f35;padding-bottom:18px;margin-bottom:24px}
     .school-name{font-size:20px;font-weight:900;text-transform:uppercase;color:#0d1f35}.doc-type{font-size:11px;font-weight:700;color:#6b84a0;letter-spacing:0.12em;text-transform:uppercase;margin-top:3px}
     .summary{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center}
-    .footer{margin-top:40px;text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:14px}</style></head><body>
-    <div class="header"><div><div class="school-name">${escHtml(school)}</div><div class="doc-type">Subject Grade Report</div></div>
-    <div style="text-align:right;font-size:11px;color:#64748b"><div style="font-weight:700">${escHtml(termName)}</div><div>Printed ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div></div></div>
+    .footer{margin-top:40px;text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:14px}
+    .watermark{text-align:center;font-size:12px;font-weight:900;letter-spacing:0.15em;color:#dc2626;border:2px dashed #fca5a5;background:#fef2f2;padding:10px;margin-bottom:20px;text-transform:uppercase;}
+    </style></head><body>
+    <div class="watermark">Unofficial Transcript — Internal Record Only</div>
+    <div class="header">
+        <div style="display:flex; align-items:center; gap:15px;">
+            <img src="/assets/logo.png" onerror="this.style.display='none'" style="width:50px; height:50px; border-radius:50%; object-fit:contain;">
+            <div>
+                <div class="school-name">${escHtml(school)}</div>
+                <div class="doc-type">Internal Subject Grade Report</div>
+            </div>
+        </div>
+        <div style="text-align:right;font-size:11px;color:#64748b"><div style="font-weight:700">${escHtml(termName)}</div><div>Printed ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div></div>
+    </div>
     <div class="summary">
         <div><div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:2px">Student</div><div style="font-size:15px;font-weight:900;color:#0d1f35">${escHtml(s?.name||'—')}</div><div style="font-size:11px;color:#64748b;font-family:monospace">${escHtml(s?.id||'')}</div></div>
         <div style="text-align:center"><div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:2px">Subject</div><div style="font-size:17px;font-weight:900;color:#0d1f35">${escHtml(subject)}</div></div>
@@ -1200,8 +1246,9 @@ async function renderStudentEnrollmentTab() {
         }
     } catch (_) {}
 
-    // Assignment is locked if: active term exists AND student already has both class+teacher
-    const isLocked = isActive && hasActiveTerm && !!(s.className && s.teacherId);
+    // State Variables
+    const isAssigned = !!(s.className && s.teacherId);
+    const isLocked   = isActive && hasActiveTerm && isAssigned;
 
     // Incomplete warning (no class or teacher, active term)
     const noClassOrTeacher = !s.className || !s.teacherId;
@@ -1219,14 +1266,6 @@ async function renderStudentEnrollmentTab() {
             </div>
         </div>` : '';
 
-    // Class/Teacher dropdowns
-    const classOptions = getClassOptions().map(c =>
-        `<option value="${c}" ${s.className === c ? 'selected' : ''}>${c}</option>`
-    ).join('');
-    const teacherOptions = allTeachersCache.map(t =>
-        `<option value="${t.id}" ${s.teacherId === t.id ? 'selected' : ''}>${escHtml(t.name)}</option>`
-    ).join('');
-
     pane.innerHTML = `
         ${warning}
 
@@ -1242,54 +1281,64 @@ async function renderStudentEnrollmentTab() {
 
         ${isActive ? `
         <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm">
-            <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center justify-between mb-4">
                 <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Class & Teacher Assignment</h4>
-                ${isLocked
-                    ? `<span class="flex items-center gap-1.5 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-lg">
-                           <i class="fa-solid fa-lock text-[9px]"></i> Locked — ${escHtml(activeTermName)} is active
-                       </span>`
-                    : `<button onclick="window.saveStudentAssignment()"
-                           class="text-[11px] font-bold text-[#2563eb] bg-[#eef4ff] border border-[#c7d9fd] px-3 py-1.5 rounded hover:bg-[#dbeafe] transition">
-                           <i class="fa-solid fa-floppy-disk mr-1"></i> Save
-                       </button>`}
+                <button onclick="window.attemptEditEnrollment(${isLocked})"
+                    class="text-[11px] font-bold text-[#2563eb] bg-[#eef4ff] border border-[#c7d9fd] px-3 py-1.5 rounded hover:bg-[#dbeafe] transition">
+                    <i class="fa-solid fa-pen-to-square mr-1"></i> Edit Enrollment
+                </button>
             </div>
 
-            ${isLocked ? `
-            <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-                <p class="text-[11px] text-amber-700 font-bold leading-relaxed">
-                    <i class="fa-solid fa-circle-info mr-1"></i>
-                    <strong>${escHtml(s.name)}</strong> is actively assigned to <strong>${escHtml(s.className)}</strong>
-                    during <strong>${escHtml(activeTermName)}</strong>. The assignment cannot be changed while the term is active.
-                    To move this student, use <strong>Archive / Transfer</strong> from the Actions menu.
-                </p>
-            </div>` : ''}
+            <div id="enrollmentStatusDisplay" class="grid grid-cols-2 gap-2">
+                ${infoCell('Current Class', escHtml(s.className) || 'Unassigned')}
+                ${infoCell('Assigned Teacher', escHtml(allTeachersCache.find(t => t.id === s.teacherId)?.name) || 'Unassigned')}
+            </div>
 
-            <div class="space-y-3 ${isLocked ? 'opacity-60 pointer-events-none' : ''}">
-                <div>
-                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">
-                        Class <span class="text-[#e31b4a]">*</span>
-                    </label>
-                    <select id="enrollClassSelect" ${isLocked ? 'disabled' : ''}
-                        class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">
-                        <option value="">— Unassigned —</option>
-                        ${classOptions}
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">
-                        Teacher <span class="text-[#e31b4a]">*</span>
-                    </label>
-                    <select id="enrollTeacherSelect" ${isLocked ? 'disabled' : ''}
-                        class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">
-                        <option value="">— Unassigned —</option>
-                        ${teacherOptions}
-                    </select>
-                    <p class="text-[10px] text-[#9ab0c6] mt-1.5 font-semibold">
-                        Class and teacher must always be assigned together.
-                    </p>
+            <div id="enrollmentErrorArea" class="hidden mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
+                <div class="flex items-start gap-3">
+                    <i class="fa-solid fa-triangle-exclamation text-red-500 mt-0.5"></i>
+                    <div>
+                        <p class="font-bold text-[12px] text-red-800 mb-1">Action Denied</p>
+                        <p class="text-[11px] font-semibold text-red-700 leading-relaxed">
+                            This student is actively enrolled in <strong>${escHtml(s.className)}</strong> for <strong>${escHtml(activeTermName)}</strong>. 
+                            You cannot arbitrarily change an active class assignment. To prevent gradebook discrepancies, you must formally Transfer or Archive the student to remove them from the roster.
+                        </p>
+                    </div>
                 </div>
             </div>
-            <p id="assignMsg" class="text-[11px] hidden mt-3 font-bold"></p>
+
+            <div id="enrollmentEditArea" class="hidden mt-4 pt-4 border-t border-[#f0f4f8]">
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">
+                            Assign Class <span class="text-[#e31b4a]">*</span>
+                        </label>
+                        <select id="enrollClassSelect"
+                            class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">
+                            <option value="">— Unassigned —</option>
+                            ${getClassOptions().map(c => `<option value="${c}" ${s.className === c ? 'selected' : ''}>${c}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">
+                            Assign Teacher <span class="text-[#e31b4a]">*</span>
+                        </label>
+                        <select id="enrollTeacherSelect"
+                            class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">
+                            <option value="">— Unassigned —</option>
+                            ${allTeachersCache.map(t => `<option value="${t.id}" ${s.teacherId === t.id ? 'selected' : ''}>${escHtml(t.name)}</option>`).join('')}
+                        </select>
+                        <p class="text-[10px] text-[#9ab0c6] mt-1.5 font-semibold">
+                            Class and teacher must always be assigned together.
+                        </p>
+                    </div>
+                    <button onclick="window.saveStudentAssignment()"
+                        class="w-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold py-3 mt-2 rounded transition shadow-md text-[12px] uppercase tracking-widest">
+                        <i class="fa-solid fa-floppy-disk mr-1"></i> Save Assignment
+                    </button>
+                    <p id="assignMsg" class="text-[11px] hidden mt-3 font-bold"></p>
+                </div>
+            </div>
         </div>` : `
         <div class="bg-[#f8fafb] border border-[#dce3ed] rounded-xl p-5 text-center">
             <i class="fa-solid fa-box-archive text-[#9ab0c6] text-3xl mb-3"></i>
@@ -1298,12 +1347,30 @@ async function renderStudentEnrollmentTab() {
         </div>`}
     `;
 
-    if (isActive && !isLocked) {
+    if (isActive) {
         document.getElementById('enrollClassSelect')?.addEventListener('change', function () {
             window.filterEnrollTeachers(this.value);
         });
     }
 }
+
+// Global function to handle Edit click
+window.attemptEditEnrollment = (isLocked) => {
+    const errorArea   = document.getElementById('enrollmentErrorArea');
+    const editArea    = document.getElementById('enrollmentEditArea');
+    const displayArea = document.getElementById('enrollmentStatusDisplay');
+
+    if (isLocked) {
+        // Enforce the business logic block
+        errorArea.classList.remove('hidden');
+        editArea.classList.add('hidden');
+    } else {
+        // Allow the edit
+        errorArea.classList.add('hidden');
+        displayArea.classList.add('hidden');
+        editArea.classList.remove('hidden');
+    }
+};
 
 window.filterEnrollTeachers = (selectedClass) => {
     const tSelect = document.getElementById('enrollTeacherSelect');
@@ -1338,14 +1405,11 @@ window.saveStudentAssignment = async () => {
         msgEl.classList.remove('hidden');
     };
 
-    // ── Rule: class and teacher must be set together ───────────────────
     if (className && !teacherId) {
-        showErr('<i class="fa-solid fa-triangle-exclamation mr-1"></i> A teacher must be assigned with the class. A student cannot be in a class without a teacher.');
-        return;
+        showErr('<i class="fa-solid fa-triangle-exclamation mr-1"></i> A teacher must be assigned with the class.'); return;
     }
     if (!className && teacherId) {
-        showErr('<i class="fa-solid fa-triangle-exclamation mr-1"></i> A class must be assigned with the teacher.');
-        return;
+        showErr('<i class="fa-solid fa-triangle-exclamation mr-1"></i> A class must be assigned with the teacher.'); return;
     }
 
     try {
@@ -1357,24 +1421,27 @@ window.saveStudentAssignment = async () => {
             allStudentsCache[idx].teacherId   = teacherId;
             allStudentsCache[idx].teacherName = allTeachersCache.find(t => t.id === teacherId)?.name || '—';
         }
+        
+        // Update billboard header
         const teacherName = allTeachersCache.find(t => t.id === teacherId)?.name || '—';
-        document.getElementById('sPanelClass').textContent =
-            [className || 'No class assigned', teacherName !== '—' ? `with ${teacherName}` : ''].filter(Boolean).join(' · ');
+        const badgeEl = document.getElementById('sPanelClassBadge');
+        if (className && teacherId) {
+            document.getElementById('sPanelClassText').textContent = `${className} with ${teacherName}`;
+            badgeEl.classList.remove('hidden');
+        } else {
+            badgeEl.classList.add('hidden');
+        }
+
         renderTable();
-        msgEl.textContent = 'Assignment saved.';
+        msgEl.textContent = 'Assignment saved successfully.';
         msgEl.className   = 'text-[11px] mt-3 font-bold text-green-600';
         msgEl.classList.remove('hidden');
-        setTimeout(() => msgEl.classList.add('hidden'), 2500);
+        setTimeout(() => renderStudentEnrollmentTab(), 1500); // Re-render to restore read-only view
+        
     } catch (e) {
         console.error('[Students] saveAssignment:', e);
         showErr('Error saving. Please try again.');
     }
-};
-
-// Inline reassign (from dropdown)
-window.openSReassignInline = () => {
-    document.getElementById('sEnrollDropdown').classList.add('hidden');
-    switchStudentTab('enrollment');
 };
 
 
@@ -1497,15 +1564,20 @@ window.printStudentRecord = async (studentId) => {
     w.document.write(`<!DOCTYPE html><html><head><title>Student Record — ${s.name}</title>
     <style>
         body{font-family:'Helvetica Neue',sans-serif;padding:40px;color:#1e293b;line-height:1.5}
-        .header{text-align:center;border-bottom:2px solid #cbd5e1;padding-bottom:20px;margin-bottom:30px}
+        .header{border-bottom:2px solid #cbd5e1;padding-bottom:20px;margin-bottom:30px;display:flex;align-items:center;justify-content:center;gap:20px;}
         .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:30px;background:#f8fafc;padding:18px;border-radius:8px;border:1px solid #e2e8f0}
         .info-item label{display:block;font-size:10px;text-transform:uppercase;color:#64748b;font-weight:bold;letter-spacing:0.08em}
         .info-item span{font-size:13px;font-weight:bold;color:#0f172a}
         .footer{margin-top:50px;text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:15px}
+        .watermark{text-align:center;font-size:12px;font-weight:900;letter-spacing:0.15em;color:#dc2626;border:2px dashed #fca5a5;background:#fef2f2;padding:10px;margin-bottom:20px;text-transform:uppercase;}
     </style></head><body>
+    <div class="watermark">Unofficial Transcript — Internal Record Only</div>
     <div class="header">
-        <h1 style="margin:0 0 4px;font-size:22px;text-transform:uppercase;">${session.schoolName || 'ConnectUs School'}</h1>
-        <h2 style="margin:0;font-size:12px;color:#64748b;font-weight:normal;letter-spacing:2px;text-transform:uppercase;">Official Academic Record — Student Registry</h2>
+        <img src="/assets/logo.png" onerror="this.style.display='none'" style="width:60px; height:60px; border-radius:50%; object-fit:contain;">
+        <div style="text-align:left;">
+            <h1 style="margin:0 0 4px;font-size:22px;text-transform:uppercase;">${session.schoolName || 'ConnectUs School'}</h1>
+            <h2 style="margin:0;font-size:12px;color:#64748b;font-weight:normal;letter-spacing:2px;text-transform:uppercase;">Official Academic Record — Student Registry</h2>
+        </div>
     </div>
     <div class="info-grid">
         <div class="info-item"><label>Student Name</label><span>${s.name || '—'}</span></div>
