@@ -79,11 +79,8 @@ async function loadLiveDashboard() {
         let   totalAssessments = 0;
 
         await Promise.all(allStudents.map(async s => {
-            // CHANGED: Fetch from global student grades, filtered by this school
-            const snap = await getDocs(query(
-                collection(db, 'students', s.id, 'grades'),
-                where('schoolId', '==', session.schoolId)
-            ));
+            // CORRECTED: Fetch from the school's specific grades subcollection
+            const snap = await getDocs(collection(db, 'schools', session.schoolId, 'students', s.id, 'grades'));
             const grades = snap.docs.map(d => d.data()).filter(g =>
                 !session.activeSemesterId || session.activeSemesterId === 'all' || g.semesterId === session.activeSemesterId
             );
@@ -255,11 +252,8 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
         const studentAvgMap = {};
 
         await Promise.all(targetStudents.map(async s => {
-            // CHANGED: Fetch from global student grades, filtered by this school
-            const snap = await getDocs(query(
-                collection(db, 'students', s.id, 'grades'),
-                where('schoolId', '==', session.schoolId)
-            ));
+            // CORRECTED: Fetch from the school's specific grades subcollection
+            const snap = await getDocs(collection(db, 'schools', session.schoolId, 'students', s.id, 'grades'));
             const grades = snap.docs.map(d => d.data()).filter(g => {
                 if (period !== 'all' && g.semesterId !== period) return false;
                 if (subject !== 'all' && g.subject !== subject) return false;
