@@ -447,64 +447,56 @@
         </div>
     </div>
 
-    <div id="adminGradeModal" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-[80] flex items-center justify-center hidden opacity-0 transition-opacity">
-        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200 flex flex-col" id="adminGradeModalInner">
+    <div id="adminEditGradeModal" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-[80] flex items-center justify-center hidden opacity-0 transition-opacity">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200 flex flex-col" id="adminEditGradeModalInner">
             <div class="h-1 bg-[#2563eb] flex-shrink-0"></div>
             <div class="px-6 py-4 border-b border-[#f0f4f8] flex justify-between items-center bg-[#f8fafb]">
-                <h3 class="font-bold text-lg text-[#0d1f35]" id="agModalTitle">Manage Student Grade</h3>
-                <button onclick="window.closeAdminGradeModal()" class="text-[#9ab0c6] hover:text-[#e31b4a] transition">
+                <h3 class="font-bold text-lg text-[#0d1f35]">Edit Your Grade Entry</h3>
+                <button onclick="window.closeAdminEditGradeModal()" class="text-[#9ab0c6] hover:text-[#e31b4a] transition">
                     <i class="fa-solid fa-xmark text-xl"></i>
                 </button>
             </div>
             <div class="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
-                <input type="hidden" id="agGradeId">
+                <input type="hidden" id="agEditGradeId">
                 <div class="grid grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Subject <span class="text-[#e31b4a]">*</span></label>
-                        <input type="text" id="agSubject" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Subject</label>
+                        <input type="text" id="agEditSubject" class="form-input w-full p-2 bg-gray-100 border border-[#dce3ed] rounded text-[13px] outline-none text-gray-500 cursor-not-allowed" readonly>
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Type <span class="text-[#e31b4a]">*</span></label>
-                        <select id="agType" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
-                            <option value="Assessment">Assessment</option>
-                            <option value="Assignment">Assignment</option>
-                            <option value="Quiz">Quiz</option>
-                            <option value="Test">Test</option>
-                            <option value="Exam">Exam</option>
-                            <option value="Project">Project</option>
-                            <option value="Homework">Homework</option>
-                        </select>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Type</label>
+                        <input type="text" id="agEditType" class="form-input w-full p-2 bg-gray-100 border border-[#dce3ed] rounded text-[13px] outline-none text-gray-500 cursor-not-allowed" readonly>
                     </div>
                 </div>
                 <div>
-                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Title <span class="text-[#e31b4a]">*</span></label>
-                    <input type="text" id="agTitle" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Title</label>
+                    <input type="text" id="agEditTitle" class="form-input w-full p-2 bg-gray-100 border border-[#dce3ed] rounded text-[13px] outline-none text-gray-500 cursor-not-allowed" readonly>
                 </div>
                 <div class="grid grid-cols-3 gap-3">
                     <div>
                         <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Score <span class="text-[#e31b4a]">*</span></label>
-                        <input type="number" id="agScore" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
+                        <input type="number" id="agEditScore" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
                     </div>
                     <div>
                         <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Out Of <span class="text-[#e31b4a]">*</span></label>
-                        <input type="number" id="agMax" value="100" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
+                        <input type="number" id="agEditMax" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
                     </div>
                     <div>
                         <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Date <span class="text-[#e31b4a]">*</span></label>
-                        <input type="date" id="agDate" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
+                        <input type="date" id="agEditDate" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
                     </div>
                 </div>
                 <div>
                     <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">General Notes</label>
-                    <textarea id="agNotes" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb] resize-none h-16"></textarea>
+                    <textarea id="agEditNotes" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb] resize-none h-16"></textarea>
                 </div>
                 <div class="bg-amber-50 border border-amber-200 p-3 rounded-lg">
-                    <label class="block text-[10px] font-bold text-amber-800 uppercase tracking-widest mb-1">Reason for Entry/Change <span class="text-[#e31b4a]">*</span></label>
-                    <textarea id="agReason" placeholder="Mandatory explanation for this admin grade adjustment..." class="form-input w-full p-2 bg-white border border-amber-300 rounded text-[13px] outline-none focus:border-amber-500 resize-none h-16"></textarea>
+                    <label class="block text-[10px] font-bold text-amber-800 uppercase tracking-widest mb-1">Reason for Edit <span class="text-[#e31b4a]">*</span></label>
+                    <textarea id="agEditReason" placeholder="Mandatory explanation for editing this grade..." class="form-input w-full p-2 bg-white border border-amber-300 rounded text-[13px] outline-none focus:border-amber-500 resize-none h-16"></textarea>
                 </div>
-                <p id="agMsg" class="text-[11px] font-bold hidden"></p>
-                <button id="saveAdminGradeBtn" onclick="window.saveAdminGrade()" class="w-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold py-3 rounded transition shadow-md text-[12px] uppercase tracking-widest">
-                    <i class="fa-solid fa-floppy-disk mr-1"></i> Save Grade
+                <p id="agEditMsg" class="text-[11px] font-bold hidden text-red-600 block"></p>
+                <button id="saveAdminEditGradeBtn" onclick="window.saveAdminEditGrade()" class="w-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold py-3 rounded transition shadow-md text-[12px] uppercase tracking-widest">
+                    <i class="fa-solid fa-floppy-disk mr-1"></i> Save Changes
                 </button>
             </div>
         </div>
