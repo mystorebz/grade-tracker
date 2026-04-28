@@ -81,9 +81,6 @@ async function loadSettingsData() {
             if (danger) danger.classList.add('hidden');
         }
 
-        // ── Grade types ───────────────────────────────────────────────────────
-        loadGradeTypes();
-
         // ── Scroll to #admins anchor if navigated from sidebar ────────────
         if (window.location.hash === '#admins' && session.isSuperAdmin) {
             setTimeout(() => {
@@ -424,11 +421,6 @@ window.switchArchiveTab = function(tab) {
 async function loadArchivedRecords() {
     try {
         // ── Archived Teachers (global collection) ──────────────────────────
-        // Teachers are archived by setting currentSchoolId to '' and
-        // archivedSchoolIds to include this school. We look for teachers
-        // where this school appears in archivedSchoolIds.
-        // Simpler: teachers panel handles exit — here we just show a note.
-        // For a true archived teacher view, use the teachers page exit flow.
         document.getElementById('archiveTeachersList').innerHTML =
             `<div class="bg-blue-50 border border-blue-100 rounded-xl p-4 text-center">
                 <p class="text-sm text-slate-600 font-semibold">
@@ -439,8 +431,6 @@ async function loadArchivedRecords() {
             </div>`;
 
         // ── Archived Students (global collection) ──────────────────────────
-        // Students archived from this school have enrollmentStatus != 'Active'
-        // and currentSchoolId == this school (or empty for transferred).
         const sSnap = await getDocs(
             query(collection(db, 'students'),
                   where('currentSchoolId', '==', session.schoolId))
@@ -478,8 +468,6 @@ async function loadArchivedRecords() {
 }
 
 // ── Restore Student ───────────────────────────────────────────────────────
-// Restores to Active but leaves class/teacher unassigned — admin can reassign.
-// NOTE: No deleteDoc anywhere in this file. ConnectUs platform handles deletions.
 window.restoreStudent = async function(studentId) {
     if (!confirm('Restore this student to Active status? They will be unassigned and can be placed in a class.')) return;
     try {
@@ -545,272 +533,3 @@ window.endOfYearReset = async function() {
 
 // ── INIT ──────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', loadSettingsData);
-
-// ── 10. GRADE TYPES & WEIGHTS ─────────────────────────────────────────────
-
-const DEFAULT_GRADE_TYPES = [
-    { name: 'Test',       weight: 30, order: 1 },
-    { name: 'Quiz',       weight: 15, order: 2 },
-    { name: 'Assignment', weight: 15, order: 3 },
-    { name: 'Homework',   weight: 10, order: 4 },
-    { name: 'Project',    weight: 15, order: 5 },
-    { name: 'Final Exam', weight: 15, order: 6 }
-];
-
-async function loadGradeTypes() {
-    const listEl         = document.getElementById('gradeTypesList');
-    const archivedWrap   = document.getElementById('archivedTypesWrap');
-    const archivedListEl = document.getElementById('archivedTypesList');
-    const barEl          = document.getElementById('weightTotalBar');
-    const fillEl         = document.getElementById('weightTotalFill');
-    const valEl          = document.getElementById('weightTotalVal');
-    const msgEl          = document.getElementById('weightTotalMsg');
-
-    if (!listEl) return;
-
-    try {
-        let snap = await getDocs(collection(db, 'schools', session.schoolId, 'gradeTypes'));
-
-        // Seed defaults on first use
-        if (snap.empty) {
-            const batch = writeBatch(db);
-            DEFAULT_GRADE_TYPES.forEach(t => {
-                const ref = doc(collection(db, 'schools', session.schoolId, 'gradeTypes'));
-                batch.set(ref, { ...t, isArchived: false, createdAt: new Date().toISOString() });
-            });
-            await batch.commit();
-            snap = await getDocs(collection(db, 'schools', session.schoolId, 'gradeTypes'));
-        }
-
-        const all      = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        const active   = all.filter(t => !t.isArchived).sort((a, b) => (a.order||0) - (b.order||0));
-        const archived = all.filter(t =>  t.isArchived);
-
-        // Cache active types for other pages
-        localStorage.setItem(`connectus_gradeTypes_${session.schoolId}`, JSON.stringify(active));
-
-        const total = active.reduce((s, t) => s + (t.weight || 0), 0);
-
-        // ── Render active list ─────────────────────────────────────────────
-        listEl.innerHTML = active.length ? active.map(t => `
-        <div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid var(--border);border-radius:var(--r-md);padding:11px 14px;transition:border-color 0.15s" onmouseover="this.style.borderColor='var(--border-strong)'" onmouseout="this.style.borderColor='var(--border)'">
-            <div style="display:flex;align-items:center;gap:10px">
-                <div style="width:7px;height:7px;border-radius:50%;background:var(--blue-500);flex-shrink:0"></div>
-                <span style="font-size:13.5px;font-weight:600;color:var(--text-primary)">${escHtml(t.name)}</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-                <span style="font-size:13px;font-weight:700;color:var(--blue-600);background:var(--blue-50);border:1px solid var(--blue-100);padding:3px 10px;border-radius:99px;min-width:46px;text-align:center">${t.weight}%</span>
-                <button onclick="window.openEditTypeModal('${t.id}','${escHtml(t.name)}',${t.weight})"
-                    title="Edit"
-                    style="width:28px;height:28px;border-radius:var(--r-sm);border:1px solid var(--border);background:transparent;cursor:pointer;color:var(--text-faint);display:flex;align-items:center;justify-content:center;font-size:11px;font-family:inherit;transition:all 0.15s"
-                    onmouseover="this.style.background='var(--blue-50)';this.style.borderColor='var(--blue-100)';this.style.color='var(--blue-500)'"
-                    onmouseout="this.style.background='transparent';this.style.borderColor='var(--border)';this.style.color='var(--text-faint)'">
-                    <i class="fa-solid fa-pen" style="font-size:10px"></i>
-                </button>
-                <button onclick="window.archiveGradeType('${t.id}','${escHtml(t.name)}',${t.weight})"
-                    title="Archive — redistributes weight to remaining types"
-                    style="width:28px;height:28px;border-radius:var(--r-sm);border:1px solid var(--border);background:transparent;cursor:pointer;color:var(--text-faint);display:flex;align-items:center;justify-content:center;font-size:11px;font-family:inherit;transition:all 0.15s"
-                    onmouseover="this.style.background='#fff0f3';this.style.borderColor='#ffd6de';this.style.color='#e31b4a'"
-                    onmouseout="this.style.background='transparent';this.style.borderColor='var(--border)';this.style.color='var(--text-faint)'">
-                    <i class="fa-solid fa-box-archive" style="font-size:10px"></i>
-                </button>
-            </div>
-        </div>`).join('')
-            : '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:16px">No active grade types.</p>';
-
-        // ── Render archived list ───────────────────────────────────────────
-        if (archived.length && archivedWrap && archivedListEl) {
-            archivedWrap.classList.remove('hidden');
-            archivedListEl.innerHTML = archived.map(t => `
-            <div style="display:flex;align-items:center;justify-content:space-between;background:#fafbfc;border:1px solid var(--border);border-radius:var(--r-md);padding:10px 14px;opacity:0.7">
-                <div style="display:flex;align-items:center;gap:10px">
-                    <div style="width:7px;height:7px;border-radius:50%;background:var(--text-faint);flex-shrink:0"></div>
-                    <span style="font-size:13px;font-weight:500;color:var(--text-muted);text-decoration:line-through">${escHtml(t.name)}</span>
-                    <span style="font-size:10.5px;color:var(--text-faint)">was ${t.weight || 0}%</span>
-                </div>
-                <button onclick="window.restoreGradeType('${t.id}','${escHtml(t.name)}')"
-                    style="font-size:11.5px;font-weight:700;color:var(--green-700);background:var(--green-50);border:1px solid var(--green-100);padding:4px 12px;border-radius:var(--r-md);cursor:pointer;font-family:inherit;transition:background 0.15s"
-                    onmouseover="this.style.background='var(--green-100)'" onmouseout="this.style.background='var(--green-50)'">
-                    Restore
-                </button>
-            </div>`).join('');
-        } else if (archivedWrap) {
-            archivedWrap.classList.add('hidden');
-        }
-
-        // ── Weight total bar ───────────────────────────────────────────────
-        if (barEl) {
-            barEl.classList.remove('hidden');
-            const pct   = Math.min(total, 100);
-            const over  = total > 100;
-            const exact = total === 100;
-
-            fillEl.style.width      = pct + '%';
-            fillEl.style.background = over ? '#e31b4a' : exact ? '#0ea871' : '#f59e0b';
-            valEl.textContent       = total + '%';
-            valEl.style.color       = over ? '#e31b4a' : exact ? '#0ea871' : '#f59e0b';
-            barEl.style.borderColor = over ? '#ffd6de' : exact ? 'var(--green-100)' : '#fef3c7';
-            barEl.style.background  = over ? '#fff0f3'  : exact ? 'var(--green-50)'  : '#fffbeb';
-
-            if (msgEl) {
-                msgEl.classList.remove('hidden');
-                if (exact) {
-                    msgEl.textContent = '✓ Weights balanced — weighted averages will calculate correctly.';
-                    msgEl.style.color = 'var(--green-700)';
-                } else if (over) {
-                    msgEl.textContent = `⚠ Total exceeds 100% by ${total - 100}%. Reduce some weights.`;
-                    msgEl.style.color = '#e31b4a';
-                } else {
-                    msgEl.textContent = `${100 - total}% unallocated — grades still normalize across weighted types.`;
-                    msgEl.style.color = '#b45309';
-                }
-            }
-        }
-    } catch (e) {
-        console.error('[Settings] loadGradeTypes:', e);
-        if (listEl) listEl.innerHTML = '<p style="color:#e31b4a;font-size:13px;font-weight:600">Error loading grade types.</p>';
-    }
-}
-
-// ── Archive with proportional redistribution ──────────────────────────────
-window.archiveGradeType = async function(id, name, weight) {
-    const snap = await getDocs(collection(db, 'schools', session.schoolId, 'gradeTypes'));
-    const active = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(t => !t.isArchived && t.id !== id);
-
-    if (!active.length) { alert('Cannot archive the last grade type.'); return; }
-
-    if (!confirm(`Archive "${name}" (${weight}%)?
-
-Its ${weight}% will be proportionally redistributed to the remaining ${active.length} active type${active.length !== 1 ? 's' : ''}.`)) return;
-
-    try {
-        const batch    = writeBatch(db);
-        const otherSum = active.reduce((s, t) => s + (t.weight || 0), 0);
-
-        // Archive this type
-        batch.update(doc(db, 'schools', session.schoolId, 'gradeTypes', id), {
-            isArchived: true, archivedAt: new Date().toISOString()
-        });
-
-        // Proportionally scale remaining types to sum to 100
-        if (otherSum > 0) {
-            let assigned = 0;
-            active.forEach((t, i) => {
-                const isLast  = i === active.length - 1;
-                const newW    = isLast ? (100 - assigned) : Math.round((t.weight || 0) / otherSum * 100);
-                assigned     += newW;
-                batch.update(doc(db, 'schools', session.schoolId, 'gradeTypes', t.id), { weight: newW });
-            });
-        }
-
-        await batch.commit();
-        localStorage.removeItem(`connectus_gradeTypes_${session.schoolId}`);
-        loadGradeTypes();
-    } catch (e) {
-        console.error('[Settings] archiveGradeType:', e);
-        alert('Failed to archive grade type.');
-    }
-};
-
-// ── Restore archived type ─────────────────────────────────────────────────
-window.restoreGradeType = async function(id, name) {
-    if (!confirm(`Restore "${name}"?
-
-It will be added back with 0% weight. You'll need to manually set its weight and adjust the others so the total remains 100%.`)) return;
-
-    try {
-        await updateDoc(doc(db, 'schools', session.schoolId, 'gradeTypes', id), {
-            isArchived: false, archivedAt: null, weight: 0
-        });
-        localStorage.removeItem(`connectus_gradeTypes_${session.schoolId}`);
-        loadGradeTypes();
-    } catch (e) {
-        alert('Failed to restore grade type.');
-    }
-};
-
-// ── Edit modal ────────────────────────────────────────────────────────────
-window.openEditTypeModal = function(id, name, weight) {
-    document.getElementById('editTypeId').value     = id;
-    document.getElementById('editTypeName').value   = name;
-    document.getElementById('editTypeWeight').value = weight;
-    document.getElementById('editTypeMsg').classList.add('hidden');
-    openOverlay('editTypeModal', 'editTypeModalInner');
-};
-
-window.closeEditTypeModal = function() { closeOverlay('editTypeModal', 'editTypeModalInner'); };
-
-document.getElementById('saveTypeEditBtn')?.addEventListener('click', async () => {
-    const id     = document.getElementById('editTypeId').value;
-    const name   = document.getElementById('editTypeName').value.trim();
-    const weight = parseInt(document.getElementById('editTypeWeight').value, 10);
-    const msgEl  = document.getElementById('editTypeMsg');
-    msgEl.classList.add('hidden');
-
-    if (!name)                       { showEditTypeMsg('Name is required.', true);          return; }
-    if (isNaN(weight) || weight < 0) { showEditTypeMsg('Weight must be 0 or more.', true);  return; }
-    if (weight > 100)                { showEditTypeMsg('Weight cannot exceed 100%.', true);  return; }
-
-    const btn = document.getElementById('saveTypeEditBtn');
-    btn.disabled  = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...';
-
-    try {
-        await updateDoc(doc(db, 'schools', session.schoolId, 'gradeTypes', id), { name, weight });
-        localStorage.removeItem(`connectus_gradeTypes_${session.schoolId}`);
-        window.closeEditTypeModal();
-        loadGradeTypes();
-    } catch (e) {
-        showEditTypeMsg('Failed to save changes.', true);
-    }
-
-    btn.disabled  = false;
-    btn.innerHTML = 'Save Changes';
-});
-
-function showEditTypeMsg(msg, isError) {
-    const el = document.getElementById('editTypeMsg');
-    el.textContent = msg;
-    el.style.color = isError ? '#e31b4a' : 'var(--green-700)';
-    el.classList.remove('hidden');
-}
-
-// ── Add new type ──────────────────────────────────────────────────────────
-document.getElementById('addTypeBtn')?.addEventListener('click', async () => {
-    const name   = document.getElementById('newTypeName').value.trim();
-    const weight = parseInt(document.getElementById('newTypeWeight').value, 10);
-    const msgEl  = document.getElementById('gradeTypeMsg');
-    msgEl.classList.add('hidden');
-
-    if (!name)                        { showTypeMsg('Name is required.', true);          return; }
-    if (isNaN(weight) || weight < 0)  { showTypeMsg('Weight must be 0 or more.', true);  return; }
-    if (weight > 100)                 { showTypeMsg('Weight cannot exceed 100%.', true);  return; }
-
-    const btn = document.getElementById('addTypeBtn');
-    btn.disabled  = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-
-    try {
-        const existSnap = await getDocs(collection(db, 'schools', session.schoolId, 'gradeTypes'));
-        await addDoc(collection(db, 'schools', session.schoolId, 'gradeTypes'), {
-            name, weight, order: existSnap.size + 1, isArchived: false, createdAt: new Date().toISOString()
-        });
-        localStorage.removeItem(`connectus_gradeTypes_${session.schoolId}`);
-        document.getElementById('newTypeName').value   = '';
-        document.getElementById('newTypeWeight').value = '';
-        loadGradeTypes();
-        showTypeMsg(`"${name}" added.`, false);
-    } catch (e) {
-        showTypeMsg('Failed to add grade type.', true);
-    }
-
-    btn.disabled  = false;
-    btn.innerHTML = '<i class="fa-solid fa-plus"></i> Add';
-});
-
-function showTypeMsg(msg, isError) {
-    const el = document.getElementById('gradeTypeMsg');
-    el.textContent = msg;
-    el.style.color = isError ? '#e31b4a' : 'var(--green-700)';
-    el.classList.remove('hidden');
-}
