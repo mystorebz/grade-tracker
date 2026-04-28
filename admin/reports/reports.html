@@ -18,13 +18,24 @@
     <style>
         @media print {
             .no-print { display: none !important; }
-            body { background: #fff !important; overflow: auto !important; }
+            body { background: #fff !important; overflow: auto !important; padding: 0 !important; margin: 0 !important; }
             #layout-sidebar-container, #layout-topbar-container { display: none !important; }
-            main { height: auto !important; overflow: visible !important; }
-            .overflow-y-auto { overflow: visible !important; height: auto !important; }
+            main { height: auto !important; overflow: visible !important; display: block !important; }
+            .overflow-y-auto { overflow: visible !important; height: auto !important; padding: 20px !important; }
             #liveKpiSection, #reportBuilder { display: none !important; }
-            #reportResults { display: block !important; opacity: 1 !important; }
+            #reportResults { display: block !important; opacity: 1 !important; margin-top: 0 !important; }
+            .report-section { box-shadow: none !important; border: 1px solid #c5d0db !important; break-inside: avoid; margin-bottom: 20px !important; }
+            
+            /* The Formal Print Header */
+            #printHeader { display: block !important; text-align: center; margin-bottom: 30px; border-bottom: 3px solid #0d1f35; padding-bottom: 20px; }
+            #printHeader img { max-height: 70px; margin: 0 auto 15px auto; }
+            #printHeader h1 { font-size: 24px; font-weight: 900; color: #0d1f35; text-transform: uppercase; letter-spacing: 0.1em; margin: 0 0 5px; }
+            #printHeader h2 { font-size: 14px; font-weight: 700; color: #6b84a0; text-transform: uppercase; letter-spacing: 0.05em; margin: 0; }
+            #printHeader .meta { font-size: 11px; color: #374f6b; margin-top: 10px; font-family: monospace; }
         }
+
+        /* Default hidden for print header on screen */
+        #printHeader { display: none; }
 
         .kpi-card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); padding:20px 22px; display:flex; align-items:center; gap:16px; box-shadow:var(--shadow-sm); }
         .kpi-icon { width:42px; height:42px; border-radius:var(--r-md); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
@@ -41,7 +52,7 @@
         .at-risk-row:last-child { border-bottom:none; }
     </style>
 </head>
-<body class="flex w-full h-screen overflow-hidden">
+<body class="flex w-full h-screen overflow-hidden bg-[#f4f7fb]">
 
     <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
 
@@ -51,7 +62,6 @@
         <div class="flex-1 overflow-y-auto p-7">
             <div class="max-w-5xl mx-auto space-y-6">
 
-                <!-- ── LIVE KPI DASHBOARD ────────────────────────────────── -->
                 <div id="liveKpiSection">
                     <div class="flex items-center justify-between mb-3">
                         <div>
@@ -68,7 +78,6 @@
                     </div>
                 </div>
 
-                <!-- ── REPORT BUILDER ────────────────────────────────────── -->
                 <div id="reportBuilder" class="report-section">
                     <div class="report-section-header">
                         <i class="fa-solid fa-wand-magic-sparkles text-[#2563eb]" style="font-size:12px"></i>
@@ -113,17 +122,21 @@
                     </div>
                 </div>
 
-                <!-- ── LOADER ─────────────────────────────────────────────── -->
                 <div id="reportLoader" class="hidden flex-col items-center justify-center py-20">
                     <i class="fa-solid fa-circle-notch fa-spin text-4xl text-[#2563eb] mb-4"></i>
                     <p class="font-bold text-[#374f6b]">Compiling report...</p>
                     <p class="text-[12px] text-[#9ab0c6] font-semibold mt-1">Aggregating records across the school.</p>
                 </div>
 
-                <!-- ── GENERATED REPORT ───────────────────────────────────── -->
                 <div id="reportResults" class="hidden space-y-5 opacity-0 transition-opacity duration-500">
 
-                    <!-- Report header -->
+                    <div id="printHeader">
+                        <img src="../../assets/images/logo.png" onerror="this.style.display='none'">
+                        <h1 id="phSchoolName">School Name</h1>
+                        <h2 id="phReportType">Official Academic Report</h2>
+                        <div class="meta" id="phMeta"></div>
+                    </div>
+
                     <div class="flex items-center justify-between no-print">
                         <div>
                             <h2 id="reportTitle" class="text-xl font-bold text-[#0d1f35] tracking-tight">Report</h2>
@@ -139,28 +152,26 @@
                         </div>
                     </div>
 
-                    <!-- KPI summary row -->
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div class="kpi-card">
                             <div class="kpi-icon" style="background:#eef4ff"><i class="fa-solid fa-graduation-cap" style="color:#2563eb;font-size:16px"></i></div>
-                            <div><div class="kpi-val" id="rMeanAvg">—</div><div class="kpi-lbl">Mean Average</div></div>
+                            <div><div class="kpi-val" id="rMeanAvg">—</div><div class="kpi-lbl" id="rMeanAvgLbl">Mean Average</div></div>
                         </div>
                         <div class="kpi-card">
                             <div class="kpi-icon" style="background:#edfaf4"><i class="fa-solid fa-check-circle" style="color:#0ea871;font-size:16px"></i></div>
-                            <div><div class="kpi-val" id="rPassRate">—</div><div class="kpi-lbl">Pass Rate</div></div>
+                            <div><div class="kpi-val" id="rPassRate">—</div><div class="kpi-lbl" id="rPassRateLbl">Pass Rate</div></div>
                         </div>
-                        <div class="kpi-card">
+                        <div class="kpi-card" id="kpiAtRiskCard">
                             <div class="kpi-icon" style="background:#fff0f3"><i class="fa-solid fa-triangle-exclamation" style="color:#e31b4a;font-size:16px"></i></div>
-                            <div><div class="kpi-val" id="rAtRisk">—</div><div class="kpi-lbl">At Risk (&lt;60%)</div></div>
+                            <div><div class="kpi-val" id="rAtRisk">—</div><div class="kpi-lbl" id="rAtRiskLbl">At Risk (&lt;60%)</div></div>
                         </div>
                         <div class="kpi-card">
                             <div class="kpi-icon" style="background:#fffbeb"><i class="fa-solid fa-pen-to-square" style="color:#f59e0b;font-size:16px"></i></div>
-                            <div><div class="kpi-val" id="rVolume">—</div><div class="kpi-lbl">Assessments</div></div>
+                            <div><div class="kpi-val" id="rVolume">—</div><div class="kpi-lbl" id="rVolumeLbl">Assessments</div></div>
                         </div>
                     </div>
 
-                    <!-- Grade distribution -->
-                    <div class="report-section">
+                    <div class="report-section" id="distributionSection">
                         <div class="report-section-header">
                             <i class="fa-solid fa-chart-bar text-[#2563eb]" style="font-size:11px"></i>
                             <span class="report-section-title">Grade Distribution</span>
@@ -173,16 +184,14 @@
                         </div>
                     </div>
 
-                    <!-- Pass / Fail breakdown -->
                     <div class="report-section" id="passFailSection">
                         <div class="report-section-header">
                             <i class="fa-solid fa-scale-balanced text-[#2563eb]" style="font-size:11px"></i>
-                            <span class="report-section-title">Pass / Fail Breakdown</span>
+                            <span class="report-section-title" id="passFailTitle">Pass / Fail Breakdown</span>
                         </div>
                         <div class="p-5" id="passFailBody"></div>
                     </div>
 
-                    <!-- Subject performance -->
                     <div class="report-section" id="subjectSection">
                         <div class="report-section-header">
                             <i class="fa-solid fa-book text-[#2563eb]" style="font-size:11px"></i>
@@ -191,7 +200,6 @@
                         <div id="subjectBody"></div>
                     </div>
 
-                    <!-- Comparison table (class/teacher/student view) -->
                     <div class="report-section" id="comparisonSection">
                         <div class="report-section-header">
                             <i class="fa-solid fa-table text-[#2563eb]" style="font-size:11px"></i>
@@ -205,7 +213,6 @@
                         </div>
                     </div>
 
-                    <!-- At-risk roster -->
                     <div class="report-section" id="atRiskSection">
                         <div class="report-section-header" style="justify-content:space-between">
                             <div class="flex items-center gap-2">
@@ -217,7 +224,6 @@
                         <div id="atRiskBody"></div>
                     </div>
 
-                    <!-- Teacher performance (school-wide only) -->
                     <div class="report-section" id="teacherPerfSection">
                         <div class="report-section-header">
                             <i class="fa-solid fa-chalkboard-user text-[#2563eb]" style="font-size:11px"></i>
