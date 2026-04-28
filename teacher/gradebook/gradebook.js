@@ -2,7 +2,7 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, query, where, getDocs, getDoc, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
-import { openOverlay, closeOverlay, showMsg, gradeColorClass, gradeFill, letterGrade, downloadCSV } from '../../assets/js/utils.js';
+import { openOverlay, closeOverlay, showMsg, gradeColorClass, gradeFill, letterGrade, downloadCSV, calculateWeightedAverage } from '../../assets/js/utils.js';
 
 // ── 1. AUTH & LAYOUT ─────────────────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
@@ -204,13 +204,13 @@ async function loadGradebook() {
 
     const grades = await getAllGrades(semId);
 
-    // Dummy weight calculation purely for the At-Risk sidebar stat fallback
     const stuGMap = {};
     grades.forEach(g => { if (!stuGMap[g.studentId]) stuGMap[g.studentId] = []; stuGMap[g.studentId].push(g); });
     
+    // Updated to use calculateWeightedAverage
     const riskCount = Object.values(stuGMap).filter(sg => {
-        const avg = sg.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / sg.length;
-        return avg !== null && Math.round(avg) < 65;
+        const avg = calculateWeightedAverage(sg, session.schoolId);
+        return avg !== null && avg < 65;
     }).length;
     
     const sbRisk = document.getElementById('sb-risk');
@@ -242,7 +242,8 @@ function renderGradebook() {
     const stuGrps = {};
     allRows.forEach(g => { if (!stuGrps[g.studentId]) stuGrps[g.studentId] = []; stuGrps[g.studentId].push(g); });
     
-    const stuAvgs = Object.values(stuGrps).map(sg => sg.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / sg.length);
+    // Updated to use calculateWeightedAverage
+    const stuAvgs = Object.values(stuGrps).map(sg => calculateWeightedAverage(sg, session.schoolId)).filter(a => a !== null);
     const avgAll  = stuAvgs.length ? Math.round(stuAvgs.reduce((a, b) => a + b, 0) / stuAvgs.length) : null;
     const allPcts = allRows.map(g => g.max ? Math.round(g.score / g.max * 100) : 0);
 
@@ -252,10 +253,12 @@ function renderGradebook() {
     const avgEl = document.getElementById('gbStatAvg');
     if (avgEl) { avgEl.textContent = avgAll !== null ? avgAll + '%' : '—'; avgEl.style.color = avgAll !== null ? gradeColor(avgAll) : '#0d1f35'; }
 
+    // Updated to use calculateWeightedAverage
     const riskStat = Object.values(stuGrps).filter(sg => {
-        const avg = sg.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / sg.length;
-        return avg !== null && Math.round(avg) < 65;
+        const avg = calculateWeightedAverage(sg, session.schoolId);
+        return avg !== null && avg < 65;
     }).length;
+    
     const riskEl = document.getElementById('gbStatRisk');
     if (riskEl) { riskEl.textContent = riskStat || '0'; riskEl.style.color = riskStat > 0 ? '#e31b4a' : '#0d1f35'; }
 
