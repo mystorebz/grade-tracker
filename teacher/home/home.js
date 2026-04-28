@@ -2,7 +2,8 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, query, where, getDocs, getDoc, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
-import { gradeColorClass } from '../../assets/js/utils.js';
+// UPDATED: Added calculateWeightedAverage to the imports
+import { gradeColorClass, calculateWeightedAverage } from '../../assets/js/utils.js';
 
 // ── 1. AUTH & LAYOUT ─────────────────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
@@ -14,6 +15,10 @@ if (session) {
 let allStudents = [];
 let studentMap  = {};
 let allGrades   = [];
+
+// UPDATED: Added helper to fetch the teacher's custom grade types
+const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
+function getGradeTypes() { return session.teacherData.gradeTypes || session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
 
 // ── 3. INIT ───────────────────────────────────────────────────────────────────
 async function init() {
@@ -131,18 +136,21 @@ async function fetchMetrics() {
 
         document.getElementById('stat-grades').textContent = allGrades.length;
 
+        // UPDATED: Collect grades per student to pass into the math engine
         const stuG = {};
         allGrades.forEach(g => {
-            if (!stuG[g.studentId]) stuG[g.studentId] = { total: 0, count: 0 };
-            stuG[g.studentId].total += g.max ? (g.score / g.max) * 100 : 0;
-            stuG[g.studentId].count++;
+            if (!stuG[g.studentId]) stuG[g.studentId] = [];
+            stuG[g.studentId].push(g);
         });
 
+        // UPDATED: Use the proper weighted math engine to calculate at-risk students!
         const riskStudents = [];
-        Object.entries(stuG).forEach(([sid, sg]) => {
-            if (sg.count > 0) {
-                const avg = Math.round(sg.total / sg.count);
-                if (avg < 65) riskStudents.push({ sid, name: studentMap[sid] || 'Unknown', avg });
+        Object.entries(stuG).forEach(([sid, gradesArray]) => {
+            if (gradesArray.length > 0) {
+                const avg = calculateWeightedAverage(gradesArray, getGradeTypes());
+                if (avg !== null && avg < 65) {
+                    riskStudents.push({ sid, name: studentMap[sid] || 'Unknown', avg });
+                }
             }
         });
 
@@ -258,7 +266,7 @@ function renderEmptyActivity() {
             <p style="font-size:12.5px;margin:0;font-weight:400;">No grades logged yet this period.</p>
             <a href="../grade_form/grade_form.html"
                style="font-size:12px;font-weight:600;color:#0b8f5e;text-decoration:none;margin-top:4px;">
-               + Enter your first grade →
+                + Enter your first grade →
             </a>
         </div>`;
 }
