@@ -15,27 +15,44 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <style>
+        .panel-tab {
+            padding: 14px 20px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #6b84a0;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .panel-tab:hover { color: #2563eb; }
+        .panel-tab.active { color: #2563eb; border-bottom-color: #2563eb; background: #f8fafb; }
+        
+        .subject-body { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; }
+        .subject-body.open { max-height: 1000px; }
+    </style>
 </head>
-<body class="flex w-full h-screen overflow-hidden">
+<body class="flex w-full h-screen overflow-hidden bg-[#f4f7fb]">
 
     <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
 
     <main class="flex-1 flex flex-col h-full overflow-hidden">
-        
         <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
 
         <div class="flex-1 overflow-y-auto p-7">
-            
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div class="p-6 border-b border-slate-100 flex flex-wrap gap-4 justify-between items-center bg-gradient-to-r from-white to-indigo-50/40">
                     <div class="flex items-center gap-3">
                         <div class="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-school"></i></div>
                         <div>
                             <h3 class="font-black text-xl text-slate-800">Classes</h3>
-                            <p class="text-sm text-slate-400 font-semibold">Performance overview for each class</p>
+                            <p class="text-sm text-slate-400 font-semibold">School-wide performance overview</p>
                         </div>
                     </div>
-                    <div id="classesLoadingMsg" class="text-sm text-slate-400 font-semibold hidden"><i class="fa-solid fa-spinner fa-spin mr-2 text-indigo-400"></i>Loading class data...</div>
+                    <div id="classesLoadingMsg" class="text-sm text-slate-400 font-semibold hidden"><i class="fa-solid fa-spinner fa-spin mr-2 text-indigo-400"></i>Loading...</div>
                 </div>
                 
                 <div class="overflow-x-auto">
@@ -44,38 +61,42 @@
                             <tr>
                                 <th class="px-6 py-4 font-black">Class</th>
                                 <th class="px-6 py-4 font-black">Teacher</th>
-                                <th class="px-6 py-4 font-black text-center">Students</th>
-                                <th class="px-6 py-4 font-black text-center">Subjects</th>
-                                <th class="px-6 py-4 font-black text-center">Class Avg</th>
-                                <th class="px-6 py-4 font-black text-center">Highest</th>
-                                <th class="px-6 py-4 font-black text-center">Lowest</th>
-                                <th class="px-6 py-4 font-black text-center">At Risk</th>
-                                <th class="px-6 py-4 font-black text-right">Action</th>
+                                <th class="px-6 py-4 text-center font-black">Students</th>
+                                <th class="px-6 py-4 text-center font-black">Subjects</th>
+                                <th class="px-6 py-4 text-center font-black">Class Avg</th>
+                                <th class="px-6 py-4 text-center font-black">Highest</th>
+                                <th class="px-6 py-4 text-center font-black">Lowest</th>
+                                <th class="px-6 py-4 text-center font-black">At Risk</th>
+                                <th class="px-6 py-4 text-right font-black">Action</th>
                             </tr>
                         </thead>
-                        <tbody id="classesTableBody" class="divide-y divide-slate-100">
-                            <tr><td colspan="9" class="px-6 py-16 text-center text-slate-400 font-semibold"><i class="fa-solid fa-spinner fa-spin text-indigo-400 text-2xl mb-3 block"></i>Loading classes...</td></tr>
-                        </tbody>
+                        <tbody id="classesTableBody" class="divide-y divide-slate-100"></tbody>
                     </table>
                 </div>
             </div>
-
         </div>
     </main>
 
-    <div id="classPanel" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-end hidden opacity-0">
-        <div id="classPanelInner" class="side-panel bg-[#f0f4ff] w-full max-w-2xl h-full shadow-2xl flex flex-col translate-x-full">
+    <div id="classPanel" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-end hidden opacity-0 transition-opacity">
+        <div id="classPanelInner" class="side-panel bg-[#f8fafb] w-full max-w-6xl h-full shadow-2xl flex flex-col translate-x-full transition-transform duration-300">
             <div class="h-1 bg-gradient-to-r from-indigo-500 via-blue-400 to-cyan-500 flex-shrink-0"></div>
+            
             <div class="px-7 py-5 border-b border-slate-200 bg-white flex justify-between items-center flex-shrink-0">
                 <div>
-                    <h3 id="cpPanelTitle" class="font-black text-2xl text-slate-800">Class</h3>
+                    <h3 id="cpPanelTitle" class="font-black text-2xl text-slate-800">Class Name</h3>
                     <p id="cpPanelMeta" class="text-sm text-indigo-600 font-bold mt-0.5">—</p>
                 </div>
                 <button onclick="window.closeClassPanel()" class="text-slate-400 hover:text-red-500 h-9 w-9 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-xl"></i></button>
             </div>
-            <div class="flex-1 overflow-y-auto p-7 space-y-6" id="classPanelBody">
-                <div class="flex justify-center py-16"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-indigo-500"></i></div>
+
+            <div class="flex bg-white border-b border-slate-200 px-7 flex-shrink-0">
+                <div class="panel-tab active" data-tab="overview" onclick="window.switchClassTab('overview')">Overview</div>
+                <div class="panel-tab" data-tab="subjects" onclick="window.switchClassTab('subjects')">Subjects</div>
+                <div class="panel-tab" data-tab="students" onclick="window.switchClassTab('students')">Student Roster</div>
             </div>
+
+            <div class="flex-1 overflow-y-auto p-7" id="classPanelBody">
+                </div>
         </div>
     </div>
 
