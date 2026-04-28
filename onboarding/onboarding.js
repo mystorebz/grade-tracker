@@ -173,6 +173,7 @@ initializeBtn.addEventListener('click', async () => {
             schoolName,
             district,
             schoolType,
+            logo:                 '', // Added placeholder for the school logo
             superAdminId:         newSuperAdminId, 
             adminCode:            hashedCode,      
             securityQ1:           secQ1,            
