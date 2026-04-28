@@ -43,6 +43,16 @@ function calcAvg(grades) {
         : grades.reduce((s, g) => s + (g.max ? g.score / g.max * 100 : 0), 0) / grades.length;
 }
 
+function gradeColor(pct) {
+    return pct >= 75 ? 'color:#0ea871' : pct >= 60 ? 'color:#b45309' : 'color:#e31b4a';
+}
+
+function gradeBar(pct, color) {
+    return `<div style="height:4px;background:#f0f4f8;border-radius:99px;overflow:hidden;margin-top:4px">
+        <div style="height:100%;width:${Math.min(pct,100)}%;background:${color};border-radius:99px"></div>
+    </div>`;
+}
+
 // ── 4. LOAD GRADE TYPES ───────────────────────────────────────────────────
 async function loadGradeTypes() {
     try {
@@ -153,7 +163,47 @@ async function loadLiveDashboard() {
     }
 }
 
-// ── 6. INIT BUILDER DROPDOWNS ─────────────────────────────────────────────
+// ── 6. DYNAMIC SUBJECT POPULATION ─────────────────────────────────────────
+function populateSubjects() {
+    const scope  = document.getElementById('reportScope').value;
+    const target = document.getElementById('reportTarget').value;
+    const subjectSelect = document.getElementById('reportSubject');
+    
+    const currentSelection = subjectSelect.value;
+    
+    subjectSelect.innerHTML = '<option value="all">All Subjects</option>';
+    let validSubjects = new Set();
+
+    if (scope === 'school') {
+        allTeachers.forEach(t => {
+            if (t.subjects) t.subjects.forEach(sub => validSubjects.add(typeof sub === 'string' ? sub : sub.name));
+        });
+    } else if (scope === 'teacher' && target) {
+        const t = allTeachers.find(x => x.id === target);
+        if (t && t.subjects) t.subjects.forEach(sub => validSubjects.add(typeof sub === 'string' ? sub : sub.name));
+    } else if (scope === 'class' && target) {
+        const teachers = allTeachers.filter(t => t.classes && t.classes.includes(target) || t.className === target);
+        teachers.forEach(t => {
+            if (t.subjects) t.subjects.forEach(sub => validSubjects.add(typeof sub === 'string' ? sub : sub.name));
+        });
+    } else if (scope === 'student' && target) {
+        const s = allStudents.find(x => x.id === target);
+        if (s && s.teacherId) {
+            const t = allTeachers.find(x => x.id === s.teacherId);
+            if (t && t.subjects) t.subjects.forEach(sub => validSubjects.add(typeof sub === 'string' ? sub : sub.name));
+        }
+    }
+
+    Array.from(validSubjects).sort().forEach(subName => {
+        if(subName) subjectSelect.innerHTML += `<option value="${escHtml(subName)}">${escHtml(subName)}</option>`;
+    });
+    
+    if (Array.from(validSubjects).includes(currentSelection)) {
+        subjectSelect.value = currentSelection;
+    }
+}
+
+// ── 7. INIT BUILDER DROPDOWNS ─────────────────────────────────────────────
 async function initializeBuilder() {
     try {
         const [semSnap, tSnap, sSnap] = await Promise.all([
@@ -187,20 +237,28 @@ async function initializeBuilder() {
             : ['Year 1','Year 2'];
 
         await loadLiveDashboard();
+        
+        // Populate school-wide subjects initially
+        populateSubjects();
 
     } catch (e) {
         console.error('[Reports] initializeBuilder:', e);
     }
 }
 
-// ── 7. SCOPE DROPDOWNS ────────────────────────────────────────────────────
+// ── 8. SCOPE & TARGET DROPDOWNS ───────────────────────────────────────────
 document.getElementById('reportScope').addEventListener('change', e => {
     const scope  = e.target.value;
     const tc     = document.getElementById('targetContainer');
     const target = document.getElementById('reportTarget');
     target.innerHTML = '<option value="">Select target...</option>';
 
-    if (scope === 'school') { tc.classList.add('hidden'); return; }
+    if (scope === 'school') { 
+        tc.classList.add('hidden'); 
+        populateSubjects();
+        return; 
+    }
+    
     tc.classList.remove('hidden');
 
     if (scope === 'teacher') {
@@ -213,9 +271,14 @@ document.getElementById('reportScope').addEventListener('change', e => {
         document.getElementById('targetLabel').textContent = 'Select Student';
         allStudents.forEach(s => target.innerHTML += `<option value="${s.id}">${escHtml(s.name)} (${s.className || 'Unassigned'})</option>`);
     }
+    
+    populateSubjects();
 });
 
-// ── 8. GENERATE REPORT ────────────────────────────────────────────────────
+document.getElementById('reportTarget').addEventListener('change', populateSubjects);
+
+
+// ── 9. GENERATE REPORT ────────────────────────────────────────────────────
 document.getElementById('generateBtn').addEventListener('click', async () => {
     const period  = document.getElementById('reportPeriod').value;
     const periodName = document.getElementById('reportPeriod').options[document.getElementById('reportPeriod').selectedIndex].text;
@@ -579,7 +642,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     }
 });
 
-// ── 9. COMPARISON TABLE ────────────────────────────────────────────────────
+// ── 10. COMPARISON TABLE ────────────────────────────────────────────────────
 function renderTable(scope, gradedStudents, allGrades, processedStudents) {
     const head = document.getElementById('reportTableHead');
     const body = document.getElementById('reportTableBody');
@@ -635,7 +698,6 @@ function renderTable(scope, gradedStudents, allGrades, processedStudents) {
             const sBg    = !s.isAtRisk ? (s.cumulativeAvg >= 75 ? 'background:#edfaf4;color:#0b8f5e;border:1px solid #c6f0db' : 'background:#f8fafb;color:#374f6b;border:1px solid #dce3ed')
                          : 'background:#fff0f3;color:#be1240;border:1px solid #ffd6de';
             
-            // Re-calculate assessment volume for just this student to show in ranking
             const studentAssessments = allGrades.filter(g => g.studentId === s.id).length;
 
             return `<tr class="gb-row">
@@ -677,7 +739,7 @@ function renderTable(scope, gradedStudents, allGrades, processedStudents) {
     }
 }
 
-// ── 10. EXPORT & PRINT ────────────────────────────────────────────────────
+// ── 11. EXPORT & PRINT ────────────────────────────────────────────────────
 document.getElementById('printReportBtn').addEventListener('click', () => window.print());
 
 document.getElementById('exportCsvBtn').addEventListener('click', () => {
