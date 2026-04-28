@@ -7,7 +7,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
-import { openOverlay, closeOverlay } from '../../assets/js/utils.js';
+import { openOverlay, closeOverlay, calculateWeightedAverage } from '../../assets/js/utils.js';
 
 // ── 1. INIT & AUTH ─────────────────────────────────────────────────────────
 const session = requireAuth('admin', '../login.html');
@@ -948,8 +948,8 @@ async function renderSubjectsTab() {
                 return;
             }
             
-            const scores = sGrades.map(g => (g.score / g.max) * 100).sort((a, b) => a - b);
-            const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+            const scores = sGrades.map(g => (g.max ? (g.score / g.max) * 100 : 0)).sort((a, b) => a - b);
+            const avg = calculateWeightedAverage(sGrades, session.schoolId);
             
             const mid = Math.floor(scores.length / 2);
             const med = scores.length % 2 !== 0 ? scores[mid] : (scores[mid - 1] + scores[mid]) / 2;
