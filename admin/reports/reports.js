@@ -43,16 +43,6 @@ function calcAvg(grades) {
         : grades.reduce((s, g) => s + (g.max ? g.score / g.max * 100 : 0), 0) / grades.length;
 }
 
-function gradeColor(pct) {
-    return pct >= 75 ? 'color:#0ea871' : pct >= 60 ? 'color:#b45309' : 'color:#e31b4a';
-}
-
-function gradeBar(pct, color) {
-    return `<div style="height:4px;background:#f0f4f8;border-radius:99px;overflow:hidden;margin-top:4px">
-        <div style="height:100%;width:${Math.min(pct,100)}%;background:${color};border-radius:99px"></div>
-    </div>`;
-}
-
 // ── 4. LOAD GRADE TYPES ───────────────────────────────────────────────────
 async function loadGradeTypes() {
     try {
@@ -98,9 +88,10 @@ async function loadLiveDashboard() {
             Object.values(bySubj).forEach(subGrades => {
                 const subAvg = calcAvg(subGrades);
                 if (subAvg !== null) {
-                    sumAvgs += subAvg;
+                    const roundedSubAvg = Math.round(subAvg);
+                    sumAvgs += roundedSubAvg;
                     totalSubjs++;
-                    if (subAvg < 60) failingSubjects++;
+                    if (roundedSubAvg < 60) failingSubjects++;
                 }
             });
 
@@ -198,9 +189,11 @@ function populateSubjects() {
         if(subName) subjectSelect.innerHTML += `<option value="${escHtml(subName)}">${escHtml(subName)}</option>`;
     });
     
-    if (Array.from(validSubjects).includes(currentSelection)) {
-        subjectSelect.value = currentSelection;
+    let hasSelection = false;
+    for (let i = 0; i < subjectSelect.options.length; i++) {
+        if (subjectSelect.options[i].value === currentSelection) hasSelection = true;
     }
+    if (hasSelection) subjectSelect.value = currentSelection;
 }
 
 // ── 7. INIT BUILDER DROPDOWNS ─────────────────────────────────────────────
@@ -238,7 +231,6 @@ async function initializeBuilder() {
 
         await loadLiveDashboard();
         
-        // Populate school-wide subjects initially
         populateSubjects();
 
     } catch (e) {
@@ -295,7 +287,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     loader.classList.add('flex');
 
     try {
-        // ── Determine scope students ───────────────────────────────────────
+        // Determine scope students
         let targetStudents = allStudents;
         let titleText = 'School-Wide Performance';
         let subtitleText = '';
@@ -320,7 +312,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
         document.getElementById('reportTitle').textContent    = titleText;
         document.getElementById('reportSubtitle').textContent = subtitleText;
 
-        // Populate Print Header
+        // Populate Formal Print Header
         document.getElementById('phSchoolName').textContent = session.schoolName || 'ConnectUs School';
         document.getElementById('phReportType').textContent = titleText;
         document.getElementById('phMeta').innerHTML = `
@@ -386,7 +378,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
                 hasData: true,
                 cumulativeAvg: cumulativeAvg,
                 totalSubjects: totalSubjs,
-                subjectAverages: subjectAverages.sort((a,b) => b.avg - a.avg), // Sorted best to worst
+                subjectAverages: subjectAverages.sort((a,b) => b.avg - a.avg), 
                 failingSubjects: failingSubjects.sort((a,b) => a.avg - b.avg),
                 strongSubjects: strongSubjects.sort((a,b) => b.avg - a.avg),
                 isAtRisk: isAtRisk
@@ -415,7 +407,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
 
         } else {
             const meanAvg  = gradedStudents.length ? Math.round(gradedStudents.reduce((s, x) => s + x.cumulativeAvg, 0) / gradedStudents.length) : null;
-            const passRate = gradedStudents.length ? Math.round(gradedStudents.filter(x => x.cumulativeAvg >= 60).length / gradedStudents.length * 100) : null;
+            const passRate = gradedStudents.length ? Math.round(gradedStudents.filter(x => x.cumulativeAvg >= 60 && x.failingSubjects.length === 0).length / gradedStudents.length * 100) : null;
             const atRiskCount = gradedStudents.filter(x => x.isAtRisk).length;
 
             document.getElementById('rMeanAvgLbl').textContent = "Mean Average";
@@ -503,8 +495,8 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
                     <span style="font-size:12px;font-weight:600;color:#9ab0c6">${n} students</span>
                 </div>`).join('');
 
-            const passCount = gradedStudents.filter(x => x.cumulativeAvg >= 60).length;
-            const failCount = gradedStudents.filter(x => x.cumulativeAvg < 60).length;
+            const passCount = gradedStudents.filter(x => x.cumulativeAvg >= 60 && x.failingSubjects.length === 0).length;
+            const failCount = gradedStudents.length - passCount;
             const passPct   = totalG >= 1 ? Math.round(passCount / totalG * 100) : 0;
             
             document.getElementById('passFailTitle').textContent = "Pass / Fail Breakdown";
@@ -512,12 +504,12 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
                     <div style="background:#edfaf4;border:1px solid #c6f0db;border-radius:var(--r-md);padding:20px;text-align:center">
                         <div style="font-size:36px;font-weight:700;color:#0ea871">${passCount}</div>
-                        <div style="font-size:11px;font-weight:700;color:#0b8f5e;text-transform:uppercase;letter-spacing:0.08em;margin-top:4px">Passing (Overall ≥60%)</div>
+                        <div style="font-size:11px;font-weight:700;color:#0b8f5e;text-transform:uppercase;letter-spacing:0.08em;margin-top:4px">Passing (All Subjects)</div>
                         <div style="font-size:13px;font-weight:600;color:#6b84a0;margin-top:6px">${passPct}% of graded students</div>
                     </div>
                     <div style="background:#fff0f3;border:1px solid #ffd6de;border-radius:var(--r-md);padding:20px;text-align:center">
                         <div style="font-size:36px;font-weight:700;color:#e31b4a">${failCount}</div>
-                        <div style="font-size:11px;font-weight:700;color:#be1240;text-transform:uppercase;letter-spacing:0.08em;margin-top:4px">Failing (Overall &lt;60%)</div>
+                        <div style="font-size:11px;font-weight:700;color:#be1240;text-transform:uppercase;letter-spacing:0.08em;margin-top:4px">Failing (≥1 Subject)</div>
                         <div style="font-size:13px;font-weight:600;color:#6b84a0;margin-top:6px">${totalG >= 1 ? 100 - passPct : 0}% of graded students</div>
                     </div>
                 </div>`;
