@@ -26,7 +26,8 @@ let sfSubjectValue = '';
 let sfTypeValue    = '';
 
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
-function getGradeTypes() { return session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
+// UPDATED: Pull the gradeTypes array saved from the new Settings page
+function getGradeTypes() { return session.teacherData.gradeTypes || session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
 
 // ── 3. SEARCHABLE SELECT COMPONENT ───────────────────────────────────────────
 function buildSearchableFilter(key, items, onSelect) {
@@ -96,7 +97,7 @@ async function init() {
     const classes = session.teacherData.classes || [session.teacherData.className || ''];
     document.getElementById('displayTeacherClasses').innerHTML = classes.filter(Boolean).map(c => `<span class="class-pill">${c}</span>`).join('');
 
-    sfType = buildSearchableFilter('type', getGradeTypes().map(t => ({ id: t, label: t })), (val) => { sfTypeValue = val; applyGradebookFilters(); });
+    sfType = buildSearchableFilter('type', getGradeTypes().map(t => { const name = t.name || t; return { id: name, label: name }; }), (val) => { sfTypeValue = val; applyGradebookFilters(); });
     sfStudent = buildSearchableFilter('student', [], (val) => { sfStudentValue = val; applyGradebookFilters(); });
     sfSubject = buildSearchableFilter('subject', [], (val) => { sfSubjectValue = val; applyGradebookFilters(); });
 
@@ -207,9 +208,9 @@ async function loadGradebook() {
     const stuGMap = {};
     grades.forEach(g => { if (!stuGMap[g.studentId]) stuGMap[g.studentId] = []; stuGMap[g.studentId].push(g); });
     
-    // Updated to use calculateWeightedAverage
+    // UPDATED: Using Teacher-Specific Grade Types
     const riskCount = Object.values(stuGMap).filter(sg => {
-        const avg = calculateWeightedAverage(sg, session.schoolId);
+        const avg = calculateWeightedAverage(sg, getGradeTypes());
         return avg !== null && avg < 65;
     }).length;
     
@@ -242,8 +243,8 @@ function renderGradebook() {
     const stuGrps = {};
     allRows.forEach(g => { if (!stuGrps[g.studentId]) stuGrps[g.studentId] = []; stuGrps[g.studentId].push(g); });
     
-    // Updated to use calculateWeightedAverage
-    const stuAvgs = Object.values(stuGrps).map(sg => calculateWeightedAverage(sg, session.schoolId)).filter(a => a !== null);
+    // UPDATED: Using Teacher-Specific Grade Types
+    const stuAvgs = Object.values(stuGrps).map(sg => calculateWeightedAverage(sg, getGradeTypes())).filter(a => a !== null);
     const avgAll  = stuAvgs.length ? Math.round(stuAvgs.reduce((a, b) => a + b, 0) / stuAvgs.length) : null;
     const allPcts = allRows.map(g => g.max ? Math.round(g.score / g.max * 100) : 0);
 
@@ -253,9 +254,9 @@ function renderGradebook() {
     const avgEl = document.getElementById('gbStatAvg');
     if (avgEl) { avgEl.textContent = avgAll !== null ? avgAll + '%' : '—'; avgEl.style.color = avgAll !== null ? gradeColor(avgAll) : '#0d1f35'; }
 
-    // Updated to use calculateWeightedAverage
+    // UPDATED: Using Teacher-Specific Grade Types
     const riskStat = Object.values(stuGrps).filter(sg => {
-        const avg = calculateWeightedAverage(sg, session.schoolId);
+        const avg = calculateWeightedAverage(sg, getGradeTypes());
         return avg !== null && avg < 65;
     }).length;
     
@@ -463,8 +464,61 @@ window.exportGradebookCSV = function() {
 window.printGradebook = function() {
     const rows = getFilteredRows().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     const semName = document.getElementById('activeSemester')?.options[document.getElementById('activeSemester')?.selectedIndex]?.text || '';
+    const schoolName = session.schoolName || session.schoolId;
+    
     const w = window.open('', '_blank');
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Gradebook — ${session.teacherData.name}</title><style>@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=DM+Mono:wght@400&display=swap');*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'DM Sans',sans-serif;padding:40px 48px;color:#0d1f35;}.header{display:flex;flex-direction:column;align-items:center;margin-bottom:28px;padding-bottom:20px;border-bottom:2px solid #0d1f35;}.logo{max-height:44px;max-width:160px;object-fit:contain;margin-bottom:10px;}.doc-title{font-size:16px;font-weight:700;margin-bottom:4px;}.meta{font-size:11px;color:#6b84a0;}table{width:100%;border-collapse:collapse;font-size:12px;}th{padding:9px 12px;background:#0d1f35;color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;text-align:left;}td{padding:9px 12px;border-bottom:1px solid #e8edf2;}tr:nth-child(even) td{background:#f8fafb;}.hi{color:#065f46;font-weight:700;}.mid{color:#78350f;font-weight:700;}.lo{color:#7f1d1d;font-weight:700;}.mono{font-family:'DM Mono',monospace;}.footer{margin-top:32px;padding-top:10px;border-top:1px solid #e8edf2;font-size:10px;color:#9ab0c6;font-style:italic;text-align:center;}</style></head><body><div class="header"><img src="../../assets/images/logo.png" alt="ConnectUs" class="logo" onerror="this.style.display='none'"><p class="doc-title">Class Gradebook</p><p class="meta">${session.teacherData.name} &nbsp;·&nbsp; ${semName} &nbsp;·&nbsp; ${rows.length} records &nbsp;·&nbsp; ${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</p></div><table><thead><tr><th>Student</th><th>Subject</th><th>Assignment</th><th>Type</th><th>Date</th><th>Score</th><th>%</th><th>Grade</th></tr></thead><tbody>${rows.map(g=>{const p=g.max?Math.round(g.score/g.max*100):null;const cls=p>=75?'hi':p>=65?'mid':'lo';return `<tr><td><strong>${g.studentName}</strong></td><td>${g.subject||'—'}</td><td>${g.title||'—'}</td><td>${g.type||'—'}</td><td>${g.date||'—'}</td><td class="mono">${g.score}/${g.max||'?'}</td><td class="mono ${cls}">${p!==null?p+'%':'—'}</td><td class="${cls}">${p!==null?letterGrade(p):'—'}</td></tr>`;}).join('')}</tbody></table><div class="footer">School ID: ${session.schoolId} · Generated by ConnectUs</div></body></html>`);
+    w.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Gradebook — ${escHtml(session.teacherData.name)}</title>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=DM+Mono:wght@400&display=swap');
+            *{box-sizing:border-box;margin:0;padding:0;}
+            body{font-family:'DM Sans',sans-serif;padding:40px 48px;color:#0d1f35;}
+            .header{display:flex;flex-direction:column;align-items:center;margin-bottom:28px;padding-bottom:20px;border-bottom:2px solid #0d1f35;}
+            .logo{max-height:44px;max-width:160px;object-fit:contain;margin-bottom:10px;}
+            .doc-title{font-size:16px;font-weight:700;margin-bottom:4px;}
+            .meta{font-size:11px;color:#6b84a0;}
+            table{width:100%;border-collapse:collapse;font-size:12px;}
+            th{padding:9px 12px;background:#0d1f35;color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;text-align:left;}
+            td{padding:9px 12px;border-bottom:1px solid #e8edf2;}
+            tr:nth-child(even) td{background:#f8fafb;}
+            .hi{color:#065f46;font-weight:700;}
+            .mid{color:#78350f;font-weight:700;}
+            .lo{color:#7f1d1d;font-weight:700;}
+            .mono{font-family:'DM Mono',monospace;}
+            .footer{margin-top:32px;padding-top:10px;border-top:1px solid #e8edf2;font-size:10px;color:#9ab0c6;text-align:center;}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <img src="${session.logo || ''}" alt="${escHtml(schoolName)}" class="logo" onerror="this.style.display='none'">
+            <p class="doc-title">Class Gradebook</p>
+            <p class="meta">${escHtml(session.teacherData.name)} &nbsp;·&nbsp; ${escHtml(semName)} &nbsp;·&nbsp; ${rows.length} records &nbsp;·&nbsp; ${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</p>
+        </div>
+        <table>
+            <thead>
+                <tr><th>Student</th><th>Subject</th><th>Assignment</th><th>Type</th><th>Date</th><th>Score</th><th>%</th><th>Grade</th></tr>
+            </thead>
+            <tbody>
+                ${rows.map(g=>{
+                    const p=g.max?Math.round(g.score/g.max*100):null;
+                    const cls=p>=75?'hi':p>=65?'mid':'lo';
+                    return `<tr><td><strong>${escHtml(g.studentName)}</strong></td><td>${escHtml(g.subject||'—')}</td><td>${escHtml(g.title||'—')}</td><td>${escHtml(g.type||'—')}</td><td>${escHtml(g.date||'—')}</td><td class="mono">${g.score}/${g.max||'?'}</td><td class="mono ${cls}">${p!==null?p+'%':'—'}</td><td class="${cls}">${p!==null?letterGrade(p):'—'}</td></tr>`;
+                }).join('')}
+            </tbody>
+        </table>
+        <div class="footer" style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+            <span>Generated for ${escHtml(schoolName)}</span>
+            <div style="display:flex; justify-content:center; align-items:center; gap:8px; margin-top:5px;">
+                <img src="../../assets/images/logo.png" style="max-height:16px; opacity:0.8;">
+                <span style="font-weight:bold; color:#0d1f35;">Powered by ConnectUs</span>
+            </div>
+        </div>
+    </body>
+    </html>`);
     w.document.close(); setTimeout(()=>w.print(), 600);
 };
 
