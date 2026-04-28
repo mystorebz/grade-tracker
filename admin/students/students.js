@@ -7,7 +7,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
-import { openOverlay, closeOverlay, letterGrade } from '../../assets/js/utils.js';
+import { openOverlay, closeOverlay, letterGrade, calculateWeightedAverage } from '../../assets/js/utils.js';
 
 // ── 1. INIT & AUTH ─────────────────────────────────────────────────────────
 const session = requireAuth('admin', '../login.html');
@@ -908,8 +908,8 @@ function renderGradesForTerm(termId, allTerms = false, termName = 'Term', autoEx
     });
 
     area.innerHTML = Object.entries(bySubject).map(([subject, sGrades]) => {
-        const avg      = sGrades.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / sGrades.length;
-        const avgRound = Math.round(avg);
+        const avg      = calculateWeightedAverage(sGrades, session.schoolId);
+        const avgRound = avg;
         const lg       = typeof letterGrade === 'function' ? letterGrade(avgRound) : calcLg(avgRound);
         const avgClass = avg >= 75 ? 'text-green-600 bg-green-50 border-green-200'
                        : avg >= 60 ? 'text-amber-600 bg-amber-50 border-amber-200'
@@ -1105,7 +1105,7 @@ window.printTermTranscript = (termId, termName) => {
     });
 
     const tableRows = Object.entries(bySubject).map(([sub, sg]) => {
-        const avg  = Math.round(sg.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / sg.length);
+        const avg  = calculateWeightedAverage(sg, session.schoolId);
         const col  = avg >= 75 ? '#16a34a' : avg >= 60 ? '#d97706' : '#dc2626';
         return `<tr>
             <td style="border:1px solid #e2e8f0;padding:10px 15px;">${sub}</td>
@@ -1115,7 +1115,8 @@ window.printTermTranscript = (termId, termName) => {
         </tr>`;
     }).join('');
 
-    const allAvg  = grades.length ? Math.round(grades.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / grades.length) : 0;
+    const subjectAvgs = Object.values(bySubject).map(sg => calculateWeightedAverage(sg, session.schoolId));
+    const allAvg = subjectAvgs.length ? Math.round(subjectAvgs.reduce((a, b) => a + b, 0) / subjectAvgs.length) : 0;
 
     const w = window.open('', '_blank');
     w.document.write(`<!DOCTYPE html><html><head><title>${termName} Transcript — ${s?.name}</title>
@@ -1216,7 +1217,7 @@ window.printSubjectReport = (safeSubject, safeTerm) => {
         </table>`;
     }).join('');
 
-    const overall = Math.round(grades.reduce((a,g) => a+(g.max?(g.score/g.max)*100:0),0)/grades.length);
+    const overall = calculateWeightedAverage(grades, session.schoolId);
 
     const w = window.open('', '_blank');
     w.document.write(`<!DOCTYPE html><html><head><title>${subject} Report — ${s?.name}</title>
@@ -1647,7 +1648,7 @@ window.printStudentRecord = async (studentId) => {
             </thead>
             <tbody>
                 ${Object.entries(bySub).map(([sub, grades]) => {
-                    const avg = Math.round(grades.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / grades.length);
+                    const avg = calculateWeightedAverage(grades, session.schoolId);
                     return `<tr><td style="border:1px solid #e2e8f0;padding:10px 15px;">${sub}</td>
                         <td style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;">${grades.length}</td>
                         <td style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;">${avg}%</td>
