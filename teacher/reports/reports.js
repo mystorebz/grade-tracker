@@ -2,7 +2,7 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, query, where, getDocs, getDoc, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
-import { gradeColorClass, letterGrade, downloadCSV } from '../../assets/js/utils.js';
+import { gradeColorClass, letterGrade, downloadCSV, calculateWeightedAverage } from '../../assets/js/utils.js';
 
 // ── 1. AUTHENTICATION & LAYOUT ──────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
@@ -283,25 +283,26 @@ async function executeIntelligentQuery() {
         if (scope === 'class' && filterStanding) {
             const studentAvgs = {};
             filteredGrades.forEach(g => {
-                if (!studentAvgs[g.studentId]) studentAvgs[g.studentId] = { sum: 0, count: 0 };
+                if (!studentAvgs[g.studentId]) studentAvgs[g.studentId] = [];
                 if (g.max > 0) {
-                    studentAvgs[g.studentId].sum += (g.score / g.max) * 100;
-                    studentAvgs[g.studentId].count++;
+                    studentAvgs[g.studentId].push(g);
                 }
             });
 
             const allowedStudentIds = new Set();
-            Object.entries(studentAvgs).forEach(([sid, data]) => {
-                if (data.count > 0) {
-                    const avg = Math.round(data.sum / data.count);
-                    let std = 'none';
-                    if (avg >= 90) std = 'excelling';
-                    else if (avg >= 80) std = 'good';
-                    else if (avg >= 70) std = 'ontrack';
-                    else if (avg >= 65) std = 'needsattention';
-                    else std = 'atrisk';
+            Object.entries(studentAvgs).forEach(([sid, grades]) => {
+                if (grades.length > 0) {
+                    const avg = calculateWeightedAverage(grades, session.schoolId);
+                    if (avg !== null) {
+                        let std = 'none';
+                        if (avg >= 90) std = 'excelling';
+                        else if (avg >= 80) std = 'good';
+                        else if (avg >= 70) std = 'ontrack';
+                        else if (avg >= 65) std = 'needsattention';
+                        else std = 'atrisk';
 
-                    if (std === filterStanding) allowedStudentIds.add(sid);
+                        if (std === filterStanding) allowedStudentIds.add(sid);
+                    }
                 }
             });
 
@@ -341,7 +342,6 @@ async function executeIntelligentQuery() {
             targetStudentId 
         };
 
-        let sumPct = 0;
         let high = null;
         let low = null;
         let validGradesCount = 0;
@@ -349,14 +349,13 @@ async function executeIntelligentQuery() {
         filteredGrades.forEach(g => {
             if (g.max > 0) {
                 const pct = Math.round((g.score / g.max) * 100);
-                sumPct += pct;
                 validGradesCount++;
                 if (high === null || pct > high) high = pct;
                 if (low === null || pct < low) low = pct;
             }
         });
 
-        const avg = validGradesCount > 0 ? Math.round(sumPct / validGradesCount) : null;
+        const avg = validGradesCount > 0 ? calculateWeightedAverage(filteredGrades, session.schoolId) : null;
         await sleep(300);
 
         // 3. Render UI
@@ -522,9 +521,6 @@ window.printReport = function() {
             semGroups[sName].push(g);
         });
 
-        let totalCumPct = 0;
-        let totalCumCount = 0;
-
         for (const sName in semGroups) {
             html += `<div class="transcript-section">
                 <div class="transcript-header">${escHtml(sName)}</div>
@@ -538,16 +534,12 @@ window.printReport = function() {
                     </tr></thead>
                     <tbody>`;
             
-            let semSumPct = 0;
             let semValidCount = 0;
             
             semGroups[sName].sort((a, b) => (a.date || '').localeCompare(b.date || '')).forEach(g => {
                 const pct = g.max ? Math.round((g.score / g.max) * 100) : null;
                 if (pct !== null) {
-                    semSumPct += pct;
                     semValidCount++;
-                    totalCumPct += pct;
-                    totalCumCount++;
                 }
                 html += `<tr>
                     <td>${escHtml(g.subject)}</td>
@@ -558,7 +550,7 @@ window.printReport = function() {
                 </tr>`;
             });
             
-            const semAvg = semValidCount > 0 ? Math.round(semSumPct / semValidCount) : null;
+            const semAvg = semValidCount > 0 ? calculateWeightedAverage(semGroups[sName], session.schoolId) : null;
             if (semAvg !== null) {
                 html += `<tr>
                     <td colspan="4" style="text-align:right;font-size:10px;font-weight:700;color:#6b84a0;text-transform:uppercase;letter-spacing:0.1em;padding:12px 14px;">Term Average</td>
@@ -568,7 +560,7 @@ window.printReport = function() {
             html += `</tbody></table></div>`;
         }
 
-        const cumAvg = totalCumCount > 0 ? Math.round(totalCumPct / totalCumCount) : null;
+        const cumAvg = currentQueryResults.length > 0 ? calculateWeightedAverage(currentQueryResults, session.schoolId) : null;
         if (cumAvg !== null) {
             html += `<div class="cum-gpa">
                 <span class="cum-gpa-label">Cumulative Academic Average</span>
