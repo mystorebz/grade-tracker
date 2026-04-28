@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Evaluations | Family Portal</title>
+    <title>Performance Analytics | Family Portal</title>
     <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="../../assets/css/global.css">
@@ -19,45 +19,97 @@
         <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
 
         <div class="flex-1 overflow-y-auto p-7">
-            <div class="max-w-4xl mx-auto space-y-6">
+            <div class="max-w-6xl mx-auto space-y-8">
 
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="evalStatsGrid">
+                <div class="flex flex-col md:flex-row justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm gap-4">
+                    <div>
+                        <h2 class="text-lg font-black text-slate-800">Academic Analytics</h2>
+                        <p class="text-xs font-bold text-slate-400">Track performance over your time at this school</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <label class="text-xs font-black text-slate-500 uppercase tracking-widest">Select Period</label>
+                        <select id="analyticsPeriodSelect" class="bg-slate-50 border border-slate-200 text-slate-800 text-sm font-bold rounded-xl px-4 py-2 outline-none focus:border-indigo-500 transition cursor-pointer min-w-[200px]">
+                            <option value="">Loading periods...</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4" id="evalStatsGrid">
                     <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex items-center gap-4">
-                        <div class="h-12 w-12 bg-amber-50 text-amber-500 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-star"></i></div>
+                        <div class="h-12 w-12 bg-indigo-50 text-indigo-500 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-chart-line"></i></div>
                         <div>
-                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Average Score</p>
-                            <p id="statAvgRating" class="text-2xl font-black text-slate-800">—</p>
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Term Average</p>
+                            <p id="statTermAvg" class="text-2xl font-black text-slate-800">—</p>
                         </div>
                     </div>
                     <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex items-center gap-4">
-                        <div class="h-12 w-12 bg-indigo-50 text-indigo-500 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-file-signature"></i></div>
+                        <div class="h-12 w-12 bg-emerald-50 text-emerald-500 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-award"></i></div>
                         <div>
-                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Reviews</p>
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Overall Grade</p>
+                            <p id="statLetter" class="text-2xl font-black text-slate-800">—</p>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex items-center gap-4">
+                        <div class="h-12 w-12 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-list-check"></i></div>
+                        <div>
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Assessments</p>
+                            <p id="statAssessments" class="text-2xl font-black text-slate-800">0</p>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex items-center gap-4">
+                        <div class="h-12 w-12 bg-amber-50 text-amber-500 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-file-signature"></i></div>
+                        <div>
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Evaluations</p>
                             <p id="statTotalEvals" class="text-2xl font-black text-slate-800">0</p>
                         </div>
                     </div>
-                    <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex items-center gap-4">
-                        <div class="h-12 w-12 bg-emerald-50 text-emerald-500 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-lock-open"></i></div>
-                        <div>
-                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Unlocked Records</p>
-                            <p id="statUnlocked" class="text-2xl font-black text-slate-800">0</p>
+                </div>
+
+                <div id="analyticsLoader" class="flex flex-col items-center justify-center py-20 text-slate-400">
+                    <i class="fa-solid fa-circle-notch fa-spin text-4xl mb-3 text-indigo-400"></i>
+                    <p class="font-semibold text-sm">Crunching analytics...</p>
+                </div>
+
+                <div id="analyticsContent" class="hidden space-y-8">
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm flex flex-col">
+                            <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest mb-6"><i class="fa-solid fa-chart-column text-indigo-500 mr-2"></i> Subject Performance</h3>
+                            <div id="subjectChartContainer" class="flex-1 flex items-end justify-around gap-2 mt-auto pt-4 border-b border-slate-100 h-[200px]">
+                                </div>
+                        </div>
+
+                        <div class="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm overflow-hidden flex flex-col">
+                            <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest mb-4"><i class="fa-solid fa-table text-indigo-500 mr-2"></i> Academic Details</h3>
+                            <div class="overflow-x-auto flex-1">
+                                <table class="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr class="border-b border-slate-200">
+                                            <th class="py-3 px-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Subject</th>
+                                            <th class="py-3 px-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Count</th>
+                                            <th class="py-3 px-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Average</th>
+                                            <th class="py-3 px-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Grade</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="academicTableBody">
+                                        </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
+
+                    <div>
+                        <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest mb-4"><i class="fa-solid fa-shapes text-indigo-500 mr-2"></i> Matrix Evaluations</h3>
+                        <div id="noEvalsMsg" class="hidden text-center py-10 bg-white rounded-3xl border border-slate-200 shadow-sm">
+                            <div class="text-4xl mb-3 text-slate-200"><i class="fa-solid fa-folder-open"></i></div>
+                            <h3 class="text-lg font-black text-slate-700">No Matrix Data</h3>
+                            <p class="text-slate-500 mt-1 text-sm font-semibold">No formal evaluations were filed during this period.</p>
+                        </div>
+                        <div id="evaluationsContainer" class="space-y-5">
+                            </div>
+                    </div>
+
                 </div>
-
-                <div id="evalsLoader" class="flex flex-col items-center justify-center py-20 text-slate-400">
-                    <i class="fa-solid fa-circle-notch fa-spin text-4xl mb-3 text-indigo-400"></i>
-                    <p class="font-semibold text-sm">Loading evaluations...</p>
-                </div>
-
-                <div id="noEvalsMsg" class="hidden text-center py-16 bg-white rounded-3xl border border-slate-200 shadow-sm">
-                    <div class="text-6xl mb-4 text-slate-200"><i class="fa-solid fa-folder-open"></i></div>
-                    <h3 class="text-xl font-black text-slate-700">No Evaluations Yet</h3>
-                    <p class="text-slate-500 mt-2 font-semibold">Your teachers haven't filed any performance reviews.</p>
-                </div>
-
-                <div id="evaluationsContainer" class="space-y-5"></div>
-
             </div>
         </div>
     </main>
