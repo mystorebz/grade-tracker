@@ -2,7 +2,7 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectStudentLayout } from '../../assets/js/layout-student.js';
-import { letterGrade, gradeColorClass } from '../../assets/js/utils.js';
+import { letterGrade, gradeColorClass, calculateWeightedAverage } from '../../assets/js/utils.js';
 
 // ── 1. INIT & AUTH ────────────────────────────────────────────────────────
 const session = requireAuth('student', '../login.html');
@@ -24,6 +24,7 @@ const generateTranscriptBtn = document.getElementById('generateTranscriptBtn');
 let allSemesters = [];
 let allGrades = [];
 let schoolData = {};
+let teacherRubricsCache = {}; // Cache for individual teacher rubrics
 
 // ── 2. INITIALIZE DATA ────────────────────────────────────────────────────
 async function initializeReports() {
@@ -56,13 +57,49 @@ async function initializeReports() {
         const gSnap = await getDocs(collection(db, 'schools', session.schoolId, 'students', session.studentId, 'grades'));
         allGrades = gSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        // Calculate High-Level Stats
+        // Pre-fetch all teacher rubrics for accurate GPA calculation
+        const uniqueTeacherIds = [...new Set(allGrades.map(g => g.teacherId).filter(Boolean))];
+        for (const tId of uniqueTeacherIds) {
+            if (!teacherRubricsCache[tId]) {
+                try {
+                    const tSnap = await getDoc(doc(db, 'teachers', tId));
+                    teacherRubricsCache[tId] = tSnap.exists() ? (tSnap.data().gradeTypes || tSnap.data().customGradeTypes || []) : [];
+                } catch (e) {
+                    teacherRubricsCache[tId] = [];
+                }
+            }
+        }
+
+        // Calculate High-Level Stats (Cumulative GPA using Weighted Math)
         document.getElementById('totalAssignments').textContent = allGrades.length;
         
         if (allGrades.length > 0) {
-            const totalAvg = allGrades.reduce((acc, g) => acc + (g.max ? (g.score / g.max) * 100 : 0), 0) / allGrades.length;
+            const bySub = {};
+            allGrades.forEach(g => {
+                const sub = g.subject || 'Uncategorized';
+                if (!bySub[sub]) bySub[sub] = [];
+                bySub[sub].push(g);
+            });
+
+            let sumSubjAvgs = 0;
+            let subjCount = 0;
+
+            for (const sub in bySub) {
+                const tId = bySub[sub][0]?.teacherId;
+                const rubric = tId ? (teacherRubricsCache[tId] || []) : [];
+                const subAvgRaw = calculateWeightedAverage(bySub[sub], rubric);
+                
+                if (subAvgRaw !== null) {
+                    sumSubjAvgs += subAvgRaw;
+                    subjCount++;
+                }
+            }
+
+            const totalAvg = subjCount > 0 ? Math.round(sumSubjAvgs / subjCount) : 0;
+
             const gpaEl = document.getElementById('cumulativeGpa');
-            gpaEl.textContent = `${Math.round(totalAvg)}%`;
+            gpaEl.textContent = `${totalAvg}%`;
+            
             // Add a little color depending on GPA
             if (totalAvg >= 90) gpaEl.classList.add('text-emerald-600');
             else if (totalAvg >= 80) gpaEl.classList.add('text-blue-600');
@@ -155,7 +192,14 @@ function generatePrintableDocument(isTranscript = false) {
             
             for (let sub of subjects) {
                 const sGrades = bySem[semName][sub];
-                const avg = Math.round(sGrades.reduce((acc, g) => acc + (g.max ? (g.score / g.max) * 100 : 0), 0) / sGrades.length);
+                
+                // Fetch specific teacher rubric for this subject row
+                const tId = sGrades[0]?.teacherId;
+                const rubric = tId ? (teacherRubricsCache[tId] || []) : [];
+                
+                const avgRaw = calculateWeightedAverage(sGrades, rubric);
+                const avg = Math.round(avgRaw !== null ? avgRaw : 0);
+                
                 semTotalPct += avg; semSubjCount++;
                 html += `<tr><td>${sub}</td><td class="text-center">${sGrades.length}</td><td class="text-center">${avg}%</td><td class="text-center">${letterGrade(avg)}</td></tr>`;
             }
