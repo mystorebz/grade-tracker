@@ -68,6 +68,13 @@ function isStudentProfileComplete(s) {
     return !!(s.dob && s.parentName && s.parentPhone && s.address?.city);
 }
 
+// Helper to fetch the exact grade weights of a student's assigned teacher
+function getTeacherGradeTypes(teacherId) {
+    if (!teacherId) return ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
+    const t = allTeachersCache.find(x => x.id === teacherId);
+    return t?.gradeTypes || t?.customGradeTypes || ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
+}
+
 function blankStudentDoc(overrides = {}) {
     return {
         // ── System ──────────────────────────────────────────
@@ -834,10 +841,16 @@ async function renderStudentAcademicTab() {
                     <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-0.5">Current Term</p>
                     <p class="font-black text-white text-[19px]">${escHtml(activeTerm?.name || 'No Active Term')}</p>
                 </div>
-                <button onclick="window.printTermTranscript('${activeTerm?.id || ''}', '${escHtml(activeTerm?.name || 'Current Term')}')"
-                    class="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white font-bold px-4 py-2.5 rounded-lg text-[11px] transition border border-white/20 flex-shrink-0">
-                    <i class="fa-solid fa-print mr-1"></i> Print Transcript
-                </button>
+                <div class="flex items-center gap-2">
+                    <button onclick="window.openAdminAddGradeModal()"
+                        class="flex items-center gap-1.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold px-4 py-2.5 rounded-lg text-[11px] transition border border-[#1e40af] flex-shrink-0">
+                        <i class="fa-solid fa-plus mr-1"></i> Add Grade
+                    </button>
+                    <button onclick="window.printTermTranscript('${activeTerm?.id || ''}', '${escHtml(activeTerm?.name || 'Current Term')}')"
+                        class="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white font-bold px-4 py-2.5 rounded-lg text-[11px] transition border border-white/20 flex-shrink-0">
+                        <i class="fa-solid fa-print mr-1"></i> Print Transcript
+                    </button>
+                </div>
             </div>
 
             ${pastTerms.length ? `
@@ -885,8 +898,8 @@ function renderGradesForTerm(termId, allTerms = false, termName = 'Term', autoEx
     const grades = allTerms
         ? _academicGradesCache
         : termId
-            ? _academicGradesCache.filter(g => (g.termId || '') === termId)
-            : _academicGradesCache.filter(g => !g.termId || g.termId === ''); // fallback: ungrouped
+            ? _academicGradesCache.filter(g => (g.termId || '') === termId || (g.semesterId || '') === termId)
+            : _academicGradesCache.filter(g => !g.termId || g.termId === ''); // fallback
 
     if (!grades.length) {
         area.innerHTML = `
@@ -907,8 +920,10 @@ function renderGradesForTerm(termId, allTerms = false, termName = 'Term', autoEx
         bySubject[subj].push(g);
     });
 
+    const gradeTypes = getTeacherGradeTypes(currentStudentData?.teacherId);
+
     area.innerHTML = Object.entries(bySubject).map(([subject, sGrades]) => {
-        const avg      = calculateWeightedAverage(sGrades, session.schoolId);
+        const avg      = calculateWeightedAverage(sGrades, gradeTypes);
         const avgRound = avg;
         const lg       = typeof letterGrade === 'function' ? letterGrade(avgRound) : calcLg(avgRound);
         const avgClass = avg >= 75 ? 'text-green-600 bg-green-50 border-green-200'
@@ -1008,6 +1023,125 @@ function renderGradesForTerm(termId, allTerms = false, termName = 'Term', autoEx
 }
 
 
+// ── NEW: Admin Add Grade Modal Functions ───────────────────────────────────────────
+window.openAdminAddGradeModal = () => {
+    const s = currentStudentData;
+    if (!s || !s.teacherId) {
+        alert("Student must be assigned to a teacher to add a grade. The teacher's grading rubric is required.");
+        return;
+    }
+    if (!s.className) {
+        alert("Student must be assigned to a class to add a grade.");
+        return;
+    }
+
+    const msgEl = document.getElementById('agAddMsg');
+    if (msgEl) msgEl.classList.add('hidden');
+
+    // Populate types dynamically based on the assigned teacher
+    const types = getTeacherGradeTypes(s.teacherId);
+    const typeSel = document.getElementById('agAddType');
+    if (typeSel) {
+        typeSel.innerHTML = '<option value="">Select type...</option>' + types.map(t => {
+            const name = t.name || t;
+            const weight = t.weight ? ` (${t.weight}%)` : '';
+            return `<option value="${name}">${name}${weight}</option>`;
+        }).join('');
+    }
+    
+    // Populate subjects dynamically based on the assigned teacher
+    const t = allTeachersCache.find(x => x.id === s.teacherId);
+    const subjects = t?.subjects || [];
+    const subjSel = document.getElementById('agAddSubject');
+    if (subjSel) {
+        subjSel.innerHTML = '<option value="">Select subject...</option>' + subjects.filter(sub => !sub.archived).map(sub => {
+            return `<option value="${escHtml(sub.name)}">${escHtml(sub.name)}</option>`;
+        }).join('');
+    }
+
+    // Reset fields
+    const dEl = document.getElementById('agAddDate');
+    if(dEl) dEl.valueAsDate = new Date();
+    
+    ['agAddTitle', 'agAddScore'].forEach(id => {
+        const el = document.getElementById(id);
+        if(el) el.value = '';
+    });
+    
+    const mEl = document.getElementById('agAddMax');
+    if(mEl) mEl.value = '100';
+    
+    const nEl = document.getElementById('agAddNotes');
+    if(nEl) nEl.value = '';
+
+    openOverlay('adminAddGradeModal', 'adminAddGradeModalInner');
+};
+
+window.closeAdminAddGradeModal = () => closeOverlay('adminAddGradeModal', 'adminAddGradeModalInner');
+
+window.saveAdminAddGrade = async () => {
+    const subject = document.getElementById('agAddSubject')?.value;
+    const type = document.getElementById('agAddType')?.value;
+    const title = document.getElementById('agAddTitle')?.value.trim();
+    const score = parseFloat(document.getElementById('agAddScore')?.value);
+    const max = parseFloat(document.getElementById('agAddMax')?.value);
+    const date = document.getElementById('agAddDate')?.value;
+    const notes = document.getElementById('agAddNotes')?.value.trim();
+
+    const msgEl = document.getElementById('agAddMsg');
+    const showErr = (msg) => { if(msgEl){ msgEl.textContent = msg; msgEl.classList.remove('hidden'); } else alert(msg); };
+
+    if (!subject || !type || !title || isNaN(score) || isNaN(max) || !date) {
+        showErr('Please fill in all required fields correctly.');
+        return;
+    }
+
+    const btn = document.getElementById('saveAdminAddGradeBtn');
+    if (btn) { btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Saving...'; btn.disabled = true; }
+
+    try {
+        const termSel = document.getElementById('academicTermSelect');
+        let semId = termSel ? termSel.value : null;
+        if (!semId || semId === 'all') {
+            // Fallback to active term if filtering by 'all' or undefined
+            try {
+                const termSnap = await getDocs(query(collection(db, 'terms'), where('schoolId', '==', session.schoolId), where('isActive', '==', true)));
+                if (!termSnap.empty) semId = termSnap.docs[0].id;
+            } catch(e) {}
+        }
+
+        const adminDisplayName = session.isSuperAdmin ? (session.schoolName || 'Super Admin') : (session.adminName || 'Sub-Admin');
+
+        await addDoc(collection(db, 'students', currentStudentId, 'grades'), {
+            schoolId:        session.schoolId,
+            teacherId:       currentStudentData.teacherId,  
+            semesterId:      semId || '',
+            subject,
+            type,
+            date,
+            title,
+            score,
+            max,
+            notes:           notes ? `[Admin] ${notes}` : '',
+            historyLogs:     [],
+            createdAt:       new Date().toISOString(),
+            enteredByAdmin:  true,
+            adminId:         session.adminId || session.schoolId,
+            adminName:       adminDisplayName,
+            adminRole:       session.isSuperAdmin ? 'super_admin' : 'sub_admin'
+        });
+
+        window.closeAdminAddGradeModal();
+        renderStudentAcademicTab(); // Refresh the tab to show the new grade
+    } catch (e) {
+        console.error('[Admin] saveAddGrade:', e);
+        showErr('Error saving grade. Please try again.');
+    }
+
+    if (btn) { btn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-1"></i> Save Grade'; btn.disabled = false; }
+};
+
+
 // ── Admin Grade Edit Modal Functions ───────────────────────────────────────────
 window.openAdminEditGradeModal = (gradeId) => {
     const msgEl = document.getElementById('agEditMsg');
@@ -1091,7 +1225,7 @@ window.saveAdminEditGrade = async () => {
 // ── Print Functions ───────────────────────────────────────────────────────
 window.printTermTranscript = (termId, termName) => {
     const grades = termId
-        ? _academicGradesCache.filter(g => (g.termId || '') === termId)
+        ? _academicGradesCache.filter(g => (g.termId || '') === termId || (g.semesterId || '') === termId)
         : _academicGradesCache;
     const s         = currentStudentData;
     const school    = session.schoolName || session.schoolId || 'School';
@@ -1104,8 +1238,10 @@ window.printTermTranscript = (termId, termName) => {
         bySubject[subj].push(g);
     });
 
+    const gradeTypes = getTeacherGradeTypes(s?.teacherId);
+
     const tableRows = Object.entries(bySubject).map(([sub, sg]) => {
-        const avg  = calculateWeightedAverage(sg, session.schoolId);
+        const avg  = calculateWeightedAverage(sg, gradeTypes);
         const col  = avg >= 75 ? '#16a34a' : avg >= 60 ? '#d97706' : '#dc2626';
         return `<tr>
             <td style="border:1px solid #e2e8f0;padding:10px 15px;">${sub}</td>
@@ -1115,7 +1251,7 @@ window.printTermTranscript = (termId, termName) => {
         </tr>`;
     }).join('');
 
-    const subjectAvgs = Object.values(bySubject).map(sg => calculateWeightedAverage(sg, session.schoolId));
+    const subjectAvgs = Object.values(bySubject).map(sg => calculateWeightedAverage(sg, gradeTypes));
     const allAvg = subjectAvgs.length ? Math.round(subjectAvgs.reduce((a, b) => a + b, 0) / subjectAvgs.length) : 0;
 
     const w = window.open('', '_blank');
@@ -1140,7 +1276,7 @@ window.printTermTranscript = (termId, termName) => {
         .print-meta { font-size: 11px; color: #64748b; margin-top: 5px; font-weight: 700; }
     </style></head><body>
     <div style="text-align: center; margin-bottom: 15px;">
-        <img src="../../assets/images/logo.png" onerror="this.style.display='none'" style="max-height:80px; object-fit:contain;">
+        <img src="${session.logo || ''}" alt="${escHtml(school)}" onerror="this.style.display='none'" style="max-height:80px; object-fit:contain;">
     </div>
     <div class="watermark">Unofficial Transcript — Internal Record Only</div>
     <div class="header-block">
@@ -1170,7 +1306,13 @@ window.printTermTranscript = (termId, termName) => {
             </tr>
         </tbody>
     </table>
-    <div class="footer">Issued by ${escHtml(school)} · ConnectUs Student Registry · ${new Date().toLocaleDateString()}</div>
+    <div class="footer" style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+        <span>Issued by ${escHtml(school)} · ${new Date().toLocaleDateString()}</span>
+        <div style="display:flex; justify-content:center; align-items:center; gap:8px; margin-top:5px;">
+            <img src="../../assets/images/logo.png" style="max-height:16px; opacity:0.8;">
+            <span style="font-weight:bold; color:#0d1f35;">Powered by ConnectUs</span>
+        </div>
+    </div>
     </body></html>`);
     w.document.close();
     setTimeout(() => w.print(), 400);
@@ -1184,7 +1326,7 @@ window.printSubjectReport = (safeSubject, safeTerm) => {
     const calcLg   = (avg) => avg >= 90 ? 'A' : avg >= 80 ? 'B' : avg >= 70 ? 'C' : avg >= 60 ? 'D' : 'F';
 
     const termGrades = _activeTermForPrint.id
-        ? _academicGradesCache.filter(g => (g.termId || '') === _activeTermForPrint.id)
+        ? _academicGradesCache.filter(g => (g.termId || '') === _activeTermForPrint.id || (g.semesterId || '') === _activeTermForPrint.id)
         : _academicGradesCache;
     const grades = termGrades.filter(g => (g.subject || 'Uncategorized') === subject);
 
@@ -1217,7 +1359,8 @@ window.printSubjectReport = (safeSubject, safeTerm) => {
         </table>`;
     }).join('');
 
-    const overall = calculateWeightedAverage(grades, session.schoolId);
+    const gradeTypes = getTeacherGradeTypes(s?.teacherId);
+    const overall = calculateWeightedAverage(grades, gradeTypes);
 
     const w = window.open('', '_blank');
     w.document.write(`<!DOCTYPE html><html><head><title>${subject} Report — ${s?.name}</title>
@@ -1231,7 +1374,7 @@ window.printSubjectReport = (safeSubject, safeTerm) => {
     .print-meta { font-size: 11px; color: #64748b; margin-top: 5px; font-weight: 700; }
     </style></head><body>
     <div style="text-align: center; margin-bottom: 15px;">
-        <img src="../../assets/images/logo.png" onerror="this.style.display='none'" style="max-height:80px; object-fit:contain;">
+        <img src="${session.logo || ''}" alt="${escHtml(school)}" onerror="this.style.display='none'" style="max-height:80px; object-fit:contain;">
     </div>
     <div class="watermark">Unofficial Transcript — Internal Record Only</div>
     <div class="header-block">
@@ -1244,7 +1387,13 @@ window.printSubjectReport = (safeSubject, safeTerm) => {
         <div style="text-align:right"><div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:2px">Overall</div><div style="font-size:26px;font-weight:900;color:${overall>=75?'#16a34a':overall>=60?'#d97706':'#dc2626'}">${overall}% · ${calcLg(overall)}</div></div>
     </div>
     ${typeBlocks}
-    <div class="footer">Issued by ${escHtml(school)} · ConnectUs Student Registry · ${new Date().toLocaleDateString()}</div>
+    <div class="footer" style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+        <span>Issued by ${escHtml(school)} · ${new Date().toLocaleDateString()}</span>
+        <div style="display:flex; justify-content:center; align-items:center; gap:8px; margin-top:5px;">
+            <img src="../../assets/images/logo.png" style="max-height:16px; opacity:0.8;">
+            <span style="font-weight:bold; color:#0d1f35;">Powered by ConnectUs</span>
+        </div>
+    </div>
     </body></html>`);
     w.document.close();
     setTimeout(() => w.print(), 400);
@@ -1625,15 +1774,18 @@ window.printStudentRecord = async (studentId) => {
         gradesSnap = await getDocs(collection(db, 'schools', session.schoolId, 'students', studentId, 'grades'));
     }
 
+    const grades = [];
+    gradesSnap.forEach(d => grades.push(d.data()));
+
     const bySub = {};
-    gradesSnap.forEach(d => {
-        const g    = d.data();
+    grades.forEach(g => {
         const sub  = g.subject || 'Uncategorized';
         if (!bySub[sub]) bySub[sub] = [];
         bySub[sub].push(g);
     });
 
     const lg = (avg) => avg >= 90 ? 'A' : avg >= 80 ? 'B' : avg >= 70 ? 'C' : avg >= 60 ? 'D' : 'F';
+    const gradeTypes = getTeacherGradeTypes(s.teacherId);
 
     const gradesHtml = Object.keys(bySub).length === 0
         ? `<p style="text-align:center;color:#64748b;font-style:italic;padding:40px 0;">No grades recorded.</p>`
@@ -1647,10 +1799,10 @@ window.printStudentRecord = async (studentId) => {
                 </tr>
             </thead>
             <tbody>
-                ${Object.entries(bySub).map(([sub, grades]) => {
-                    const avg = calculateWeightedAverage(grades, session.schoolId);
+                ${Object.entries(bySub).map(([sub, sg]) => {
+                    const avg = calculateWeightedAverage(sg, gradeTypes);
                     return `<tr><td style="border:1px solid #e2e8f0;padding:10px 15px;">${sub}</td>
-                        <td style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;">${grades.length}</td>
+                        <td style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;">${sg.length}</td>
                         <td style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;">${avg}%</td>
                         <td style="border:1px solid #e2e8f0;padding:10px 15px;text-align:center;font-weight:bold;">${lg(avg)}</td></tr>`;
                 }).join('')}
@@ -1671,7 +1823,7 @@ window.printStudentRecord = async (studentId) => {
         .school-name{font-size:20px;font-weight:900;text-transform:uppercase;color:#0d1f35}
     </style></head><body>
     <div style="text-align: center; margin-bottom: 15px;">
-        <img src="../../assets/images/logo.png" onerror="this.style.display='none'" style="max-height:80px; object-fit:contain;">
+        <img src="${session.logo || ''}" alt="${escHtml(session.schoolName || session.schoolId)}" onerror="this.style.display='none'" style="max-height:80px; object-fit:contain;">
     </div>
     <div class="watermark">UNOFFICIAL TRANSCRIPT — INTERNAL RECORD ONLY</div>
     <div class="header-block">
@@ -1689,9 +1841,13 @@ window.printStudentRecord = async (studentId) => {
     </div>
     <h3 style="font-size:13px;font-weight:bold;background:#0d1f35;color:white;padding:8px 15px;border-radius:4px;">Academic Summary</h3>
     ${gradesHtml}
-    <div class="footer">
-        Printed ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} via ConnectUs Student Registry<br>
-        Issued by: ${session.schoolName || session.schoolId}
+    <div class="footer" style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+        <span>Printed ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} via ConnectUs Student Registry<br>
+        Issued by: ${session.schoolName || session.schoolId}</span>
+        <div style="display:flex; justify-content:center; align-items:center; gap:8px; margin-top:5px;">
+            <img src="../../assets/images/logo.png" style="max-height:16px; opacity:0.8;">
+            <span style="font-weight:bold; color:#0d1f35;">Powered by ConnectUs</span>
+        </div>
     </div>
     </body></html>`);
     w.document.close();
