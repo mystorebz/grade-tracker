@@ -519,8 +519,15 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
 
     if (!firstName || !lastName) { showMsg('First and last name are required.'); return; }
     if (!dob)                    { showMsg('Date of birth is required.'); return; }
+    if (!gender)                 { showMsg('Gender is required.'); return; }
     if (!email)                  { showMsg('Email address is required for first-time login and PIN recovery.'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showMsg('Please enter a valid email address.'); return; }
+    if (!parentName)             { showMsg('Parent / Guardian Name is required.'); return; }
+    if (!parentPhone)            { showMsg('Parent Phone is required.'); return; }
+
+    // Strict Class/Teacher Logic
+    if (className && !teacherId) { showMsg('If a class is selected, a teacher must also be assigned.'); return; }
+    if (!className && teacherId) { showMsg('If a teacher is assigned, a class must also be selected.'); return; }
 
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processing...';
     btn.disabled  = true;
