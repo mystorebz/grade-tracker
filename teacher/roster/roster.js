@@ -195,7 +195,8 @@ async function loadStudents() {
         tbody.innerHTML = allStudentsCache.map((s, i) => {
             const sG           = allGrades.filter(g => g.studentId === s.id);
             const subjectCount = new Set(sG.map(g => g.subject)).size;
-            const avg          = sG.length ? calculateWeightedAverage(sG, session.schoolId) : null;
+            // UPDATED: Using Teacher-Specific Grade Types
+            const avg          = sG.length ? calculateWeightedAverage(sG, session.teacherData.gradeTypes || getGradeTypes()) : null;
             if (avg !== null && avg < 65) riskCount++;
             const avgDisplay = avg !== null
                 ? `<span class="grade-num ${gradeNumClass(avg)}">${avg}%</span>`
@@ -561,7 +562,7 @@ window.openStudentPanel = async function(studentId) {
 
         const subjSet = [...new Set(currentStudentGradesCache.map(g => g.subject || 'Uncategorized'))].sort();
         document.getElementById('sPanelFilterSubject').innerHTML = '<option value="">All Subjects</option>' + subjSet.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
-        document.getElementById('sPanelFilterType').innerHTML    = '<option value="">All Types</option>' + getGradeTypes().map(t => `<option value="${escHtml(t)}">${escHtml(t)}</option>`).join('');
+        document.getElementById('sPanelFilterType').innerHTML    = '<option value="">All Types</option>' + getGradeTypes().map(t => `<option value="${escHtml(t.name || t)}">${escHtml(t.name || t)}</option>`).join('');
         window.renderStudentGrades();
         
         // Load Evaluations
@@ -595,7 +596,8 @@ window.renderStudentGrades = function() {
     noG.classList.add('hidden');
 
     container.innerHTML = Object.entries(by).map(([subject, grades]) => {
-        const avg = calculateWeightedAverage(grades, session.schoolId);
+        // UPDATED: Using Teacher-Specific Grade Types
+        const avg = calculateWeightedAverage(grades, session.teacherData.gradeTypes || getGradeTypes());
         const rows = grades.sort((a,b) => (b.date||'').localeCompare(a.date||'')).map(g => {
             gradeDetailCache[g.id] = g;
             const pct   = g.max ? Math.round(g.score/g.max*100) : null;
@@ -850,6 +852,10 @@ window.printEvaluation = function(evalId) {
     const ev = cachedEvaluations.find(e => e.id === evalId);
     if(!ev) return;
     const student = allStudentsCache.find(s => s.id === currentStudentId);
+
+    // Apply White-labeled Logo if the element exists in HTML
+    const ptLogo = document.getElementById('ptSchoolLogo');
+    if (ptLogo) ptLogo.src = session.logo || '../../assets/images/logo.png';
 
     document.getElementById('ptSchoolName').textContent = session.schoolName || 'ConnectUs Partner School';
     document.getElementById('ptStudentName').textContent = student?.name || '—';
@@ -1132,7 +1138,8 @@ window.executeStudentPrint = async function() {
         if (g.max) totalAssessments++;
     });
 
-    const cumulativeAvg = gradesToPrint.length ? calculateWeightedAverage(gradesToPrint, session.schoolId) : 0;
+    // UPDATED: Using Teacher-Specific Grade Types
+    const cumulativeAvg = gradesToPrint.length ? calculateWeightedAverage(gradesToPrint, session.teacherData.gradeTypes || getGradeTypes()) : 0;
     const gpaLetter = totalAssessments > 0 ? letterGrade(cumulativeAvg) : 'N/A';
 
     const semSelect = document.getElementById('activeSemester');
@@ -1142,7 +1149,8 @@ window.executeStudentPrint = async function() {
     let gradesHtml = Object.keys(bySub).length === 0
         ? `<tr><td colspan="4" style="text-align:center;color:#64748b;font-style:italic;padding:40px;">No grades recorded for this filter.</td></tr>`
         : Object.entries(bySub).sort((a,b) => a[0].localeCompare(b[0])).map(([sub, gList]) => {
-            const subAvg = calculateWeightedAverage(gList, session.schoolId);
+            // UPDATED: Using Teacher-Specific Grade Types
+            const subAvg = calculateWeightedAverage(gList, session.teacherData.gradeTypes || getGradeTypes());
             let html = `
                 <tr style="background:#f8fafc; font-weight:800;">
                     <td style="border-bottom:1px solid #cbd5e1;padding:12px 15px;color:#1e293b;">${escHtml(sub)}</td>
@@ -1208,7 +1216,7 @@ window.executeStudentPrint = async function() {
         <div class="watermark">UNOFFICIAL REPORT</div>
         
         <div class="header-flex">
-            <img src="../../assets/images/logo.png" alt="ConnectUs" class="logo" onerror="this.style.display='none'">
+            <img src="${session.logo || ''}" alt="${escHtml(schoolName)}" class="logo" onerror="this.style.display='none'">
             <div class="header-text">
                 <h1>${escHtml(schoolName)}</h1>
                 <h2>UNOFFICIAL TERM REPORT</h2>
@@ -1253,10 +1261,17 @@ window.executeStudentPrint = async function() {
             <tbody>${gradesHtml}</tbody>
         </table>
 
-        <div class="footer">
-            <strong>NOTICE:</strong> This document is an unofficial academic report generated via the ConnectUs Registry for <strong>${escHtml(schoolName)}</strong>.<br>
-            ${mode === 'summary' ? 'This is a summary report. Details omitted for brevity.' : 'This report includes all detailed assignments for the selected filters.'}<br><br>
-            Date Issued: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+        <div class="footer" style="display:flex; flex-direction:column; justify-content:center; align-items:center; gap:8px;">
+            <span><strong>NOTICE:</strong> This document is an unofficial academic report generated for <strong>${escHtml(schoolName)}</strong>.</span>
+            <span>${mode === 'summary' ? 'This is a summary report. Details omitted for brevity.' : 'This report includes all detailed assignments for the selected filters.'}</span>
+            <span>Date Issued: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+            
+            <div style="display:flex; justify-content:center; align-items:center; gap:8px; margin-top:10px;">
+                <span>Issued by ${escHtml(schoolName)}</span>
+                <span>·</span>
+                <img src="../../assets/images/logo.png" style="max-height:20px; object-fit:contain; opacity:0.8;">
+                <span style="font-weight:bold; color:#0d1f35;">Powered by ConnectUs</span>
+            </div>
         </div>
     </body>
     </html>`;
