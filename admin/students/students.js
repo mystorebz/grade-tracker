@@ -70,9 +70,18 @@ function isStudentProfileComplete(s) {
 
 // Helper to fetch the exact grade weights of a student's assigned teacher
 function getTeacherGradeTypes(teacherId) {
-    if (!teacherId) return ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
+    if (!teacherId) return []; // Return empty so utils.js falls back to standard flat math
+    
     const t = allTeachersCache.find(x => x.id === teacherId);
-    return t?.gradeTypes || t?.customGradeTypes || ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
+    const rawTypes = t?.gradeTypes || t?.customGradeTypes || [];
+    
+    // Safety map: Converts legacy strings into objects so the math engine doesn't crash
+    return rawTypes.map(type => {
+        if (typeof type === 'string') {
+            return { name: type, weight: 0 };
+        }
+        return type;
+    });
 }
 
 function blankStudentDoc(overrides = {}) {
