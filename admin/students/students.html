@@ -447,6 +447,59 @@
         </div>
     </div>
 
+
+    <div id="adminAddGradeModal" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-[80] flex items-center justify-center hidden opacity-0 transition-opacity">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200 flex flex-col" id="adminAddGradeModalInner">
+            <div class="h-1 bg-[#2563eb] flex-shrink-0"></div>
+            <div class="px-6 py-4 border-b border-[#f0f4f8] flex justify-between items-center bg-[#f8fafb]">
+                <h3 class="font-bold text-lg text-[#0d1f35]">Add Admin Grade</h3>
+                <button onclick="window.closeAdminAddGradeModal()" class="text-[#9ab0c6] hover:text-[#e31b4a] transition">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Subject <span class="text-[#e31b4a]">*</span></label>
+                        <select id="agAddSubject" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]"></select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Type <span class="text-[#e31b4a]">*</span></label>
+                        <select id="agAddType" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]"></select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Title <span class="text-[#e31b4a]">*</span></label>
+                    <input type="text" id="agAddTitle" placeholder="e.g. Midterm Makeup" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
+                </div>
+                <div class="grid grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Score <span class="text-[#e31b4a]">*</span></label>
+                        <input type="number" id="agAddScore" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Out Of <span class="text-[#e31b4a]">*</span></label>
+                        <input type="number" id="agAddMax" value="100" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Date <span class="text-[#e31b4a]">*</span></label>
+                        <input type="date" id="agAddDate" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Admin Notes (Optional)</label>
+                    <textarea id="agAddNotes" placeholder="Reason for admin entry..." class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb] resize-none h-16"></textarea>
+                </div>
+                
+                <p id="agAddMsg" class="text-[11px] font-bold hidden text-red-600 block"></p>
+                <button id="saveAdminAddGradeBtn" onclick="window.saveAdminAddGrade()" class="w-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold py-3 rounded transition shadow-md text-[12px] uppercase tracking-widest">
+                    <i class="fa-solid fa-floppy-disk mr-1"></i> Save Grade
+                </button>
+            </div>
+        </div>
+    </div>
+
+
     <div id="adminEditGradeModal" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-[80] flex items-center justify-center hidden opacity-0 transition-opacity">
         <div class="bg-white rounded-xl shadow-2xl max-w-md w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200 flex flex-col" id="adminEditGradeModalInner">
             <div class="h-1 bg-[#2563eb] flex-shrink-0"></div>
