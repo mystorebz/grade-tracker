@@ -14,12 +14,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-    
-    <style>
-        .eval-body { display: none; }
-        .eval-body.open { display: block; animation: slideDown 0.2s ease-out forwards; }
-        @keyframes slideDown { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
-    </style>
 </head>
 <body class="flex w-full h-screen overflow-hidden bg-[#f4f7fb] font-['DM_Sans']">
 
@@ -29,7 +23,7 @@
         <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
 
         <div class="flex-1 overflow-y-auto p-8 view-section">
-            <div class="max-w-5xl mx-auto space-y-6">
+            <div class="w-full space-y-6">
 
                 <div class="flex items-end justify-between border-b-2 border-[#0d1f35] pb-4">
                     <div>
@@ -198,7 +192,7 @@
 
 
     <div id="evalHistoryPanel" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-40 flex justify-end hidden opacity-0 transition-opacity">
-        <div id="evalHistoryPanelInner" class="side-panel bg-white w-full max-w-2xl h-full shadow-2xl flex flex-col translate-x-full transition-transform">
+        <div id="evalHistoryPanelInner" class="side-panel bg-white w-full max-w-5xl h-full shadow-2xl flex flex-col translate-x-full transition-transform">
             <div class="h-1 bg-[#2563eb] flex-shrink-0"></div>
             <div class="px-7 py-5 border-b border-[#f0f4f8] flex justify-between items-center bg-[#f8fafb] flex-shrink-0">
                 <div>
