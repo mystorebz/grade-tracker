@@ -23,371 +23,266 @@
     <main class="flex-1 flex flex-col h-full overflow-hidden">
         <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
 
-        <div class="flex-1 overflow-y-auto p-7">
-            <div class="max-w-2xl space-y-5">
+        <div class="flex-1 overflow-y-auto p-7 bg-[#f4f7fb]">
+            <div class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
-                <!-- ── Subscription Info ───────────────────────────────── -->
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-indigo-50/40">
-                        <div class="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-gem"></i></div>
-                        <div>
-                            <h3 class="font-black text-slate-800">Subscription Plan</h3>
-                            <p class="text-xs text-slate-400 font-semibold">Current plan limits and usage</p>
+                <div class="space-y-6">
+                    
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-green-50/40">
+                            <div class="w-10 h-10 bg-green-100 text-green-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-school"></i></div>
+                            <div>
+                                <h3 class="font-black text-slate-800">School Profile</h3>
+                                <p class="text-xs text-slate-400 font-semibold">Update your school's information</p>
+                            </div>
                         </div>
-                        <span id="planBadge" class="ml-auto text-xs font-black px-3 py-1 rounded-full bg-indigo-100 text-indigo-700 uppercase tracking-wider">Loading...</span>
-                    </div>
-                    <div class="p-6">
-                        <div class="grid grid-cols-3 gap-4" id="subscriptionUsageGrid">
-                            <!-- Populated by JS -->
-                            <div class="text-center p-4 bg-slate-50 rounded-xl border border-slate-200 animate-pulse h-24"></div>
-                            <div class="text-center p-4 bg-slate-50 rounded-xl border border-slate-200 animate-pulse h-24"></div>
-                            <div class="text-center p-4 bg-slate-50 rounded-xl border border-slate-200 animate-pulse h-24"></div>
-                        </div>
-                        <p class="text-xs text-slate-400 font-semibold text-center mt-4">
-                            Need to upgrade your plan? <a href="mailto:support@connectusonline.org" class="text-blue-600 hover:underline font-black">Contact ConnectUs</a>
-                        </p>
-                    </div>
-                </div>
-
-                <!-- ── Manage Admins (Super Admin only) ────────────────── -->
-                <!-- Shown/hidden by JS based on session.isSuperAdmin -->
-                <div id="adminManagementSection" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden" id="admins">
-                    <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-blue-50/40">
-                        <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-user-shield"></i></div>
-                        <div>
-                            <h3 class="font-black text-slate-800">Manage Sub-Admins</h3>
-                            <p class="text-xs text-slate-400 font-semibold">Create additional admin accounts for your school</p>
-                        </div>
-                        <span id="adminUsageBadge" class="ml-auto text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">0 / 0 used</span>
-                    </div>
-                    <div class="p-6 space-y-5">
-
-                        <!-- Create Sub-Admin Form -->
-                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
-                            <h4 class="font-black text-slate-700 text-sm flex items-center gap-2">
-                                <i class="fa-solid fa-plus text-blue-500"></i> Add New Sub-Admin
-                            </h4>
+                        <div class="p-6 space-y-4">
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Full Name *</label>
-                                    <input type="text" id="newAdminName" placeholder="e.g. Ms. Rivera"
-                                        class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none">
+                                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">School Name</label>
+                                    <input type="text" id="profileSchoolName" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
                                 </div>
                                 <div>
-                                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Email Address *</label>
-                                    <input type="email" id="newAdminEmail" placeholder="admin@school.edu.bz"
-                                        class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none">
+                                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Contact Email</label>
+                                    <input type="email" id="profileContactEmail" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">District</label>
+                                    <select id="profileDistrict" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
+                                        <option value="">Select District</option>
+                                        <option value="Belize">Belize</option>
+                                        <option value="Cayo">Cayo</option>
+                                        <option value="Corozal">Corozal</option>
+                                        <option value="Orange Walk">Orange Walk</option>
+                                        <option value="Stann Creek">Stann Creek</option>
+                                        <option value="Toledo">Toledo</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">School Type</label>
+                                    <select id="profileSchoolType" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
+                                        <option value="">Select Type</option>
+                                        <option value="Primary">Primary</option>
+                                        <option value="High School">High School</option>
+                                        <option value="Junior College">Junior College</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Contact Phone</label>
+                                    <input type="tel" id="profilePhone" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Contact Name</label>
+                                    <input type="text" id="profileContactName" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
                                 </div>
                             </div>
-                            <p class="text-xs text-slate-500 font-semibold bg-amber-50 border border-amber-200 rounded-lg p-3">
-                                <i class="fa-solid fa-circle-info text-amber-500 mr-1.5"></i>
-                                A temporary PIN will be generated and shown once. The sub-admin will be required to change it on first login.
-                            </p>
-                            <button id="createSubAdminBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-black text-sm shadow-sm transition">
-                                <i class="fa-solid fa-user-plus mr-1.5"></i>Create Sub-Admin
+                            <div>
+                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Address</label>
+                                <input type="text" id="profileAddress" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
+                            </div>
+                            <button id="saveProfileBtn" class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl font-black text-sm shadow-md transition w-full sm:w-auto">
+                                Save Profile
                             </button>
-                            <p id="createAdminMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
+                            <p id="settingsProfileMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
+                        </div>
+                    </div>
 
-                            <!-- Credential slip shown after creation -->
-                            <div id="newAdminCredentials" class="hidden bg-slate-900 rounded-2xl p-5 text-center">
-                                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-3">Sub-Admin Credentials — Share Once</p>
-                                <div class="grid grid-cols-2 gap-4 mb-3">
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-indigo-50/40">
+                            <div class="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-gem"></i></div>
+                            <div>
+                                <h3 class="font-black text-slate-800">Subscription Plan</h3>
+                                <p class="text-xs text-slate-400 font-semibold">Current plan limits and usage</p>
+                            </div>
+                            <span id="planBadge" class="ml-auto text-xs font-black px-3 py-1 rounded-full bg-indigo-100 text-indigo-700 uppercase tracking-wider">Loading...</span>
+                        </div>
+                        <div class="p-6">
+                            <div class="grid grid-cols-3 gap-4" id="subscriptionUsageGrid">
+                                <div class="text-center p-4 bg-slate-50 rounded-xl border border-slate-200 animate-pulse h-24"></div>
+                                <div class="text-center p-4 bg-slate-50 rounded-xl border border-slate-200 animate-pulse h-24"></div>
+                                <div class="text-center p-4 bg-slate-50 rounded-xl border border-slate-200 animate-pulse h-24"></div>
+                            </div>
+                            <p class="text-xs text-slate-400 font-semibold text-center mt-4">
+                                Need to upgrade your plan? <a href="mailto:support@connectusonline.org" class="text-blue-600 hover:underline font-black">Contact ConnectUs</a>
+                            </p>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="space-y-6">
+
+                    <div id="adminManagementSection" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden" id="admins">
+                        <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-blue-50/40">
+                            <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-user-shield"></i></div>
+                            <div>
+                                <h3 class="font-black text-slate-800">Manage Sub-Admins</h3>
+                                <p class="text-xs text-slate-400 font-semibold">Create additional admin accounts for your school</p>
+                            </div>
+                            <span id="adminUsageBadge" class="ml-auto text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">0 / 0 used</span>
+                        </div>
+                        <div class="p-6 space-y-5">
+
+                            <div class="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
+                                <h4 class="font-black text-slate-700 text-sm flex items-center gap-2">
+                                    <i class="fa-solid fa-plus text-blue-500"></i> Add New Sub-Admin
+                                </h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
-                                        <p class="text-[10px] text-slate-500 uppercase tracking-widest mb-1">Sub-Admin ID</p>
-                                        <p id="newAdminIdDisplay" class="text-white font-mono font-black text-lg tracking-widest"></p>
+                                        <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Full Name *</label>
+                                        <input type="text" id="newAdminName" placeholder="e.g. Ms. Rivera"
+                                            class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none">
                                     </div>
                                     <div>
-                                        <p class="text-[10px] text-slate-500 uppercase tracking-widest mb-1">Temporary PIN</p>
-                                        <p id="newAdminPinDisplay" class="text-blue-400 font-mono font-black text-lg tracking-widest"></p>
+                                        <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Email Address *</label>
+                                        <input type="email" id="newAdminEmail" placeholder="admin@school.edu.bz"
+                                            class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none">
                                     </div>
                                 </div>
-                                <p class="text-[10px] text-amber-400 font-bold">⚠ This PIN will not be shown again. Give it to the sub-admin securely.</p>
-                                <button onclick="document.getElementById('newAdminCredentials').classList.add('hidden')"
-                                    class="mt-3 text-xs text-slate-400 hover:text-white font-bold transition">
-                                    I have noted this — dismiss
+                                <p class="text-xs text-slate-500 font-semibold bg-amber-50 border border-amber-200 rounded-lg p-3">
+                                    <i class="fa-solid fa-circle-info text-amber-500 mr-1.5"></i>
+                                    A temporary PIN will be generated and shown once. The sub-admin will be required to change it on first login.
+                                </p>
+                                <button id="createSubAdminBtn" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-black text-sm shadow-sm transition">
+                                    <i class="fa-solid fa-user-plus mr-1.5"></i>Create Sub-Admin
                                 </button>
+                                <p id="createAdminMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
+
+                                <div id="newAdminCredentials" class="hidden bg-slate-900 rounded-2xl p-5 text-center">
+                                    <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-3">Sub-Admin Credentials — Share Once</p>
+                                    <div class="grid grid-cols-2 gap-4 mb-3">
+                                        <div>
+                                            <p class="text-[10px] text-slate-500 uppercase tracking-widest mb-1">Sub-Admin ID</p>
+                                            <p id="newAdminIdDisplay" class="text-white font-mono font-black text-lg tracking-widest"></p>
+                                        </div>
+                                        <div>
+                                            <p class="text-[10px] text-slate-500 uppercase tracking-widest mb-1">Temporary PIN</p>
+                                            <p id="newAdminPinDisplay" class="text-blue-400 font-mono font-black text-lg tracking-widest"></p>
+                                        </div>
+                                    </div>
+                                    <p class="text-[10px] text-amber-400 font-bold">⚠ This PIN will not be shown again. Give it to the sub-admin securely.</p>
+                                    <button onclick="document.getElementById('newAdminCredentials').classList.add('hidden')"
+                                        class="mt-3 text-xs text-slate-400 hover:text-white font-bold transition">
+                                        I have noted this — dismiss
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <h4 class="font-black text-slate-700 text-sm mb-3">Active Sub-Admins</h4>
+                                <div id="activeAdminsList" class="space-y-2">
+                                    <p class="text-sm text-slate-400 italic font-semibold text-center py-4">
+                                        <i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading...
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div id="archivedAdminsWrap" class="hidden">
+                                <h4 class="font-black text-slate-500 text-sm mb-3 flex items-center gap-2">
+                                    <i class="fa-solid fa-box-archive text-slate-400"></i> Archived Sub-Admins
+                                </h4>
+                                <div id="archivedAdminsList" class="space-y-2"></div>
                             </div>
                         </div>
+                    </div>
 
-                        <!-- Active Sub-Admins List -->
-                        <div>
-                            <h4 class="font-black text-slate-700 text-sm mb-3">Active Sub-Admins</h4>
-                            <div id="activeAdminsList" class="space-y-2">
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-amber-50/40">
+                            <div class="w-10 h-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-box-archive"></i></div>
+                            <div>
+                                <h3 class="font-black text-slate-800">Archive Management</h3>
+                                <p class="text-xs text-slate-400 font-semibold">View and restore archived records</p>
+                            </div>
+                        </div>
+                        <div class="p-6">
+                            <div class="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-5 flex items-start gap-2">
+                                <i class="fa-solid fa-shield-halved text-blue-500 mt-0.5 text-sm"></i>
+                                <p class="text-xs text-slate-600 font-semibold">
+                                    Records are never permanently deleted. All data is securely archived and can be restored at any time.
+                                    If you need a record permanently removed, contact ConnectUs support.
+                                </p>
+                            </div>
+                            <div class="flex border-b border-slate-200 mb-5">
+                                <button class="stab active" id="archiveTabTeachers" onclick="window.switchArchiveTab('teachers')">
+                                    <i class="fa-solid fa-chalkboard-user mr-1.5"></i>Archived Teachers
+                                </button>
+                                <button class="stab" id="archiveTabStudents" onclick="window.switchArchiveTab('students')">
+                                    <i class="fa-solid fa-user-graduate mr-1.5"></i>Archived Students
+                                </button>
+                            </div>
+                            <div id="archiveTeachersList" class="space-y-2">
+                                <p class="text-sm text-slate-400 italic font-semibold text-center py-4">
+                                    <i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading...
+                                </p>
+                            </div>
+                            <div id="archiveStudentsList" class="space-y-2 hidden">
                                 <p class="text-sm text-slate-400 italic font-semibold text-center py-4">
                                     <i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading...
                                 </p>
                             </div>
                         </div>
+                    </div>
 
-                        <!-- Archived Sub-Admins -->
-                        <div id="archivedAdminsWrap" class="hidden">
-                            <h4 class="font-black text-slate-500 text-sm mb-3 flex items-center gap-2">
-                                <i class="fa-solid fa-box-archive text-slate-400"></i> Archived Sub-Admins
-                            </h4>
-                            <div id="archivedAdminsList" class="space-y-2"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ── Security ────────────────────────────────────────── -->
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-blue-50/40">
-                        <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-lock"></i></div>
-                        <div>
-                            <h3 class="font-black text-slate-800">Change PIN</h3>
-                            <p class="text-xs text-slate-400 font-semibold">Current PIN required to set a new one</p>
-                        </div>
-                    </div>
-                    <div class="p-6 space-y-4">
-                        <div>
-                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Current Admin Code</label>
-                            <input type="password" id="currentAdminCode" placeholder="Enter your current code"
-                                class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">New Admin Code</label>
-                            <input type="password" id="newAdminCodeSettings" placeholder="Min. 6 characters"
-                                class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Confirm New Code</label>
-                            <input type="password" id="confirmAdminCodeSettings" placeholder="Type it again"
-                                class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
-                        </div>
-                        <div class="flex items-center gap-4">
-                            <button id="updateCodeBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-black text-sm shadow-md transition">
-                                Update Security Code
-                            </button>
-                            <a href="../../onboarding/forgot-pin.html" class="text-xs text-blue-500 hover:text-blue-700 font-black transition">
-                                <i class="fa-solid fa-key mr-1"></i>Forgot current code?
-                            </a>
-                        </div>
-                        <p id="settingsSecurityMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
-                    </div>
-                </div>
-
-                <!-- ── School Profile ──────────────────────────────────── -->
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-green-50/40">
-                        <div class="w-10 h-10 bg-green-100 text-green-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-school"></i></div>
-                        <div>
-                            <h3 class="font-black text-slate-800">School Profile</h3>
-                            <p class="text-xs text-slate-400 font-semibold">Update your school's information</p>
-                        </div>
-                    </div>
-                    <div class="p-6 space-y-4">
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-blue-50/40">
+                            <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-lock"></i></div>
                             <div>
-                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">School Name</label>
-                                <input type="text" id="profileSchoolName" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
+                                <h3 class="font-black text-slate-800">Change PIN</h3>
+                                <p class="text-xs text-slate-400 font-semibold">Current PIN required to set a new one</p>
+                            </div>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div>
+                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Current Admin Code</label>
+                                <input type="password" id="currentAdminCode" placeholder="Enter your current code"
+                                    class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
                             </div>
                             <div>
-                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Contact Email</label>
-                                <input type="email" id="profileContactEmail" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
+                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">New Admin Code</label>
+                                <input type="password" id="newAdminCodeSettings" placeholder="Min. 6 characters"
+                                    class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
                             </div>
                             <div>
-                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">District</label>
-                                <select id="profileDistrict" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
-                                    <option value="">Select District</option>
-                                    <option value="Belize">Belize</option>
-                                    <option value="Cayo">Cayo</option>
-                                    <option value="Corozal">Corozal</option>
-                                    <option value="Orange Walk">Orange Walk</option>
-                                    <option value="Stann Creek">Stann Creek</option>
-                                    <option value="Toledo">Toledo</option>
-                                </select>
+                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Confirm New Code</label>
+                                <input type="password" id="confirmAdminCodeSettings" placeholder="Type it again"
+                                    class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
                             </div>
-                            <div>
-                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">School Type</label>
-                                <select id="profileSchoolType" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
-                                    <option value="">Select Type</option>
-                                    <option value="Primary">Primary</option>
-                                    <option value="High School">High School</option>
-                                    <option value="Junior College">Junior College</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Contact Phone</label>
-                                <input type="tel" id="profilePhone" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Contact Name</label>
-                                <input type="text" id="profileContactName" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
-                            </div>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Address</label>
-                            <input type="text" id="profileAddress" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
-                        </div>
-                        <button id="saveProfileBtn" class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl font-black text-sm shadow-md transition">
-                            Save Profile
-                        </button>
-                        <p id="settingsProfileMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
-                    </div>
-                </div>
-
-
-                <!-- ── Grade Types & Weights ──────────────────────────── -->
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-blue-50/40">
-                        <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-weight-scale"></i></div>
-                        <div>
-                            <h3 class="font-black text-slate-800">Grade Types &amp; Weights</h3>
-                            <p class="text-xs text-slate-400 font-semibold">Define how each assessment type contributes to the final grade</p>
-                        </div>
-                    </div>
-                    <div class="p-6 space-y-5">
-
-                        <!-- Total weight indicator -->
-                        <div id="weightTotalBar" class="rounded-xl border p-4 hidden">
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Weight Allocated</span>
-                                <span id="weightTotalVal" class="text-sm font-black">0%</span>
-                            </div>
-                            <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
-                                <div id="weightTotalFill" class="h-full rounded-full transition-all duration-300" style="width:0%"></div>
-                            </div>
-                            <p id="weightTotalMsg" class="text-xs font-semibold mt-2 hidden"></p>
-                        </div>
-
-                        <!-- Active grade types list -->
-                        <div id="gradeTypesList" class="space-y-2">
-                            <div class="flex justify-center py-6"><i class="fa-solid fa-spinner fa-spin text-blue-400 text-xl"></i></div>
-                        </div>
-
-                        <!-- Archived grade types (collapsed by default) -->
-                        <div id="archivedTypesWrap" class="hidden">
-                            <button onclick="document.getElementById('archivedTypesList').classList.toggle('hidden');this.querySelector('i').classList.toggle('fa-rotate-90')"
-                                class="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 w-full text-left">
-                                <i class="fa-solid fa-chevron-right transition-transform" style="font-size:10px"></i>
-                                Archived Grade Types
-                            </button>
-                            <div id="archivedTypesList" class="space-y-2 hidden"></div>
-                        </div>
-
-                        <!-- Add new type form -->
-                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                            <h4 class="text-xs font-black text-slate-500 uppercase tracking-wider mb-3">Add New Grade Type</h4>
-                            <div class="flex gap-3">
-                                <div class="flex-1">
-                                    <input type="text" id="newTypeName" placeholder="e.g. Lab Report" maxlength="40"
-                                        class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none">
-                                </div>
-                                <div style="width:110px">
-                                    <div class="relative">
-                                        <input type="number" id="newTypeWeight" placeholder="0" min="1" max="100"
-                                            class="form-input w-full p-2.5 pr-8 bg-white border border-slate-200 rounded-xl text-sm outline-none">
-                                        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold pointer-events-none">%</span>
-                                    </div>
-                                </div>
-                                <button id="addTypeBtn"
-                                    class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-black text-sm shadow-sm transition">
-                                    <i class="fa-solid fa-plus"></i> Add
+                            <div class="flex items-center gap-4">
+                                <button id="updateCodeBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-black text-sm shadow-md transition">
+                                    Update Security Code
                                 </button>
+                                <a href="../../onboarding/forgot-pin.html" class="text-xs text-blue-500 hover:text-blue-700 font-black transition">
+                                    <i class="fa-solid fa-key mr-1"></i>Forgot current code?
+                                </a>
                             </div>
-                            <p id="gradeTypeMsg" class="text-xs font-semibold mt-2 hidden"></p>
-                        </div>
-
-                        <p class="text-xs text-slate-400 font-semibold bg-amber-50 border border-amber-100 rounded-xl p-3">
-                            <i class="fa-solid fa-circle-info text-amber-500 mr-1.5"></i>
-                            Archiving a type redistributes its weight proportionally to remaining active types. Existing grades keep their data. Archived types can always be restored.
-                        </p>
-                    </div>
-                </div>
-
-                <!-- ── Archive Management ──────────────────────────────── -->
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="p-5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-white to-amber-50/40">
-                        <div class="w-10 h-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-box-archive"></i></div>
-                        <div>
-                            <h3 class="font-black text-slate-800">Archive Management</h3>
-                            <p class="text-xs text-slate-400 font-semibold">View and restore archived records</p>
+                            <p id="settingsSecurityMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
                         </div>
                     </div>
-                    <div class="p-6">
-                        <div class="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-5 flex items-start gap-2">
-                            <i class="fa-solid fa-shield-halved text-blue-500 mt-0.5 text-sm"></i>
-                            <p class="text-xs text-slate-600 font-semibold">
-                                Records are never permanently deleted. All data is securely archived and can be restored at any time.
-                                If you need a record permanently removed, contact ConnectUs support.
+
+                    <div class="danger-zone bg-white rounded-2xl shadow-sm border border-red-200 overflow-hidden">
+                        <div class="p-5 border-b border-red-100 flex items-center gap-3 bg-gradient-to-r from-white to-red-50/40">
+                            <div class="w-10 h-10 bg-red-100 text-red-600 rounded-xl flex items-center justify-center"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                            <div>
+                                <h3 class="font-black text-red-700">Danger Zone</h3>
+                                <p class="text-xs text-slate-500 font-semibold italic">These actions affect all students and cannot be easily reversed. Only the Super Admin can perform these actions.</p>
+                            </div>
+                        </div>
+                        <div class="p-6">
+                            <h5 class="font-black text-red-700 text-sm mb-2">End of Academic Year Reset</h5>
+                            <p class="text-xs text-red-600 font-semibold mb-3">
+                                Removes all active students from their current teachers and classes, placing them in the unassigned pool for the next academic year. Grades are preserved.
                             </p>
-                        </div>
-                        <div class="flex border-b border-slate-200 mb-5">
-                            <button class="stab active" id="archiveTabTeachers" onclick="window.switchArchiveTab('teachers')">
-                                <i class="fa-solid fa-chalkboard-user mr-1.5"></i>Archived Teachers
-                            </button>
-                            <button class="stab" id="archiveTabStudents" onclick="window.switchArchiveTab('students')">
-                                <i class="fa-solid fa-user-graduate mr-1.5"></i>Archived Students
+                            <button id="endOfYearBtn" onclick="window.endOfYearReset()"
+                                class="bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 hover:border-red-600 font-black py-2.5 px-4 rounded-xl text-xs transition shadow-sm w-full sm:w-auto">
+                                <i class="fa-solid fa-rotate-right mr-1"></i> Run End-of-Year Reset
                             </button>
                         </div>
-                        <div id="archiveTeachersList" class="space-y-2">
-                            <p class="text-sm text-slate-400 italic font-semibold text-center py-4">
-                                <i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading...
-                            </p>
-                        </div>
-                        <div id="archiveStudentsList" class="space-y-2 hidden">
-                            <p class="text-sm text-slate-400 italic font-semibold text-center py-4">
-                                <i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading...
-                            </p>
-                        </div>
                     </div>
-                </div>
 
-                <!-- ── Danger Zone ─────────────────────────────────────── -->
-                <div class="danger-zone p-6">
-                    <h4 class="font-black text-red-700 flex items-center gap-2 mb-2">
-                        <i class="fa-solid fa-triangle-exclamation"></i> Danger Zone
-                    </h4>
-                    <p class="text-xs text-slate-500 font-semibold italic mb-4">
-                        These actions affect all students and cannot be easily reversed.
-                        Only the Super Admin can perform these actions.
-                    </p>
-                    <div class="pt-4 border-t border-red-200">
-                        <h5 class="font-black text-red-700 text-sm mb-2">End of Academic Year Reset</h5>
-                        <p class="text-xs text-red-600 font-semibold mb-3">
-                            Removes all active students from their current teachers and classes, placing them in the unassigned pool for the next academic year. Grades are preserved.
-                        </p>
-                        <button id="endOfYearBtn" onclick="window.endOfYearReset()"
-                            class="bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 hover:border-red-600 font-black py-2 px-4 rounded-xl text-xs transition shadow-sm">
-                            <i class="fa-solid fa-rotate-right mr-1"></i> Run End-of-Year Reset
-                        </button>
-                    </div>
                 </div>
-
             </div>
         </div>
     </main>
-
-
-    <!-- ── EDIT GRADE TYPE MODAL ──────────────────────────────────────── -->
-    <div id="editTypeModal" class="overlay fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200" id="editTypeModalInner">
-            <div class="h-1 bg-blue-500"></div>
-            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-                <h3 class="font-black text-slate-800 text-lg">Edit Grade Type</h3>
-                <button onclick="window.closeEditTypeModal()" class="text-slate-400 hover:text-red-500 transition"><i class="fa-solid fa-xmark text-xl"></i></button>
-            </div>
-            <div class="p-6 space-y-4">
-                <input type="hidden" id="editTypeId">
-                <div>
-                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Type Name</label>
-                    <input type="text" id="editTypeName" maxlength="40" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
-                </div>
-                <div>
-                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Weight (%)</label>
-                    <div class="relative">
-                        <input type="number" id="editTypeWeight" min="1" max="100" class="form-input w-full p-3 pr-8 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none">
-                        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400 font-bold pointer-events-none">%</span>
-                    </div>
-                    <p class="text-xs text-slate-400 font-semibold mt-1">Changing a weight does not auto-adjust others — verify the total stays at 100%.</p>
-                </div>
-                <button id="saveTypeEditBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3 rounded-xl transition text-sm">
-                    Save Changes
-                </button>
-                <p id="editTypeMsg" class="text-xs font-semibold hidden"></p>
-            </div>
-        </div>
-    </div>
 
     <script type="module" src="settings.js"></script>
 </body>
