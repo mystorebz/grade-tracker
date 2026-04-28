@@ -818,13 +818,22 @@ async function renderStudentAcademicTab() {
                 query(collection(db, 'terms'), where('schoolId', '==', session.schoolId))
             );
             allTerms = termSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            
             allTerms.sort((a, b) => {
                 if (a.isActive && !b.isActive) return -1;
                 if (!a.isActive && b.isActive) return 1;
-                return (b.createdAt || '').localeCompare(a.createdAt || '');
+                
+                // Safely convert to strings to prevent Timestamp crashes
+                const dateA = String(a.createdAt || '');
+                const dateB = String(b.createdAt || '');
+                return dateB.localeCompare(dateA);
             });
+            
             activeTerm = allTerms.find(t => t.isActive) || null;
-        } catch (_) {}
+        } catch (error) {
+            // Log the error so it is never hidden again
+            console.error('[Students] Error loading and sorting terms:', error);
+        }
 
         _activeTermForPrint = { id: activeTerm?.id || null, name: activeTerm?.name || 'Current Term' };
 
