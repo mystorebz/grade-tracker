@@ -2,7 +2,7 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, query, where, getDocs, getDoc, doc, updateDoc, addDoc, setDoc, arrayUnion, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
-import { openOverlay, closeOverlay, showMsg, gradeColorClass, standingBadge, standingText, gradeFill, letterGrade, downloadCSV } from '../../assets/js/utils.js';
+import { openOverlay, closeOverlay, showMsg, gradeColorClass, standingBadge, standingText, gradeFill, letterGrade, downloadCSV, calculateWeightedAverage } from '../../assets/js/utils.js';
 
 // ── 1. AUTH & LAYOUT ─────────────────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
@@ -41,26 +41,6 @@ function generateStudentId() {
     let rand = '';
     for (let i = 0; i < 5; i++) rand += chars.charAt(Math.floor(Math.random() * chars.length));
     return `S${year}-${rand}`;
-}
-
-// Weighted Average Helper
-function calcWeightedAvg(grades, weights = {}) {
-    const hasWeights = Object.keys(weights).length > 0;
-    if (!hasWeights) return grades.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / (grades.length || 1);
-
-    const byType = {};
-    grades.forEach(g => {
-        const t = g.type || 'Other';
-        if (!byType[t]) byType[t] = [];
-        byType[t].push(g.max ? (g.score / g.max) * 100 : 0);
-    });
-    let wSum = 0, wTotal = 0;
-    Object.entries(byType).forEach(([type, scores]) => {
-        const typeAvg = scores.reduce((a, b) => a + b, 0) / scores.length;
-        const w = weights[type] || 0;
-        if (w > 0) { wSum += typeAvg * w; wTotal += w; }
-    });
-    return wTotal > 0 ? wSum / wTotal : grades.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / (grades.length || 1);
 }
 
 // ── 3. INIT ───────────────────────────────────────────────────────────────────
@@ -215,7 +195,7 @@ async function loadStudents() {
         tbody.innerHTML = allStudentsCache.map((s, i) => {
             const sG           = allGrades.filter(g => g.studentId === s.id);
             const subjectCount = new Set(sG.map(g => g.subject)).size;
-            const avg          = sG.length ? Math.round(calcWeightedAvg(sG)) : null;
+            const avg          = sG.length ? calculateWeightedAverage(sG, session.schoolId) : null;
             if (avg !== null && avg < 65) riskCount++;
             const avgDisplay = avg !== null
                 ? `<span class="grade-num ${gradeNumClass(avg)}">${avg}%</span>`
@@ -615,7 +595,7 @@ window.renderStudentGrades = function() {
     noG.classList.add('hidden');
 
     container.innerHTML = Object.entries(by).map(([subject, grades]) => {
-        const avg = calcWeightedAvg(grades);
+        const avg = calculateWeightedAverage(grades, session.schoolId);
         const rows = grades.sort((a,b) => (b.date||'').localeCompare(a.date||'')).map(g => {
             gradeDetailCache[g.id] = g;
             const pct   = g.max ? Math.round(g.score/g.max*100) : null;
@@ -1142,15 +1122,6 @@ window.executeStudentPrint = async function() {
         gradesToPrint = gradesToPrint.filter(g => g.subject === subjFilter);
     }
 
-    // Get dynamic global weights (if applicable to this school)
-    let weights = {};
-    try {
-        const cached = localStorage.getItem(`connectus_gradeTypes_${session.schoolId}`);
-        if (cached) { 
-            JSON.parse(cached).forEach(t => { if(t.weight) weights[t.name] = t.weight; }); 
-        }
-    } catch(e) {}
-
     const bySub = {};
     let totalAssessments = 0;
     
@@ -1161,7 +1132,7 @@ window.executeStudentPrint = async function() {
         if (g.max) totalAssessments++;
     });
 
-    const cumulativeAvg = gradesToPrint.length ? Math.round(calcWeightedAvg(gradesToPrint, weights)) : 0;
+    const cumulativeAvg = gradesToPrint.length ? calculateWeightedAverage(gradesToPrint, session.schoolId) : 0;
     const gpaLetter = totalAssessments > 0 ? letterGrade(cumulativeAvg) : 'N/A';
 
     const semSelect = document.getElementById('activeSemester');
@@ -1171,7 +1142,7 @@ window.executeStudentPrint = async function() {
     let gradesHtml = Object.keys(bySub).length === 0
         ? `<tr><td colspan="4" style="text-align:center;color:#64748b;font-style:italic;padding:40px;">No grades recorded for this filter.</td></tr>`
         : Object.entries(bySub).sort((a,b) => a[0].localeCompare(b[0])).map(([sub, gList]) => {
-            const subAvg = Math.round(calcWeightedAvg(gList, weights));
+            const subAvg = calculateWeightedAverage(gList, session.schoolId);
             let html = `
                 <tr style="background:#f8fafc; font-weight:800;">
                     <td style="border-bottom:1px solid #cbd5e1;padding:12px 15px;color:#1e293b;">${escHtml(sub)}</td>
