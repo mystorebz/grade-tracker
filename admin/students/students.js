@@ -868,8 +868,8 @@ async function renderStudentAcademicTab() {
             });
         }
 
-        // Render current term grades (auto-expanded)
-        renderGradesForTerm(activeTerm?.id || null, false, activeTerm?.name || 'Current Term', true);
+        // Render current term grades (collapsed by default)
+        renderGradesForTerm(activeTerm?.id || null, false, activeTerm?.name || 'Current Term', false);
 
     } catch (e) {
         console.error('[Students] academicTab:', e);
