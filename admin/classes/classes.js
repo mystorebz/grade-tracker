@@ -2,7 +2,7 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, getDocs, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
-import { openOverlay, closeOverlay, letterGrade, gradeColorClass } from '../../assets/js/utils.js';
+import { openOverlay, closeOverlay, letterGrade, gradeColorClass, calculateWeightedAverage } from '../../assets/js/utils.js';
 
 const session = requireAuth('admin', '../login.html');
 injectAdminLayout('classes', 'Classes', 'Performance overview for each class', false, true);
@@ -111,7 +111,7 @@ async function loadClasses() {
             
             const stuAvgs = classData.students.map(s => {
                 const sg = allGrades.filter(g => g.studentId === s.id);
-                return sg.length ? sg.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / sg.length : null;
+                return sg.length ? calculateWeightedAverage(sg, session.schoolId) : null;
             }).filter(a => a !== null);
             
             const classAvg = stuAvgs.length ? Math.round(stuAvgs.reduce((a, b) => a + b, 0) / stuAvgs.length) : null;
@@ -201,7 +201,7 @@ function renderPanelContent(tab) {
         const dist = { a: 0, b: 0, c: 0, d: 0, f: 0 };
         const stuAvgData = students.map(s => {
             const sg = grades.filter(g => g.studentId === s.id);
-            const avg = sg.length ? Math.round(sg.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / sg.length) : null;
+            const avg = sg.length ? calculateWeightedAverage(sg, session.schoolId) : null;
             if (avg !== null) {
                 if (avg >= 90) dist.a++; else if (avg >= 80) dist.b++; else if (avg >= 70) dist.c++; else if (avg >= 65) dist.d++; else dist.f++;
             }
@@ -276,7 +276,7 @@ function renderPanelContent(tab) {
         });
 
         const subjectHtml = Object.entries(bySubject).sort((a, b) => a[0].localeCompare(b[0])).map(([sub, sg]) => {
-            const avg = Math.round(sg.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / sg.length);
+            const avg = calculateWeightedAverage(sg, session.schoolId);
             
             const assessments = [...new Set(sg.map(g => g.title))].map(title => {
                 const ag = sg.filter(x => x.title === title);
@@ -307,7 +307,7 @@ function renderPanelContent(tab) {
         
         const stuRows = students.map(s => {
             const sg = grades.filter(g => g.studentId === s.id);
-            const avg = sg.length ? Math.round(sg.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / sg.length) : null;
+            const avg = sg.length ? calculateWeightedAverage(sg, session.schoolId) : null;
             return { ...s, avg, gradeCount: sg.length };
         }).sort((a, b) => (a.avg ?? -1) - (b.avg ?? -1)).map(s => `
             <tr class="hover:bg-slate-50 transition gb-row">
