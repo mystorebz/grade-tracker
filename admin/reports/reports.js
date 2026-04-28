@@ -19,6 +19,13 @@ function escHtml(s) {
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+// UPDATED: Helper to fetch the exact grade weights of a student's assigned teacher
+function getTeacherGradeTypes(teacherId) {
+    if (!teacherId) return ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
+    const t = allTeachers.find(x => x.id === teacherId);
+    return t?.gradeTypes || t?.customGradeTypes || ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
+}
+
 // ── 4. LIVE KPI DASHBOARD (loads on page open) ────────────────────────────
 async function loadLiveDashboard() {
     try {
@@ -47,9 +54,13 @@ async function loadLiveDashboard() {
                 bySubj[sub].push(g);
             });
 
+            // Fetch this specific student's teacher's rubric
+            const gradeTypes = getTeacherGradeTypes(s.teacherId);
+
             let sumAvgs = 0, totalSubjs = 0, failingSubjects = 0;
             Object.values(bySubj).forEach(subGrades => {
-                const roundedSubAvg = calculateWeightedAverage(subGrades, session.schoolId);
+                // UPDATED: Using Teacher-Specific Grade Types
+                const roundedSubAvg = calculateWeightedAverage(subGrades, gradeTypes);
                 if (roundedSubAvg !== null) {
                     sumAvgs += roundedSubAvg;
                     totalSubjs++;
@@ -313,13 +324,17 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
                 bySubj[sub].push(g);
             });
 
+            // Fetch this specific student's teacher's rubric
+            const gradeTypes = getTeacherGradeTypes(s.teacherId);
+
             let sumAvgs = 0, totalSubjs = 0;
             const failingSubjects = [];
             const strongSubjects = [];
             const subjectAverages = [];
 
             Object.entries(bySubj).forEach(([sub, subGrades]) => {
-                const roundedSubAvg = calculateWeightedAverage(subGrades, session.schoolId);
+                // UPDATED: Using Teacher-Specific Grade Types
+                const roundedSubAvg = calculateWeightedAverage(subGrades, gradeTypes);
                 if (roundedSubAvg !== null) {
                     sumAvgs += roundedSubAvg;
                     totalSubjs++;
@@ -517,9 +532,12 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
 
         const subjRows = Object.entries(bySubjGlobal)
             .map(([sub, grades]) => {
-                const avg    = calculateWeightedAverage(grades, session.schoolId) || 0;
-                const pass   = grades.filter(g => g.max && (g.score / g.max * 100) >= 60).length;
-                const pct    = grades.length ? Math.round(pass / grades.length * 100) : 0;
+                // Here we simplify the school-wide subject avg to standard math because it spans multiple teachers with multiple rubrics. 
+                // A true weighted average across different teachers' rubrics is mathematically impossible, so we use a straight mean.
+                const validGrades = grades.filter(g => g.max > 0);
+                const avg    = validGrades.length > 0 ? Math.round(validGrades.reduce((sum, g) => sum + ((g.score / g.max) * 100), 0) / validGrades.length) : 0;
+                const pass   = validGrades.filter(g => (g.score / g.max * 100) >= 60).length;
+                const pct    = validGrades.length ? Math.round(pass / validGrades.length * 100) : 0;
                 const col    = avg >= 75 ? '#0ea871' : avg >= 60 ? '#b45309' : '#e31b4a';
                 return `<tr style="border-bottom:1px solid #f0f4f8">
                     <td style="padding:12px 20px;font-size:13px;font-weight:600;color:#0d1f35">${escHtml(sub)}</td>
