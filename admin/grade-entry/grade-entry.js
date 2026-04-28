@@ -4,7 +4,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
-import { letterGrade, openOverlay, closeOverlay } from '../../assets/js/utils.js';
+import { letterGrade, openOverlay, closeOverlay, calculateWeightedAverage } from '../../assets/js/utils.js';
 
 // ── 1. AUTH & LAYOUT ──────────────────────────────────────────────────────
 const session = requireAuth('admin', '../login.html');
@@ -199,8 +199,9 @@ function renderGrid() {
         let avgCol = 'text-[#6b84a0] bg-[#f8fafb] border-[#dce3ed]';
 
         if (sGrades.length > 0) {
-            const avgNum = sGrades.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / sGrades.length;
-            const avgRnd = Math.round(avgNum);
+            // Replaced flat average with weighted average utility
+            const avgNum = calculateWeightedAverage(sGrades, session.schoolId);
+            const avgRnd = avgNum; // calculateWeightedAverage already returns a rounded integer
             avgStr = `${avgRnd}%`;
             lgStr  = typeof letterGrade === 'function' ? letterGrade(avgRnd) : calcLg(avgRnd);
             
