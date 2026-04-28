@@ -4,17 +4,13 @@ import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
 import { openOverlay, closeOverlay, letterGrade, gradeColorClass } from '../../assets/js/utils.js';
 
-// ── 1. INIT & AUTH ────────────────────────────────────────────────────────
 const session = requireAuth('admin', '../login.html');
-
-// Inject layout: showSearch=false, showPeriod=true (so the globalPeriodSelect drops in)
 injectAdminLayout('classes', 'Classes', 'Performance overview for each class', false, true);
 
 const tbody = document.getElementById('classesTableBody');
 const loadingMsg = document.getElementById('classesLoadingMsg');
 const globalPeriodSelect = document.getElementById('globalPeriodSelect');
 
-// State map to store class data cleanly
 let classDataMap = new Map();
 let currentClassName = null;
 
@@ -37,14 +33,14 @@ function getTeacherClasses(t) {
     return t.classes || (t.className ? [t.className] : []);
 }
 
-// ── 2. INITIALIZE SEMESTERS DROPDOWN ──────────────────────────────────────
+// ── 1. INITIALIZE SEMESTERS DROPDOWN ──────────────────────────────────────
 async function loadSemestersDropdown() {
     try {
         const snap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
         const semesters = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.order - b.order);
         
         globalPeriodSelect.innerHTML = semesters.map(s => 
-            `<option value="${s.id}" ${s.id === session.activeSemesterId ? 'selected' : ''}>${s.name} ${s.archived ? '(Archived)' : ''}</option>`
+            `<option value="${s.id}" ${s.id === session.activeSemesterId ? 'selected' : ''}>${escHtml(s.name)} ${s.archived ? '(Archived)' : ''}</option>`
         ).join('');
 
         globalPeriodSelect.addEventListener('change', loadClasses);
@@ -54,7 +50,7 @@ async function loadSemestersDropdown() {
     }
 }
 
-// ── 3. LOAD CLASSES DATA ──────────────────────────────────────────────────
+// ── 2. LOAD MAIN TABLE ───────────────────────────────────────────────────────
 async function loadClasses() {
     loadingMsg.classList.remove('hidden');
     tbody.innerHTML = `<tr><td colspan="9" class="px-6 py-16 text-center text-slate-400 font-semibold"><i class="fa-solid fa-spinner fa-spin text-indigo-400 text-2xl mb-3 block"></i>Loading classes...</td></tr>`;
@@ -75,17 +71,20 @@ async function loadClasses() {
         const students = sSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
         const classesByName = {};
+        
+        // 1. Build classes from Student roster
         students.forEach(s => {
             const cls = s.className || 'Unassigned';
             if (!classesByName[cls]) classesByName[cls] = { students: [], teacher: null };
             classesByName[cls].students.push(s);
         });
 
-        // Map teachers to their classes
+        // 2. Build classes from Teacher assignments (Ensures empty classes are captured)
         teachers.forEach(t => {
             const tClasses = getTeacherClasses(t);
             tClasses.forEach(cls => {
-                if (classesByName[cls]) classesByName[cls].teacher = t;
+                if (!classesByName[cls]) classesByName[cls] = { students: [], teacher: null }; // Create the class if it has 0 students
+                classesByName[cls].teacher = t;
             });
         });
 
@@ -122,7 +121,6 @@ async function loadClasses() {
             const atRisk = stuAvgs.filter(a => a < 65).length;
             const subjectCount = new Set(allGrades.map(g => g.subject)).size;
             
-            // Critical fix: ensuring studentCount is saved explicitly
             const processedData = { 
                 className, 
                 teacher: classData.teacher, 
@@ -145,7 +143,7 @@ async function loadClasses() {
             <tr class="gb-row">
                 <td class="px-6 py-4">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-gradient-to-br from-indigo-500 to-blue-600 text-white rounded-xl flex items-center justify-center font-black text-sm shadow-sm">${c.className.charAt(0)}</div>
+                        <div class="w-10 h-10 bg-gradient-to-br from-indigo-500 to-blue-600 text-white rounded-xl flex items-center justify-center font-black text-sm shadow-sm">${escHtml(c.className.charAt(0))}</div>
                         <span class="font-black text-slate-800">${escHtml(c.className)}</span>
                     </div>
                 </td>
@@ -156,7 +154,7 @@ async function loadClasses() {
                 <td class="px-6 py-4 text-center">${c.highest !== null ? `<span class="g-a font-black">${c.highest}%</span>` : '<span class="text-slate-400">—</span>'}</td>
                 <td class="px-6 py-4 text-center">${c.lowest !== null ? `<span class="${gradeColorClass(c.lowest)} font-black">${c.lowest}%</span>` : '<span class="text-slate-400">—</span>'}</td>
                 <td class="px-6 py-4 text-center">${c.atRisk ? `<span class="font-black text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-lg text-xs">${c.atRisk}</span>` : '<span class="text-slate-400 font-semibold">0</span>'}</td>
-                <td class="px-6 py-4 text-right"><button onclick="window.openClassPanel('${escHtml(c.className)}')" class="bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 font-black px-4 py-2 rounded-xl text-xs transition border border-indigo-200 hover:border-indigo-600">View</button></td>
+                <td class="px-6 py-4 text-right"><button onclick="window.openClassPanel('${escHtml(c.className)}')" class="bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 font-black px-4 py-2 rounded-xl text-xs transition border border-indigo-200 hover:border-indigo-600">View Details</button></td>
             </tr>`).join('');
 
         loadingMsg.classList.add('hidden');
@@ -167,7 +165,7 @@ async function loadClasses() {
     }
 }
 
-// ── 4. DEEP DIVE CLASS PANEL TABBING ──────────────────────────────────────
+// ── 3. DEEP DIVE CLASS PANEL TABBING ──────────────────────────────────────
 window.switchClassTab = function(tabName) {
     document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
     document.querySelector(`.panel-tab[data-tab="${tabName}"]`).classList.add('active');
@@ -179,7 +177,6 @@ window.openClassPanel = function(className) {
     const classData = classDataMap.get(className);
     if (!classData) return;
 
-    // Explicitly update header text here
     document.getElementById('cpPanelTitle').textContent = classData.className;
     const semName = globalPeriodSelect.options[globalPeriodSelect.selectedIndex]?.text || '';
     document.getElementById('cpPanelMeta').textContent = `${semName} · ${classData.studentCount} students`;
@@ -192,7 +189,7 @@ window.closeClassPanel = function() {
     closeOverlay('classPanel', 'classPanelInner', true);
 };
 
-// ── 5. RENDER TAB CONTENT ─────────────────────────────────────────────────
+// ── 4. RENDER TAB CONTENT ─────────────────────────────────────────────────
 function renderPanelContent(tab) {
     const data = classDataMap.get(currentClassName);
     if (!data) return;
@@ -201,7 +198,6 @@ function renderPanelContent(tab) {
     if (tab === 'overview') {
         const { teacher, students, grades, classAvg, studentCount, atRisk } = data;
         
-        // Distribution Math
         const dist = { a: 0, b: 0, c: 0, d: 0, f: 0 };
         const stuAvgData = students.map(s => {
             const sg = grades.filter(g => g.studentId === s.id);
@@ -285,13 +281,9 @@ function renderPanelContent(tab) {
             const assessments = [...new Set(sg.map(g => g.title))].map(title => {
                 const ag = sg.filter(x => x.title === title);
                 const aAvg = Math.round(ag.reduce((a, x) => a + (x.max ? x.score / x.max * 100 : 0), 0) / ag.length);
-                return `<div class="flex justify-between py-2 border-b border-slate-100 last:border-0 text-sm">
-                            <span class="font-semibold text-slate-600">${escHtml(title)}</span>
-                            <b class="${gradeColorClass(aAvg)}">${aAvg}%</b>
-                        </div>`;
+                return `<div class="flex justify-between py-2 border-b border-slate-200 last:border-0 text-sm"><span class="font-semibold text-slate-600">${escHtml(title)}</span><b class="${gradeColorClass(aAvg)}">${aAvg}%</b></div>`;
             }).join('');
 
-            // CRITICAL FIX: The padding is moved INSIDE the collapsing subject-body div.
             return `
                 <div class="bg-white border border-slate-200 rounded-xl mb-3 overflow-hidden shadow-sm">
                     <div class="px-5 py-4 flex justify-between items-center cursor-pointer hover:bg-slate-50 transition" onclick="this.nextElementSibling.classList.toggle('open'); this.querySelector('.fa-chevron-down').classList.toggle('rotate-180');">
@@ -328,22 +320,14 @@ function renderPanelContent(tab) {
                 <td class="px-5 py-3 text-center ${s.avg !== null ? gradeColorClass(s.avg) : 'text-slate-400'} font-black text-sm">${s.avg !== null ? s.avg + '%' : '—'}</td>
                 <td class="px-5 py-3 text-center">${standingBadge(s.avg)}</td>
                 <td class="px-5 py-3 text-center text-slate-500 font-semibold text-xs">${s.gradeCount}</td>
-                <td class="px-5 py-3 text-right">
-                    <a href="../students/students.html?viewStudent=${escHtml(s.id)}" class="text-[11px] font-black text-indigo-600 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded hover:bg-indigo-600 hover:text-white transition inline-block">View Profile</a>
-                </td>
+                <td class="px-5 py-3 text-right"><a href="../students/students.html?viewStudent=${escHtml(s.id)}" class="text-[11px] font-black text-indigo-600 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded hover:bg-indigo-600 hover:text-white transition inline-block">View Profile</a></td>
             </tr>`).join('');
 
         container.innerHTML = `
             <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
                 <table class="w-full text-left">
                     <thead class="bg-slate-50 text-[10px] uppercase font-black text-slate-400 border-b border-slate-200 tracking-wider">
-                        <tr>
-                            <th class="px-5 py-4">Student</th>
-                            <th class="px-5 py-4 text-center">Avg</th>
-                            <th class="px-5 py-4 text-center">Standing</th>
-                            <th class="px-5 py-4 text-center">Grades</th>
-                            <th class="px-5 py-4"></th>
-                        </tr>
+                        <tr><th class="px-5 py-4">Student</th><th class="px-5 py-4 text-center">Avg</th><th class="px-5 py-4 text-center">Standing</th><th class="px-5 py-4 text-center">Grades</th><th class="px-5 py-4"></th></tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">${stuRows || '<tr><td colspan="5" class="px-5 py-10 text-center text-slate-400 italic">No students found.</td></tr>'}</tbody>
                 </table>
@@ -351,5 +335,4 @@ function renderPanelContent(tab) {
     }
 }
 
-// ── INITIALIZE ────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', loadSemestersDropdown);
