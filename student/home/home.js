@@ -2,6 +2,7 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, getDocs, doc, getDoc, updateDoc, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectStudentLayout } from '../../assets/js/layout-student.js';
+import { calculateWeightedAverage } from '../../assets/js/utils.js'; // Imported Math Engine
 
 // ── 1. AUTHENTICATION & LAYOUT ────────────────────────────────────────────
 const session = requireAuth('student', '../login.html');
@@ -14,6 +15,7 @@ const dashRecentEl   = document.getElementById('dashRecentCount');
 const activityListEl = document.getElementById('recentActivityList');
 
 let teachersMap = {};
+let teacherRubricsCache = {}; // Cache for individual teacher rubrics
 
 // ── 3. HELPERS ────────────────────────────────────────────────────────────
 function gradeColorText(p) {
@@ -38,7 +40,6 @@ function timeAgo(ds) {
     return 'Just now';
 }
 
-// Mask email for display: j***@example.com
 function maskEmail(email) {
     if (!email) return 'Not set';
     const [user, domain] = email.split('@');
@@ -60,28 +61,65 @@ async function loadDashboardData() {
         document.getElementById('displayStudentName').textContent = session.studentData.name;
         document.getElementById('displayStudentClass').textContent = session.studentData.className || 'Unassigned';
 
-        if (activeSemesterId) {
-            const semSnap = await getDoc(doc(db, 'schools', schoolId, 'semesters', activeSemesterId));
-            document.getElementById('activeSemesterDisplay').textContent = semSnap.data()?.name || 'Unknown Period';
+        if (!activeSemesterId) {
+            activityListEl.innerHTML = `<p class="text-amber-600 font-bold text-center">No active semester set by the school.</p>`;
+            return;
         }
+
+        const semSnap = await getDoc(doc(db, 'schools', schoolId, 'semesters', activeSemesterId));
+        document.getElementById('activeSemesterDisplay').textContent = semSnap.data()?.name || 'Unknown Period';
 
         const tSnap = await getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', schoolId)));
         tSnap.forEach(d => { teachersMap[d.id] = d.data().name; });
 
-        const gSnap    = await getDocs(collection(db, 'schools', schoolId, 'students', studentId, 'grades'));
-        const allGrades = gSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Query ONLY the current semester directly from the database
+        const gSnap = await getDocs(query(
+            collection(db, 'students', studentId, 'grades'),
+            where('schoolId', '==', schoolId),
+            where('semesterId', '==', activeSemesterId)
+        ));
+        const currentGrades = gSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        const currentGrades = allGrades.filter(g => g.semesterId === activeSemesterId);
-        const avg = currentGrades.length
-            ? Math.round(currentGrades.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / currentGrades.length)
-            : '--';
+        // Fetch rubrics for math engine
+        const uniqueTeacherIds = [...new Set(currentGrades.map(g => g.teacherId).filter(Boolean))];
+        for (const tId of uniqueTeacherIds) {
+            if (!teacherRubricsCache[tId]) {
+                const teacherDoc = await getDoc(doc(db, 'teachers', tId));
+                teacherRubricsCache[tId] = teacherDoc.exists() ? (teacherDoc.data().gradeTypes || teacherDoc.data().customGradeTypes || []) : [];
+            }
+        }
 
-        dashAvgEl.textContent   = avg;
+        // Group by subject to calculate true weighted averages per subject
+        const bySub = {};
+        currentGrades.forEach(g => {
+            const sub = g.subject || 'Uncategorized';
+            if (!bySub[sub]) bySub[sub] = [];
+            bySub[sub].push(g);
+        });
+
+        let sumSubjAvgs = 0;
+        let subjCount = 0;
+
+        for (const sub in bySub) {
+            const tId = bySub[sub][0]?.teacherId;
+            const rubric = tId ? (teacherRubricsCache[tId] || []) : [];
+            const subAvgRaw = calculateWeightedAverage(bySub[sub], rubric);
+            
+            if (subAvgRaw !== null) {
+                sumSubjAvgs += subAvgRaw;
+                subjCount++;
+            }
+        }
+
+        const overallAvg = subjCount > 0 ? Math.round(sumSubjAvgs / subjCount) : '--';
+
+        dashAvgEl.textContent   = overallAvg;
         dashTotalEl.textContent = currentGrades.length;
 
+        // Filter recent activity based on the current semester grades
         const sevenAgo = new Date();
         sevenAgo.setDate(sevenAgo.getDate() - 7);
-        const recent = allGrades.filter(g => {
+        const recent = currentGrades.filter(g => {
             const d = g.createdAt ? new Date(g.createdAt) : new Date(g.date);
             return d >= sevenAgo;
         }).sort((a, b) => {
@@ -121,6 +159,11 @@ function renderActivityFeed(recent) {
             ? `<span class="text-[9px] font-black text-blue-500 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded ml-1">Admin entry</span>`
             : '';
 
+        // Add category weight tag for transparency
+        const rubric = g.teacherId ? (teacherRubricsCache[g.teacherId] || []) : [];
+        const typeDef = rubric.find(t => t.name && g.type && t.name.toLowerCase() === g.type.toLowerCase());
+        const weightTag = typeDef ? ` (${typeDef.weight}%)` : '';
+
         return `
         <div class="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-md transition cursor-pointer"
              onclick="window.location.href='../grades/grades.html'">
@@ -130,7 +173,7 @@ function renderActivityFeed(recent) {
                 </div>
                 <div>
                     <p class="font-black text-slate-800">${g.title}${adminTag}</p>
-                    <p class="text-xs text-slate-500 font-bold mt-0.5">${tName} • ${g.subject} • ${timeStr}</p>
+                    <p class="text-xs text-slate-500 font-bold mt-0.5">${tName} • ${g.type}${weightTag} • ${timeStr}</p>
                 </div>
             </div>
             <div class="text-right">
@@ -188,9 +231,6 @@ window.saveEmailChange = async function() {
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...';
 
     try {
-        // ── Fetch fresh student doc to verify PIN ──────────────────────────
-        // PIN verification prevents an unlocked session from silently
-        // changing the recovery email and then using Forgot PIN to take over.
         const snap = await getDoc(doc(db, 'students', session.studentId));
         if (!snap.exists() || String(snap.data().pin) !== String(pin)) {
             showEmailMsg('Incorrect PIN. Email not changed.', true);
@@ -199,13 +239,11 @@ window.saveEmailChange = async function() {
 
         await updateDoc(doc(db, 'students', session.studentId), { email: newEmail });
 
-        // Update session in-place
         session.studentData.email = newEmail;
         setSessionData('student', session);
 
         showEmailMsg('Recovery email updated successfully!', false);
 
-        // Switch back to display state after short delay
         setTimeout(() => {
             window.cancelEmailEdit();
             loadEmailDisplay();
