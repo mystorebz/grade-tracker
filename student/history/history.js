@@ -2,6 +2,7 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectStudentLayout } from '../../assets/js/layout-student.js';
+import { calculateWeightedAverage } from '../../assets/js/utils.js'; // Added Math Engine
 
 // ── 1. INIT & AUTH ────────────────────────────────────────────────────────
 const session = requireAuth('student', '../login.html');
@@ -24,7 +25,7 @@ const historyTeacherName       = document.getElementById('historyTeacherName');
 let teachersMap            = {};
 let currentViewGrades      = [];
 let schoolActiveSemesterId = null;
-let gradeTypeWeights       = {};
+let teacherRubricsCache    = {}; // Added: Cache to store different teachers' rubrics
 
 // ── 2. UI HELPERS ─────────────────────────────────────────────────────────
 function getGradeStyle(p) {
@@ -167,13 +168,6 @@ async function initializeHistory() {
         const pastSemesters = allSemesters.filter(s => s.id !== schoolActiveSemesterId);
         historySemesterSelect.value = pastSemesters.length ? pastSemesters[pastSemesters.length - 1].id : schoolActiveSemesterId;
 
-        // Fetch Global Grade Weights for calculations
-        try {
-            const cached = localStorage.getItem(`connectus_gradeTypes_${session.schoolId}`);
-            const types = cached ? JSON.parse(cached) : (await getDocs(collection(db, 'schools', session.schoolId, 'gradeTypes'))).docs.map(d => ({ id: d.id, ...d.data() }));
-            types.forEach(t => { if (t.weight) gradeTypeWeights[t.name] = t.weight; });
-        } catch(_) {}
-
         try {
             const globalStudentSnap = await getDoc(doc(db, 'students', session.studentId));
             if (globalStudentSnap.exists()) {
@@ -200,7 +194,6 @@ async function loadHistoricalGrades() {
     historyInfoCard.classList.add('hidden');
 
     try {
-        // CHANGED TO GLOBAL PASSPORT PATH: filtered by current school
         const q = query(
             collection(db, 'students', session.studentId, 'grades'),
             where('schoolId', '==', session.schoolId),
@@ -218,6 +211,23 @@ async function loadHistoricalGrades() {
             }
         });
 
+        // ADDED: Fetch unique teacher rubrics for this historical period
+        const uniqueTeacherIds = [...new Set(currentViewGrades.map(g => g.teacherId).filter(Boolean))];
+        for (const tId of uniqueTeacherIds) {
+            if (!teacherRubricsCache[tId]) {
+                try {
+                    const tSnap = await getDoc(doc(db, 'teachers', tId));
+                    if (tSnap.exists()) {
+                        teacherRubricsCache[tId] = tSnap.data().gradeTypes || tSnap.data().customGradeTypes || [];
+                    } else {
+                        teacherRubricsCache[tId] = []; // fallback if teacher was deleted
+                    }
+                } catch (e) {
+                    teacherRubricsCache[tId] = [];
+                }
+            }
+        }
+
         if (topId && teachersMap[topId]) {
             historyTeacherName.textContent = teachersMap[topId];
             historyInfoCard.classList.remove('hidden');
@@ -229,27 +239,6 @@ async function loadHistoricalGrades() {
         console.error('Error fetching historical grades:', e);
         historySubjectsContainer.innerHTML = '<p class="text-red-500 text-center font-bold">Error loading grades.</p>';
     }
-}
-
-// Helper: weighted average for a set of grades
-function calcWeightedAvg(grades) {
-    const hasWeights = Object.keys(gradeTypeWeights).length > 0;
-    if (!hasWeights) {
-        return grades.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / grades.length;
-    }
-    const byType = {};
-    grades.forEach(g => {
-        const t = g.type || 'Other';
-        if (!byType[t]) byType[t] = [];
-        byType[t].push(g.max ? (g.score / g.max) * 100 : 0);
-    });
-    let wSum = 0, wTotal = 0;
-    Object.entries(byType).forEach(([type, scores]) => {
-        const typeAvg = scores.reduce((a, b) => a + b, 0) / scores.length;
-        const w = gradeTypeWeights[type] || 0;
-        if (w > 0) { wSum += typeAvg * w; wTotal += w; }
-    });
-    return wTotal > 0 ? wSum / wTotal : grades.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / grades.length;
 }
 
 // ── 6. RENDER ACCORDIONS ──────────────────────────────────────────────────
@@ -268,7 +257,20 @@ function renderSubjectAccordions(grades) {
     });
 
     historySubjectsContainer.innerHTML = Object.entries(bySub).map(([subject, gList]) => {
-        const avg   = calcWeightedAvg(gList);
+        // Retrieve the specific teacher's rubric for this subject
+        const firstGrade = gList[0];
+        const tId = firstGrade?.teacherId;
+        const rubric = tId ? (teacherRubricsCache[tId] || []) : [];
+
+        let rubricSubtitle = '';
+        if (rubric && rubric.length > 0) {
+            rubricSubtitle = rubric.map(t => `${t.name} ${t.weight}%`).join(' • ');
+        } else {
+            rubricSubtitle = "Standard Grading (Unweighted)";
+        }
+
+        const avgRaw = calculateWeightedAverage(gList, rubric);
+        const avg = avgRaw !== null ? avgRaw : 0;
         const style = getGradeStyle(Math.round(avg));
 
         const rows = gList
@@ -279,12 +281,16 @@ function renderSubjectAccordions(grades) {
                 const badge    = isNew(g.date, g.createdAt) ? `<span class="new-badge">New</span>` : '';
                 const hasNotes = g.notes || (g.historyLogs && g.historyLogs.length > 0);
 
+                // Look up the weight for this specific assignment
+                const typeDef = rubric.find(t => t.name && g.type && t.name.toLowerCase() === g.type.toLowerCase());
+                const weightBadge = typeDef ? ` • ${typeDef.weight}% Weight` : '';
+
                 return `
                 <div class="bg-white border border-slate-200 rounded-xl p-3 sm:p-4 flex items-center justify-between hover:shadow-md transition cursor-pointer mb-2 last:mb-0"
                      onclick="window.viewGradeDetails('${g.id}')">
                     <div class="flex-1 min-w-0">
                         <p class="font-black text-slate-800 text-sm sm:text-base truncate">${g.title} ${badge}</p>
-                        <p class="text-xs text-slate-400 font-bold mt-1 uppercase tracking-wider">${g.type} • ${g.date}</p>
+                        <p class="text-xs text-slate-400 font-bold mt-1 uppercase tracking-wider">${g.type}${weightBadge} • ${g.date}</p>
                     </div>
                     <div class="flex items-center gap-3 sm:gap-5 flex-shrink-0 ml-2">
                         <div class="text-right">
@@ -315,6 +321,7 @@ function renderSubjectAccordions(grades) {
                         <p class="text-xs text-slate-500 font-bold mt-1 uppercase tracking-wider">
                             ${gList.length} Assignment${gList.length !== 1 ? 's' : ''}
                         </p>
+                        <p class="text-[10px] text-indigo-500 font-bold mt-1 tracking-wide">${rubricSubtitle}</p>
                     </div>
                 </div>
                 <div class="flex items-center gap-4">
@@ -343,8 +350,15 @@ window.viewGradeDetails = function(gradeId) {
     if (!g) return;
 
     const p = g.max ? Math.round((g.score / g.max) * 100) : 0;
+    
+    // Inject weight into the modal context
+    const tId = g.teacherId;
+    const rubric = tId ? (teacherRubricsCache[tId] || []) : [];
+    const typeDef = rubric.find(t => t.name && g.type && t.name.toLowerCase() === g.type.toLowerCase());
+    const weightBadge = typeDef ? ` (${typeDef.weight}% weight)` : '';
+    
     document.getElementById('modalTitle').innerText = g.title;
-    document.getElementById('modalMeta').innerText  = `${g.date} • ${g.subject} • ${g.type}`;
+    document.getElementById('modalMeta').innerText  = `${g.date} • ${g.subject} • ${g.type}${weightBadge}`;
     document.getElementById('modalScore').innerText = `${g.score} / ${g.max}`;
 
     const pEl = document.getElementById('modalPercentage');
@@ -400,13 +414,26 @@ window.printStudentRecord = async (studentId) => {
         where('schoolId', '==', session.schoolId)
     ));
     
+    const allGrades = gradesSnap.docs.map(d => d.data());
+    
+    // Ensure all required rubrics are cached before processing print math
+    const printTeacherIds = [...new Set(allGrades.map(g => g.teacherId).filter(Boolean))];
+    for (const tId of printTeacherIds) {
+        if (!teacherRubricsCache[tId]) {
+            try {
+                const tSnap = await getDoc(doc(db, 'teachers', tId));
+                teacherRubricsCache[tId] = tSnap.exists() ? (tSnap.data().gradeTypes || tSnap.data().customGradeTypes || []) : [];
+            } catch (e) {
+                teacherRubricsCache[tId] = [];
+            }
+        }
+    }
+    
     const bySem = {};
     let totalAssessments = 0;
     let sumScore = 0;
-    let sumMax = 0;
 
-    gradesSnap.forEach(d => {
-        const g = d.data();
+    allGrades.forEach(g => {
         const sem = g.semesterId || 'General';
         const sub = g.subject    || 'Uncategorized';
         if (!bySem[sem]) bySem[sem] = {};
@@ -427,7 +454,12 @@ window.printStudentRecord = async (studentId) => {
         : Object.entries(bySem).map(([sem, subjects]) => {
             let rows = '', total = 0, count = 0;
             for (const sub in subjects) {
-                const avg = Math.round(calcWeightedAvg(subjects[sub]));
+                // Apply specific rubric for this printed subject
+                const tId = subjects[sub][0]?.teacherId;
+                const rubric = tId ? (teacherRubricsCache[tId] || []) : [];
+                const avgRaw = calculateWeightedAverage(subjects[sub], rubric);
+                const avg = Math.round(avgRaw !== null ? avgRaw : 0);
+                
                 total += avg; count++;
                 rows += `<tr>
                             <td style="border-bottom:1px solid #e2e8f0;padding:12px 15px;color:#1e293b;font-weight:600;">${sub}</td>
