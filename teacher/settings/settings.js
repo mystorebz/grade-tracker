@@ -22,6 +22,7 @@ async function sha256(text) {
 
 function showMsg(elId, msg, isError) {
     const el = document.getElementById(elId);
+    if (!el) return;
     el.textContent = msg;
     el.className   = isError
         ? 'text-[12px] font-bold p-2.5 rounded-sm text-red-600 bg-red-50 border border-red-100'
@@ -29,6 +30,14 @@ function showMsg(elId, msg, isError) {
     el.classList.remove('hidden');
     setTimeout(() => el.classList.add('hidden'), 5000);
 }
+
+function escHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Global state for Grade Types
+let teacherGradeTypes = [];
 
 // ── 2. LOAD PROFILE ───────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -46,30 +55,42 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('settingEmail').value = t.email || '';
     document.getElementById('settingPhone').value = t.phone || '';
 
-    // ── Security questions status badge ────────────────────────────────────
+    // ── Security questions status badge & Grade Types ──────────────────────
     try {
         const snap = await getDoc(doc(db, 'teachers', session.teacherId));
         if (snap.exists()) {
             const data  = snap.data();
             const badge = document.getElementById('secQBadge');
+            
+            // Security Questions
             if (data.securityQuestionsSet) {
-                badge.textContent = '✓ Set';
-                badge.className   = 'ml-auto text-[10px] font-black px-2.5 py-1 rounded-sm uppercase tracking-wider bg-green-100 text-green-700 border border-green-200';
+                if (badge) {
+                    badge.textContent = '✓ Set';
+                    badge.className   = 'ml-auto text-[10px] font-black px-2.5 py-1 rounded-sm uppercase tracking-wider bg-green-100 text-green-700 border border-green-200';
+                }
                 // Pre-fill existing questions so teacher knows what's set
-                if (data.securityQ1) document.getElementById('secQ1').value = data.securityQ1;
-                if (data.securityQ2) document.getElementById('secQ2').value = data.securityQ2;
+                if (data.securityQ1 && document.getElementById('secQ1')) document.getElementById('secQ1').value = data.securityQ1;
+                if (data.securityQ2 && document.getElementById('secQ2')) document.getElementById('secQ2').value = data.securityQ2;
             } else {
-                badge.textContent = '⚠ Not Set';
-                badge.className   = 'ml-auto text-[10px] font-black px-2.5 py-1 rounded-sm uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200';
+                if (badge) {
+                    badge.textContent = '⚠ Not Set';
+                    badge.className   = 'ml-auto text-[10px] font-black px-2.5 py-1 rounded-sm uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200';
+                }
             }
+
+            // Load existing Grade Types
+            if (data.gradeTypes && Array.isArray(data.gradeTypes)) {
+                teacherGradeTypes = data.gradeTypes;
+            }
+            renderGradeTypes();
         }
     } catch (e) {
-        console.error('[TeacherSettings] load secQ status:', e);
+        console.error('[TeacherSettings] load profile data:', e);
     }
 });
 
 // ── 3. SAVE PROFILE ───────────────────────────────────────────────────────
-document.getElementById('saveProfileBtn').addEventListener('click', async () => {
+document.getElementById('saveProfileBtn')?.addEventListener('click', async () => {
     const name  = document.getElementById('settingName').value.trim();
     const email = document.getElementById('settingEmail').value.trim();
     const phone = document.getElementById('settingPhone').value.trim();
@@ -107,9 +128,7 @@ document.getElementById('saveProfileBtn').addEventListener('click', async () => 
 });
 
 // ── 4. CHANGE PIN ─────────────────────────────────────────────────────────
-// Teacher PINs are stored as plain text — comparison is direct.
-// No hashing here intentionally (matches teacher login.js comparison).
-document.getElementById('savePinBtn').addEventListener('click', async () => {
+document.getElementById('savePinBtn')?.addEventListener('click', async () => {
     const current = document.getElementById('currentPin').value.trim();
     const nw      = document.getElementById('newPin').value.trim();
     const cf      = document.getElementById('confirmPin').value.trim();
@@ -149,9 +168,7 @@ document.getElementById('savePinBtn').addEventListener('click', async () => {
 });
 
 // ── 5. SAVE SECURITY QUESTIONS ────────────────────────────────────────────
-// Requires current PIN to confirm identity before allowing changes.
-// Answers are SHA-256 hashed before saving (matching forgot-pin.html).
-document.getElementById('saveSecQBtn').addEventListener('click', async () => {
+document.getElementById('saveSecQBtn')?.addEventListener('click', async () => {
     const currentPin = document.getElementById('secQCurrentPin').value.trim();
     const q1         = document.getElementById('secQ1').value;
     const a1         = document.getElementById('secA1').value.trim();
@@ -190,12 +207,14 @@ document.getElementById('saveSecQBtn').addEventListener('click', async () => {
         setSessionData('teacher', session);
 
         const badge   = document.getElementById('secQBadge');
-        badge.textContent = '✓ Set';
-        badge.className   = 'ml-auto text-[10px] font-black px-2.5 py-1 rounded-sm uppercase tracking-wider bg-green-100 text-green-700 border border-green-200';
+        if (badge) {
+            badge.textContent = '✓ Set';
+            badge.className   = 'ml-auto text-[10px] font-black px-2.5 py-1 rounded-sm uppercase tracking-wider bg-green-100 text-green-700 border border-green-200';
+        }
 
         document.getElementById('secQCurrentPin').value = '';
-        document.getElementById('secA1').value           = '';
-        document.getElementById('secA2').value           = '';
+        document.getElementById('secA1').value          = '';
+        document.getElementById('secA2').value          = '';
 
         showMsg('secQMsg', 'Security questions updated successfully!', false);
 
@@ -207,3 +226,127 @@ document.getElementById('saveSecQBtn').addEventListener('click', async () => {
     btn.disabled  = false;
     btn.innerHTML = 'Save Security Questions';
 });
+
+// ── 6. GRADE TYPES MANAGEMENT ─────────────────────────────────────────────
+
+const gtSelect     = document.getElementById('gtSelect');
+const gtCustomName = document.getElementById('gtCustomName');
+const gtWeight     = document.getElementById('gtWeight');
+const addGtBtn     = document.getElementById('addGradeTypeBtn');
+const gtList       = document.getElementById('gradeTypesList');
+const gtTotal      = document.getElementById('gtTotalWeight');
+const saveGtBtn    = document.getElementById('saveGradeTypesBtn');
+
+// Handle showing/hiding custom input box
+if (gtSelect) {
+    gtSelect.addEventListener('change', (e) => {
+        if (e.target.value === 'Custom') {
+            gtCustomName.classList.remove('hidden');
+        } else {
+            gtCustomName.classList.add('hidden');
+            gtCustomName.value = '';
+        }
+    });
+}
+
+// Add Grade Type to local list
+if (addGtBtn) {
+    addGtBtn.addEventListener('click', () => {
+        const type   = gtSelect.value;
+        const name   = type === 'Custom' ? gtCustomName.value.trim() : type;
+        const weight = parseInt(gtWeight.value, 10);
+
+        if (!type) { showMsg('gtMsg', 'Please select a grade type.', true); return; }
+        if (type === 'Custom' && !name) { showMsg('gtMsg', 'Please enter a custom name.', true); return; }
+        if (isNaN(weight) || weight <= 0) { showMsg('gtMsg', 'Please enter a valid weight (e.g., 20).', true); return; }
+
+        // Check for duplicates
+        if (teacherGradeTypes.some(g => g.name.toLowerCase() === name.toLowerCase())) {
+            showMsg('gtMsg', 'This grade type already exists in your list.', true); return;
+        }
+
+        teacherGradeTypes.push({ name, weight });
+        renderGradeTypes();
+
+        // Reset inputs
+        gtSelect.value = '';
+        if (gtCustomName) {
+            gtCustomName.classList.add('hidden');
+            gtCustomName.value = '';
+        }
+        gtWeight.value = '';
+    });
+}
+
+// Remove Grade Type from local list
+window.removeGradeType = function(index) {
+    teacherGradeTypes.splice(index, 1);
+    renderGradeTypes();
+};
+
+// Render the UI List & Update Total
+function renderGradeTypes() {
+    if (!gtList || !gtTotal) return;
+
+    let total = 0;
+    gtList.innerHTML = teacherGradeTypes.map((g, i) => {
+        total += g.weight;
+        return `
+        <div class="flex items-center justify-between p-3 bg-white border border-[#dce3ed] rounded-lg mb-2">
+            <div>
+                <p class="text-[13px] font-bold text-[#0d1f35]">${escHtml(g.name)}</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <span class="text-[12px] font-black text-[#2563eb] bg-[#eef4ff] px-2 py-1 rounded border border-[#c7d9fd]">${g.weight}%</span>
+                <button onclick="window.removeGradeType(${i})" class="text-[#e31b4a] hover:text-red-700 transition" title="Remove">
+                    <i class="fa-solid fa-trash-can"></i>
+                </button>
+            </div>
+        </div>`;
+    }).join('');
+
+    if (teacherGradeTypes.length === 0) {
+        gtList.innerHTML = `<p class="text-[12px] text-[#9ab0c6] italic text-center p-4">No grade types added yet.</p>`;
+    }
+
+    // Visual Counter
+    gtTotal.textContent = `Total Weight: ${total} / 100`;
+    if (total === 100) {
+        gtTotal.className = 'text-[12px] font-black text-green-600 bg-green-50 px-3 py-1.5 rounded border border-green-200';
+    } else if (total > 100) {
+        gtTotal.className = 'text-[12px] font-black text-amber-600 bg-amber-50 px-3 py-1.5 rounded border border-amber-200';
+    } else {
+        gtTotal.className = 'text-[12px] font-black text-[#6b84a0] bg-[#f8fafb] px-3 py-1.5 rounded border border-[#dce3ed]';
+    }
+}
+
+// Save to Firebase
+if (saveGtBtn) {
+    saveGtBtn.addEventListener('click', async () => {
+        if (teacherGradeTypes.length === 0) {
+            showMsg('gtMsg', 'Please add at least one grade type before saving.', true);
+            return;
+        }
+
+        saveGtBtn.disabled = true;
+        saveGtBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...';
+
+        try {
+            await updateDoc(doc(db, 'teachers', session.teacherId), {
+                gradeTypes: teacherGradeTypes
+            });
+
+            // Update session data so other pages don't need to fetch from DB immediately
+            session.teacherData.gradeTypes = teacherGradeTypes;
+            setSessionData('teacher', session);
+
+            showMsg('gtMsg', 'Grade types saved successfully!', false);
+        } catch (e) {
+            console.error('[TeacherSettings] saveGradeTypes:', e);
+            showMsg('gtMsg', 'Failed to save grade types. Please try again.', true);
+        }
+
+        saveGtBtn.disabled = false;
+        saveGtBtn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-2"></i> Save Grade Types';
+    });
+}
