@@ -122,35 +122,35 @@
                 </div>
 
                 <div>
-                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Performance Ratings <span class="text-[#e31b4a]">*</span></label>
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Performance Ratings (Mandatory) <span class="text-[#e31b4a]">*</span></label>
                     <div class="space-y-3 bg-[#f8fafb] border border-[#dce3ed] rounded-lg p-4">
                         <div class="rating-row" data-field="overallRating">
                             <div class="flex items-center justify-between">
-                                <span class="text-[12px] font-bold text-[#0d1f35]">Overall Performance</span>
+                                <span class="text-[12px] font-bold text-[#0d1f35]">Overall Performance <span class="text-[#e31b4a]">*</span></span>
                                 <div class="star-group flex gap-1"></div>
                             </div>
                         </div>
                         <div class="rating-row" data-field="classroomManagement">
                             <div class="flex items-center justify-between">
-                                <span class="text-[12px] font-semibold text-[#374f6b]">Classroom Management</span>
+                                <span class="text-[12px] font-semibold text-[#374f6b]">Classroom Management <span class="text-[#e31b4a]">*</span></span>
                                 <div class="star-group flex gap-1"></div>
                             </div>
                         </div>
                         <div class="rating-row" data-field="curriculumDelivery">
                             <div class="flex items-center justify-between">
-                                <span class="text-[12px] font-semibold text-[#374f6b]">Curriculum Delivery</span>
+                                <span class="text-[12px] font-semibold text-[#374f6b]">Curriculum Delivery <span class="text-[#e31b4a]">*</span></span>
                                 <div class="star-group flex gap-1"></div>
                             </div>
                         </div>
                         <div class="rating-row" data-field="studentEngagement">
                             <div class="flex items-center justify-between">
-                                <span class="text-[12px] font-semibold text-[#374f6b]">Student Engagement</span>
+                                <span class="text-[12px] font-semibold text-[#374f6b]">Student Engagement <span class="text-[#e31b4a]">*</span></span>
                                 <div class="star-group flex gap-1"></div>
                             </div>
                         </div>
                         <div class="rating-row" data-field="professionalConduct">
                             <div class="flex items-center justify-between">
-                                <span class="text-[12px] font-semibold text-[#374f6b]">Professional Conduct</span>
+                                <span class="text-[12px] font-semibold text-[#374f6b]">Professional Conduct <span class="text-[#e31b4a]">*</span></span>
                                 <div class="star-group flex gap-1"></div>
                             </div>
                         </div>
@@ -159,26 +159,28 @@
 
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Strengths</label>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Strengths (Optional)</label>
                         <textarea id="evalStrengths" rows="2" placeholder="What does this teacher do particularly well?" class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded text-[13px] resize-none outline-none"></textarea>
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Areas for Improvement</label>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Areas for Improvement (Optional)</label>
                         <textarea id="evalImprovements" rows="2" placeholder="What areas need development or support?" class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded text-[13px] resize-none outline-none"></textarea>
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Overall Comments & Feedback</label>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Overall Comments & Feedback (Optional)</label>
                         <textarea id="evalComments" rows="2" placeholder="General feedback summary..." class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded text-[13px] resize-none outline-none"></textarea>
                     </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Recommended Action</label>
-                        <select id="evalAction" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none">
+                    <div class="bg-[#f0f9ff] border border-[#bae6fd] p-4 rounded-xl">
+                        <label class="block text-[10px] font-bold text-[#0369a1] uppercase tracking-widest mb-1.5">Administrative Action</label>
+                        <select id="evalAction" class="form-input w-full p-2.5 bg-white border border-[#bae6fd] rounded text-[13px] font-bold text-[#0d1f35] outline-none mb-3">
                             <option value="None">No Action Required</option>
                             <option value="Commendation">Commendation</option>
                             <option value="Professional Development">Professional Development</option>
                             <option value="Formal Warning">Formal Warning</option>
                             <option value="Performance Plan">Performance Improvement Plan</option>
                         </select>
+                        <label class="block text-[9px] font-bold text-[#0369a1] uppercase tracking-widest mb-1.5">Action Note / Justification</label>
+                        <textarea id="evalActionNote" rows="2" placeholder="Add a specific note regarding the recommended action..." class="form-input w-full p-3 bg-white border border-[#bae6fd] rounded text-[12px] resize-none outline-none focus:border-[#0284c7]"></textarea>
                     </div>
                 </div>
 
