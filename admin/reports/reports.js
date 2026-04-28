@@ -2,7 +2,7 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, getDocs, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
-import { letterGrade, gradeColorClass } from '../../assets/js/utils.js';
+import { letterGrade, gradeColorClass, calculateWeightedAverage } from '../../assets/js/utils.js';
 
 // ── 1. INIT ───────────────────────────────────────────────────────────────
 const session = requireAuth('admin', '../login.html');
@@ -12,7 +12,6 @@ injectAdminLayout('reports', 'Reports & Analytics', 'School-wide performance int
 let allSemesters   = [];
 let allTeachers    = [];
 let allStudents    = [];
-let gradeTypeWeights = {};
 let CLASSES        = [];
 
 // ── 3. HELPERS ────────────────────────────────────────────────────────────
@@ -20,45 +19,9 @@ function escHtml(s) {
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-// Weighted or simple average for a single subject's grades
-function calcAvg(grades) {
-    if (!grades || !grades.length) return null;
-    const hasWeights = Object.keys(gradeTypeWeights).length > 0;
-    if (!hasWeights) {
-        return grades.reduce((s, g) => s + (g.max ? g.score / g.max * 100 : 0), 0) / grades.length;
-    }
-    const byType = {};
-    grades.forEach(g => {
-        const t = g.type || 'Other';
-        if (!byType[t]) byType[t] = [];
-        byType[t].push(g.max ? (g.score / g.max) * 100 : 0);
-    });
-    let wSum = 0, wTotal = 0;
-    Object.entries(byType).forEach(([type, scores]) => {
-        const typeAvg = scores.reduce((a, b) => a + b, 0) / scores.length;
-        const w = gradeTypeWeights[type] || 0;
-        if (w > 0) { wSum += typeAvg * w; wTotal += w; }
-    });
-    return wTotal > 0 ? wSum / wTotal
-        : grades.reduce((s, g) => s + (g.max ? g.score / g.max * 100 : 0), 0) / grades.length;
-}
-
-// ── 4. LOAD GRADE TYPES ───────────────────────────────────────────────────
-async function loadGradeTypes() {
-    try {
-        const cached = localStorage.getItem(`connectus_gradeTypes_${session.schoolId}`);
-        const types  = cached
-            ? JSON.parse(cached)
-            : (await getDocs(collection(db, 'schools', session.schoolId, 'gradeTypes'))).docs.map(d => ({ id: d.id, ...d.data() }));
-        types.forEach(t => { if (t.weight) gradeTypeWeights[t.name] = t.weight; });
-    } catch (_) {}
-}
-
-// ── 5. LIVE KPI DASHBOARD (loads on page open) ────────────────────────────
+// ── 4. LIVE KPI DASHBOARD (loads on page open) ────────────────────────────
 async function loadLiveDashboard() {
     try {
-        await loadGradeTypes();
-
         const activeSem = allSemesters.find(s => s.id === session.activeSemesterId);
         const kpiLabel  = document.getElementById('kpiPeriodLabel');
         if (kpiLabel) kpiLabel.textContent = activeSem ? activeSem.name : 'All Periods';
@@ -86,9 +49,8 @@ async function loadLiveDashboard() {
 
             let sumAvgs = 0, totalSubjs = 0, failingSubjects = 0;
             Object.values(bySubj).forEach(subGrades => {
-                const subAvg = calcAvg(subGrades);
-                if (subAvg !== null) {
-                    const roundedSubAvg = Math.round(subAvg);
+                const roundedSubAvg = calculateWeightedAverage(subGrades, session.schoolId);
+                if (roundedSubAvg !== null) {
                     sumAvgs += roundedSubAvg;
                     totalSubjs++;
                     if (roundedSubAvg < 60) failingSubjects++;
@@ -154,7 +116,7 @@ async function loadLiveDashboard() {
     }
 }
 
-// ── 6. DYNAMIC SUBJECT POPULATION ─────────────────────────────────────────
+// ── 5. DYNAMIC SUBJECT POPULATION ─────────────────────────────────────────
 function populateSubjects() {
     const scope  = document.getElementById('reportScope').value;
     const target = document.getElementById('reportTarget').value;
@@ -196,7 +158,7 @@ function populateSubjects() {
     if (hasSelection) subjectSelect.value = currentSelection;
 }
 
-// ── 7. INIT BUILDER DROPDOWNS ─────────────────────────────────────────────
+// ── 6. INIT BUILDER DROPDOWNS ─────────────────────────────────────────────
 async function initializeBuilder() {
     try {
         const [semSnap, tSnap, sSnap] = await Promise.all([
@@ -238,7 +200,7 @@ async function initializeBuilder() {
     }
 }
 
-// ── 8. SCOPE & TARGET DROPDOWNS ───────────────────────────────────────────
+// ── 7. SCOPE & TARGET DROPDOWNS ───────────────────────────────────────────
 document.getElementById('reportScope').addEventListener('change', e => {
     const scope  = e.target.value;
     const tc     = document.getElementById('targetContainer');
@@ -270,7 +232,7 @@ document.getElementById('reportScope').addEventListener('change', e => {
 document.getElementById('reportTarget').addEventListener('change', populateSubjects);
 
 
-// ── 9. GENERATE REPORT ────────────────────────────────────────────────────
+// ── 8. GENERATE REPORT ────────────────────────────────────────────────────
 document.getElementById('generateBtn').addEventListener('click', async () => {
     const period  = document.getElementById('reportPeriod').value;
     const periodName = document.getElementById('reportPeriod').options[document.getElementById('reportPeriod').selectedIndex].text;
@@ -357,9 +319,8 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
             const subjectAverages = [];
 
             Object.entries(bySubj).forEach(([sub, subGrades]) => {
-                const subAvg = calcAvg(subGrades);
-                if (subAvg !== null) {
-                    const roundedSubAvg = Math.round(subAvg);
+                const roundedSubAvg = calculateWeightedAverage(subGrades, session.schoolId);
+                if (roundedSubAvg !== null) {
                     sumAvgs += roundedSubAvg;
                     totalSubjs++;
                     
@@ -556,7 +517,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
 
         const subjRows = Object.entries(bySubjGlobal)
             .map(([sub, grades]) => {
-                const avg    = Math.round(calcAvg(grades) || 0);
+                const avg    = calculateWeightedAverage(grades, session.schoolId) || 0;
                 const pass   = grades.filter(g => g.max && (g.score / g.max * 100) >= 60).length;
                 const pct    = grades.length ? Math.round(pass / grades.length * 100) : 0;
                 const col    = avg >= 75 ? '#0ea871' : avg >= 60 ? '#b45309' : '#e31b4a';
@@ -634,7 +595,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     }
 });
 
-// ── 10. COMPARISON TABLE ────────────────────────────────────────────────────
+// ── 9. COMPARISON TABLE ────────────────────────────────────────────────────
 function renderTable(scope, gradedStudents, allGrades, processedStudents) {
     const head = document.getElementById('reportTableHead');
     const body = document.getElementById('reportTableBody');
@@ -731,7 +692,7 @@ function renderTable(scope, gradedStudents, allGrades, processedStudents) {
     }
 }
 
-// ── 11. EXPORT & PRINT ────────────────────────────────────────────────────
+// ── 10. EXPORT & PRINT ────────────────────────────────────────────────────
 document.getElementById('printReportBtn').addEventListener('click', () => window.print());
 
 document.getElementById('exportCsvBtn').addEventListener('click', () => {
