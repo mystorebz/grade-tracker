@@ -939,6 +939,9 @@ async function renderSubjectsTab() {
             results.forEach(snap => snap.forEach(d => allGrades.push(d.data())));
         }
 
+        // Get the teacher's specific rubric
+        const gradeTypes = currentTeacherData.gradeTypes || currentTeacherData.customGradeTypes || ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
+
         // Compute median & average natively per subject
         const statsBySubject = {};
         subjects.forEach(s => {
@@ -949,7 +952,9 @@ async function renderSubjectsTab() {
             }
             
             const scores = sGrades.map(g => (g.max ? (g.score / g.max) * 100 : 0)).sort((a, b) => a - b);
-            const avg = calculateWeightedAverage(sGrades, session.schoolId);
+            
+            // CHANGED: Use the teacher's rubric instead of session.schoolId
+            const avg = calculateWeightedAverage(sGrades, gradeTypes);
             
             const mid = Math.floor(scores.length / 2);
             const med = scores.length % 2 !== 0 ? scores[mid] : (scores[mid - 1] + scores[mid]) / 2;
@@ -1567,6 +1572,7 @@ window.printTeacherPortfolio = async (tId) => {
         <body>
             <div class="header">
                 <div>
+                    <img src="${session.logo || ''}" alt="${escHtml(schoolName)}" style="max-height:60px; object-fit:contain; margin-bottom:15px;" onerror="this.style.display='none'">
                     <div class="school-name">${escHtml(schoolName)}</div>
                     <div class="doc-type">Official Educator Portfolio</div>
                 </div>
@@ -1606,7 +1612,7 @@ window.printTeacherPortfolio = async (tId) => {
             <div>${studentsHtml}</div>
 
             <div class="footer">
-                Issued by ${escHtml(schoolName)} · ConnectUs National Registry · ${new Date().toLocaleDateString()}
+                Issued by ${escHtml(schoolName)} · Powered by ConnectUs
             </div>
         </body>
         </html>`;
