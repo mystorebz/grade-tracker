@@ -1,12 +1,12 @@
 import { db } from '../../assets/js/firebase-init.js';
 import { doc, getDoc, getDocs, addDoc, collection } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
-import { injectAdminLayout } from '../../assets/js/layout-admin.js';
+import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { letterGrade, gradeFill } from '../../assets/js/utils.js';
 
 // ── 1. AUTH & LAYOUT ──────────────────────────────────────────────────────
-const session = requireAuth('admin', '../login.html');
-injectAdminLayout('grade-entry', 'Enter Grade', 'Admin and sub-admin grade entry for any student at this school', false, false);
+const session = requireAuth('teacher', '../login.html');
+injectTeacherLayout('grade-entry', 'Enter Grade', 'Log a new grade for a student in your active roster', false);
 
 // ── 2. STATE ──────────────────────────────────────────────────────────────
 let foundStudent  = null; 
@@ -15,13 +15,23 @@ let rawSemesters  = [];
 // ── 3. INIT ───────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('agDate').valueAsDate = new Date();
+    
     await loadSemesters();
-    await loadGradeTypes();
+    loadGradeTypes(); // Teacher grade types can load immediately!
+
     document.getElementById('lookupBtn').addEventListener('click', lookupStudent);
     document.getElementById('lookupId').addEventListener('keydown', e => { if (e.key === 'Enter') lookupStudent(); });
     document.getElementById('agScore').addEventListener('input', updatePreview);
     document.getElementById('agMax').addEventListener('input', updatePreview);
     document.getElementById('saveGradeBtn').addEventListener('click', saveGrade);
+
+    // Auto-Lookup hook for the "Quick Grade" button on the Roster page
+    const quickGradeId = localStorage.getItem('connectus_quick_grade_student');
+    if (quickGradeId) {
+        document.getElementById('lookupId').value = quickGradeId;
+        lookupStudent();
+        localStorage.removeItem('connectus_quick_grade_student'); // Clear it after use
+    }
 });
 
 // ── 4. LOAD SEMESTERS ─────────────────────────────────────────────────────
@@ -51,29 +61,22 @@ async function loadSemesters() {
             if (s.id === activeId) opt.selected = true;
             sel.appendChild(opt);
         });
-    } catch (e) { console.error('[AdminGradeEntry] loadSemesters:', e); }
+    } catch (e) { console.error('[TeacherGradeEntry] loadSemesters:', e); }
 }
 
-// ── 5. LOAD GRADE TYPES ───────────────────────────────────────────────────
-async function loadGradeTypes() {
+// ── 5. LOAD GRADE TYPES (TEACHER SPECIFIC) ────────────────────────────────
+function loadGradeTypes() {
     const sel = document.getElementById('agType');
-    try {
-        const cacheKey = 'connectus_gradeTypes_' + session.schoolId;
-        let types = null;
-        const cached = localStorage.getItem(cacheKey);
-        
-        if (cached) types = JSON.parse(cached);
-        else {
-            const snap = await getDocs(collection(db, 'schools', session.schoolId, 'gradeTypes'));
-            types = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
-            if (types.length) localStorage.setItem(cacheKey, JSON.stringify(types));
-        }
-
-        if (!types || !types.length) types = [{ name: 'Test' }, { name: 'Quiz' }, { name: 'Assignment' }, { name: 'Homework' }, { name: 'Project' }, { name: 'Final Exam' }];
-        sel.innerHTML = '<option value="">Select type...</option>' + types.map(t => '<option value="' + t.name + '">' + t.name + (t.weight ? ' (' + t.weight + '%)' : '') + '</option>').join('');
-    } catch (e) {
-        sel.innerHTML = '<option value="">Test</option><option>Quiz</option><option>Assignment</option><option>Project</option><option>Final Exam</option>';
-    }
+    
+    // Pull exactly what they created in their Settings!
+    const defaultTypes = [{ name: 'Test' }, { name: 'Quiz' }, { name: 'Assignment' }, { name: 'Homework' }, { name: 'Project' }, { name: 'Final Exam' }];
+    const types = session.teacherData.gradeTypes || session.teacherData.customGradeTypes || defaultTypes;
+    
+    sel.innerHTML = '<option value="">Select type...</option>' + types.map(t => {
+        const name = t.name || t;
+        const weight = t.weight ? ` (${t.weight}%)` : '';
+        return `<option value="${name}">${name}${weight}</option>`;
+    }).join('');
 }
 
 // ── 6. STUDENT LOOKUP ─────────────────────────────────────────────────────
@@ -95,8 +98,10 @@ async function lookupStudent() {
         if (!snap.exists()) { showLookupMsg('No student found with that ID.'); btn.disabled = false; btn.innerHTML = 'Look Up'; return; }
 
         const data = snap.data();
-        if (data.currentSchoolId !== session.schoolId) {
-            showLookupMsg(data.currentSchoolId && data.currentSchoolId !== '' ? 'This student is enrolled at a different school.' : 'This student is not currently enrolled at your school.');
+        
+        // Ensure student actually belongs to THIS teacher
+        if (data.teacherId !== session.teacherId) {
+            showLookupMsg('This student is not assigned to your active roster.');
             btn.disabled = false; btn.innerHTML = 'Look Up'; return;
         }
 
@@ -111,6 +116,9 @@ async function lookupStudent() {
         document.getElementById('badgeMeta').textContent    = [data.className || 'Unassigned class', data.dob ? `DOB: ${data.dob}` : ''].filter(Boolean).join(' · ');
         document.getElementById('badgeId').textContent      = snap.id;
 
+        // Auto-fill subject based on the student's class (if you want to implement this later)
+        // document.getElementById('agSubject').value = ...
+        
         badge.classList.remove('hidden'); form.classList.remove('hidden');
         form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -176,12 +184,10 @@ async function saveGrade() {
     btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Committing...';
 
     try {
-        const adminDisplayName = session.isSuperAdmin ? (session.schoolName || 'Super Admin') : (session.adminName || 'Sub-Admin');
-
-        // ADDED: Write to global student passport path
+        // Teacher write to global student passport path
         await addDoc(collection(db, 'students', foundStudent.id, 'grades'), {
-            schoolId:        session.schoolId, // Ensures it can be grouped correctly
-            teacherId:       foundStudent.teacherId || '',  
+            schoolId:        session.schoolId,
+            teacherId:       session.teacherId,  
             semesterId:      semId,
             subject,
             type,
@@ -189,13 +195,9 @@ async function saveGrade() {
             title,
             score,
             max,
-            notes:           notes ? `[Admin] ${notes}` : '',
+            notes,
             historyLogs:     [],
-            createdAt:       new Date().toISOString(),
-            enteredByAdmin:  true,
-            adminId:         session.adminId || session.schoolId,
-            adminName:       adminDisplayName,
-            adminRole:       session.isSuperAdmin ? 'super_admin' : 'sub_admin'
+            createdAt:       new Date().toISOString()
         });
 
         document.getElementById('agScore').value = '';
