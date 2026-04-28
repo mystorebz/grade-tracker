@@ -178,7 +178,7 @@ function renderSummaryCards(evalMap) {
 
     document.getElementById('summaryCards').innerHTML = [
         { label: 'Total Evaluations', value: total, icon: 'fa-file-lines', color: '#2563eb', bg: '#eef4ff' },
-        { label: 'School Avg Rating', value: avgAll, icon: 'fa-star', color: '#f59e0b', bg: '#fffbeb' },
+        { label: 'Average Teacher Rating', value: avgAll, icon: 'fa-star', color: '#f59e0b', bg: '#fffbeb' },
         { label: 'Teachers Evaluated', value: `${evalledCount} / ${allTeachers.length}`, icon: 'fa-chalkboard-user', color: '#0ea871', bg: '#edfaf4' }
     ].map(c => `
         <div style="background:#fff;border:1px solid #dce3ed;border-radius:14px;padding:20px 22px;display:flex;align-items:center;gap:16px;box-shadow:0 1px 3px rgba(13,31,53,0.06)">
@@ -217,7 +217,7 @@ window.openEvalPanel = async function(teacherId, teacherName) {
             return;
         }
 
-        document.getElementById('evalPanelBody').innerHTML = evals.map((e, index) => {
+        document.getElementById('evalPanelBody').innerHTML = evals.map((e) => {
             const stars = [1,2,3,4,5].map(n => `<span style="color:${n<=(e.overallRating||0)?'#f59e0b':'#dce3ed'};font-size:14px">★</span>`).join('');
             const dateStr = e.date ? new Date(e.date).toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' }) : '—';
             
@@ -227,50 +227,77 @@ window.openEvalPanel = async function(teacherId, teacherName) {
                            : 'color:#6b84a0;background:#f4f7fb;border-color:#dce3ed';
 
             return `
-            <div class="bg-white border border-[#dce3ed] rounded-xl overflow-hidden mb-3">
+            <div class="bg-white border border-[#dce3ed] rounded-xl overflow-hidden mb-4 shadow-sm">
                 <div class="px-5 py-4 cursor-pointer hover:bg-[#f8fafb] transition flex items-center justify-between" onclick="window.toggleEvalAccordion(this)">
                     <div>
-                        <p class="font-black text-[13px] text-[#0d1f35]">${escHtml(e.type)}</p>
-                        <p class="text-[10px] font-semibold text-[#9ab0c6] mt-0.5">${dateStr} · Evaluated by ${escHtml(e.evaluatorName || 'Admin')}</p>
+                        <p class="font-black text-[14px] text-[#0d1f35]">${escHtml(e.type)}</p>
+                        <p class="text-[11px] font-semibold text-[#6b84a0] mt-0.5">${dateStr} · Evaluated by ${escHtml(e.evaluatorName || 'Admin')}</p>
                     </div>
-                    <div class="flex items-center gap-4 text-right">
-                        <div>
-                            <div class="text-[15px] leading-none flex gap-0.5">${stars}</div>
-                        </div>
-                        <i class="fa-solid fa-chevron-down text-[#c5d0db] transition-transform ${index === 0 ? 'rotate-180' : ''}"></i>
+                    <div class="flex items-center gap-5 text-right">
+                        <div class="text-[16px] leading-none flex gap-0.5">${stars}</div>
+                        <i class="fa-solid fa-chevron-down text-[#c5d0db] transition-transform duration-200"></i>
                     </div>
                 </div>
-                <div class="eval-body ${index === 0 ? 'open' : ''} bg-[#fafbfc] border-t border-[#f0f4f8] p-5">
+                
+                <div class="eval-body bg-[#fafbfc] border-t border-[#f0f4f8] p-6 hidden">
                     
-                    ${e.subjectObserved || e.studentFocus ? `
-                        <div class="flex flex-wrap gap-2 mb-4 bg-white border border-[#dce3ed] p-2.5 rounded-lg">
-                            ${e.subjectObserved ? `<span class="text-[10px] font-bold text-[#2563eb] bg-[#eef4ff] px-2 py-1 rounded border border-[#c7d9fd]">Subject: ${escHtml(e.subjectObserved)}</span>` : ''}
-                            ${e.studentFocus ? `<span class="text-[10px] font-bold text-[#6b84a0] bg-[#f0f4f8] px-2 py-1 rounded border border-[#dce3ed]">Student Focus: ${escHtml(e.studentFocus)}</span>` : ''}
-                        </div>
-                    ` : ''}
-
-                    <div class="grid grid-cols-2 gap-4 mb-4">
-                        ${e.strengths ? `<div>
-                            <p class="text-[10px] font-bold text-[#0ea871] uppercase tracking-widest mb-1.5"><i class="fa-solid fa-arrow-trend-up mr-1"></i> Strengths</p>
-                            <p class="text-[12px] text-[#374f6b] font-medium leading-relaxed">${escHtml(e.strengths)}</p>
-                        </div>` : ''}
-                        ${e.areasForImprovement ? `<div>
-                            <p class="text-[10px] font-bold text-[#e31b4a] uppercase tracking-widest mb-1.5"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Improvements</p>
-                            <p class="text-[12px] text-[#374f6b] font-medium leading-relaxed">${escHtml(e.areasForImprovement)}</p>
-                        </div>` : ''}
+                    <div class="flex justify-end mb-4 border-b border-[#f0f4f8] pb-4">
+                        <button onclick="window.printSingleEvaluation('${teacherId}', '${e.id}')" class="flex items-center gap-2 bg-white hover:bg-[#f4f7fb] text-[#374f6b] font-bold px-3 py-1.5 rounded-[var(--r-md)] text-[11px] transition shadow-sm border border-[#dce3ed]">
+                            <i class="fa-solid fa-print"></i> Print Official Record
+                        </button>
                     </div>
 
-                    ${e.comments ? `
-                        <div class="mb-4 border-t border-[#dce3ed] pt-4">
-                            <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5"><i class="fa-regular fa-comment-dots mr-1"></i> Overall Comments</p>
-                            <p class="text-[12px] text-[#374f6b] font-medium leading-relaxed">${escHtml(e.comments)}</p>
+                    ${e.subjectObserved || e.studentFocus ? `
+                        <div class="flex flex-wrap gap-2 mb-5">
+                            ${e.subjectObserved ? `<span class="text-[10px] font-bold text-[#2563eb] bg-[#eef4ff] px-2.5 py-1 rounded border border-[#c7d9fd]">Subject: ${escHtml(e.subjectObserved)}</span>` : ''}
+                            ${e.studentFocus ? `<span class="text-[10px] font-bold text-[#6b84a0] bg-[#f0f4f8] px-2.5 py-1 rounded border border-[#dce3ed]">Focus: ${escHtml(e.studentFocus)}</span>` : ''}
                         </div>
                     ` : ''}
+
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-white border border-[#dce3ed] rounded-lg p-3 text-center shadow-sm">
+                            <p class="text-[9px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Classroom Mgmt</p>
+                            <p class="text-[16px] font-black text-[#0d1f35]">${e.classroomManagement ? e.classroomManagement + '/5' : 'N/A'}</p>
+                        </div>
+                        <div class="bg-white border border-[#dce3ed] rounded-lg p-3 text-center shadow-sm">
+                            <p class="text-[9px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Curriculum Delivery</p>
+                            <p class="text-[16px] font-black text-[#0d1f35]">${e.curriculumDelivery ? e.curriculumDelivery + '/5' : 'N/A'}</p>
+                        </div>
+                        <div class="bg-white border border-[#dce3ed] rounded-lg p-3 text-center shadow-sm">
+                            <p class="text-[9px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Student Engagement</p>
+                            <p class="text-[16px] font-black text-[#0d1f35]">${e.studentEngagement ? e.studentEngagement + '/5' : 'N/A'}</p>
+                        </div>
+                        <div class="bg-white border border-[#dce3ed] rounded-lg p-3 text-center shadow-sm">
+                            <p class="text-[9px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Professional Conduct</p>
+                            <p class="text-[16px] font-black text-[#0d1f35]">${e.professionalConduct ? e.professionalConduct + '/5' : 'N/A'}</p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        ${e.strengths ? `
+                            <div class="bg-[#edfaf4] border border-[#c6f0db] rounded-lg p-4">
+                                <p class="text-[10px] font-bold text-[#0ea871] uppercase tracking-widest mb-1.5"><i class="fa-solid fa-arrow-trend-up mr-1"></i> Key Strengths</p>
+                                <p class="text-[12px] text-[#065f46] font-medium leading-relaxed">${escHtml(e.strengths)}</p>
+                            </div>
+                        ` : ''}
+                        ${e.areasForImprovement ? `
+                            <div class="bg-[#fff0f3] border border-[#ffd6de] rounded-lg p-4">
+                                <p class="text-[10px] font-bold text-[#e31b4a] uppercase tracking-widest mb-1.5"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Areas for Improvement</p>
+                                <p class="text-[12px] text-[#9f1239] font-medium leading-relaxed">${escHtml(e.areasForImprovement)}</p>
+                            </div>
+                        ` : ''}
+                        ${e.comments ? `
+                            <div class="bg-white border border-[#dce3ed] rounded-lg p-4 shadow-sm">
+                                <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5"><i class="fa-regular fa-comment-dots mr-1"></i> Evaluator Comments</p>
+                                <p class="text-[12px] text-[#374f6b] font-medium leading-relaxed">${escHtml(e.comments)}</p>
+                            </div>
+                        ` : ''}
+                    </div>
                     
                     ${e.recommendedAction && e.recommendedAction !== 'None' ? `
-                        <div class="mt-4 flex items-center gap-2">
-                            <span class="text-[10px] font-bold uppercase tracking-widest text-[#6b84a0]">Action:</span>
-                            <span style="font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:99px;border:1px solid;${recColor}">${e.recommendedAction}</span>
+                        <div class="mt-5 flex items-center justify-between border-t border-[#dce3ed] pt-4">
+                            <span class="text-[10px] font-bold uppercase tracking-widest text-[#6b84a0]">Recommended Action</span>
+                            <span style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:99px;border:1px solid;${recColor}">${e.recommendedAction}</span>
                         </div>
                     ` : ''}
                 </div>
@@ -287,8 +314,8 @@ window.openEvalPanel = async function(teacherId, teacherName) {
 window.toggleEvalAccordion = (header) => {
     const body    = header.nextElementSibling;
     const chevron = header.querySelector('.fa-chevron-down');
-    body.classList.toggle('open');
-    if (chevron) chevron.style.transform = body.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0deg)';
+    body.classList.toggle('hidden');
+    if (chevron) chevron.style.transform = body.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';
 };
 
 window.closeEvalPanel = () => closeOverlay('evalHistoryPanel', 'evalHistoryPanelInner', true);
@@ -427,6 +454,150 @@ function showEvalMsg(msg) {
     el.textContent = msg;
     el.classList.remove('hidden');
 }
+
+
+// ── 9. PRINT FORMAL EVALUATION ────────────────────────────────────────────
+window.printSingleEvaluation = function(teacherId, evalId) {
+    const evals = evalMapCache[teacherId] || [];
+    const e = evals.find(x => x.id === evalId);
+    const t = allTeachers.find(x => x.id === teacherId);
+    
+    if (!e || !t) {
+        alert("Could not load the evaluation data for printing.");
+        return;
+    }
+
+    const schoolName = session.schoolName || session.schoolId || 'ConnectUs School';
+    const dateStr = e.date ? new Date(e.date).toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' }) : '—';
+    
+    const html = `<!DOCTYPE html>
+    <html>
+    <head>
+        <title>Official Evaluation - ${escHtml(t.name)}</title>
+        <style>
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 48px 40px; color: #1e293b; line-height: 1.6; font-size: 13px; }
+            .header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid #0d1f35; padding-bottom: 20px; }
+            .header img { max-height: 70px; margin-bottom: 15px; }
+            .header h1 { font-size: 22px; font-weight: 900; color: #0d1f35; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 5px; }
+            .header h2 { font-size: 14px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin: 0; }
+            
+            .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 30px; background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; }
+            .meta-item label { display: block; font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; font-weight: bold; margin-bottom: 3px; }
+            .meta-item span { font-size: 13px; font-weight: bold; color: #0f172a; }
+
+            .section-title { font-size: 12px; font-weight: 900; color: #0d1f35; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin: 24px 0 16px; text-transform: uppercase; letter-spacing: 0.05em; }
+            
+            .rubric-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+            .rubric-table th { background: #f1f5f9; padding: 12px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; border: 1px solid #e2e8f0; }
+            .rubric-table td { padding: 12px; border: 1px solid #e2e8f0; font-size: 13px; font-weight: bold; color: #0f172a; }
+            .rubric-table .score { text-align: center; width: 80px; font-size: 14px; }
+            
+            .feedback-block { margin-bottom: 20px; }
+            .feedback-block h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: bold; color: #64748b; margin-bottom: 6px; }
+            .feedback-block p { background: #fff; border: 1px solid #e2e8f0; padding: 16px; border-radius: 6px; color: #334155; white-space: pre-wrap; }
+
+            .action-box { display: inline-block; padding: 8px 16px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: bold; font-size: 12px; color: #0f172a; margin-bottom: 40px; }
+
+            .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 60px; }
+            .sig-line { border-top: 1px solid #94a3b8; padding-top: 8px; }
+            .sig-line p { font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 2px; }
+            .sig-line span { font-size: 12px; color: #0f172a; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <img src="../../assets/images/logo.png" onerror="this.style.display='none'">
+            <h1>Official Educator Evaluation</h1>
+            <h2>${escHtml(schoolName)}</h2>
+        </div>
+
+        <div class="meta-grid">
+            <div class="meta-item"><label>Educator Name</label><span>${escHtml(t.name)}</span></div>
+            <div class="meta-item"><label>Global Teacher ID</label><span style="font-family: monospace;">${escHtml(t.id)}</span></div>
+            <div class="meta-item"><label>Evaluation Date</label><span>${dateStr}</span></div>
+            <div class="meta-item"><label>Evaluation Type</label><span>${escHtml(e.type)}</span></div>
+            <div class="meta-item"><label>Evaluator Name</label><span>${escHtml(e.evaluatorName || 'Administrator')}</span></div>
+            <div class="meta-item"><label>Subject Focus</label><span>${e.subjectObserved ? escHtml(e.subjectObserved) : 'N/A'}</span></div>
+        </div>
+
+        <div class="section-title">Performance Rubric</div>
+        <table class="rubric-table">
+            <thead>
+                <tr>
+                    <th>Performance Category</th>
+                    <th class="score">Rating (1-5)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Overall Performance</td>
+                    <td class="score" style="color: #2563eb;">${e.overallRating || e.performanceScore || 'N/A'}</td>
+                </tr>
+                <tr>
+                    <td>Classroom Management</td>
+                    <td class="score">${e.classroomManagement || 'N/A'}</td>
+                </tr>
+                <tr>
+                    <td>Curriculum Delivery</td>
+                    <td class="score">${e.curriculumDelivery || 'N/A'}</td>
+                </tr>
+                <tr>
+                    <td>Student Engagement</td>
+                    <td class="score">${e.studentEngagement || 'N/A'}</td>
+                </tr>
+                <tr>
+                    <td>Professional Conduct</td>
+                    <td class="score">${e.professionalConduct || 'N/A'}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="section-title">Qualitative Feedback</div>
+        ${e.strengths ? `
+        <div class="feedback-block">
+            <h4>Key Strengths</h4>
+            <p>${escHtml(e.strengths)}</p>
+        </div>` : ''}
+        ${e.areasForImprovement ? `
+        <div class="feedback-block">
+            <h4>Areas for Improvement</h4>
+            <p>${escHtml(e.areasForImprovement)}</p>
+        </div>` : ''}
+        ${e.comments ? `
+        <div class="feedback-block">
+            <h4>Evaluator Comments</h4>
+            <p>${escHtml(e.comments)}</p>
+        </div>` : ''}
+
+        <div class="section-title">Administrative Action</div>
+        <div class="action-box">
+            Recommended Action: ${e.recommendedAction && e.recommendedAction !== 'None' ? escHtml(e.recommendedAction) : 'None / Continue as standard'}
+        </div>
+
+        <div class="signatures">
+            <div class="sig-line">
+                <p>Evaluator Signature</p>
+                <span>${escHtml(e.evaluatorName || 'Administrator')}</span>
+            </div>
+            <div class="sig-line">
+                <p>Educator Signature</p>
+                <span>${escHtml(t.name)}</span>
+            </div>
+        </div>
+        
+        <div style="margin-top: 40px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 14px;">
+            This document serves as an official performance record within the ConnectUs National Registry.
+        </div>
+    </body>
+    </html>`;
+
+    const w = window.open('', '_blank');
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    setTimeout(() => w.print(), 500);
+};
 
 // ── INIT ──────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', loadPage);
