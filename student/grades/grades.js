@@ -2,6 +2,7 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectStudentLayout } from '../../assets/js/layout-student.js';
+import { calculateWeightedAverage } from '../../assets/js/utils.js'; // Added Math Engine
 
 // ── 1. INIT & AUTH ────────────────────────────────────────────────────────
 const session = requireAuth('student', '../login.html');
@@ -18,6 +19,7 @@ const noCurrentGradesMsg = document.getElementById('noCurrentGradesMsg');
 
 let currentGrades = [];
 let schoolActiveSemesterId = null;
+let teacherGradeTypes = []; // Added to store the teacher's specific rubric
 
 // ── 2. UI HELPERS ─────────────────────────────────────────────────────────
 function getGradeStyle(p) {
@@ -66,7 +68,16 @@ async function loadCurrentGrades() {
             document.getElementById('activeSemesterDisplay').textContent = semSnap.data().name;
         }
 
-        // ADDED: Query directly from the global student passport, filtering by the current school
+        // ADDED: Fetch the specific teacher's rubric based on the student's assigned teacherId
+        const tId = session.studentData.teacherId;
+        if (tId) {
+            const tSnap = await getDoc(doc(db, 'teachers', tId));
+            if (tSnap.exists()) {
+                teacherGradeTypes = tSnap.data().gradeTypes || tSnap.data().customGradeTypes || [];
+            }
+        }
+
+        // Query directly from the global student passport, filtering by the current school
         const q = query(
             collection(db, 'students', session.studentId, 'grades'),
             where('schoolId', '==', session.schoolId),
@@ -101,8 +112,18 @@ function renderSubjectAccordions(grades) {
         bySub[s].push(g); 
     });
 
+    // Build the smart UI subtitle for weights
+    let rubricSubtitle = '';
+    if (teacherGradeTypes && teacherGradeTypes.length > 0) {
+        rubricSubtitle = teacherGradeTypes.map(t => `${t.name} ${t.weight}%`).join(' • ');
+    } else {
+        rubricSubtitle = "Standard Grading (Unweighted)";
+    }
+
     currentSubjectsContainer.innerHTML = Object.entries(bySub).map(([subject, gList]) => {
-        const avg = gList.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / gList.length;
+        // UPDATED: Use the math engine with the fetched teacher rubric
+        const avgRaw = calculateWeightedAverage(gList, teacherGradeTypes);
+        const avg = avgRaw !== null ? avgRaw : 0;
         const style = getGradeStyle(Math.round(avg));
         
         const rows = gList.sort((a, b) => (b.date || '').localeCompare(a.date || '')).map(g => {
@@ -111,11 +132,15 @@ function renderSubjectAccordions(grades) {
             const badge = isNew(g.date, g.createdAt) ? `<span class="new-badge">New</span>` : '';
             const hasNotes = g.notes || (g.historyLogs && g.historyLogs.length > 0);
             
+            // Look up the weight for this specific assignment type to inject into the UI
+            const typeDef = teacherGradeTypes.find(t => t.name && g.type && t.name.toLowerCase() === g.type.toLowerCase());
+            const weightBadge = typeDef ? ` • ${typeDef.weight}% Weight` : '';
+            
             return `
             <div class="bg-white border border-slate-200 rounded-xl p-3 sm:p-4 flex items-center justify-between hover:shadow-md transition cursor-pointer mb-2 last:mb-0" onclick="window.viewGradeDetails('${g.id}')">
                 <div class="flex-1 min-w-0">
                     <p class="font-black text-slate-800 text-sm sm:text-base truncate">${g.title} ${badge}</p>
-                    <p class="text-xs text-slate-400 font-bold mt-1 uppercase tracking-wider">${g.type} • ${g.date}</p>
+                    <p class="text-xs text-slate-400 font-bold mt-1 uppercase tracking-wider">${g.type}${weightBadge} • ${g.date}</p>
                 </div>
                 <div class="flex items-center gap-3 sm:gap-5 flex-shrink-0 ml-2">
                     <div class="text-right">
@@ -139,6 +164,7 @@ function renderSubjectAccordions(grades) {
                     <div>
                         <h3 class="text-lg sm:text-xl font-extrabold text-slate-800">${subject}</h3>
                         <p class="text-xs text-slate-500 font-bold mt-1 uppercase tracking-wider">${gList.length} Assignment${gList.length !== 1 ? 's' : ''}</p>
+                        <p class="text-[10px] text-indigo-500 font-bold mt-1 tracking-wide">${rubricSubtitle}</p>
                     </div>
                 </div>
                 <div class="flex items-center gap-4">
@@ -161,8 +187,12 @@ window.viewGradeDetails = function(gradeId) {
     
     const p = g.max ? Math.round((g.score / g.max) * 100) : 0;
     
+    // Inject weight into the modal context
+    const typeDef = teacherGradeTypes.find(t => t.name && g.type && t.name.toLowerCase() === g.type.toLowerCase());
+    const weightBadge = typeDef ? ` (${typeDef.weight}% weight)` : '';
+    
     document.getElementById('modalTitle').innerText = g.title;
-    document.getElementById('modalMeta').innerText = `${g.date} • ${g.subject} • ${g.type}`;
+    document.getElementById('modalMeta').innerText = `${g.date} • ${g.subject} • ${g.type}${weightBadge}`;
     document.getElementById('modalScore').innerText = `${g.score} / ${g.max}`;
     
     const pEl = document.getElementById('modalPercentage');
