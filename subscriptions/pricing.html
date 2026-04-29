@@ -2,18 +2,38 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Subscribe - ConnectUs</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-</head>
-<body class="bg-slate-900 text-slate-200 font-sans min-h-screen flex flex-col items-center py-12">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subscribe - ConnectUs | Modern Educational Connections</title>
+    
+    <link rel="icon" type="image/x-icon" href="../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/images/favicon-32x32.png">
 
-    <div class="text-center max-w-2xl mx-auto mb-12 px-4">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <link rel="stylesheet" href="../assets/css/global.css">
+</head>
+<body class="bg-slate-900 text-slate-200 antialiased min-h-screen flex flex-col items-center">
+
+    <nav class="w-full max-w-6xl mx-auto px-6 py-6 flex items-center justify-between mb-4">
+        <a href="../index.html" class="flex items-center gap-3 hover:opacity-80 transition">
+            <img src="../assets/images/logo.png" alt="ConnectUs Logo" class="h-10 w-auto">
+            <span class="font-black text-white text-xl tracking-tight">ConnectUs</span>
+        </a>
+        <a href="../index.html" class="text-slate-400 font-bold hover:text-white transition text-sm">
+            ← Back to Home
+        </a>
+    </nav>
+
+    <div class="text-center max-w-2xl mx-auto mb-12 px-4 mt-8">
         <h1 class="text-4xl font-black text-white mb-4">Choose Your Plan</h1>
         <p class="text-slate-400">Simple, transparent pricing to upgrade your school's management.</p>
     </div>
 
-    <div id="pricingCardsContainer" class="flex flex-wrap justify-center gap-8 max-w-6xl px-4">
+    <div id="pricingCardsContainer" class="flex flex-wrap justify-center gap-8 max-w-6xl px-4 pb-16">
         <div class="text-center text-blue-400 text-xl w-full">
             <i class="fa-solid fa-spinner fa-spin"></i> Loading plans...
         </div>
@@ -54,7 +74,7 @@
 
                 <div id="modalErrorMsg" class="hidden bg-red-900/50 border border-red-500 text-red-200 text-xs p-3 rounded-lg"></div>
 
-                <button type="submit" id="proceedToPayBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition mt-4">
+                <button type="submit" id="proceedToPayBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition mt-4 shadow-lg shadow-blue-500/30">
                     Proceed to Payment <i class="fa-solid fa-arrow-right ml-2"></i>
                 </button>
             </form>
