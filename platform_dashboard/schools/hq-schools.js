@@ -1,5 +1,5 @@
 import { db, storage } from '../../assets/js/firebase-init.js';
-import { collection, getDocs, doc, updateDoc, setDoc, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, getDocs, doc, updateDoc, setDoc, query, where, writeBatch, arrayUnion } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
 // ── Boot Sequence: Security Check & Setup ──────────────────────────────────
@@ -155,7 +155,7 @@ function renderSchools() {
             } else if (isPastDue && isSuspended) {
                 renewalDisplay = `<span class="text-red-400 font-bold">Expired (${formattedDate})</span>`;
             } else {
-                renewalDisplay = `<span class="textemerald-400 font-bold">${formattedDate}</span>`;
+                renewalDisplay = `<span class="text-emerald-400 font-bold">${formattedDate}</span>`;
             }
         }
 
@@ -488,7 +488,7 @@ document.getElementById('confirmRenewalBtn').addEventListener('click', async () 
 
         btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Updating Node Limits...';
         
-        // UPDATED: Included isVerified so renewals unlock suspended accounts
+        // UPDATED: Completely restores full active status and sets new activation clock
         await updateDoc(doc(db, 'schools', currentSchool.id), {
             billingCycle: cycleSelect === 'No Extension' ? currentSchool.billingCycle : actualCycle,
             nextRenewalDate: newRenewalDate,
@@ -500,7 +500,11 @@ document.getElementById('confirmRenewalBtn').addEventListener('click', async () 
                 teacherLimit: selectedPlan.teacherLimit
             },
             isActive: true,
-            isVerified: true
+            isVerified: true,
+            subscriptionStatus: 'Active',
+            subscriptionEndedAt: null,
+            statusReason: null,
+            subscriptionActivatedAt: new Date().toISOString()
         });
 
         closeRenewalModal();
@@ -651,7 +655,14 @@ document.getElementById('executeDeployBtn').addEventListener('click', async () =
             subscriptionName:     selectedPlan.name,
             billingCycle:         actualCycle,
             nextRenewalDate:      nextRenewalDate.toISOString(),
-            subscriptionStatus:   'Active',
+            
+            // UPDATED: Core Lifecycle & Tracking Fields
+            subscriptionStatus:      'Active',
+            subscriptionActivatedAt: timestamp,
+            subscriptionEndedAt:     null,
+            statusReason:            null,
+            adminNotes:              [],
+            
             limits: {
                 adminLimit: selectedPlan.adminLimit,
                 studentLimit: selectedPlan.studentLimit,
@@ -708,7 +719,6 @@ if (toggleStatusBtn) {
     toggleStatusBtn.addEventListener('click', async () => {
         if (!currentSchool) return;
 
-        // UPDATED: Uses isVerified to check the suspension state
         const isSuspended = currentSchool.isVerified === false;
         const newStatus = isSuspended ? true : false;
         
@@ -722,11 +732,27 @@ if (toggleStatusBtn) {
         btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Executing...';
 
         try {
-            // UPDATED: Syncs both isVerified (the true kill switch) and isActive
-            await updateDoc(doc(db, 'schools', currentSchool.id), { 
+            // UPDATED: Fully syncs verification, activity, expiration status, and timestamps
+            const updatePayload = { 
                 isVerified: newStatus,
                 isActive: newStatus 
-            });
+            };
+
+            if (!newStatus) {
+                // Executing Kill Switch
+                updatePayload.subscriptionStatus = 'Expired';
+                updatePayload.subscriptionEndedAt = new Date().toISOString();
+                updatePayload.statusReason = 'Manual Suspension';
+            } else {
+                // Restoring Access
+                updatePayload.subscriptionStatus = 'Active';
+                updatePayload.subscriptionEndedAt = null;
+                updatePayload.statusReason = null;
+                updatePayload.subscriptionActivatedAt = new Date().toISOString();
+            }
+
+            await updateDoc(doc(db, 'schools', currentSchool.id), updatePayload);
+            
             document.getElementById('closeSchoolBtn').click();
             loadSchools();
         } catch (e) {
@@ -737,6 +763,30 @@ if (toggleStatusBtn) {
         btn.innerHTML = originalContent;
     });
 }
+
+// ── Admin Notes Logic ─────────────────────────────────────────────────────
+// Call this function when you hook up the new HTML button for adding a standalone note
+window.addSchoolAdminNote = async (noteText) => {
+    if (!currentSchool || !noteText || !noteText.trim()) return;
+    
+    try {
+        await updateDoc(doc(db, 'schools', currentSchool.id), {
+            adminNotes: arrayUnion({
+                note: noteText.trim(),
+                timestamp: new Date().toISOString(),
+                loggedBy: session.id,
+                loggedByName: session.name
+            })
+        });
+        
+        console.log("Note successfully added to the school document!");
+        loadSchools(); // Reload to refresh the data
+        
+    } catch (error) {
+        console.error("Failed to add note:", error);
+        alert("Failed to save note. Check console for details.");
+    }
+};
 
 // Init Data
 loadSubscriptionPlans().then(() => loadSchools());
