@@ -1,4 +1,5 @@
-import { auth } from './firebase-init.js';
+import { auth, db } from './firebase-init.js'; // Make sure db is imported
+import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"; // Import Firestore functions
 import { signOut, onAuthStateChanged }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
@@ -41,15 +42,32 @@ export function requireAuth(role, redirectUrl = '../index.html') {
         return null;
     }
 
-    // If Firebase Auth session has expired, clear and redirect.
-    // We check this non-blocking — page loads normally from localStorage,
-    // but if Firebase says the token is gone we log them out on next load.
+    // ── 1. FIREBASE AUTH EXPIRE CHECK ─────────────────────────────────────────
     if (auth.currentUser === null) {
         onAuthStateChanged(auth, (user) => {
             if (!user) {
                 console.warn(`[ConnectUs] Firebase Auth session expired for ${role}`);
                 logout(redirectUrl);
             }
+        });
+    }
+
+    // ── 2. THE GHOSTBUSTER: REAL-TIME DATABASE KILL SWITCH ────────────────────
+    // This listens to the school's document. If deleted or suspended, kicks them out.
+    if (session.schoolId) {
+        const schoolRef = doc(db, 'schools', session.schoolId);
+        
+        onSnapshot(schoolRef, (docSnap) => {
+            if (!docSnap.exists()) {
+                console.warn(`[ConnectUs Ghostbuster] School deleted. Evicting.`);
+                logout(redirectUrl);
+            } else if (docSnap.data().isVerified !== true) {
+                console.warn(`[ConnectUs Ghostbuster] School suspended. Evicting.`);
+                logout(redirectUrl);
+            }
+        }, (error) => {
+            console.error(`[ConnectUs Ghostbuster] Security/Permission error:`, error);
+            logout(redirectUrl); // Kick them out if rules suddenly block access
         });
     }
 
