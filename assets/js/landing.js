@@ -9,15 +9,12 @@ if (nav) {
 
 // ── CONTRACT TERM CONDITIONAL LOGIC ──
 const contractTermSelect = document.getElementById('contractTerm');
-const monthsWrap = document.getElementById('contractMonthsWrap');
 const yearsWrap = document.getElementById('contractYearsWrap');
 
 if (contractTermSelect) {
     contractTermSelect.addEventListener('change', () => {
         const val = contractTermSelect.value;
-        monthsWrap.classList.add('hidden');
         yearsWrap.classList.add('hidden');
-        if (val === 'Monthly') monthsWrap.classList.remove('hidden');
         if (val === 'Multi-Year') yearsWrap.classList.remove('hidden');
     });
 }
@@ -32,7 +29,7 @@ if (registerBtn) {
         // Collect all fields
         const firstName      = document.getElementById('firstName').value.trim();
         const lastName       = document.getElementById('lastName').value.trim();
-        const jobTitle       = document.getElementById('jobTitle').value;
+        const jobTitle       = document.getElementById('jobTitle').value.trim();
         const workEmail      = document.getElementById('workEmail').value.trim();
         const phone          = document.getElementById('phone').value.trim();
         const schoolName     = document.getElementById('schoolName').value.trim();
@@ -43,29 +40,25 @@ if (registerBtn) {
         const studentsCount  = document.getElementById('studentsCount').value.trim();
         const teachersCount  = document.getElementById('teachersCount').value.trim();
         const contractTerm   = document.getElementById('contractTerm').value;
-        const contractMonths = document.getElementById('contractMonths')?.value.trim() || null;
         const contractYears  = document.getElementById('contractYears')?.value || null;
         const hearAboutUs    = document.getElementById('hearAboutUs').value;
         const message        = document.getElementById('message').value.trim();
 
-        // Validation
+        // Validation - Strict check for ALL required fields
         if (!firstName || !lastName || !jobTitle || !workEmail || !phone ||
-            !schoolName || !schoolType || !country || !city ||
-            !studentsCount || !teachersCount || !contractTerm) {
+            !schoolName || !schoolType || !country || !city || !stateProvince ||
+            !studentsCount || !teachersCount || !contractTerm || !hearAboutUs || !message) {
             msgEl.textContent = "Please fill in all required fields (*).";
             msgEl.className = "text-sm text-center font-bold mt-2 text-red-600 block";
             return;
         }
-        if (contractTerm === 'Monthly' && !contractMonths) {
-            msgEl.textContent = "Please enter how many months you are looking to start with.";
-            msgEl.className = "text-sm text-center font-bold mt-2 text-red-600 block";
-            return;
-        }
+        
         if (contractTerm === 'Multi-Year' && !contractYears) {
             msgEl.textContent = "Please select how many years for your multi-year contract.";
             msgEl.className = "text-sm text-center font-bold mt-2 text-red-600 block";
             return;
         }
+        
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(workEmail)) {
             msgEl.textContent = "Please enter a valid email address.";
             msgEl.className = "text-sm text-center font-bold mt-2 text-red-600 block";
@@ -79,7 +72,7 @@ if (registerBtn) {
 
         // Build a readable contract term string for emails
         let contractSummary = contractTerm;
-        if (contractTerm === 'Monthly') contractSummary = `Monthly (approx. ${contractMonths} month${contractMonths === '1' ? '' : 's'})`;
+        if (contractTerm === '6 Months') contractSummary = '6 Month Contract';
         if (contractTerm === 'Annual') contractSummary = 'Annual Contract (1 Year)';
         if (contractTerm === 'Multi-Year') contractSummary = `Multi-Year Contract (${contractYears} Years)`;
 
@@ -103,14 +96,13 @@ if (registerBtn) {
                 schoolType,
                 country,
                 city,
-                stateProvince:  stateProvince || null,
+                stateProvince,
                 studentsCount:  parseInt(studentsCount),
                 teachersCount:  parseInt(teachersCount),
                 contractTerm,
-                contractMonths: contractTerm === 'Monthly'     ? parseInt(contractMonths) : null,
-                contractYears:  contractTerm === 'Multi-Year'  ? parseInt(contractYears)  : null,
-                hearAboutUs:    hearAboutUs || null,
-                message:        message || null,
+                contractYears:  contractTerm === 'Multi-Year' ? parseInt(contractYears) : null,
+                hearAboutUs,
+                message,
                 status:         'Pending',
                 fulfilled:      false,
                 createdAt:      timestamp,
