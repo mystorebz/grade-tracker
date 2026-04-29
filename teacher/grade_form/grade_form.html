@@ -4,63 +4,87 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Enter Grade · ConnectUs</title>
+    
     <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="../../assets/css/global.css">
     <link rel="stylesheet" href="../../assets/css/teachers.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
     <style>
         body { background: #f0fdf8; font-family: 'DM Sans', sans-serif; display: flex; height: 100vh; overflow: hidden; margin: 0; }
         #dashboardMain { flex: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden; }
         .scroll-area { flex: 1; overflow-y: auto; padding: 30px; }
+        
+        /* THE STANDARDIZED ARROW CSS */
         .form-input { 
             width: 100%; padding: 12px 14px; background: #fff; border: 1px solid #c5d0db; border-radius: 6px; 
             font-size: 14px; color: #0d1f35; appearance: none;
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b84a0'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
-            background-repeat: no-repeat; background-position: right 12px center; background-size: 16px;
+            background-repeat: no-repeat; background-position: right 12px center; background-size: 14px;
+            cursor: pointer;
         }
+        
+        /* Hide default datalist arrow so our custom one isn't duplicated */
+        input::-webkit-calendar-picker-indicator { opacity: 0; position: absolute; right: 0; width: 40px; height: 100%; cursor: pointer; }
+
         .form-input:focus { border-color: #0ea871; outline: none; box-shadow: 0 0 0 3px rgba(14,168,113,0.15); }
-        .field-label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; color: #6b84a0; margin-bottom: 6px; }
+        .field-label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #6b84a0; margin-bottom: 6px; }
     </style>
 </head>
 <body>
-    <div id="layout-sidebar-container" style="flex-shrink:0;height:100%;"></div>
+
+    <div id="layout-sidebar-container" style="flex-shrink:0;height:100%;z-index:20;"></div>
+
     <main id="dashboardMain">
-        <div id="layout-topbar-container"></div>
+        <div id="layout-topbar-container" style="flex-shrink:0;z-index:10;"></div>
+
         <div class="scroll-area">
             <div class="max-w-3xl mx-auto">
+                
                 <div class="border-b-2 border-[#0d1f35] pb-4 mb-8 flex justify-between items-end">
                     <div>
-                        <h1 class="text-2xl font-bold text-[#0d1f35]">Enter Grade</h1>
-                        <p class="text-sm text-[#6b84a0]">Search student and log academic performance.</p>
+                        <h1 class="text-2xl font-bold text-[#0d1f35] tracking-tight mb-1">Enter Grade</h1>
+                        <p class="text-sm text-[#6b84a0]">Log a new assignment or exam into the student's record.</p>
                     </div>
-                    <select id="agSemester" class="form-input w-48 py-2 bg-slate-50"></select>
+                    <div class="w-48">
+                        <label class="field-label">Active Period</label>
+                        <select id="agSemester" class="form-input py-2 bg-slate-50"></select>
+                    </div>
                 </div>
 
-                <div class="bg-white border border-[#c5d0db] rounded-xl p-6 shadow-sm mb-6">
-                    <label class="field-label">Student Search</label>
-                    <div class="flex gap-3">
-                        <input type="text" id="lookupInput" list="rosterList" class="form-input flex-1" placeholder="Type name or click arrow...">
+                <div class="bg-white border border-[#c5d0db] rounded-xl p-6 shadow-sm mb-6 relative">
+                    <h2 class="text-sm font-black uppercase tracking-wider text-[#0d1f35] mb-4">1. Select Student</h2>
+                    <label class="field-label">Student Search (Type or click arrow)</label>
+                    <div class="flex gap-3 relative">
+                        <input type="text" id="lookupInput" list="rosterList" class="form-input flex-1" placeholder="Search by name or ID...">
                         <datalist id="rosterList"></datalist>
-                        <button onclick="window.resetLookup()" class="px-4 py-2 bg-slate-100 border rounded-lg font-bold text-sm">Reset</button>
+                        <button onclick="window.resetLookup()" class="px-5 py-3 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-600 rounded-lg font-bold text-sm transition">Clear</button>
                     </div>
-                    <div id="studentBadge" class="hidden mt-4 bg-[#f8fafb] border rounded-lg p-4 flex items-center gap-4">
-                        <div class="w-12 h-12 bg-[#0ea871] text-white rounded-lg flex items-center justify-center font-black text-xl" id="badgeInitial"></div>
+
+                    <div id="studentBadge" class="hidden mt-5 bg-[#f8fafb] border border-[#dce3ed] rounded-lg p-4 flex items-center gap-4">
+                        <div class="w-12 h-12 bg-[#0ea871] text-white rounded-lg flex items-center justify-center font-black text-xl shadow-inner" id="badgeInitial">?</div>
                         <div class="flex-1">
-                            <p class="font-bold text-[#0d1f35]" id="badgeName"></p>
-                            <p class="text-xs text-[#6b84a0]" id="badgeMeta"></p>
+                            <p class="font-bold text-[#0d1f35] text-lg leading-tight" id="badgeName">Name</p>
+                            <p class="text-xs font-semibold text-[#6b84a0]" id="badgeMeta">Meta</p>
                         </div>
-                        <p class="font-mono text-xs font-bold border px-2 py-1 rounded bg-white" id="badgeId"></p>
+                        <p class="font-mono font-bold text-[#0d1f35] bg-white border border-[#dce3ed] px-3 py-1 rounded" id="badgeId">S00-00000</p>
                     </div>
                 </div>
 
                 <div id="gradeFormSection" class="hidden bg-white border border-[#c5d0db] rounded-xl p-6 shadow-sm">
+                    <h2 class="text-sm font-black uppercase tracking-wider text-[#0d1f35] mb-6">2. Assignment Details</h2>
+
                     <div id="gradeSavedBanner" class="hidden mb-6 bg-emerald-50 border border-emerald-200 text-emerald-700 p-4 rounded-lg flex items-center gap-3">
-                        <i class="fa-solid fa-circle-check"></i> <p class="text-sm font-bold">Grade Saved Successfully!</p>
+                        <i class="fa-solid fa-circle-check text-xl"></i>
+                        <p class="font-bold text-sm">Grade successfully recorded!</p>
                     </div>
+
                     <div class="grid grid-cols-2 gap-5 mb-5">
-                        <div>
+                        <div class="relative">
                             <label class="field-label">Subject</label>
                             <input type="text" id="agSubject" list="subjectList" class="form-input" placeholder="Select Subject...">
                             <datalist id="subjectList"></datalist>
@@ -70,40 +94,48 @@
                             <input type="date" id="agDate" class="form-input">
                         </div>
                     </div>
+
                     <div class="grid grid-cols-2 gap-5 mb-6">
                         <div>
                             <label class="field-label">Grade Type</label>
                             <select id="agType" class="form-input"></select>
-                            <p id="typeWeightHint" class="text-[10px] font-bold text-teal-600 mt-2 hidden uppercase"></p>
+                            <p id="typeWeightHint" class="text-xs font-semibold text-teal-600 mt-2 hidden bg-teal-50 border border-teal-100 px-2 py-1 rounded w-max"></p>
                         </div>
                         <div>
                             <label class="field-label">Assignment Title</label>
-                            <input type="text" id="agTitle" class="form-input" placeholder="e.g. Chapter 1 Test">
+                            <input type="text" id="agTitle" class="form-input" placeholder="e.g. Midterm">
                         </div>
                     </div>
-                    <div class="flex gap-8 mb-6 border-t pt-6">
+
+                    <div class="border-t border-[#e8edf2] pt-6 mb-6 flex gap-8">
                         <div class="flex-1">
                             <label class="field-label">Scoring</label>
-                            <div class="flex items-center gap-2">
-                                <input type="number" id="agScore" class="form-input text-center font-mono" placeholder="Score">
-                                <span class="font-bold text-slate-300">/</span>
-                                <input type="number" id="agMax" class="form-input text-center font-mono" value="100">
+                            <div class="flex items-center gap-3">
+                                <input type="number" id="agScore" class="form-input text-center font-mono text-lg" placeholder="0">
+                                <span class="text-[#9ab0c6] font-black text-xl">/</span>
+                                <input type="number" id="agMax" class="form-input text-center font-mono text-lg" value="100">
                             </div>
                         </div>
-                        <div id="gradePreview" class="hidden flex-1 bg-slate-50 border rounded-lg p-3 flex flex-col items-center justify-center">
-                            <span id="prevPct" class="text-2xl font-black font-mono text-emerald-600"></span>
-                            <span id="prevLetter" class="text-sm font-bold text-slate-500"></span>
+                        <div id="gradePreview" class="hidden flex-1 bg-[#f8fafb] border border-[#dce3ed] rounded-lg p-4 flex flex-col items-center justify-center">
+                            <div class="flex items-center gap-3"><span id="prevPct" class="text-3xl font-black font-mono"></span><span id="prevLetter" class="text-xl font-black px-4 py-1 rounded-lg border"></span></div>
                         </div>
                     </div>
-                    <div class="mb-6">
+
+                    <div class="mb-8">
                         <label class="field-label">Notes</label>
-                        <textarea id="agNotes" class="form-input h-20 resize-none"></textarea>
+                        <textarea id="agNotes" class="form-input resize-none" rows="3"></textarea>
                     </div>
-                    <button id="saveGradeBtn" class="w-full py-4 bg-[#0ea871] text-white rounded-lg font-black shadow-lg">COMMIT GRADE RECORD</button>
+
+                    <div class="flex justify-end gap-3 pt-4 border-t">
+                        <button onclick="window.resetLookup()" class="px-6 py-3 bg-white border border-[#c5d0db] text-[#374f6b] rounded-lg font-bold text-sm">Cancel</button>
+                        <button id="saveGradeBtn" class="px-8 py-3 bg-[#0ea871] text-white rounded-lg font-bold text-sm shadow-md transition">Commit Grade Record</button>
+                    </div>
                 </div>
+
             </div>
         </div>
     </main>
+
     <script type="module" src="grade_form.js"></script>
 </body>
 </html>
