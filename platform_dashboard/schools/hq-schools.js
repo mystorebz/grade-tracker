@@ -61,8 +61,8 @@ function calculateNewRenewalDate(cycleType, currentExpirationString) {
     let baseDate = currentExpirationString ? new Date(currentExpirationString) : now;
     if (baseDate < now) baseDate = now; 
 
-    if (cycleType === 'Monthly') {
-        baseDate.setMonth(baseDate.getMonth() + 1);
+    if (cycleType === '6 Months') {
+        baseDate.setMonth(baseDate.getMonth() + 6);
     } else if (cycleType === 'Annual') {
         baseDate.setFullYear(baseDate.getFullYear() + 1);
     } else if (cycleType === 'Multi-Year') {
@@ -96,13 +96,125 @@ async function loadSubscriptionPlans() {
     }
 }
 
+// ── Notification System Functions ──────────────────────────────────────────
+window.showToast = (title, message, type = 'warning') => {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+
+    const colors = {
+        warning: 'bg-amber-500',
+        border: 'border-amber-700',
+        icon: '<i class="fa-solid fa-triangle-exclamation text-amber-500 mt-0.5"></i>'
+    };
+
+    const toast = document.createElement('div');
+    toast.className = `bg-slate-800 border ${colors.border} p-4 shadow-2xl shadow-black/50 w-80 transform translate-x-full opacity-0 transition-all duration-500 ease-out pointer-events-auto flex items-start gap-3 mb-3`;
+    
+    toast.innerHTML = `
+        <div class="flex-shrink-0 text-lg">${colors.icon}</div>
+        <div class="flex-1">
+            <h4 class="text-xs font-black text-white uppercase tracking-widest">${title}</h4>
+            <p class="text-xs text-slate-400 mt-1 leading-relaxed">${message}</p>
+        </div>
+        <button class="text-slate-500 hover:text-white transition flex-shrink-0" onclick="this.parentElement.remove()">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
+    `;
+
+    container.appendChild(toast);
+
+    setTimeout(() => toast.classList.remove('translate-x-full', 'opacity-0'), 10);
+    setTimeout(() => {
+        toast.classList.add('translate-x-full', 'opacity-0');
+        setTimeout(() => toast.remove(), 500); 
+    }, 8000);
+};
+
+function populateNotificationBell(expiringSchools) {
+    const badge = document.getElementById('notificationBadge');
+    const list = document.getElementById('notificationList');
+    
+    if (!badge || !list) return;
+
+    if (expiringSchools.length > 0) {
+        badge.textContent = expiringSchools.length;
+        badge.classList.remove('hidden');
+        
+        expiringSchools.sort((a, b) => a.days - b.days);
+        
+        let html = '';
+        expiringSchools.forEach(school => {
+            html += `
+                <div class="p-4 border-b border-slate-700 hover:bg-slate-800 transition">
+                    <p class="text-xs font-bold text-white mb-1">${school.name} <span class="text-slate-500 font-mono font-normal">(${school.id})</span></p>
+                    <p class="text-[10px] font-black uppercase tracking-widest text-amber-400">Expires in ${school.days} Days</p>
+                </div>
+            `;
+        });
+        list.innerHTML = html;
+    } else {
+        badge.classList.add('hidden');
+        list.innerHTML = `
+            <div class="p-6 text-center">
+                <i class="fa-solid fa-circle-check text-emerald-500 text-3xl mb-2"></i>
+                <p class="text-xs font-bold text-slate-400">You're all caught up!</p>
+                <p class="text-[10px] text-slate-500 mt-1 uppercase tracking-widest">No impending expirations.</p>
+            </div>
+        `;
+    }
+}
+
+// Global click listener to toggle/close the dropdown menu
+document.addEventListener('click', (e) => {
+    const bellBtn = document.getElementById('notificationBellBtn');
+    const dropdown = document.getElementById('notificationDropdown');
+    if (!bellBtn || !dropdown) return;
+    
+    if (bellBtn.contains(e.target)) {
+        dropdown.classList.toggle('hidden');
+    } else if (!dropdown.contains(e.target)) {
+        dropdown.classList.add('hidden');
+    }
+});
+
+
 // ── Load Schools (Main Table) ──────────────────────────────────────────────
 async function loadSchools() {
     tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-indigo-400 font-semibold"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Connecting to global registry...</td></tr>`;
     try {
         const snap = await getDocs(collection(db, 'schools'));
         allSchools = [];
-        snap.forEach(docSnap => allSchools.push({ id: docSnap.id, ...docSnap.data() }));
+        
+        const expiringSchools = [];
+        const now = new Date();
+
+        snap.forEach(docSnap => {
+            const data = docSnap.data();
+            allSchools.push({ id: docSnap.id, ...data });
+
+            // 14-Day Expiration Check & Notification Injection
+            if (data.isVerified === true && data.nextRenewalDate) {
+                const renDate = new Date(data.nextRenewalDate);
+                const msPerDay = 1000 * 60 * 60 * 24;
+                const daysRemaining = Math.ceil((renDate - now) / msPerDay);
+                
+                if (daysRemaining > 0 && daysRemaining <= 14) {
+                    expiringSchools.push({
+                        id: docSnap.id,
+                        name: data.schoolName || 'Unknown School',
+                        days: daysRemaining
+                    });
+                    
+                    window.showToast(
+                        'Subscription Expiring Soon', 
+                        `<strong class="text-white">${data.schoolName || 'Unknown'}</strong> (${docSnap.id}) will expire in ${daysRemaining} days.`, 
+                        'warning'
+                    );
+                }
+            }
+        });
+        
+        populateNotificationBell(expiringSchools);
         renderSchools();
     } catch (e) {
         console.error("Failed to load schools:", e);
@@ -800,7 +912,7 @@ document.getElementById('openDeployModalBtn').addEventListener('click', () => {
     document.getElementById('depPlan').value = '';
     document.getElementById('depPlanLimitsDisplay').classList.add('hidden');
     document.getElementById('depAmount').value = '';
-    document.getElementById('depCycle').value = 'Monthly';
+    document.getElementById('depCycle').value = '6 Months';
     document.getElementById('depCustomCycleWrap').classList.add('hidden');
     document.getElementById('depCustomCycle').value = '';
     document.getElementById('depNotes').value = '';
@@ -883,7 +995,7 @@ document.getElementById('executeDeployBtn').addEventListener('click', async () =
         }] : [];
 
         let nextRenewalDate = new Date();
-        if (cycleSelect === 'Monthly') nextRenewalDate.setMonth(nextRenewalDate.getMonth() + 1);
+        if (cycleSelect === '6 Months') nextRenewalDate.setMonth(nextRenewalDate.getMonth() + 6);
         else if (cycleSelect === 'Annual') nextRenewalDate.setFullYear(nextRenewalDate.getFullYear() + 1);
         else if (cycleSelect === 'Multi-Year') nextRenewalDate.setFullYear(nextRenewalDate.getFullYear() + 2);
         else nextRenewalDate.setFullYear(nextRenewalDate.getFullYear() + 1);
