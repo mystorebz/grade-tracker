@@ -138,7 +138,8 @@ function renderSchools() {
     const now = new Date();
 
     filtered.forEach(data => {
-        const isSuspended = data.isActive === false; 
+        // UPDATED: Now checks isVerified for the suspension badge
+        const isSuspended = data.isVerified === false; 
         const statusBadge = isSuspended 
             ? `<span class="bg-red-900/40 text-red-400 border border-red-800 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider">Suspended</span>`
             : `<span class="bg-emerald-900/40 text-emerald-400 border border-emerald-800 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider">Active</span>`;
@@ -154,7 +155,7 @@ function renderSchools() {
             } else if (isPastDue && isSuspended) {
                 renewalDisplay = `<span class="text-red-400 font-bold">Expired (${formattedDate})</span>`;
             } else {
-                renewalDisplay = `<span class="text-emerald-400 font-bold">${formattedDate}</span>`;
+                renewalDisplay = `<span class="textemerald-400 font-bold">${formattedDate}</span>`;
             }
         }
 
@@ -261,7 +262,8 @@ window.openSchoolModal = (schoolId) => {
     document.getElementById('manageLimitTeachers').textContent = limits.teacherLimit || '0';
     document.getElementById('manageLimitAdmins').textContent = limits.adminLimit || '0';
 
-    const isSuspended = currentSchool.isActive === false;
+    // UPDATED: Modal now checks isVerified for button state
+    const isSuspended = currentSchool.isVerified === false;
     const toggleBtn = document.getElementById('toggleStatusBtn');
     const toggleText = document.getElementById('toggleStatusText');
 
@@ -485,6 +487,8 @@ document.getElementById('confirmRenewalBtn').addEventListener('click', async () 
         });
 
         btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Updating Node Limits...';
+        
+        // UPDATED: Included isVerified so renewals unlock suspended accounts
         await updateDoc(doc(db, 'schools', currentSchool.id), {
             billingCycle: cycleSelect === 'No Extension' ? currentSchool.billingCycle : actualCycle,
             nextRenewalDate: newRenewalDate,
@@ -495,7 +499,8 @@ document.getElementById('confirmRenewalBtn').addEventListener('click', async () 
                 studentLimit: selectedPlan.studentLimit,
                 teacherLimit: selectedPlan.teacherLimit
             },
-            isActive: true 
+            isActive: true,
+            isVerified: true
         });
 
         closeRenewalModal();
@@ -636,9 +641,10 @@ document.getElementById('executeDeployBtn').addEventListener('click', async () =
             schoolType,
             superAdminId:         newSuperAdminId, 
             adminCode:            hashedPin,      
-            securityQuestionsSet: false, // Force them to set security questions on first login           
-            isSuperAdmin:         true,            
+            securityQuestionsSet: false, 
+            isSuperAdmin:         true,             
             isVerified:           true,
+            isActive:             true,
             requiresPinReset:     false,
             
             subscriptionPlanId:   selectedPlan.id,
@@ -702,7 +708,8 @@ if (toggleStatusBtn) {
     toggleStatusBtn.addEventListener('click', async () => {
         if (!currentSchool) return;
 
-        const isSuspended = currentSchool.isActive === false;
+        // UPDATED: Uses isVerified to check the suspension state
+        const isSuspended = currentSchool.isVerified === false;
         const newStatus = isSuspended ? true : false;
         
         if (!newStatus) {
@@ -715,7 +722,11 @@ if (toggleStatusBtn) {
         btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Executing...';
 
         try {
-            await updateDoc(doc(db, 'schools', currentSchool.id), { isActive: newStatus });
+            // UPDATED: Syncs both isVerified (the true kill switch) and isActive
+            await updateDoc(doc(db, 'schools', currentSchool.id), { 
+                isVerified: newStatus,
+                isActive: newStatus 
+            });
             document.getElementById('closeSchoolBtn').click();
             loadSchools();
         } catch (e) {
