@@ -436,6 +436,16 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
     btn.textContent = 'Saving…'; btn.disabled = true;
 
     try {
+        // --- NEW: Check if email is already in use globally ---
+        const emailCheckQ = query(collection(db, 'students'), where('email', '==', email));
+        const emailCheckSnap = await getDocs(emailCheckQ);
+        if (!emailCheckSnap.empty) {
+            showMsg('addStudentMsg', 'This email address is already in use by another student.', true);
+            btn.textContent = 'Create New Student Identity'; btn.disabled = false;
+            return;
+        }
+        // ------------------------------------------------------
+
         const countSnap = await getDocs(query(
             collection(db, 'students'),
             where('currentSchoolId', '==', session.schoolId),
@@ -443,7 +453,7 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
         ));
         if (countSnap.size >= schoolLimit) {
             showMsg('addStudentMsg', `School capacity reached (${schoolLimit} max). Contact Admin to upgrade.`, true);
-            btn.textContent = 'Save to Roster'; btn.disabled = false; return;
+            btn.textContent = 'Create New Student Identity'; btn.disabled = false; return;
         }
 
         const newId = generateStudentId();
@@ -469,7 +479,7 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
         showMsg('addStudentMsg', 'Error saving student. Please try again.', true);
     }
 
-    btn.textContent = 'Save to Roster'; btn.disabled = false;
+    btn.textContent = 'Create New Student Identity'; btn.disabled = false;
 });
 
 // ── 10. STUDENT PANEL & TABS ──────────────────────────────────────────────────
