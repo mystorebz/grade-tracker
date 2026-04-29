@@ -650,19 +650,21 @@ async function renderOverviewTab() {
     let studentsByClass = {};
 
     try {
-        const [termSnap, studSnap] = await Promise.all([
-            getDocs(query(collection(db, 'terms'),
-                where('schoolId', '==', session.schoolId),
-                where('isActive', '==', true))),
+        const [schoolSnap, studSnap] = await Promise.all([
+            getDoc(doc(db, 'schools', session.schoolId)),
             getDocs(query(collection(db, 'students'),
                 where('teacherId', '==', currentTeacherId),
                 where('currentSchoolId', '==', session.schoolId),
                 where('enrollmentStatus', '==', 'Active')))
         ]);
 
-        if (!termSnap.empty) {
-            hasActiveTerm  = true;
-            activeTermName = termSnap.docs[0].data().name || 'the current term';
+        const activeSemId = schoolSnap.exists() ? schoolSnap.data().activeSemesterId : null;
+        if (activeSemId) {
+            const semSnap = await getDoc(doc(db, 'schools', session.schoolId, 'semesters', activeSemId));
+            if (semSnap.exists()) {
+                hasActiveTerm  = true;
+                activeTermName = semSnap.data().name || 'the current term';
+            }
         }
 
         studSnap.forEach(d => {
@@ -782,32 +784,35 @@ window.saveClassAssignment = async () => {
 
     if (removed.length > 0) {
         try {
-            const [termSnap, studSnap] = await Promise.all([
-                getDocs(query(collection(db, 'terms'),
-                    where('schoolId', '==', session.schoolId),
-                    where('isActive', '==', true))),
+            const [schoolSnap, studSnap] = await Promise.all([
+                getDoc(doc(db, 'schools', session.schoolId)),
                 getDocs(query(collection(db, 'students'),
                     where('teacherId', '==', currentTeacherId),
                     where('currentSchoolId', '==', session.schoolId),
                     where('enrollmentStatus', '==', 'Active')))
             ]);
 
-            if (!termSnap.empty) {
-                const termName      = termSnap.docs[0].data().name || 'the current term';
-                const activeStudents = studSnap.docs.map(d => d.data());
+            const activeSemId = schoolSnap.exists() ? schoolSnap.data().activeSemesterId : null;
+            
+            if (activeSemId) {
+                const semSnap = await getDoc(doc(db, 'schools', session.schoolId, 'semesters', activeSemId));
+                if (semSnap.exists()) {
+                    const termName       = semSnap.data().name || 'the current term';
+                    const activeStudents = studSnap.docs.map(d => d.data());
 
-                for (const cls of removed) {
-                    const count = activeStudents.filter(s => (s.className || s.class) === cls).length;
-                    if (count > 0) {
-                        msgEl.innerHTML =
-                            `<i class="fa-solid fa-lock mr-1"></i>
-                             Cannot remove <strong>${escHtml(cls)}</strong> —
-                             ${count} active student${count !== 1 ? 's' : ''} ${count !== 1 ? 'are' : 'is'} assigned to this teacher
-                             in <strong>${escHtml(termName)}</strong>.
-                             Reassign or archive the student${count !== 1 ? 's' : ''} first.`;
-                        msgEl.className = 'text-[11px] mt-3 font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg p-3 leading-relaxed';
-                        msgEl.classList.remove('hidden');
-                        return;
+                    for (const cls of removed) {
+                        const count = activeStudents.filter(s => (s.className || s.class) === cls).length;
+                        if (count > 0) {
+                            msgEl.innerHTML =
+                                `<i class="fa-solid fa-lock mr-1"></i>
+                                 Cannot remove <strong>${escHtml(cls)}</strong> —
+                                 ${count} active student${count !== 1 ? 's' : ''} ${count !== 1 ? 'are' : 'is'} assigned to this teacher
+                                 in <strong>${escHtml(termName)}</strong>.
+                                 Reassign or archive the student${count !== 1 ? 's' : ''} first.`;
+                            msgEl.className = 'text-[11px] mt-3 font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg p-3 leading-relaxed';
+                            msgEl.classList.remove('hidden');
+                            return;
+                        }
                     }
                 }
             }
@@ -1412,12 +1417,15 @@ window.initiateArchive = async () => {
         if (activeStudents.length > 0) {
             let termName = 'the current term';
             try {
-                const termSnap = await getDocs(
-                    query(collection(db, 'terms'),
-                        where('schoolId', '==', session.schoolId),
-                        where('isActive', '==', true))
-                );
-                if (!termSnap.empty) termName = termSnap.docs[0].data().name || termName;
+                const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
+                const activeSemId = schoolSnap.exists() ? schoolSnap.data().activeSemesterId : null;
+
+                if (activeSemId) {
+                    const semSnap = await getDoc(doc(db, 'schools', session.schoolId, 'semesters', activeSemId));
+                    if (semSnap.exists()) {
+                        termName = semSnap.data().name || termName;
+                    }
+                }
             } catch (_) {}
 
             document.getElementById('archiveBlockedMsg').innerHTML =
