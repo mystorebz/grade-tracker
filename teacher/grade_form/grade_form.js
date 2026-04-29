@@ -15,21 +15,26 @@ let activeRoster  = [];
 
 // ── 3. INIT ───────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
+    // 1. SET DATE (Fixed to prevent null error)
     const dateInput = document.getElementById('agDate');
     if (dateInput) dateInput.valueAsDate = new Date();
     
-    // Load data in parallel to ensure agSemester is ready
-    await Promise.all([loadSemesters(), loadRoster()]);
-    
+    // 2. LOAD SEMESTERS (Loading this first to ensure it shows up)
+    await loadSemesters();
+
+    // 3. LOAD OTHER DATA
+    await loadRoster(); 
     loadSubjects();     
     loadGradeTypes();   
 
+    // 4. LISTENERS
     document.getElementById('lookupInput').addEventListener('change', handleStudentSelection);
     document.getElementById('agType').addEventListener('change', displayGradeWeight);
     document.getElementById('agScore').addEventListener('input', updatePreview);
     document.getElementById('agMax').addEventListener('input', updatePreview);
     document.getElementById('saveGradeBtn').addEventListener('click', saveGrade);
 
+    // Auto-Lookup hook
     const quickGradeId = localStorage.getItem('connectus_quick_grade_student');
     if (quickGradeId) {
         const s = activeRoster.find(x => x.id === quickGradeId);
@@ -44,17 +49,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function loadSemesters() {
     try {
         const cacheKey = `connectus_semesters_${session.schoolId}`;
-        const cached   = localStorage.getItem(cacheKey);
-        if (cached) rawSemesters = JSON.parse(cached);
-        else {
-            const snap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
-            rawSemesters = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
-            localStorage.setItem(cacheKey, JSON.stringify(rawSemesters));
-        }
+        let semesters = JSON.parse(localStorage.getItem(cacheKey) || "[]");
 
-        let activeId = '';
+        if (semesters.length === 0) {
+            const snap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
+            semesters = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
+            localStorage.setItem(cacheKey, JSON.stringify(semesters));
+        }
+        rawSemesters = semesters;
+
         const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
-        activeId = schoolSnap.data()?.activeSemesterId || '';
+        const activeId = schoolSnap.data()?.activeSemesterId || '';
 
         const sel = document.getElementById('agSemester');
         if (sel) {
@@ -132,6 +137,7 @@ function updatePreview() {
 
 async function saveGrade() {
     const btn = document.getElementById('saveGradeBtn');
+    if (!foundStudent) return;
     const payload = {
         schoolId: session.schoolId,
         teacherId: session.teacherId,
