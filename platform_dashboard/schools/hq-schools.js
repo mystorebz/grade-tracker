@@ -1,5 +1,5 @@
 import { db, storage } from '../../assets/js/firebase-init.js';
-import { collection, getDocs, doc, updateDoc, setDoc, query, where, writeBatch, arrayUnion } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, getDocs, getDoc, doc, updateDoc, setDoc, query, where, writeBatch, arrayUnion, limit, startAfter, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
 // ── Boot Sequence: Security Check & Setup ──────────────────────────────────
@@ -22,6 +22,12 @@ const searchInput = document.getElementById('searchSchools');
 let allSchools = [];
 let currentSchool = null;
 let availablePlans = [];
+
+// Panel & Lazy Loading State
+let membersLoaded = false;
+let ledgerLoaded = false;
+let lastVisibleMemberDoc = null;
+let memberSearchMode = false;
 
 // ── Hashing & ID Helpers ───────────────────────────────────────────────────
 async function sha256(text) {
@@ -87,33 +93,12 @@ async function loadSubscriptionPlans() {
         if(depSelect) depSelect.innerHTML = options;
     } catch (e) {
         console.error("Failed to load subscription plans:", e);
-        if(renSelect) renSelect.innerHTML = '<option value="">Error loading plans. Check Firebase rules.</option>';
-        if(depSelect) depSelect.innerHTML = '<option value="">Error loading plans. Check Firebase rules.</option>';
     }
 }
 
-document.getElementById('renPlan').addEventListener('change', (e) => {
-    const display = document.getElementById('renPlanLimitsDisplay');
-    const selected = availablePlans.find(p => p.id === e.target.value);
-    if (selected) {
-        display.innerHTML = `<i class="fa-solid fa-circle-check mr-1"></i> Limits: ${selected.studentLimit} Students | ${selected.teacherLimit} Teachers | ${selected.adminLimit} Admins`;
-        display.classList.remove('hidden');
-    } else display.classList.add('hidden');
-});
-
-document.getElementById('depPlan').addEventListener('change', (e) => {
-    const display = document.getElementById('depPlanLimitsDisplay');
-    const selected = availablePlans.find(p => p.id === e.target.value);
-    if (selected) {
-        display.innerHTML = `<i class="fa-solid fa-circle-check mr-1"></i> Limits: ${selected.studentLimit} Students | ${selected.teacherLimit} Teachers | ${selected.adminLimit} Admins`;
-        display.classList.remove('hidden');
-    } else display.classList.add('hidden');
-});
-
-// ── Load Schools ───────────────────────────────────────────────────────────
+// ── Load Schools (Main Table) ──────────────────────────────────────────────
 async function loadSchools() {
     tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-indigo-400 font-semibold"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Connecting to global registry...</td></tr>`;
-    
     try {
         const snap = await getDocs(collection(db, 'schools'));
         allSchools = [];
@@ -138,11 +123,10 @@ function renderSchools() {
     const now = new Date();
 
     filtered.forEach(data => {
-        // UPDATED: Now checks isVerified for the suspension badge
         const isSuspended = data.isVerified === false; 
         const statusBadge = isSuspended 
-            ? `<span class="bg-red-900/40 text-red-400 border border-red-800 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider">Suspended</span>`
-            : `<span class="bg-emerald-900/40 text-emerald-400 border border-emerald-800 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider">Active</span>`;
+            ? `<span class="bg-red-900/40 text-red-400 border border-red-800 px-2 py-1 text-[10px] font-black uppercase tracking-wider">Suspended</span>`
+            : `<span class="bg-emerald-900/40 text-emerald-400 border border-emerald-800 px-2 py-1 text-[10px] font-black uppercase tracking-wider">Active</span>`;
 
         let renewalDisplay = '<span class="text-slate-500 italic">Not Set</span>';
         if (data.nextRenewalDate) {
@@ -162,7 +146,7 @@ function renderSchools() {
         const tierName = data.subscriptionName || 'Unknown Tier';
 
         rows += `
-            <tr class="border-b border-slate-800 hover:bg-slate-800/50 transition">
+            <tr class="border-b border-slate-800 hover:bg-slate-800/50 transition cursor-pointer" onclick="window.openSchoolPanel('${data.id}')">
                 <td class="p-4">
                     <p class="font-bold text-white">${data.schoolName || 'Unnamed'}</p>
                     <p class="text-[10px] font-mono text-slate-500">${data.id}</p>
@@ -177,8 +161,8 @@ function renderSchools() {
                 </td>
                 <td class="p-4">${statusBadge}</td>
                 <td class="p-4 text-right">
-                    <button onclick="window.openSchoolModal('${data.id}')" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition shadow-md border border-slate-600">
-                        Manage
+                    <button class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-3 py-1.5 text-[10px] uppercase tracking-widest transition border border-slate-600">
+                        Manage <i class="fa-solid fa-arrow-right ml-1"></i>
                     </button>
                 </td>
             </tr>`;
@@ -189,10 +173,227 @@ function renderSchools() {
 if (searchInput) searchInput.addEventListener('input', renderSchools);
 document.getElementById('refreshSchoolsBtn').addEventListener('click', loadSchools);
 
-// ── Transaction Ledger Loader ─────────────────────────────────────────────
+
+// ── Slide-Out Panel & Tab Logic ───────────────────────────────────────────
+window.openSchoolPanel = (schoolId) => {
+    currentSchool = allSchools.find(s => s.id === schoolId);
+    if (!currentSchool) return;
+
+    // 1. Reset Lazy Loading States
+    membersLoaded = false;
+    ledgerLoaded = false;
+    lastVisibleMemberDoc = null;
+
+    // 2. Populate Sticky Header Context
+    document.getElementById('panelHeaderName').textContent = currentSchool.schoolName;
+    document.getElementById('panelHeaderId').textContent = currentSchool.id;
+    const headerStatus = document.getElementById('panelHeaderStatus');
+    if (currentSchool.isVerified === false) {
+        headerStatus.innerHTML = `<span class="bg-red-900/40 text-red-400 border border-red-800 px-2 py-1 text-[10px] font-black uppercase tracking-wider">Suspended</span>`;
+    } else {
+        headerStatus.innerHTML = `<span class="bg-emerald-900/40 text-emerald-400 border border-emerald-800 px-2 py-1 text-[10px] font-black uppercase tracking-wider">Active</span>`;
+    }
+
+    // 3. Populate Profile Tab (Core Info)
+    document.getElementById('manageEmail').textContent = currentSchool.contactEmail || 'N/A';
+    document.getElementById('manageAdminId').textContent = currentSchool.superAdminId || 'N/A';
+    document.getElementById('manageDistrict').textContent = currentSchool.district || 'N/A';
+    document.getElementById('manageType').textContent = currentSchool.schoolType || 'N/A';
+    
+    // 4. Populate Subscription Tab Details
+    document.getElementById('manageTier').textContent = currentSchool.subscriptionName || 'Not Set';
+    document.getElementById('manageBillingCycle').textContent = currentSchool.billingCycle || 'Not Specified';
+    
+    document.getElementById('manageActivation').textContent = currentSchool.subscriptionActivatedAt 
+        ? new Date(currentSchool.subscriptionActivatedAt).toLocaleDateString() : 'N/A';
+    document.getElementById('manageExpiration').textContent = currentSchool.nextRenewalDate 
+        ? new Date(currentSchool.nextRenewalDate).toLocaleDateString() : 'Not Set';
+
+    const limits = currentSchool.limits || {};
+    document.getElementById('manageLimitStudents').textContent = limits.studentLimit || '0';
+    document.getElementById('manageLimitTeachers').textContent = limits.teacherLimit || '0';
+    document.getElementById('manageLimitAdmins').textContent = limits.adminLimit || '0';
+
+    // 5. Check Kill Switch State
+    const toggleBtn = document.getElementById('toggleStatusBtn');
+    if (currentSchool.isVerified === false) {
+        toggleBtn.className = "w-full bg-emerald-900/20 border border-emerald-900/50 hover:bg-emerald-900/40 text-emerald-400 font-black py-4 transition text-sm tracking-wide flex justify-center items-center gap-2";
+        toggleBtn.innerHTML = '<i class="fa-solid fa-power-off"></i> Restore Platform Access';
+    } else {
+        toggleBtn.className = "w-full bg-red-900/20 border border-red-900/50 hover:bg-red-900/40 text-red-400 font-black py-4 transition text-sm tracking-wide flex justify-center items-center gap-2";
+        toggleBtn.innerHTML = '<i class="fa-solid fa-power-off"></i> Suspend Platform Access';
+    }
+
+    // 6. Render Notes
+    renderAdminNotes();
+
+    // 7. Slide In the Panel
+    const overlay = document.getElementById('schoolPanelOverlay');
+    const panel = document.getElementById('schoolSlidePanel');
+    overlay.classList.remove('hidden');
+    setTimeout(() => {
+        overlay.classList.remove('opacity-0');
+        panel.classList.remove('translate-x-full');
+    }, 10);
+
+    // 8. Force open the first tab
+    window.switchTab('profile');
+};
+
+window.closeSchoolPanel = () => {
+    const overlay = document.getElementById('schoolPanelOverlay');
+    const panel = document.getElementById('schoolSlidePanel');
+    overlay.classList.add('opacity-0');
+    panel.classList.add('translate-x-full');
+    setTimeout(() => overlay.classList.add('hidden'), 300);
+};
+document.getElementById('closePanelBtn').addEventListener('click', window.closeSchoolPanel);
+
+window.switchTab = (tabName) => {
+    // Hide all contents
+    document.querySelectorAll('.panel-tab-content').forEach(el => el.classList.add('hidden'));
+    
+    // Reset all buttons (Sharp UI style)
+    document.querySelectorAll('.panel-tab-btn').forEach(el => {
+        el.classList.remove('text-indigo-400', 'border-indigo-400', 'bg-slate-800');
+        el.classList.add('text-slate-400', 'border-transparent');
+    });
+
+    // Activate selected
+    document.getElementById(`tab-${tabName}`).classList.remove('hidden');
+    const activeBtn = document.getElementById(`btn-tab-${tabName}`);
+    activeBtn.classList.remove('text-slate-400', 'border-transparent');
+    activeBtn.classList.add('text-indigo-400', 'border-indigo-400', 'bg-slate-800');
+
+    // LAZY LOADING
+    if (tabName === 'members' && !membersLoaded) {
+        window.applyMemberFilter(); // Triggers initial paginated load
+        membersLoaded = true;
+    }
+    if (tabName === 'ledger' && !ledgerLoaded) {
+        loadSchoolLedger(currentSchool);
+        ledgerLoaded = true;
+    }
+};
+
+
+// ── Tab 2: Cursor Pagination & Target Search (Members) ────────────────────
+window.loadMembers = async (direction = 'init') => {
+    const role = document.getElementById('memberRoleFilter').value; // 'students', 'teachers', 'admins'
+    const searchTerm = document.getElementById('memberSearchInput').value.trim();
+    const tbody = document.getElementById('membersTableBody');
+    const loadNextBtn = document.getElementById('loadNextMembersBtn');
+    
+    tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-indigo-400 font-bold"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Fetching records...</td></tr>';
+    
+    try {
+        let snap;
+        
+        // PATH A: Targeted Direct Search (Bypasses Pagination)
+        if (searchTerm) {
+            memberSearchMode = true;
+            let membersRef = role === 'admins' ? collection(db, `schools/${currentSchool.id}/admins`) : collection(db, role);
+            
+            // 1. Try Exact Email Match
+            let qEmail = role === 'admins' 
+                ? query(membersRef, where('email', '==', searchTerm.toLowerCase()))
+                : query(membersRef, where('currentSchoolId', '==', currentSchool.id), where('email', '==', searchTerm.toLowerCase()));
+            
+            snap = await getDocs(qEmail);
+
+            // 2. Fallback: Try Exact ID Match if Email is empty
+            if (snap.empty) {
+                let docRef = role === 'admins' 
+                    ? doc(db, `schools/${currentSchool.id}/admins`, searchTerm.toUpperCase())
+                    : doc(db, role, searchTerm.toUpperCase());
+                    
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists() && (role === 'admins' || docSnap.data().currentSchoolId === currentSchool.id)) {
+                    snap = { docs: [docSnap], empty: false };
+                }
+            }
+        } 
+        
+        // PATH B: Standard Paginated Loading (Limit 20)
+        else {
+            memberSearchMode = false;
+            let membersRef = role === 'admins' ? collection(db, `schools/${currentSchool.id}/admins`) : collection(db, role);
+            
+            let qBase = role === 'admins' 
+                ? query(membersRef, orderBy('name'), limit(20))
+                : query(membersRef, where('currentSchoolId', '==', currentSchool.id), orderBy('name'), limit(20));
+
+            if (direction === 'next' && lastVisibleMemberDoc) {
+                qBase = role === 'admins'
+                    ? query(membersRef, orderBy('name'), startAfter(lastVisibleMemberDoc), limit(20))
+                    : query(membersRef, where('currentSchoolId', '==', currentSchool.id), orderBy('name'), startAfter(lastVisibleMemberDoc), limit(20));
+            }
+            snap = await getDocs(qBase);
+        }
+
+        // Handle Empty State
+        if (snap.empty) {
+            tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-slate-500 font-bold italic border-b border-slate-800">No records found.</td></tr>';
+            loadNextBtn.classList.add('hidden');
+            return;
+        }
+
+        // Manage Pagination Cursors
+        if (!memberSearchMode) {
+            lastVisibleMemberDoc = snap.docs[snap.docs.length - 1];
+            // Hide "Next" button if less than 20 returned (meaning it's the last page)
+            if (snap.docs.length < 20) loadNextBtn.classList.add('hidden');
+            else loadNextBtn.classList.remove('hidden');
+        } else {
+            loadNextBtn.classList.add('hidden'); // Hide pagination during search
+        }
+
+        // Render Table
+        let html = '';
+        snap.forEach(docSnap => {
+            const data = docSnap.data();
+            const badgeColor = role === 'admins' ? 'amber' : role === 'teachers' ? 'blue' : 'emerald';
+            
+            html += `
+                <tr class="border-b border-slate-800 hover:bg-slate-800/30 transition">
+                    <td class="p-4">
+                        <span class="bg-${badgeColor}-900/30 text-${badgeColor}-400 border border-${badgeColor}-800/50 px-2 py-1 text-[9px] font-black uppercase tracking-widest">${role.slice(0,-1)}</span>
+                    </td>
+                    <td class="p-4 text-xs font-mono font-bold text-indigo-400">${docSnap.id}</td>
+                    <td class="p-4 text-xs font-bold text-slate-200">${data.name || 'Unknown'}</td>
+                    <td class="p-4 text-xs text-slate-500">${data.email || 'N/A'}</td>
+                </tr>
+            `;
+        });
+        
+        // If appending (next page), add to existing rows. Otherwise, replace.
+        if (direction === 'next') tbody.innerHTML += html;
+        else tbody.innerHTML = html;
+
+    } catch (e) {
+        console.error("Failed to load members", e);
+        tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-red-400 font-bold">Database Error. Check Console.</td></tr>';
+    }
+};
+
+window.applyMemberFilter = () => {
+    lastVisibleMemberDoc = null; // Reset cursor
+    window.loadMembers('init');
+};
+
+document.getElementById('memberRoleFilter').addEventListener('change', window.applyMemberFilter);
+// Allow Enter key in search to trigger
+document.getElementById('memberSearchInput').addEventListener('keypress', (e) => {
+    if(e.key === 'Enter') window.applyMemberFilter();
+});
+document.getElementById('triggerMemberSearchBtn').addEventListener('click', window.applyMemberFilter);
+document.getElementById('loadNextMembersBtn').addEventListener('click', () => window.loadMembers('next'));
+
+
+// ── Tab 3: Transaction Ledger Loader ───────────────────────────────────────
 async function loadSchoolLedger(school) {
     const tbody = document.getElementById('ledgerTableBody');
-    tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center"><i class="fa-solid fa-spinner fa-spin text-indigo-400"></i></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-indigo-400 font-bold"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Querying Ledger...</td></tr>';
     
     try {
         const payments = [];
@@ -212,7 +413,7 @@ async function loadSchoolLedger(school) {
         payments.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
         if (payments.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-xs text-slate-500 italic">No transactions found.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-slate-500 font-bold italic">No transactions found.</td></tr>';
             return;
         }
 
@@ -221,76 +422,142 @@ async function loadSchoolLedger(school) {
             const date = new Date(p.timestamp).toLocaleDateString();
             const amount = p.amount ? `$${p.amount.toFixed(2)}` : '$0.00';
             const type = p.paymentType || 'Payment';
-            const receipt = p.receiptUrl ? `<a href="${p.receiptUrl}" target="_blank" class="text-blue-400 hover:underline"><i class="fa-solid fa-file-invoice"></i> View</a>` : '<span class="text-slate-600">-</span>';
+            const receipt = p.receiptUrl ? `<a href="${p.receiptUrl}" target="_blank" class="text-blue-400 hover:underline font-bold uppercase text-[10px] tracking-widest"><i class="fa-solid fa-file-invoice mr-1"></i> View</a>` : '<span class="text-slate-600">-</span>';
             const notes = (p.internalNotes && p.internalNotes.length > 0) ? p.internalNotes[0].note : '-';
 
             rows += `
-            <tr class="border-b border-slate-700 hover:bg-slate-800/50 text-xs transition">
-                <td class="p-2 pl-4 text-slate-400">${date}</td>
-                <td class="p-2 font-bold text-white">${type}</td>
-                <td class="p-2 text-emerald-400 font-black">${amount}</td>
-                <td class="p-2 text-slate-400 truncate max-w-[150px]" title="${notes}">${notes}</td>
-                <td class="p-2 text-right pr-4">${receipt}</td>
+            <tr class="border-b border-slate-800 hover:bg-slate-800/30 transition text-xs">
+                <td class="p-4 text-slate-400 font-mono">${date}</td>
+                <td class="p-4 font-bold text-white">${type}</td>
+                <td class="p-4 text-emerald-400 font-black">${amount}</td>
+                <td class="p-4 text-slate-400 truncate max-w-[200px]" title="${notes}">${notes}</td>
+                <td class="p-4 text-right">${receipt}</td>
             </tr>`;
         });
         tbody.innerHTML = rows;
 
     } catch (e) {
         console.error("Failed to load ledger:", e);
-        tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-xs text-red-400">Failed to load transaction ledger.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-red-400 font-bold">Failed to load transaction ledger.</td></tr>';
     }
 }
 
-// ── Manage Node Modal ─────────────────────────────────────────────────────
-window.openSchoolModal = (schoolId) => {
-    currentSchool = allSchools.find(s => s.id === schoolId);
-    if (!currentSchool) return;
 
-    document.getElementById('manageSchoolName').textContent = currentSchool.schoolName;
-    document.getElementById('manageSchoolId').textContent = currentSchool.id;
-    document.getElementById('manageAdminId').textContent = currentSchool.superAdminId || 'N/A';
-    document.getElementById('manageEmail').textContent = currentSchool.contactEmail || 'N/A';
+// ── Admin Collaborative Notes ─────────────────────────────────────────────
+function renderAdminNotes() {
+    const container = document.getElementById('adminNotesContainer');
+    const notes = currentSchool.adminNotes || [];
     
-    document.getElementById('manageTier').textContent = currentSchool.subscriptionName || 'Not Set';
-    document.getElementById('manageBillingCycle').textContent = currentSchool.billingCycle || 'Not Specified';
-    document.getElementById('manageExpiration').textContent = currentSchool.nextRenewalDate 
-        ? new Date(currentSchool.nextRenewalDate).toLocaleDateString() 
-        : 'Not Set';
-
-    const limits = currentSchool.limits || {};
-    document.getElementById('manageLimitStudents').textContent = limits.studentLimit || '0';
-    document.getElementById('manageLimitTeachers').textContent = limits.teacherLimit || '0';
-    document.getElementById('manageLimitAdmins').textContent = limits.adminLimit || '0';
-
-    // UPDATED: Modal now checks isVerified for button state
-    const isSuspended = currentSchool.isVerified === false;
-    const toggleBtn = document.getElementById('toggleStatusBtn');
-    const toggleText = document.getElementById('toggleStatusText');
-
-    if (isSuspended) {
-        toggleBtn.className = "w-full bg-emerald-900/20 border border-emerald-900/50 hover:bg-emerald-900/40 text-emerald-400 font-black py-4 rounded-xl transition text-sm tracking-wide flex justify-center items-center gap-2";
-        toggleText.textContent = "Restore Platform Access";
-    } else {
-        toggleBtn.className = "w-full bg-red-900/20 border border-red-900/50 hover:bg-red-900/40 text-red-400 font-black py-4 rounded-xl transition text-sm tracking-wide flex justify-center items-center gap-2";
-        toggleText.textContent = "Suspend Platform Access";
+    if (notes.length === 0) {
+        container.innerHTML = '<div class="p-6 text-center text-xs font-bold text-slate-500 italic border border-dashed border-slate-700 bg-slate-900/30">No internal notes logged.</div>';
+        return;
     }
     
-    loadSchoolLedger(currentSchool);
+    let html = '';
+    const sorted = [...notes].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    
+    sorted.forEach(n => {
+        const dateStr = new Date(n.timestamp).toLocaleString();
+        html += `
+        <div class="border border-slate-700 bg-slate-900/50 p-4 mb-3 last:mb-0 relative group">
+            <div class="flex justify-between items-center mb-2 border-b border-slate-800 pb-2">
+                <span class="text-[10px] font-black text-indigo-400 uppercase tracking-widest"><i class="fa-solid fa-user-shield mr-1"></i> ${n.loggedByName || 'Admin'}</span>
+                <span class="text-[9px] font-mono text-slate-500">${dateStr}</span>
+            </div>
+            <p class="text-xs text-slate-300 leading-relaxed">${n.note}</p>
+        </div>`;
+    });
+    container.innerHTML = html;
+}
 
-    const modal = document.getElementById('schoolManageModal');
-    const inner = document.getElementById('schoolManageModalInner');
-    modal.classList.remove('hidden');
-    setTimeout(() => { modal.classList.remove('opacity-0'); inner.classList.remove('scale-95'); }, 10);
-};
-
-document.getElementById('closeSchoolBtn').addEventListener('click', () => {
-    const modal = document.getElementById('schoolManageModal');
-    const inner = document.getElementById('schoolManageModalInner');
-    modal.classList.add('opacity-0'); inner.classList.add('scale-95');
-    setTimeout(() => modal.classList.add('hidden'), 300);
+document.getElementById('submitNoteBtn').addEventListener('click', async () => {
+    const input = document.getElementById('newAdminNoteInput');
+    const noteText = input.value.trim();
+    if (!noteText || !currentSchool) return;
+    
+    const btn = document.getElementById('submitNoteBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+    
+    try {
+        const newNote = {
+            note: noteText,
+            timestamp: new Date().toISOString(),
+            loggedBy: session.id,
+            loggedByName: session.name
+        };
+        
+        await updateDoc(doc(db, 'schools', currentSchool.id), {
+            adminNotes: arrayUnion(newNote)
+        });
+        
+        if (!currentSchool.adminNotes) currentSchool.adminNotes = [];
+        currentSchool.adminNotes.push(newNote);
+        
+        input.value = '';
+        renderAdminNotes();
+    } catch (e) {
+        console.error("Failed to add note", e);
+        alert("Failed to save note. Check console.");
+    }
+    
+    btn.disabled = false;
+    btn.innerHTML = 'Save Note <i class="fa-solid fa-paper-plane ml-1"></i>';
 });
 
-// ── Override Limits Modal (Add-Ons) ──────────────────────────────────────────
+
+// ── Toggle Suspension (Kill Switch) ───────────────────────────────────────
+const toggleStatusBtn = document.getElementById('toggleStatusBtn');
+if (toggleStatusBtn) {
+    toggleStatusBtn.addEventListener('click', async () => {
+        if (!currentSchool) return;
+
+        const isSuspended = currentSchool.isVerified === false;
+        const newStatus = isSuspended ? true : false;
+        
+        if (!newStatus) {
+            if (!confirm(`DANGER: Are you absolutely sure you want to SUSPEND ${currentSchool.schoolName}?\n\nThis will immediately log out all associated teachers, students, and administrators.`)) return;
+        }
+
+        const originalContent = toggleStatusBtn.innerHTML;
+        toggleStatusBtn.disabled = true;
+        toggleStatusBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Executing Override...';
+
+        try {
+            // Full Lifecycle Sync Payload
+            const updatePayload = { 
+                isVerified: newStatus,
+                isActive: newStatus 
+            };
+
+            if (!newStatus) {
+                // Kill Switch ON
+                updatePayload.subscriptionStatus = 'Expired';
+                updatePayload.subscriptionEndedAt = new Date().toISOString();
+                updatePayload.statusReason = 'Manual Suspension';
+            } else {
+                // Kill Switch OFF (Restore)
+                updatePayload.subscriptionStatus = 'Active';
+                updatePayload.subscriptionEndedAt = null;
+                updatePayload.statusReason = null;
+                updatePayload.subscriptionActivatedAt = new Date().toISOString();
+            }
+
+            await updateDoc(doc(db, 'schools', currentSchool.id), updatePayload);
+            
+            window.closeSchoolPanel();
+            loadSchools();
+        } catch (e) {
+            console.error("Status Toggle Failed:", e);
+            alert("Failed to update school status.");
+        }
+        toggleStatusBtn.disabled = false;
+        toggleStatusBtn.innerHTML = originalContent;
+    });
+}
+
+
+// ── Override Limits Modal (Single Action Popup) ─────────────────────────
 document.getElementById('openLimitsModalBtn').addEventListener('click', () => {
     document.getElementById('limSchoolName').textContent = currentSchool.schoolName;
     
@@ -379,7 +646,7 @@ document.getElementById('confirmLimitsBtn').addEventListener('click', async () =
         });
 
         document.getElementById('closeLimitsBtn').click();
-        document.getElementById('closeSchoolBtn').click(); 
+        window.closeSchoolPanel(); 
         loadSchools(); 
 
     } catch (e) {
@@ -392,7 +659,7 @@ document.getElementById('confirmLimitsBtn').addEventListener('click', async () =
 });
 
 
-// ── Renewal & Upgrade Modal Logic ───────────────────────────────────────────
+// ── Renewal & Upgrade Modal (Single Action Popup) ───────────────────────────
 document.getElementById('renCycle').addEventListener('change', (e) => {
     const customWrap = document.getElementById('renCustomCycleWrap');
     if (e.target.value === 'Other') customWrap.classList.remove('hidden');
@@ -488,7 +755,7 @@ document.getElementById('confirmRenewalBtn').addEventListener('click', async () 
 
         btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Updating Node Limits...';
         
-        // UPDATED: Completely restores full active status and sets new activation clock
+        // Full System Heal Payload
         await updateDoc(doc(db, 'schools', currentSchool.id), {
             billingCycle: cycleSelect === 'No Extension' ? currentSchool.billingCycle : actualCycle,
             nextRenewalDate: newRenewalDate,
@@ -508,7 +775,7 @@ document.getElementById('confirmRenewalBtn').addEventListener('click', async () 
         });
 
         closeRenewalModal();
-        document.getElementById('closeSchoolBtn').click(); 
+        window.closeSchoolPanel(); 
         loadSchools(); 
 
     } catch (e) {
@@ -520,7 +787,9 @@ document.getElementById('confirmRenewalBtn').addEventListener('click', async () 
     btn.innerHTML = 'Update Subscription & Log Ledger <i class="fa-solid fa-arrow-rotate-right ml-1"></i>';
 });
 
+
 // ── Manual Deploy Logic ───────────────────────────────────────────────────
+// Kept exactly as designed, appending the core tracking logic.
 document.getElementById('openDeployModalBtn').addEventListener('click', () => {
     document.getElementById('depSchoolName').value = '';
     document.getElementById('depDistrict').value = 'Belize';
@@ -613,7 +882,6 @@ document.getElementById('executeDeployBtn').addEventListener('click', async () =
             loggedByName: session.name
         }] : [];
 
-        // Manual deploy starts clock from today
         let nextRenewalDate = new Date();
         if (cycleSelect === 'Monthly') nextRenewalDate.setMonth(nextRenewalDate.getMonth() + 1);
         else if (cycleSelect === 'Annual') nextRenewalDate.setFullYear(nextRenewalDate.getFullYear() + 1);
@@ -622,7 +890,6 @@ document.getElementById('executeDeployBtn').addEventListener('click', async () =
 
         const batch = writeBatch(db);
 
-        // A. Log Payment (Directly attached to the new schoolId)
         const paymentRef = doc(db, 'payments', paymentId);
         batch.set(paymentRef, {
             schoolId: newSchoolId,
@@ -637,7 +904,6 @@ document.getElementById('executeDeployBtn').addEventListener('click', async () =
             timestamp: timestamp
         });
 
-        // B. Create School Document
         const schoolRef = doc(db, 'schools', newSchoolId);
         batch.set(schoolRef, {
             schoolName,
@@ -656,7 +922,6 @@ document.getElementById('executeDeployBtn').addEventListener('click', async () =
             billingCycle:         actualCycle,
             nextRenewalDate:      nextRenewalDate.toISOString(),
             
-            // UPDATED: Core Lifecycle & Tracking Fields
             subscriptionStatus:      'Active',
             subscriptionActivatedAt: timestamp,
             subscriptionEndedAt:     null,
@@ -676,7 +941,6 @@ document.getElementById('executeDeployBtn').addEventListener('click', async () =
             createdAt:            timestamp
         });
 
-        // C. Create Default Semesters
         const sems = [
             { id: 'sem_1', name: 'Term 1', order: 1 },
             { id: 'sem_2', name: 'Term 2', order: 2 },
@@ -700,7 +964,6 @@ document.getElementById('executeDeployBtn').addEventListener('click', async () =
         closeDeployModal();
         loadSchools();
         
-        // Notify HQ of successful manual deploy
         alert(`Deployment Successful!\n\nSchool Name: ${schoolName}\nSchool ID: ${newSchoolId}\nAdmin ID: ${newSuperAdminId}\n\nMake sure to provide these credentials to the school administrator.`);
 
     } catch (e) {
@@ -712,81 +975,6 @@ document.getElementById('executeDeployBtn').addEventListener('click', async () =
     btn.disabled = false;
     btn.innerHTML = '<i class="fa-solid fa-server mr-2"></i> Deploy Infrastructure';
 });
-
-// ── Toggle Suspension (Kill Switch) ───────────────────────────────────────
-const toggleStatusBtn = document.getElementById('toggleStatusBtn');
-if (toggleStatusBtn) {
-    toggleStatusBtn.addEventListener('click', async () => {
-        if (!currentSchool) return;
-
-        const isSuspended = currentSchool.isVerified === false;
-        const newStatus = isSuspended ? true : false;
-        
-        if (!newStatus) {
-            if (!confirm(`Are you absolutely sure you want to SUSPEND ${currentSchool.schoolName}? Everyone will be locked out.`)) return;
-        }
-
-        const btn = document.getElementById('toggleStatusBtn');
-        const originalContent = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Executing...';
-
-        try {
-            // UPDATED: Fully syncs verification, activity, expiration status, and timestamps
-            const updatePayload = { 
-                isVerified: newStatus,
-                isActive: newStatus 
-            };
-
-            if (!newStatus) {
-                // Executing Kill Switch
-                updatePayload.subscriptionStatus = 'Expired';
-                updatePayload.subscriptionEndedAt = new Date().toISOString();
-                updatePayload.statusReason = 'Manual Suspension';
-            } else {
-                // Restoring Access
-                updatePayload.subscriptionStatus = 'Active';
-                updatePayload.subscriptionEndedAt = null;
-                updatePayload.statusReason = null;
-                updatePayload.subscriptionActivatedAt = new Date().toISOString();
-            }
-
-            await updateDoc(doc(db, 'schools', currentSchool.id), updatePayload);
-            
-            document.getElementById('closeSchoolBtn').click();
-            loadSchools();
-        } catch (e) {
-            console.error("Status Toggle Failed:", e);
-            alert("Failed to update school status.");
-        }
-        btn.disabled = false;
-        btn.innerHTML = originalContent;
-    });
-}
-
-// ── Admin Notes Logic ─────────────────────────────────────────────────────
-// Call this function when you hook up the new HTML button for adding a standalone note
-window.addSchoolAdminNote = async (noteText) => {
-    if (!currentSchool || !noteText || !noteText.trim()) return;
-    
-    try {
-        await updateDoc(doc(db, 'schools', currentSchool.id), {
-            adminNotes: arrayUnion({
-                note: noteText.trim(),
-                timestamp: new Date().toISOString(),
-                loggedBy: session.id,
-                loggedByName: session.name
-            })
-        });
-        
-        console.log("Note successfully added to the school document!");
-        loadSchools(); // Reload to refresh the data
-        
-    } catch (error) {
-        console.error("Failed to add note:", error);
-        alert("Failed to save note. Check console for details.");
-    }
-};
 
 // Init Data
 loadSubscriptionPlans().then(() => loadSchools());
