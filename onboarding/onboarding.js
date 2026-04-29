@@ -183,6 +183,7 @@ initializeBtn.addEventListener('click', async () => {
             securityQuestionsSet: true,             
             isSuperAdmin:         true,             
             isVerified:           true,
+            isActive:             true,
             requiresPinReset:     false,
             
             // Link back to original quote for transaction history
@@ -193,6 +194,13 @@ initializeBtn.addEventListener('click', async () => {
             billingCycle:         requestData.approvedBillingCycle || 'Not Specified',
             nextRenewalDate:      requestData.calculatedRenewalDate || null,
             subscriptionStatus:   'Active',
+            
+            // Core Lifecycle & Tracking Fields
+            subscriptionActivatedAt: new Date().toISOString(),
+            subscriptionEndedAt:     null,
+            statusReason:            null,
+            adminNotes:              [],
+            
             limits:               requestData.approvedLimits || { studentLimit: 99999, teacherLimit: 50, adminLimit: 3 },
 
             activeSemesterId:     'sem_1',
