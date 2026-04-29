@@ -1,4 +1,5 @@
 import { logout, getSessionData } from './auth.js';
+import { initGhostbuster } from './ghostbuster.js';
 
 /**
  * Injects the Admin Sidebar and Topbar into the page.
@@ -11,6 +12,7 @@ import { logout, getSessionData } from './auth.js';
 export function injectAdminLayout(activePageId, pageTitle, pageSub, showSearch = false, showPeriod = false) {
 
     // ── Read session ──────────────────────────────────────────────────────────
+    initGhostbuster('admin'); // Real-time security listener that instantly kicks the user out if their account is deleted or suspended in the database.
     const session      = getSessionData('admin') || {};
     const isSuperAdmin = session.isSuperAdmin === true;
     const schoolName   = session.schoolName || 'Your School';
