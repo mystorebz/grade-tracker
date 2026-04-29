@@ -92,7 +92,7 @@ async function handleLogin() {
             return;
         }
 
-        window.location.replace('home/home.html');
+        window.location.replace('/');
 
     } catch (e) {
         console.error('[Student Login]', e);
