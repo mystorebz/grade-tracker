@@ -69,12 +69,32 @@
                 <h2 id="pageTitle" class="text-xl font-black text-white tracking-wide">Overview</h2>
                 <p id="pageSubtitle" class="text-xs text-slate-400 font-semibold mt-1">Platform metrics and system health.</p>
             </div>
-            <div class="flex items-center gap-4">
-                <span class="flex h-3 w-3 relative" title="System Online">
-                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-                </span>
-                <span class="text-xs font-bold text-slate-500 uppercase tracking-widest">All Systems Operational</span>
+            <div class="flex items-center gap-6">
+                
+                <!-- NEW: Notification Bell & Dropdown Setup -->
+                <div class="relative">
+                    <button id="notificationBellBtn" class="text-slate-400 hover:text-white transition relative flex items-center justify-center w-10 h-10">
+                        <i class="fa-solid fa-bell text-xl"></i>
+                        <span id="notificationBadge" class="absolute top-0 right-0 bg-red-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center hidden shadow-sm">0</span>
+                    </button>
+                    <!-- Notification Dropdown -->
+                    <div id="notificationDropdown" class="absolute right-0 mt-4 w-72 bg-slate-900 border border-slate-700 shadow-2xl z-[100] hidden flex flex-col max-h-96">
+                        <div class="p-3 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
+                            <span class="text-[10px] font-black uppercase tracking-widest text-slate-500">Expiring Soon</span>
+                        </div>
+                        <div id="notificationList" class="overflow-y-auto flex-1">
+                            <!-- Populated via JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-4">
+                    <span class="flex h-3 w-3 relative" title="System Online">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                    </span>
+                    <span class="text-xs font-bold text-slate-500 uppercase tracking-widest">All Systems Operational</span>
+                </div>
             </div>
         </header>
 
@@ -105,6 +125,9 @@
             </div>
         </div>
     </main>
+
+    <!-- NEW: Toast Notification Container -->
+    <div id="toastContainer" class="fixed top-6 right-6 z-[100] flex flex-col gap-3 pointer-events-none"></div>
 
     <script type="module" src="core/hq-core.js"></script>
 </body>
