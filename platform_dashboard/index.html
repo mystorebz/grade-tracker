@@ -3,438 +3,132 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ConnectUs | Modern Educational Connections</title>
+    <title>HQ Dashboard | ConnectUs</title>
     
-    <link rel="stylesheet" href="assets/css/global.css">
-    <link rel="stylesheet" href="assets/css/landing.css">
+    <link rel="icon" type="image/x-icon" href="../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/images/favicon-32x32.png">
     
-    <link rel="icon" type="image/x-icon" href="assets/images/favicon.ico">
-    <link rel="icon" type="image/png" sizes="32x32" href="assets/images/favicon-32x32.png">
-
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/css/global.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
-<body class="min-h-screen flex flex-col text-slate-800 antialiased">
+<body class="bg-slate-900 text-slate-300 font-sans antialiased min-h-screen flex overflow-hidden">
 
-    <nav class="navbar" id="navbar">
-        <div class="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <img src="assets/images/logo.png" alt="ConnectUs Logo" class="h-10 w-auto">
-                <span class="font-black text-blue-900 text-xl tracking-tight hidden sm:block">ConnectUs</span>
-            </div>
-            <div class="hidden md:flex items-center gap-6 text-sm font-bold text-slate-600">
-                <a href="#features"     class="hover:text-blue-600 transition">Features</a>
-                <a href="#testimonials" class="hover:text-blue-600 transition">Stories</a>
-                <a href="#get-started"  class="hover:text-blue-600 transition">Portals</a>
-                <a href="#register"     class="bg-blue-600 hover:bg-blue-700 text-white py-2 px-5 rounded-full transition shadow-md shadow-blue-200">Get a Quote</a>
-            </div>
-            <a href="#register" class="md:hidden bg-blue-600 text-white text-sm font-bold py-2 px-4 rounded-full">Get a Quote</a>
-        </div>
-    </nav>
-
-    <header class="hero-section flex flex-col items-center justify-center text-center pt-40 pb-16 px-4">
-        <div class="blob blob-1"></div>
-        <div class="blob blob-2"></div>
-        <div class="blob blob-3"></div>
-
-        <div class="relative z-10 mb-6 mt-10 view-section fade-up-1">
-            <div class="logo-glow inline-block">
-                <img src="assets/images/logo.png" alt="ConnectUs Education Platform Logo"
-                     class="animate-float w-48 md:w-64 lg:w-72 h-auto drop-shadow-2xl mx-auto">
+    <aside class="w-64 bg-slate-950 border-r border-slate-800 flex flex-col h-screen flex-shrink-0 relative z-20">
+        <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-400 to-teal-600"></div>
+        
+        <div class="h-20 flex flex-row items-center gap-3 px-6 border-b border-slate-800/50">
+            <img src="../assets/images/logo.png" alt="ConnectUs" class="h-8 w-auto drop-shadow-md">
+            <div>
+                <h1 class="text-xl font-black text-white tracking-widest uppercase leading-none">ConnectUs <span class="text-emerald-400">HQ</span></h1>
+                <p id="hqAdminBadge" class="text-[9px] font-mono font-bold text-emerald-500 tracking-widest uppercase mt-0.5">Role: Owner</p>
             </div>
         </div>
 
-        <div class="relative z-10 view-section fade-up-2 mb-5">
-            <span class="inline-flex items-center gap-2 bg-blue-100 text-blue-700 text-xs font-bold px-4 py-1.5 rounded-full border border-blue-200 shadow-sm">
-                🌎 &nbsp; Built for Schools Everywhere&nbsp; · &nbsp;Now Enrolling
-            </span>
-        </div>
-
-        <div class="relative z-10 view-section fade-up-3 max-w-3xl">
-            <h1 class="text-5xl md:text-6xl lg:text-7xl font-black text-blue-900 leading-tight mb-5 tracking-tight">
-                Education,<br>
-                <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">Connected.</span>
-            </h1>
-            <p class="text-lg md:text-xl text-slate-600 font-semibold leading-relaxed max-w-2xl mx-auto">
-                The modern platform for schools — giving parents, teachers, and students instant, shared access to academic progress. We are building a complete digital history of student achievement to keep everyone informed and encourage continuous growth.
-            </p>
-        </div>
-
-        <div class="relative z-10 view-section fade-up-4 mt-8 flex flex-col sm:flex-row gap-4 justify-center">
-            <a href="#register" class="bg-blue-600 hover:bg-blue-700 text-white font-black py-4 px-8 rounded-2xl transition shadow-xl shadow-blue-300 text-lg">
-                Request a Quote →
+        <nav class="flex-1 overflow-y-auto py-6 px-3 space-y-1" id="hqNav">
+            <a href="index.html" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition text-emerald-400 bg-emerald-900/20 border border-emerald-800/30">
+                <i class="fa-solid fa-chart-line w-5 text-center"></i> Overview
             </a>
-            <a href="#get-started" class="bg-white hover:bg-blue-50 text-blue-700 font-black py-4 px-8 rounded-2xl transition border-2 border-blue-200 text-lg">
-                Log In to Portal
+            <a href="approvals/approvals.html" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-file-invoice-dollar w-5 text-center"></i> Approvals & Quotes
             </a>
-        </div>
-
-        <div class="relative z-10 mt-16 text-blue-400 scroll-bounce">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                <path d="M12 5v14M5 12l7 7 7-7" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-        </div>
-    </header>
-
-    <div class="wave-divider -mt-1 bg-white">
-        <svg viewBox="0 0 1440 60" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" style="width:100%;height:60px;">
-            <path d="M0,30 C360,60 1080,0 1440,30 L1440,60 L0,60 Z" fill="#f8faff"/>
-        </svg>
-    </div>
-
-    <section id="get-started" class="py-16 px-4 bg-[#f8faff]">
-        <div class="max-w-5xl mx-auto">
-            <div class="text-center mb-10">
-                <span class="text-xs font-black text-blue-500 uppercase tracking-widest">Your Portal Awaits</span>
-                <h2 class="text-3xl md:text-4xl font-black text-blue-900 mt-2">Get Started</h2>
-                <p class="text-slate-500 font-semibold mt-2 text-base">Choose your role to log in or access your dashboard.</p>
+            <a href="schools/schools.html" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-school w-5 text-center"></i> School Directory
+            </a>
+            <a href="organizations/organizations.html" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-sitemap w-5 text-center"></i> Organizations
+            </a>
+            
+            <div class="pt-6 pb-2">
+                <p class="px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest">Platform Settings</p>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <a href="admin/login.html" class="portal-card portal-card-admin p-7 shadow-sm border-slate-100">
-                    <div class="portal-icon bg-orange-50">🔑</div>
-                    <h3 class="font-black text-orange-700 text-xl text-center mb-2">School Admin</h3>
-                    <p class="text-sm text-slate-500 text-center font-semibold leading-relaxed">Manage teachers, configure grading periods, and oversee your school's data.</p>
-                    <div class="mt-5 text-center">
-                        <span class="inline-block bg-orange-50 text-orange-600 text-xs font-black px-4 py-2 rounded-full border border-orange-200">Admin Login →</span>
-                    </div>
-                </a>
-                <a href="teacher/login.html" class="portal-card portal-card-teacher p-7 shadow-sm border-slate-100">
-                    <div class="absolute top-4 right-4 bg-blue-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide">Most Used</div>
-                    <div class="portal-icon bg-blue-50">🎓</div>
-                    <h3 class="font-black text-blue-700 text-xl text-center mb-2">Teacher Portal</h3>
-                    <p class="text-sm text-slate-500 text-center font-semibold leading-relaxed">Enter grades, manage your class roster, and keep parents informed in real time.</p>
-                    <div class="mt-5 text-center">
-                        <span class="inline-block bg-blue-50 text-blue-600 text-xs font-black px-4 py-2 rounded-full border border-blue-200">Teacher Login →</span>
-                    </div>
-                </a>
-                <a href="student/login.html" class="portal-card portal-card-family p-7 shadow-sm border-slate-100">
-                    <div class="portal-icon bg-green-50">👪</div>
-                    <h3 class="font-black text-green-700 text-xl text-center mb-2">Student & Parent</h3>
-                    <p class="text-sm text-slate-500 text-center font-semibold leading-relaxed">View grades, assignment notes, and progress reports — anytime, from any device.</p>
-                    <div class="mt-5 text-center">
-                        <span class="inline-block bg-green-50 text-green-600 text-xs font-black px-4 py-2 rounded-full border border-green-200">Family Login →</span>
-                    </div>
-                </a>
+            
+            <a href="team/team.html" id="navTeamBtn" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-user-shield w-5 text-center"></i> HQ Team
+            </a>
+        </nav>
+
+        <div class="p-4 border-t border-slate-800">
+            <div class="bg-slate-900 border border-slate-700 rounded-xl p-3 flex items-center justify-between">
+                <div class="overflow-hidden">
+                    <p id="hqAdminName" class="text-xs font-bold text-white leading-tight truncate">Admin</p>
+                    <p id="hqAdminId" class="text-[10px] text-slate-500 font-mono mt-0.5">HQ-XXXXX</p>
+                </div>
+                <button id="logoutBtn" class="text-slate-400 hover:text-red-400 transition ml-2" title="Logout">
+                    <i class="fa-solid fa-power-off"></i>
+                </button>
             </div>
         </div>
-    </section>
+    </aside>
 
-    <section id="features" class="py-20 px-4 bg-gradient-to-b from-[#f8faff] to-white">
-        <div class="max-w-5xl mx-auto">
-            <div class="text-center mb-14">
-                <span class="text-xs font-black text-blue-500 uppercase tracking-widest">Why ConnectUs</span>
-                <h2 class="text-3xl md:text-4xl font-black text-blue-900 mt-2">Built for Modern Schools</h2>
-                <p class="text-slate-500 font-semibold mt-3 max-w-xl mx-auto text-base">Everything a modern school needs — without the international price tag or the complexity.</p>
+    <main class="flex-1 flex flex-col h-screen overflow-hidden bg-[#0f172a] relative z-10">
+        
+        <header class="h-20 flex items-center justify-between px-8 border-b border-slate-800 bg-slate-900/50 backdrop-blur-md flex-shrink-0">
+            <div>
+                <h2 id="pageTitle" class="text-xl font-black text-white tracking-wide">Overview</h2>
+                <p id="pageSubtitle" class="text-xs text-slate-400 font-semibold mt-1">Platform metrics and system health.</p>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="feature-card p-7">
-                    <div class="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center text-3xl mb-5">📱</div>
-                    <h4 class="font-black text-blue-900 text-lg mb-2">Real-Time Access</h4>
-                    <p class="text-slate-500 text-sm font-semibold leading-relaxed">Parents check grades from their phone the moment a teacher enters them. No more waiting for term reports.</p>
-                </div>
-                <div class="feature-card p-7">
-                    <div class="w-14 h-14 bg-cyan-100 rounded-2xl flex items-center justify-center text-3xl mb-5">🤝</div>
-                    <h4 class="font-black text-blue-900 text-lg mb-2">Stronger Connections</h4>
-                    <p class="text-slate-500 text-sm font-semibold leading-relaxed">Teachers leave notes on assignments. Parents stay in the loop. Students stay accountable. Everyone wins.</p>
-                </div>
-                <div class="feature-card p-7">
-                    <div class="w-14 h-14 bg-indigo-100 rounded-2xl flex items-center justify-center text-3xl mb-5">🛡️</div>
-                    <h4 class="font-black text-blue-900 text-lg mb-2">Secure & Private</h4>
-                    <p class="text-slate-500 text-sm font-semibold leading-relaxed">Each school has its own isolated, secure cloud database. Student data is accessible only to authorized PINs.</p>
-                </div>
-                <div class="feature-card p-7">
-                    <div class="w-14 h-14 bg-green-100 rounded-2xl flex items-center justify-center text-3xl mb-5">✍️</div>
-                    <h4 class="font-black text-blue-900 text-lg mb-2">Full Grade History</h4>
-                    <p class="text-slate-500 text-sm font-semibold leading-relaxed">Every grade edit is logged with a reason and timestamp. Complete transparency for parents and admins.</p>
-                </div>
-                <div class="feature-card p-7">
-                    <div class="w-14 h-14 bg-yellow-100 rounded-2xl flex items-center justify-center text-3xl mb-5">⚡</div>
-                    <h4 class="font-black text-blue-900 text-lg mb-2">Instant Setup</h4>
-                    <p class="text-slate-500 text-sm font-semibold leading-relaxed">No app downloads needed for parents. Works beautifully on any phone browser the moment a PIN is shared.</p>
-                </div>
-                <div class="feature-card p-7">
-                    <div class="w-14 h-14 bg-rose-100 rounded-2xl flex items-center justify-center text-3xl mb-5">📊</div>
-                    <h4 class="font-black text-blue-900 text-lg mb-2">Smart Reports</h4>
-                    <p class="text-slate-500 text-sm font-semibold leading-relaxed">Admins get a live dashboard view of school-wide performance across teachers, classes, and grading periods.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <section id="testimonials" class="py-20 px-4 bg-gradient-to-b from-white to-blue-50">
-        <div class="max-w-4xl mx-auto">
-            <div class="text-center mb-12">
-                <span class="text-xs font-black text-blue-500 uppercase tracking-widest">Real Stories</span>
-                <h2 class="text-3xl md:text-4xl font-black text-blue-900 mt-2">What Educators Are Saying</h2>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div class="testimonial-card p-7 shadow-sm">
-                    <div class="flex text-yellow-400 text-lg mb-5">★★★★★</div>
-                    <p class="text-slate-600 font-semibold leading-relaxed mb-5 text-sm">
-                        "Finally, a system that understands what we need. It has completely transformed how our teachers communicate with parents. The transparency is amazing."
-                    </p>
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-black text-sm">HP</div>
-                        <div>
-                            <p class="font-black text-slate-800 text-sm">High School Principal</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="testimonial-card p-7 shadow-sm">
-                    <div class="flex text-yellow-400 text-lg mb-5">★★★★★</div>
-                    <p class="text-slate-600 font-semibold leading-relaxed mb-5 text-sm">
-                        "I used to spend hours compiling reports at the end of term. Now I enter grades on my tablet and parents see them instantly. It makes my job so much easier."
-                    </p>
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-black text-sm">ST</div>
-                        <div>
-                            <p class="font-black text-slate-800 text-sm">Standard 6 Teacher</p>  
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <section id="register" class="py-20 px-4 bg-blue-50">
-        <div class="max-w-2xl mx-auto">
-            <div class="text-center mb-8">
-                <span class="text-xs font-black text-blue-500 uppercase tracking-widest">Get a Quote</span>
-                <h2 class="text-3xl md:text-4xl font-black text-blue-900 mt-2">Bring ConnectUs to Your School</h2>
-                <p class="text-slate-500 font-semibold mt-3 text-sm max-w-sm mx-auto">
-                    Fill out the form below and our team will reach out with a custom quote within 24–48 hours.
-                </p>
-            </div>
-
-            <div class="bg-white rounded-3xl shadow-xl border border-blue-100 p-8 relative overflow-hidden">
-                <div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-600 rounded-t-3xl"></div>
-
-                <div id="registrationFormContainer" class="space-y-5 mt-3">
-
-                    <p class="form-section no-border">
-                        <i class="fa-solid fa-address-card"></i> Your Contact Information
-                    </p>
-
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label class="form-label">First Name *</label>
-                            <input type="text" id="firstName" placeholder="e.g. Maria" class="form-input">
-                        </div>
-                        <div>
-                            <label class="form-label">Last Name *</label>
-                            <input type="text" id="lastName" placeholder="e.g. Torres" class="form-input">
-                        </div>
-                    </div>
-
-                    <div>
-                        <label class="form-label">Job Title / Role *</label>
-                        <select id="jobTitle" class="form-input">
-                            <option value="">Select your role</option>
-                            <option value="Principal">Principal</option>
-                            <option value="Vice Principal">Vice Principal</option>
-                            <option value="IT Director">IT Director</option>
-                            <option value="District Administrator">District Administrator</option>
-                            <option value="School Administrator">School Administrator</option>
-                            <option value="Teacher">Teacher</option>
-                            <option value="Other">Other</option>
-                        </select>
-                    </div>
-
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label class="form-label">Work Email *</label>
-                            <input type="email" id="workEmail" placeholder="you@school.edu" class="form-input">
-                        </div>
-                        <div>
-                            <label class="form-label">Phone Number *</label>
-                            <input type="tel" id="phone" placeholder="e.g. +501 600-0000" class="form-input">
-                        </div>
-                    </div>
-
-                    <p class="form-section">
-                        <i class="fa-solid fa-school"></i> School Information
-                    </p>
-
-                    <div>
-                        <label class="form-label">School Name *</label>
-                        <input type="text" id="schoolName" placeholder="e.g. Valley High School" class="form-input">
-                    </div>
-
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label class="form-label">School Type *</label>
-                            <select id="schoolType" class="form-input">
-                                <option value="">Select Type</option>
-                                <option value="Primary / Elementary">Primary / Elementary</option>
-                                <option value="Middle School">Middle School</option>
-                                <option value="High School / Secondary">High School / Secondary</option>
-                                <option value="Junior College">Junior College</option>
-                                <option value="University / College">University / College</option>
-                                <option value="Vocational / Technical">Vocational / Technical</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="form-label">Country *</label>
-                            <select id="country" class="form-input">
-                                <option value="">Select Country</option>
-                                <option value="Belize">Belize</option>
-                                <option value="Guatemala">Guatemala</option>
-                                <option value="Honduras">Honduras</option>
-                                <option value="Mexico">Mexico</option>
-                                <option value="Jamaica">Jamaica</option>
-                                <option value="Trinidad and Tobago">Trinidad and Tobago</option>
-                                <option value="Barbados">Barbados</option>
-                                <option value="Guyana">Guyana</option>
-                                <option value="United States">United States</option>
-                                <option value="United Kingdom">United Kingdom</option>
-                                <option value="Canada">Canada</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label class="form-label">City *</label>
-                            <input type="text" id="city" placeholder="e.g. Belize City" class="form-input">
-                        </div>
-                        <div>
-                            <label class="form-label">State / Province / District</label>
-                            <input type="text" id="stateProvince" placeholder="e.g. Cayo District" class="form-input">
-                        </div>
-                    </div>
-
-                    <p class="form-section">
-                        <i class="fa-solid fa-users"></i> School Size
-                    </p>
-
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label class="form-label">Estimated Students *</label>
-                            <input type="number" id="studentsCount" placeholder="e.g. 350" min="1" class="form-input">
-                        </div>
-                        <div>
-                            <label class="form-label">Estimated Teachers *</label>
-                            <input type="number" id="teachersCount" placeholder="e.g. 25" min="1" class="form-input">
-                        </div>
-                    </div>
-
-                    <p class="form-section">
-                        <i class="fa-solid fa-file-contract"></i> Preferred Contract Term
-                    </p>
-
-                    <div>
-                        <label class="form-label">Contract Term *</label>
-                        <select id="contractTerm" class="form-input">
-                            <option value="">Select preferred term</option>
-                            <option value="6 Months">6 Months — Pilot Program</option>
-                            <option value="Annual">Annual Contract — 1 year</option>
-                            <option value="Multi-Year">Multi-Year Contract — 2 or 3 years</option>
-                        </select>
-                    </div>
-
-                    <div id="contractYearsWrap" class="hidden">
-                        <label class="form-label">How many years? *</label>
-                        <select id="contractYears" class="form-input">
-                            <option value="">Select number of years</option>
-                            <option value="2">2 Years</option>
-                            <option value="3">3 Years</option>
-                        </select>
-                        <p class="text-xs text-slate-400 font-semibold mt-1.5">Multi-year contracts may qualify for a discounted rate — we will include this in your quote.</p>
-                    </div>
-
-                    <p class="form-section">
-                        <i class="fa-solid fa-circle-info"></i> Additional Information
-                    </p>
-
-                    <div>
-                        <label class="form-label">How did you hear about us?</label>
-                        <select id="hearAboutUs" class="form-input">
-                            <option value="">Select an option</option>
-                            <option value="Google Search">Google Search</option>
-                            <option value="Social Media">Social Media</option>
-                            <option value="Word of Mouth">Word of Mouth</option>
-                            <option value="Referral from another school">Referral from another school</option>
-                            <option value="Conference or Event">Conference or Event</option>
-                            <option value="Other">Other</option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label class="form-label">Tell us more <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
-                        <textarea id="message" placeholder="Any specific needs, questions, or goals you'd like us to know about..." class="form-input h-24 resize-none"></textarea>
-                    </div>
-
-                    <button id="registerBtn"
-                        class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-black py-4 px-4 rounded-2xl transition shadow-lg shadow-blue-200 text-base mt-2">
-                        Request a Quote →
+            <div class="flex items-center gap-6">
+                
+                <!-- NEW: Notification Bell & Dropdown Setup -->
+                <div class="relative">
+                    <button id="notificationBellBtn" class="text-slate-400 hover:text-white transition relative flex items-center justify-center w-10 h-10">
+                        <i class="fa-solid fa-bell text-xl"></i>
+                        <span id="notificationBadge" class="absolute top-0 right-0 bg-red-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center hidden shadow-sm">0</span>
                     </button>
-                    <p id="regMessage" class="text-sm text-center font-bold hidden mt-2"></p>
-                </div>
-
-                <div id="successScreen" class="hidden text-center py-8">
-                    <div class="text-7xl mb-4">🎉</div>
-                    <h2 class="text-2xl font-black text-slate-800 mb-2">Request Received!</h2>
-                    <p class="text-slate-500 font-semibold mb-5 text-sm leading-relaxed">
-                        Thank you for your interest in ConnectUs. We've sent a confirmation to your email and our team will be in touch within <strong class="text-slate-700">24–48 hours</strong> with a custom quote.
-                    </p>
-                    <div class="bg-blue-50 border border-blue-100 rounded-2xl p-5 mb-6 text-left">
-                        <p class="text-xs font-black text-blue-500 uppercase tracking-widest mb-3">What happens next?</p>
-                        <ul class="space-y-2.5 text-sm text-slate-600 font-semibold">
-                            <li class="flex items-start gap-2.5">
-                                <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i>
-                                Check your email for a confirmation from info@connectusonline.org
-                            </li>
-                            <li class="flex items-start gap-2.5">
-                                <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i>
-                                Our team will review your details and prepare a custom quote
-                            </li>
-                            <li class="flex items-start gap-2.5">
-                                <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i>
-                                We will send you an invoice or payment link based on your preferred term
-                            </li>
-                            <li class="flex items-start gap-2.5">
-                                <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i>
-                                Once confirmed and paid, we will send your onboarding link to set up your school
-                            </li>
-                        </ul>
+                    <!-- Notification Dropdown -->
+                    <div id="notificationDropdown" class="absolute right-0 mt-4 w-72 bg-slate-900 border border-slate-700 shadow-2xl z-[100] hidden flex flex-col max-h-96">
+                        <div class="p-3 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
+                            <span class="text-[10px] font-black uppercase tracking-widest text-slate-500">Expiring Soon</span>
+                        </div>
+                        <div id="notificationList" class="overflow-y-auto flex-1">
+                            <!-- Populated via JS -->
+                        </div>
                     </div>
-                    <button onclick="location.reload()"
-                        class="text-blue-600 font-black hover:underline text-sm bg-blue-50 py-2.5 px-6 rounded-full border border-blue-100 transition hover:bg-blue-100">
-                        ← Back to Home
-                    </button>
+                </div>
+
+                <div class="flex items-center gap-4">
+                    <span class="flex h-3 w-3 relative" title="System Online">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                    </span>
+                    <span class="text-xs font-bold text-slate-500 uppercase tracking-widest">All Systems Operational</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="flex-1 overflow-y-auto p-8" id="mainContent">
+            <div id="view-overview" class="view-section">
+                <div class="grid grid-cols-4 gap-6 mb-8">
+                    <div class="bg-slate-800 border border-slate-700 p-6 rounded-2xl">
+                        <i class="fa-solid fa-school text-emerald-400 text-2xl mb-3"></i>
+                        <p class="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Active Schools</p>
+                        <p id="metricSchools" class="text-3xl font-black text-white"><i class="fa-solid fa-circle-notch fa-spin text-lg text-slate-600"></i></p>
+                    </div>
+                    <div class="bg-slate-800 border border-slate-700 p-6 rounded-2xl">
+                        <i class="fa-solid fa-chalkboard-user text-blue-400 text-2xl mb-3"></i>
+                        <p class="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Total Teachers</p>
+                        <p id="metricTeachers" class="text-3xl font-black text-white"><i class="fa-solid fa-circle-notch fa-spin text-lg text-slate-600"></i></p>
+                    </div>
+                    <div class="bg-slate-800 border border-slate-700 p-6 rounded-2xl">
+                        <i class="fa-solid fa-graduation-cap text-indigo-400 text-2xl mb-3"></i>
+                        <p class="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Total Students</p>
+                        <p id="metricStudents" class="text-3xl font-black text-white"><i class="fa-solid fa-circle-notch fa-spin text-lg text-slate-600"></i></p>
+                    </div>
+                    <div class="bg-slate-800 border border-slate-700 p-6 rounded-2xl border-l-4 border-l-amber-500">
+                        <i class="fa-solid fa-file-invoice-dollar text-amber-400 text-2xl mb-3"></i>
+                        <p class="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Pending Quotes</p>
+                        <p id="metricQuotes" class="text-3xl font-black text-amber-400"><i class="fa-solid fa-circle-notch fa-spin text-lg text-amber-600/50"></i></p>
+                    </div>
                 </div>
             </div>
         </div>
-    </section>
+    </main>
 
-    <footer class="py-10 px-4 text-center">
-        <div class="max-w-4xl mx-auto">
-            <div class="flex items-center justify-center gap-3 mb-5">
-                <img src="assets/images/logo.png" alt="ConnectUs Logo" class="h-10 w-auto opacity-90">
-                <span class="font-black text-white text-2xl tracking-tight">ConnectUs</span>
-            </div>
-            <div class="flex items-center justify-center gap-6 text-slate-400 text-sm font-semibold mb-8">
-                <a href="#features"    class="hover:text-white transition">Features</a>
-                <a href="#get-started" class="hover:text-white transition">Portals</a>
-                <a href="#register"    class="hover:text-white transition">Get a Quote</a>
-            </div>
-            <div class="border-t border-white/10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <p class="text-slate-500 text-sm font-semibold">© 2026 ConnectUs. All rights reserved.</p>
-                <div class="footer-logo-wrap">
-                    <span class="text-slate-300 text-sm font-bold">Powered by</span>
-                    <span class="text-white font-black text-sm">Kismet Code Digital</span>
-                    <img src="assets/images/blogo.png" alt="Kismet Code Digital Logo" class="h-7 w-auto brightness-110">
-                </div>
-            </div>
-        </div>
-    </footer>
+    <!-- NEW: Toast Notification Container -->
+    <div id="toastContainer" class="fixed top-6 right-6 z-[100] flex flex-col gap-3 pointer-events-none"></div>
 
-    <script type="module" src="assets/js/landing.js"></script>
-
+    <script type="module" src="core/hq-core.js"></script>
 </body>
 </html>
