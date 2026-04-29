@@ -15,12 +15,13 @@ async function loadDashboardMetrics() {
         const qSnap = await getDocs(query(collection(db, 'quote_requests'), where('fulfilled', '==', false)));
         document.getElementById('metricQuotes').textContent = qSnap.size;
 
-        // 2. Active Schools
+        // 2. Active Schools (Updated to use our isVerified kill switch)
         const sSnap = await getDocs(collection(db, 'schools'));
         let activeCount = 0;
         sSnap.forEach(doc => {
             const data = doc.data();
-            if (data.isActive !== false) {
+            // A school is only counted as active if the kill switch (isVerified) is explicitly true
+            if (data.isVerified === true) {
                 activeCount++;
             }
         });
