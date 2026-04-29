@@ -1,5 +1,5 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { doc, getDoc, getDocs, addDoc, collection } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { doc, getDoc, getDocs, addDoc, collection, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { letterGrade, gradeFill } from '../../assets/js/utils.js';
@@ -11,16 +11,23 @@ injectTeacherLayout('grade-entry', 'Enter Grade', 'Log a new grade for a student
 // ── 2. STATE ──────────────────────────────────────────────────────────────
 let foundStudent  = null; 
 let rawSemesters  = [];
+let activeRoster  = []; // NEW: Caches roster for the dropdown
 
 // ── 3. INIT ───────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-    document.getElementById('agDate').valueAsDate = new Date();
+    // FIX: Check if element exists before setting value to prevent the null crash
+    const dateInput = document.getElementById('agDate');
+    if (dateInput) dateInput.valueAsDate = new Date();
     
     await loadSemesters();
-    loadGradeTypes(); // Teacher grade types can load immediately!
+    await loadRoster(); // Fetch students for the dropdown
+    loadSubjects();     // Populate subjects dropdown
+    loadGradeTypes();   // Teacher grade types can load immediately!
 
-    document.getElementById('lookupBtn').addEventListener('click', lookupStudent);
-    document.getElementById('lookupId').addEventListener('keydown', e => { if (e.key === 'Enter') lookupStudent(); });
+    // Listeners for the new searchable dropdowns
+    document.getElementById('lookupInput').addEventListener('change', handleStudentSelection);
+    document.getElementById('agType').addEventListener('change', displayGradeWeight);
+
     document.getElementById('agScore').addEventListener('input', updatePreview);
     document.getElementById('agMax').addEventListener('input', updatePreview);
     document.getElementById('saveGradeBtn').addEventListener('click', saveGrade);
@@ -28,8 +35,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Auto-Lookup hook for the "Quick Grade" button on the Roster page
     const quickGradeId = localStorage.getItem('connectus_quick_grade_student');
     if (quickGradeId) {
-        document.getElementById('lookupId').value = quickGradeId;
-        lookupStudent();
+        // Find the student in the roster to set the correct display value
+        const s = activeRoster.find(x => x.id === quickGradeId);
+        if (s) {
+            document.getElementById('lookupInput').value = `${s.id} | ${s.name}`;
+            lookupStudent(s.id);
+        }
         localStorage.removeItem('connectus_quick_grade_student'); // Clear it after use
     }
 });
@@ -54,60 +65,103 @@ async function loadSemesters() {
         } catch(e) {}
 
         const sel = document.getElementById('agSemester');
-        sel.innerHTML = '';
-        rawSemesters.forEach(s => {
-            const opt = document.createElement('option');
-            opt.value = s.id; opt.textContent = s.name;
-            if (s.id === activeId) opt.selected = true;
-            sel.appendChild(opt);
-        });
+        if (sel) {
+            sel.innerHTML = '';
+            rawSemesters.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.id; opt.textContent = s.name;
+                if (s.id === activeId) opt.selected = true;
+                sel.appendChild(opt);
+            });
+        }
     } catch (e) { console.error('[TeacherGradeEntry] loadSemesters:', e); }
 }
 
-// ── 5. LOAD GRADE TYPES (TEACHER SPECIFIC) ────────────────────────────────
+// ── 5. POPULATE DROPDOWNS (ROSTER, SUBJECTS, TYPES) ────────────────────────
+async function loadRoster() {
+    try {
+        const q = query(
+            collection(db, 'students'), 
+            where('teacherId', '==', session.teacherId), 
+            where('enrollmentStatus', '==', 'Active')
+        );
+        const snap = await getDocs(q);
+        activeRoster = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        const list = document.getElementById('rosterList');
+        if (list) {
+            list.innerHTML = activeRoster.map(s => `<option value="${s.id} | ${s.name}"></option>`).join('');
+        }
+    } catch (e) { console.error('Error loading roster:', e); }
+}
+
+function loadSubjects() {
+    const list = document.getElementById('subjectList');
+    if (!list) return;
+    const subjects = (session.teacherData.subjects || []).filter(s => !s.archived);
+    list.innerHTML = subjects.map(s => `<option value="${s.name}"></option>`).join('');
+}
+
 function loadGradeTypes() {
     const sel = document.getElementById('agType');
+    if (!sel) return;
     
-    // Pull exactly what they created in their Settings!
     const defaultTypes = [{ name: 'Test' }, { name: 'Quiz' }, { name: 'Assignment' }, { name: 'Homework' }, { name: 'Project' }, { name: 'Final Exam' }];
     const types = session.teacherData.gradeTypes || session.teacherData.customGradeTypes || defaultTypes;
     
-    sel.innerHTML = '<option value="">Select type...</option>' + types.map(t => {
+    sel.innerHTML = '<option value="">— Select Type —</option>' + types.map(t => {
         const name = t.name || t;
-        const weight = t.weight ? ` (${t.weight}%)` : '';
-        return `<option value="${name}">${name}${weight}</option>`;
+        return `<option value="${name}">${name}</option>`;
     }).join('');
 }
 
-// ── 6. STUDENT LOOKUP ─────────────────────────────────────────────────────
-async function lookupStudent() {
-    const rawId = document.getElementById('lookupId').value.trim().toUpperCase();
+function displayGradeWeight(e) {
+    const selected = e.target.value;
+    const weightEl = document.getElementById('typeWeightHint');
+    if (!weightEl) return;
+
+    const types = session.teacherData.gradeTypes || session.teacherData.customGradeTypes || [];
+    const typeObj = types.find(t => (t.name || t) === selected);
+
+    if (typeObj && typeObj.weight) {
+        weightEl.innerHTML = `<i class="fa-solid fa-scale-balanced mr-1"></i> Weight: <strong>${typeObj.weight}%</strong> of final grade`;
+        weightEl.classList.remove('hidden');
+    } else {
+        weightEl.classList.add('hidden');
+    }
+}
+
+// ── 6. STUDENT LOOKUP & UI HANDLING ───────────────────────────────────────
+function handleStudentSelection(e) {
+    const val = e.target.value.trim();
+    // Extract ID if they selected from the datalist (Format: "S24-12345 | Name")
+    const match = val.match(/^(S\d{2}-[A-Z0-9]{5})/);
+    if (match) {
+        lookupStudent(match[1]);
+    }
+}
+
+async function lookupStudent(studentId) {
     const msgEl = document.getElementById('lookupMsg');
     const badge = document.getElementById('studentBadge');
     const form  = document.getElementById('gradeFormSection');
     msgEl.classList.add('hidden');
 
-    if (!rawId) { showLookupMsg('Please enter a Student Global ID.'); return; }
-    if (!/^S\d{2}-[A-Z0-9]{5}$/.test(rawId)) { showLookupMsg('Invalid format. Student ID should look like S26-XXXXX.'); return; }
-
-    const btn = document.getElementById('lookupBtn');
-    btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-
     try {
-        const snap = await getDoc(doc(db, 'students', rawId));
-        if (!snap.exists()) { showLookupMsg('No student found with that ID.'); btn.disabled = false; btn.innerHTML = 'Look Up'; return; }
+        const snap = await getDoc(doc(db, 'students', studentId));
+        if (!snap.exists()) { showLookupMsg('No student found with that ID.'); return; }
 
         const data = snap.data();
         
         // Ensure student actually belongs to THIS teacher
         if (data.teacherId !== session.teacherId) {
             showLookupMsg('This student is not assigned to your active roster.');
-            btn.disabled = false; btn.innerHTML = 'Look Up'; return;
+            return;
         }
 
         if (data.enrollmentStatus !== 'Active') {
             showLookupMsg(`This student's enrollment status is "${data.enrollmentStatus}". Only Active students can receive grades.`);
-            btn.disabled = false; btn.innerHTML = 'Look Up'; return;
+            return;
         }
 
         foundStudent = { id: snap.id, ...data };
@@ -115,24 +169,24 @@ async function lookupStudent() {
         document.getElementById('badgeName').textContent    = data.name || 'Unknown';
         document.getElementById('badgeMeta').textContent    = [data.className || 'Unassigned class', data.dob ? `DOB: ${data.dob}` : ''].filter(Boolean).join(' · ');
         document.getElementById('badgeId').textContent      = snap.id;
-
-        // Auto-fill subject based on the student's class (if you want to implement this later)
-        // document.getElementById('agSubject').value = ...
         
         badge.classList.remove('hidden'); form.classList.remove('hidden');
-        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        
+        // Slight delay to allow UI to render before scrolling
+        setTimeout(() => { form.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 100);
 
     } catch (e) { showLookupMsg('Connection error. Please try again.'); }
-
-    btn.disabled = false; btn.innerHTML = 'Look Up';
 }
 
 function showLookupMsg(msg) { const el = document.getElementById('lookupMsg'); el.textContent = msg; el.classList.remove('hidden'); }
 
 window.resetLookup = function() {
-    foundStudent = null; document.getElementById('lookupId').value = '';
-    document.getElementById('studentBadge').classList.add('hidden'); document.getElementById('gradeFormSection').classList.add('hidden');
-    document.getElementById('lookupMsg').classList.add('hidden'); document.getElementById('gradeSavedBanner').classList.add('hidden');
+    foundStudent = null; 
+    document.getElementById('lookupInput').value = '';
+    document.getElementById('studentBadge').classList.add('hidden'); 
+    document.getElementById('gradeFormSection').classList.add('hidden');
+    document.getElementById('lookupMsg').classList.add('hidden'); 
+    document.getElementById('gradeSavedBanner').classList.add('hidden');
 };
 
 // ── 7. LIVE PREVIEW ───────────────────────────────────────────────────────
@@ -169,12 +223,12 @@ async function saveGrade() {
 
     if (!subject || !type || !title) {
         document.getElementById('gradeMsg').textContent = 'Subject, grade type, and title are required.';
-        document.getElementById('gradeMsg').className = 'text-sm font-bold p-3 rounded-xl text-red-600 bg-red-50 border border-red-100';
+        document.getElementById('gradeMsg').className = 'text-sm font-bold p-3 rounded-xl text-red-600 bg-red-50 border border-red-100 mt-4';
         document.getElementById('gradeMsg').classList.remove('hidden'); return;
     }
     if (isNaN(score) || isNaN(max) || max <= 0 || score < 0 || score > max) {
         document.getElementById('gradeMsg').textContent = 'Please enter valid score and max values.';
-        document.getElementById('gradeMsg').className = 'text-sm font-bold p-3 rounded-xl text-red-600 bg-red-50 border border-red-100';
+        document.getElementById('gradeMsg').className = 'text-sm font-bold p-3 rounded-xl text-red-600 bg-red-50 border border-red-100 mt-4';
         document.getElementById('gradeMsg').classList.remove('hidden'); return;
     }
 
@@ -184,7 +238,6 @@ async function saveGrade() {
     btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Committing...';
 
     try {
-        // Teacher write to global student passport path
         await addDoc(collection(db, 'students', foundStudent.id, 'grades'), {
             schoolId:        session.schoolId,
             teacherId:       session.teacherId,  
@@ -209,7 +262,7 @@ async function saveGrade() {
 
     } catch (e) {
         document.getElementById('gradeMsg').textContent = 'System error. Could not commit record.';
-        document.getElementById('gradeMsg').className = 'text-sm font-bold p-3 rounded-xl text-red-600 bg-red-50 border border-red-100';
+        document.getElementById('gradeMsg').className = 'text-sm font-bold p-3 rounded-xl text-red-600 bg-red-50 border border-red-100 mt-4';
         document.getElementById('gradeMsg').classList.remove('hidden');
     }
 
