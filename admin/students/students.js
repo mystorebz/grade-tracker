@@ -814,19 +814,23 @@ async function renderStudentAcademicTab() {
         let allTerms   = [];
         let activeTerm = null;
         try {
-            const termSnap = await getDocs(
-                query(collection(db, 'terms'), where('schoolId', '==', session.schoolId))
-            );
-            allTerms = termSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const [schoolSnap, termSnap] = await Promise.all([
+                getDoc(doc(db, 'schools', session.schoolId)),
+                getDocs(collection(db, 'schools', session.schoolId, 'semesters'))
+            ]);
+            
+            const activeSemId = schoolSnap.exists() ? schoolSnap.data().activeSemesterId : null;
+            
+            allTerms = termSnap.docs.map(d => ({ 
+                id: d.id, 
+                ...d.data(),
+                isActive: d.id === activeSemId 
+            }));
             
             allTerms.sort((a, b) => {
                 if (a.isActive && !b.isActive) return -1;
                 if (!a.isActive && b.isActive) return 1;
-                
-                // Safely convert to strings to prevent Timestamp crashes
-                const dateA = String(a.createdAt || '');
-                const dateB = String(b.createdAt || '');
-                return dateB.localeCompare(dateA);
+                return (a.order || 0) - (b.order || 0);
             });
             
             activeTerm = allTerms.find(t => t.isActive) || null;
@@ -1123,8 +1127,10 @@ window.saveAdminAddGrade = async () => {
         if (!semId || semId === 'all') {
             // Fallback to active term if filtering by 'all' or undefined
             try {
-                const termSnap = await getDocs(query(collection(db, 'terms'), where('schoolId', '==', session.schoolId), where('isActive', '==', true)));
-                if (!termSnap.empty) semId = termSnap.docs[0].id;
+                const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
+                if (schoolSnap.exists() && schoolSnap.data().activeSemesterId) {
+                    semId = schoolSnap.data().activeSemesterId;
+                }
             } catch(e) {}
         }
 
@@ -1499,14 +1505,15 @@ async function renderStudentEnrollmentTab() {
     let hasActiveTerm = false;
     let activeTermName = '';
     try {
-        const termSnap = await getDocs(
-            query(collection(db, 'terms'),
-                where('schoolId', '==', session.schoolId),
-                where('isActive', '==', true))
-        );
-        if (!termSnap.empty) {
-            hasActiveTerm  = true;
-            activeTermName = termSnap.docs[0].data().name || 'the current term';
+        const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
+        const activeSemId = schoolSnap.exists() ? schoolSnap.data().activeSemesterId : null;
+        
+        if (activeSemId) {
+            const semSnap = await getDoc(doc(db, 'schools', session.schoolId, 'semesters', activeSemId));
+            if (semSnap.exists()) {
+                hasActiveTerm  = true;
+                activeTermName = semSnap.data().name || 'the current term';
+            }
         }
     } catch (_) {}
 
