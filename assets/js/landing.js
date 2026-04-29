@@ -44,9 +44,9 @@ if (registerBtn) {
         const hearAboutUs    = document.getElementById('hearAboutUs').value;
         const message        = document.getElementById('message').value.trim();
 
-        // Validation - Strict check for required fields only (message and hearAboutUs are now optional)
+        // Validation - Strict check for ALL required fields (Removed optional fields)
         if (!firstName || !lastName || !jobTitle || !workEmail || !phone ||
-            !schoolName || !schoolType || !country || !city || !stateProvince ||
+            !schoolName || !schoolType || !country || !city ||
             !studentsCount || !teachersCount || !contractTerm) {
             msgEl.textContent = "Please fill in all required fields (*).";
             msgEl.className = "text-sm text-center font-bold mt-2 text-red-600 block";
@@ -101,8 +101,8 @@ if (registerBtn) {
                 teachersCount:  parseInt(teachersCount),
                 contractTerm,
                 contractYears:  contractTerm === 'Multi-Year' ? parseInt(contractYears) : null,
-                hearAboutUs:    hearAboutUs || "Not specified",
-                message:        message || "None",
+                hearAboutUs,
+                message,
                 status:         'Pending',
                 fulfilled:      false,
                 createdAt:      timestamp,
