@@ -27,6 +27,7 @@ const filterTeacherSelect = document.getElementById('filterStudentTeacher');
 
 // ── 3. LOAD STUDENTS & TEACHERS ───────────────────────────────────────────
 async function loadStudents() {
+    if (!tbody) return; // Safety check
     tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-16 text-center text-slate-400 font-semibold"><i class="fa-solid fa-spinner fa-spin text-emerald-400 text-2xl mb-3 block"></i>Loading students...</td></tr>`;
     
     try {
@@ -48,13 +49,13 @@ async function loadStudents() {
             .map(d => ({ id: d.id, ...d.data(), teacherName: tm[d.data().teacherId] || '—' }));
         
         // Populate Teacher Filter
-        if (filterTeacherSelect.options.length <= 1) {
+        if (filterTeacherSelect && filterTeacherSelect.options.length <= 1) {
             filterTeacherSelect.innerHTML = '<option value="">All Teachers</option>' + 
                 allTeachersCache.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
         }
         
         // Populate Class Filter based on School Type
-        if (filterClassSelect.options.length <= 2) {
+        if (filterClassSelect && filterClassSelect.options.length <= 2) {
             const classList = CLASSES[session.schoolType || 'Primary'] || CLASSES['Primary'];
             filterClassSelect.innerHTML = '<option value="">All Classes</option><option value="unassigned">Unassigned Only</option>' + 
                 classList.map(c => `<option value="${c}">${c}</option>`).join('');
@@ -63,15 +64,17 @@ async function loadStudents() {
         renderTable();
     } catch (e) {
         console.error("Error loading students:", e);
-        tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-16 text-center text-red-500 font-semibold">Failed to load student data.</td></tr>`;
+        if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-16 text-center text-red-500 font-semibold">Failed to load student data.</td></tr>`;
     }
 }
 
 // ── 4. RENDER & FILTER TABLE ──────────────────────────────────────────────
 function renderTable() {
+    if (!tbody) return; // Safety check
+
     let filtered = allStudentsCache;
-    const filterT = filterTeacherSelect.value;
-    const filterC = filterClassSelect.value;
+    const filterT = filterTeacherSelect ? filterTeacherSelect.value : '';
+    const filterC = filterClassSelect ? filterClassSelect.value : '';
     const searchInputEl = document.getElementById('searchInput');
     const term = searchInputEl ? searchInputEl.value.toLowerCase() : '';
 
@@ -112,8 +115,8 @@ function renderTable() {
 }
 
 // ── 5. EVENT LISTENERS FOR FILTERS & SEARCH ───────────────────────────────
-filterClassSelect.addEventListener('change', renderTable);
-filterTeacherSelect.addEventListener('change', renderTable);
+filterClassSelect?.addEventListener('change', renderTable);
+filterTeacherSelect?.addEventListener('change', renderTable);
 
 const searchInput = document.getElementById('searchInput');
 if (searchInput) {
@@ -125,9 +128,11 @@ window.openArchiveReasonModal = function(id) {
     currentStudentId = id;
     const s = allStudentsCache.find(x => x.id === id);
     document.getElementById('archiveStudentName').textContent = s ? s.name : 'this student';
-    document.getElementById('archiveReasonSelect').value = 'Transferred to another school';
-    document.getElementById('archiveReasonOther').value = '';
-    document.getElementById('archiveReasonOther').classList.add('hidden');
+    if(document.getElementById('archiveReasonSelect')) document.getElementById('archiveReasonSelect').value = 'Transferred to another school';
+    if(document.getElementById('archiveReasonOther')) {
+        document.getElementById('archiveReasonOther').value = '';
+        document.getElementById('archiveReasonOther').classList.add('hidden');
+    }
     openOverlay('archiveReasonModal', 'archiveReasonModalInner');
 };
 
@@ -135,13 +140,13 @@ window.closeArchiveReasonModal = function() {
     closeOverlay('archiveReasonModal', 'archiveReasonModalInner');
 };
 
-document.getElementById('archiveReasonSelect').addEventListener('change', function() {
-    document.getElementById('archiveReasonOther').classList.toggle('hidden', this.value !== 'Other');
+document.getElementById('archiveReasonSelect')?.addEventListener('change', function() {
+    document.getElementById('archiveReasonOther')?.classList.toggle('hidden', this.value !== 'Other');
 });
 
-document.getElementById('confirmArchiveBtn').addEventListener('click', async () => {
-    const sel = document.getElementById('archiveReasonSelect').value;
-    const reason = sel === 'Other' ? document.getElementById('archiveReasonOther').value.trim() : sel;
+document.getElementById('confirmArchiveBtn')?.addEventListener('click', async () => {
+    const sel = document.getElementById('archiveReasonSelect')?.value;
+    const reason = sel === 'Other' ? document.getElementById('archiveReasonOther')?.value.trim() : sel;
     const btn = document.getElementById('confirmArchiveBtn');
     
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Archiving...';
@@ -173,17 +178,21 @@ window.openReassignModal = function(id) {
     currentStudentId = id;
     const s = allStudentsCache.find(x => x.id === id);
     
-    document.getElementById('rsName').value = s.name || '';
-    document.getElementById('reassignMsg').classList.add('hidden');
+    if(document.getElementById('rsName')) document.getElementById('rsName').value = s.name || '';
+    document.getElementById('reassignMsg')?.classList.add('hidden');
 
     const cSelect = document.getElementById('rsClass');
-    const classList = CLASSES[session.schoolType || 'Primary'] || CLASSES['Primary'];
-    cSelect.innerHTML = '<option value="">-- Unassigned --</option>' + 
-        classList.map(c => `<option value="${c}" ${s.className===c?'selected':''}>${c}</option>`).join('');
+    if (cSelect) {
+        const classList = CLASSES[session.schoolType || 'Primary'] || CLASSES['Primary'];
+        cSelect.innerHTML = '<option value="">-- Unassigned --</option>' + 
+            classList.map(c => `<option value="${c}" ${s.className===c?'selected':''}>${c}</option>`).join('');
+    }
 
     const tSelect = document.getElementById('rsTeacher');
-    tSelect.innerHTML = '<option value="">-- Unassigned --</option>' + 
-        allTeachersCache.map(t => `<option value="${t.id}" ${s.teacherId===t.id?'selected':''}>${t.name}</option>`).join('');
+    if (tSelect) {
+        tSelect.innerHTML = '<option value="">-- Unassigned --</option>' + 
+            allTeachersCache.map(t => `<option value="${t.id}" ${s.teacherId===t.id?'selected':''}>${t.name}</option>`).join('');
+    }
 
     openOverlay('reassignStudentModal', 'reassignStudentModalInner');
 };
@@ -192,15 +201,15 @@ window.closeReassignModal = function() {
     closeOverlay('reassignStudentModal', 'reassignStudentModalInner');
 };
 
-document.getElementById('saveReassignBtn').addEventListener('click', async () => {
+document.getElementById('saveReassignBtn')?.addEventListener('click', async () => {
     const btn = document.getElementById('saveReassignBtn');
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`; 
     btn.disabled = true;
 
     try {
-        const name = document.getElementById('rsName').value.trim();
-        const className = document.getElementById('rsClass').value;
-        const teacherId = document.getElementById('rsTeacher').value;
+        const name = document.getElementById('rsName')?.value.trim() || '';
+        const className = document.getElementById('rsClass')?.value || '';
+        const teacherId = document.getElementById('rsTeacher')?.value || '';
 
         await updateDoc(doc(db, 'students', currentStudentId), {
             name, className, teacherId
@@ -222,15 +231,18 @@ window.openStudentPanel = async function(studentId) {
     currentStudentId = studentId; 
     const student = allStudentsCache.find(s => s.id === studentId);
     
-    document.getElementById('sPanelName').textContent = student?.name || 'Student';
-    document.getElementById('sPanelClass').textContent = student?.className || '—';
+    if (document.getElementById('sPanelName')) document.getElementById('sPanelName').textContent = student?.name || 'Student';
+    if (document.getElementById('sPanelClass')) document.getElementById('sPanelClass').textContent = student?.className || '—';
     
     const printBtn = document.getElementById('sPanelPrintBtn');
     if(printBtn) printBtn.onclick = () => window.printStudentRecord(studentId);
 
-    document.getElementById('sPanelLoader').classList.remove('hidden');
-    document.getElementById('subjectAccordions').classList.add('hidden');
-    document.getElementById('subjectAccordions').innerHTML = '';
+    document.getElementById('sPanelLoader')?.classList.remove('hidden');
+    const container = document.getElementById('subjectAccordions');
+    if (container) {
+        container.classList.add('hidden');
+        container.innerHTML = '';
+    }
     
     openOverlay('studentPanel', 'studentPanelInner', true);
     
@@ -242,7 +254,7 @@ window.openStudentPanel = async function(studentId) {
         ));
         
         if (gradesSnap.empty) {
-            document.getElementById('sPanelLoader').innerHTML = `<div class="text-center py-16"><div class="text-5xl mb-3">📂</div><p class="text-slate-400 font-semibold">No grades recorded yet.</p></div>`;
+            if (document.getElementById('sPanelLoader')) document.getElementById('sPanelLoader').innerHTML = `<div class="text-center py-16"><div class="text-5xl mb-3">📂</div><p class="text-slate-400 font-semibold">No grades recorded yet.</p></div>`;
             return;
         }
         
@@ -254,27 +266,28 @@ window.openStudentPanel = async function(studentId) {
             by[subj].push(g);
         });
         
-        const container = document.getElementById('subjectAccordions');
-        container.innerHTML = Object.entries(by).map(([subject, grades]) => {
-            const avg = grades.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / grades.length;
-            const ac = avg >= 75 ? 'text-green-600' : avg >= 60 ? 'text-amber-600' : 'text-red-600';
-            const ab = avg >= 75 ? 'bg-green-50 border-green-200' : avg >= 60 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200';
-            
-            const rows = grades.map(g => {
-                const pct = g.max ? Math.round(g.score / g.max * 100) : null;
-                const c = pct == null ? 'text-slate-600' : pct >= 75 ? 'text-green-600' : pct >= 60 ? 'text-amber-600' : 'text-red-600';
-                return `<div class="border border-slate-200 rounded-xl bg-white hover:shadow-sm transition"><div class="px-4 py-3 flex items-center justify-between"><div class="flex-1 min-w-0"><p class="font-bold text-slate-700 text-sm truncate">${g.title||'Assessment'}</p><p class="text-xs text-slate-400 font-semibold mt-0.5">${g.type||''} ${g.date?'· '+g.date:''}</p></div><div class="flex items-center gap-3 flex-shrink-0 ml-3"><span class="${c} font-black text-sm">${g.score}/${g.max||'?'}</span><button onclick="window.openAssignmentModal(${JSON.stringify(g).replace(/"/g,'&quot;')})" class="text-xs font-black text-blue-600 hover:bg-blue-600 hover:text-white border border-blue-200 px-3 py-1 rounded-lg transition">Detail</button></div></div></div>`;
+        if (container) {
+            container.innerHTML = Object.entries(by).map(([subject, grades]) => {
+                const avg = grades.reduce((a, g) => a + (g.max ? g.score / g.max * 100 : 0), 0) / grades.length;
+                const ac = avg >= 75 ? 'text-green-600' : avg >= 60 ? 'text-amber-600' : 'text-red-600';
+                const ab = avg >= 75 ? 'bg-green-50 border-green-200' : avg >= 60 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200';
+                
+                const rows = grades.map(g => {
+                    const pct = g.max ? Math.round(g.score / g.max * 100) : null;
+                    const c = pct == null ? 'text-slate-600' : pct >= 75 ? 'text-green-600' : pct >= 60 ? 'text-amber-600' : 'text-red-600';
+                    return `<div class="border border-slate-200 rounded-xl bg-white hover:shadow-sm transition"><div class="px-4 py-3 flex items-center justify-between"><div class="flex-1 min-w-0"><p class="font-bold text-slate-700 text-sm truncate">${g.title||'Assessment'}</p><p class="text-xs text-slate-400 font-semibold mt-0.5">${g.type||''} ${g.date?'· '+g.date:''}</p></div><div class="flex items-center gap-3 flex-shrink-0 ml-3"><span class="${c} font-black text-sm">${g.score}/${g.max||'?'}</span><button onclick="window.openAssignmentModal(${JSON.stringify(g).replace(/"/g,'&quot;')})" class="text-xs font-black text-blue-600 hover:bg-blue-600 hover:text-white border border-blue-200 px-3 py-1 rounded-lg transition">Detail</button></div></div></div>`;
+                }).join('');
+                
+                return `<div class="rounded-2xl border border-slate-200 overflow-hidden shadow-sm"><div class="subject-header flex items-center justify-between px-5 py-4 bg-white cursor-pointer hover:bg-slate-50 transition" onclick="window.toggleSubjectAccordion(this)"><div class="flex items-center gap-3"><div class="w-9 h-9 bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl flex items-center justify-center font-black text-xs shadow-sm">${subject.charAt(0).toUpperCase()}</div><div><p class="font-black text-slate-800">${subject}</p><p class="text-xs text-slate-400 font-semibold">${grades.length} assignment${grades.length!==1?'s':''}</p></div></div><div class="flex items-center gap-3"><span class="badge ${ab} ${ac} border font-black">${avg.toFixed(0)}% avg</span><i class="fa-solid fa-chevron-down text-slate-400" style="transition:transform 0.2s"></i></div></div><div class="subject-body"><div class="px-4 pb-4 pt-2 bg-slate-50/70 space-y-2">${rows}</div></div></div>`;
             }).join('');
             
-            return `<div class="rounded-2xl border border-slate-200 overflow-hidden shadow-sm"><div class="subject-header flex items-center justify-between px-5 py-4 bg-white cursor-pointer hover:bg-slate-50 transition" onclick="window.toggleSubjectAccordion(this)"><div class="flex items-center gap-3"><div class="w-9 h-9 bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl flex items-center justify-center font-black text-xs shadow-sm">${subject.charAt(0).toUpperCase()}</div><div><p class="font-black text-slate-800">${subject}</p><p class="text-xs text-slate-400 font-semibold">${grades.length} assignment${grades.length!==1?'s':''}</p></div></div><div class="flex items-center gap-3"><span class="badge ${ab} ${ac} border font-black">${avg.toFixed(0)}% avg</span><i class="fa-solid fa-chevron-down text-slate-400" style="transition:transform 0.2s"></i></div></div><div class="subject-body"><div class="px-4 pb-4 pt-2 bg-slate-50/70 space-y-2">${rows}</div></div></div>`;
-        }).join('');
-        
-        document.getElementById('sPanelLoader').classList.add('hidden');
-        container.classList.remove('hidden');
+            container.classList.remove('hidden');
+        }
+        document.getElementById('sPanelLoader')?.classList.add('hidden');
         
     } catch(e) {
         console.error(e);
-        document.getElementById('sPanelLoader').innerHTML = `<p class="text-red-500 font-bold text-center py-10">Error loading records.</p>`;
+        if (document.getElementById('sPanelLoader')) document.getElementById('sPanelLoader').innerHTML = `<p class="text-red-500 font-bold text-center py-10">Error loading records.</p>`;
     }
 };
 
@@ -287,7 +300,7 @@ window.toggleSubjectAccordion = function(h) {
 window.closeStudentPanel = function() {
     closeOverlay('studentPanel', 'studentPanelInner', true);
     // Reset loader for next open
-    document.getElementById('sPanelLoader').innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-4xl mb-3 text-emerald-500"></i><p class="font-semibold text-sm">Loading academic records...</p>`;
+    if(document.getElementById('sPanelLoader')) document.getElementById('sPanelLoader').innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-4xl mb-3 text-emerald-500"></i><p class="font-semibold text-sm">Loading academic records...</p>`;
 };
 
 // ── 9. ASSIGNMENT DETAIL MODAL ────────────────────────────────────────────
@@ -312,7 +325,7 @@ window.closeAssignmentModal = function() {
 };
 
 // ── 10. CSV & PRINT EXPORTS ───────────────────────────────────────────────
-document.getElementById('exportCsvBtn').addEventListener('click', () => {
+document.getElementById('exportCsvBtn')?.addEventListener('click', () => {
     const rows = [['Name', 'Class', 'Teacher', 'Parent Phone'], ...allStudentsCache.map(s => [s.name || '', s.className || '', s.teacherName || '', s.parentPhone || ''])];
     const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })), download: `${session.schoolId}_students.csv` });
@@ -321,7 +334,7 @@ document.getElementById('exportCsvBtn').addEventListener('click', () => {
     a.remove();
 });
 
-document.getElementById('printListBtn').addEventListener('click', () => {
+document.getElementById('printListBtn')?.addEventListener('click', () => {
     const w = window.open('', '_blank');
     w.document.write(`<html><head><title>Students</title><style>body{font-family:sans-serif;padding:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #e2e8f0;padding:8px 12px;font-size:13px;text-align:left}th{background:#f8fafc;font-weight:700}</style></head><body><h2>${session.schoolName} — Student Directory</h2><p style="color:#64748b;font-size:12px;margin-bottom:16px">Printed ${new Date().toLocaleDateString()}</p><table><thead><tr><th>Name</th><th>Class</th><th>Teacher</th><th>Parent Phone</th></tr></thead><tbody>${allStudentsCache.map(s => `<tr><td>${s.name || ''}</td><td>${s.className || ''}</td><td>${s.teacherName || ''}</td><td>${s.parentPhone || '—'}</td></tr>`).join('')}</tbody></table></body></html>`);
     w.document.close();
