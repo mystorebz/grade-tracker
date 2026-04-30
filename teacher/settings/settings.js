@@ -1,19 +1,15 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { doc, getDoc, updateDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 
 // ── 1. AUTH & LAYOUT ──────────────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
 if (session) {
-    injectTeacherLayout('settings', 'Settings', 'Profile, security, and account configuration', false);
+    injectTeacherLayout('settings', 'Settings', 'Profile, gradebook configuration, and account security', false);
 }
 
 // ── SHA-256 ───────────────────────────────────────────────────────────────
-// Used for security question answers — same normalization as all other files.
-// NOTE: Teacher PINs are stored plain text (no hashing) to match the
-// existing teacher login comparison. When teacher login is upgraded to
-// hash-compare, update both this file and teacher/login.js together.
 async function sha256(text) {
     const encoded = new TextEncoder().encode(text.toLowerCase().trim());
     const buffer  = await crypto.subtle.digest('SHA-256', encoded);
@@ -25,8 +21,8 @@ function showMsg(elId, msg, isError) {
     if (!el) return;
     el.textContent = msg;
     el.className   = isError
-        ? 'text-[12px] font-bold p-2.5 rounded-sm text-red-600 bg-red-50 border border-red-100'
-        : 'text-[12px] font-bold p-2.5 rounded-sm text-green-600 bg-green-50 border border-green-100';
+        ? 'text-[12px] font-bold p-2.5 rounded-sm text-red-600 bg-red-50 border border-red-100 mt-2'
+        : 'text-[12px] font-bold p-2.5 rounded-sm text-green-600 bg-green-50 border border-green-100 mt-2';
     el.classList.remove('hidden');
     setTimeout(() => el.classList.add('hidden'), 5000);
 }
@@ -39,9 +35,12 @@ function escHtml(str) {
 // Global state for Grade Types
 let teacherGradeTypes = [];
 
-// ── 2. LOAD PROFILE ───────────────────────────────────────────────────────
+// ── 2. LOAD PROFILE & SEMESTERS ───────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
     if (!session) return;
+
+    // Load Semesters to fix the "Period Loading..." bug
+    await loadSemesters();
 
     const t = session.teacherData || {};
 
@@ -68,7 +67,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     badge.textContent = '✓ Set';
                     badge.className   = 'ml-auto text-[10px] font-black px-2.5 py-1 rounded-sm uppercase tracking-wider bg-green-100 text-green-700 border border-green-200';
                 }
-                // Pre-fill existing questions so teacher knows what's set
                 if (data.securityQ1 && document.getElementById('secQ1')) document.getElementById('secQ1').value = data.securityQ1;
                 if (data.securityQ2 && document.getElementById('secQ2')) document.getElementById('secQ2').value = data.securityQ2;
             } else {
@@ -81,6 +79,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Load existing Grade Types
             if (data.gradeTypes && Array.isArray(data.gradeTypes)) {
                 teacherGradeTypes = data.gradeTypes;
+            } else if (data.customGradeTypes && Array.isArray(data.customGradeTypes)) {
+                teacherGradeTypes = data.customGradeTypes; // Fallback for legacy naming
             }
             renderGradeTypes();
         }
@@ -88,6 +88,46 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error('[TeacherSettings] load profile data:', e);
     }
 });
+
+// ── PERIOD LOADER ─────────────────────────────────────────────────────────
+async function loadSemesters() {
+    try {
+        const cacheKey = `connectus_semesters_${session.schoolId}`;
+        const cached   = localStorage.getItem(cacheKey);
+        let rawSemesters = [];
+
+        if (cached) {
+            rawSemesters = JSON.parse(cached);
+        } else {
+            const snap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
+            rawSemesters = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
+            localStorage.setItem(cacheKey, JSON.stringify(rawSemesters));
+        }
+
+        let activeId = '';
+        let activeName = 'Period';
+        try {
+            const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
+            activeId = schoolSnap.data()?.activeSemesterId || '';
+            const activeSem = rawSemesters.find(s => s.id === activeId);
+            if (activeSem) activeName = activeSem.name;
+        } catch(e) {}
+
+        const activeSemesterSelect = document.getElementById('activeSemester');
+        if (activeSemesterSelect) {
+            activeSemesterSelect.innerHTML = '';
+            rawSemesters.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.id; opt.textContent = s.name;
+                if (s.id === activeId) opt.selected = true;
+                activeSemesterSelect.appendChild(opt);
+            });
+        }
+
+        const sbPeriod = document.getElementById('sb-period');
+        if (sbPeriod) sbPeriod.textContent = activeName;
+    } catch (e) { console.error('[TeacherSettings] loadSemesters:', e); }
+}
 
 // ── 3. SAVE PROFILE ───────────────────────────────────────────────────────
 document.getElementById('saveProfileBtn')?.addEventListener('click', async () => {
@@ -107,8 +147,6 @@ document.getElementById('saveProfileBtn')?.addEventListener('click', async () =>
 
     try {
         await updateDoc(doc(db, 'teachers', session.teacherId), { name, email, phone });
-
-        // Update session so sidebar reflects new name immediately
         session.teacherData.name  = name;
         session.teacherData.email = email;
         session.teacherData.phone = phone;
@@ -118,10 +156,7 @@ document.getElementById('saveProfileBtn')?.addEventListener('click', async () =>
         document.getElementById('profileDisplayName').textContent = name;
 
         showMsg('profileMsg', 'Profile saved successfully!', false);
-    } catch (e) {
-        console.error('[TeacherSettings] saveProfile:', e);
-        showMsg('profileMsg', 'Failed to save profile. Please try again.', true);
-    }
+    } catch (e) { showMsg('profileMsg', 'Failed to save profile. Please try again.', true); }
 
     btn.disabled  = false;
     btn.innerHTML = 'Save Profile';
@@ -142,7 +177,6 @@ document.getElementById('savePinBtn')?.addEventListener('click', async () => {
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Updating...';
 
     try {
-        // Fetch fresh teacher doc to compare current PIN
         const snap = await getDoc(doc(db, 'teachers', session.teacherId));
         if (!snap.exists() || String(snap.data().pin) !== String(current)) {
             showMsg('pinMsg', 'Current PIN is incorrect.', true);
@@ -154,14 +188,9 @@ document.getElementById('savePinBtn')?.addEventListener('click', async () => {
             lastPinResetAt:  new Date().toISOString()
         });
 
-        // Clear form
         ['currentPin','newPin','confirmPin'].forEach(id => document.getElementById(id).value = '');
         showMsg('pinMsg', 'PIN updated successfully!', false);
-
-    } catch (e) {
-        console.error('[TeacherSettings] changePin:', e);
-        showMsg('pinMsg', 'Failed to update PIN. Please try again.', true);
-    }
+    } catch (e) { showMsg('pinMsg', 'Failed to update PIN. Please try again.', true); }
 
     btn.disabled  = false;
     btn.innerHTML = 'Update PIN';
@@ -179,16 +208,15 @@ document.getElementById('saveSecQBtn')?.addEventListener('click', async () => {
     if (!currentPin)  { showMsg('secQMsg', 'Enter your current PIN to confirm your identity.', true); return; }
     if (!q1 || !a1)   { showMsg('secQMsg', 'Please select and answer Security Question 1.', true);    return; }
     if (!q2 || !a2)   { showMsg('secQMsg', 'Please select and answer Security Question 2.', true);    return; }
-    if (q1 === q2)    { showMsg('secQMsg', 'Please choose two different questions.', true);            return; }
+    if (q1 === q2)    { showMsg('secQMsg', 'Please choose two different questions.', true);             return; }
 
     btn.disabled  = true;
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...';
 
     try {
-        // Verify current PIN before allowing security question change
         const snap = await getDoc(doc(db, 'teachers', session.teacherId));
         if (!snap.exists() || String(snap.data().pin) !== String(currentPin)) {
-            showMsg('secQMsg', 'Current PIN is incorrect. Security questions not changed.', true);
+            showMsg('secQMsg', 'Current PIN is incorrect.', true);
             btn.disabled  = false; btn.innerHTML = 'Save Security Questions'; return;
         }
 
@@ -202,7 +230,6 @@ document.getElementById('saveSecQBtn')?.addEventListener('click', async () => {
             securityQuestionsSet: true
         });
 
-        // Update session and badge
         session.teacherData.securityQuestionsSet = true;
         setSessionData('teacher', session);
 
@@ -215,20 +242,15 @@ document.getElementById('saveSecQBtn')?.addEventListener('click', async () => {
         document.getElementById('secQCurrentPin').value = '';
         document.getElementById('secA1').value          = '';
         document.getElementById('secA2').value          = '';
-
         showMsg('secQMsg', 'Security questions updated successfully!', false);
 
-    } catch (e) {
-        console.error('[TeacherSettings] saveSecQ:', e);
-        showMsg('secQMsg', 'Failed to save security questions. Please try again.', true);
-    }
+    } catch (e) { showMsg('secQMsg', 'Failed to save security questions.', true); }
 
     btn.disabled  = false;
     btn.innerHTML = 'Save Security Questions';
 });
 
 // ── 6. GRADE TYPES MANAGEMENT ─────────────────────────────────────────────
-
 const gtSelect     = document.getElementById('gtSelect');
 const gtCustomName = document.getElementById('gtCustomName');
 const gtWeight     = document.getElementById('gtWeight');
@@ -237,11 +259,11 @@ const gtList       = document.getElementById('gradeTypesList');
 const gtTotal      = document.getElementById('gtTotalWeight');
 const saveGtBtn    = document.getElementById('saveGradeTypesBtn');
 
-// Handle showing/hiding custom input box
 if (gtSelect) {
     gtSelect.addEventListener('change', (e) => {
         if (e.target.value === 'Custom') {
             gtCustomName.classList.remove('hidden');
+            gtCustomName.focus();
         } else {
             gtCustomName.classList.add('hidden');
             gtCustomName.value = '';
@@ -249,7 +271,6 @@ if (gtSelect) {
     });
 }
 
-// Add Grade Type to local list
 if (addGtBtn) {
     addGtBtn.addEventListener('click', () => {
         const type   = gtSelect.value;
@@ -260,31 +281,24 @@ if (addGtBtn) {
         if (type === 'Custom' && !name) { showMsg('gtMsg', 'Please enter a custom name.', true); return; }
         if (isNaN(weight) || weight <= 0) { showMsg('gtMsg', 'Please enter a valid weight (e.g., 20).', true); return; }
 
-        // Check for duplicates
         if (teacherGradeTypes.some(g => g.name.toLowerCase() === name.toLowerCase())) {
-            showMsg('gtMsg', 'This grade type already exists in your list.', true); return;
+            showMsg('gtMsg', 'This grade type already exists.', true); return;
         }
 
         teacherGradeTypes.push({ name, weight });
         renderGradeTypes();
 
-        // Reset inputs
         gtSelect.value = '';
-        if (gtCustomName) {
-            gtCustomName.classList.add('hidden');
-            gtCustomName.value = '';
-        }
+        if (gtCustomName) { gtCustomName.classList.add('hidden'); gtCustomName.value = ''; }
         gtWeight.value = '';
     });
 }
 
-// Remove Grade Type from local list
 window.removeGradeType = function(index) {
     teacherGradeTypes.splice(index, 1);
     renderGradeTypes();
 };
 
-// Render the UI List & Update Total
 function renderGradeTypes() {
     if (!gtList || !gtTotal) return;
 
@@ -292,61 +306,52 @@ function renderGradeTypes() {
     gtList.innerHTML = teacherGradeTypes.map((g, i) => {
         total += g.weight;
         return `
-        <div class="flex items-center justify-between p-3 bg-white border border-[#dce3ed] rounded-lg mb-2">
-            <div>
+        <div class="flex items-center justify-between p-3 bg-white border border-[#dce3ed] rounded-sm mb-2 hover:border-[#cbd5e1] transition">
+            <div class="flex items-center gap-3">
+                <div class="w-6 h-6 rounded-full bg-[#f0f4f8] text-[#6b84a0] flex items-center justify-center text-[10px] font-black"><i class="fa-solid fa-tag"></i></div>
                 <p class="text-[13px] font-bold text-[#0d1f35]">${escHtml(g.name)}</p>
             </div>
             <div class="flex items-center gap-4">
-                <span class="text-[12px] font-black text-[#2563eb] bg-[#eef4ff] px-2 py-1 rounded border border-[#c7d9fd]">${g.weight}%</span>
-                <button onclick="window.removeGradeType(${i})" class="text-[#e31b4a] hover:text-red-700 transition" title="Remove">
-                    <i class="fa-solid fa-trash-can"></i>
+                <span class="text-[12px] font-black text-[#0ea871] bg-[#edfaf4] px-2 py-0.5 rounded-sm border border-[#c6f0db]">${g.weight}%</span>
+                <button onclick="window.removeGradeType(${i})" class="text-[#e31b4a] hover:bg-[#fff0f3] p-1.5 rounded-sm transition" title="Remove">
+                    <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
         </div>`;
     }).join('');
 
     if (teacherGradeTypes.length === 0) {
-        gtList.innerHTML = `<p class="text-[12px] text-[#9ab0c6] italic text-center p-4">No grade types added yet.</p>`;
+        gtList.innerHTML = `<div class="p-6 text-center border-2 border-dashed border-[#dce3ed] rounded-sm"><p class="text-[12px] text-[#9ab0c6] font-medium">No metrics configured.<br>Add your first assessment type above.</p></div>`;
     }
 
-    // Visual Counter
-    gtTotal.textContent = `Total Weight: ${total} / 100`;
+    gtTotal.textContent = `Total Active Weight: ${total}%`;
     if (total === 100) {
-        gtTotal.className = 'text-[12px] font-black text-green-600 bg-green-50 px-3 py-1.5 rounded border border-green-200';
+        gtTotal.className = 'text-[12px] font-black text-[#0ea871] uppercase tracking-widest';
     } else if (total > 100) {
-        gtTotal.className = 'text-[12px] font-black text-amber-600 bg-amber-50 px-3 py-1.5 rounded border border-amber-200';
+        gtTotal.className = 'text-[12px] font-black text-[#e31b4a] uppercase tracking-widest';
+        showMsg('gtMsg', 'Warning: Total weight exceeds 100%. Math will auto-scale, but this may confuse parents.', true);
     } else {
-        gtTotal.className = 'text-[12px] font-black text-[#6b84a0] bg-[#f8fafb] px-3 py-1.5 rounded border border-[#dce3ed]';
+        gtTotal.className = 'text-[12px] font-black text-[#d97706] uppercase tracking-widest';
     }
 }
 
-// Save to Firebase
 if (saveGtBtn) {
     saveGtBtn.addEventListener('click', async () => {
         if (teacherGradeTypes.length === 0) {
-            showMsg('gtMsg', 'Please add at least one grade type before saving.', true);
-            return;
+            showMsg('gtMsg', 'Please add at least one metric before saving.', true); return;
         }
 
         saveGtBtn.disabled = true;
         saveGtBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...';
 
         try {
-            await updateDoc(doc(db, 'teachers', session.teacherId), {
-                gradeTypes: teacherGradeTypes
-            });
-
-            // Update session data so other pages don't need to fetch from DB immediately
+            await updateDoc(doc(db, 'teachers', session.teacherId), { gradeTypes: teacherGradeTypes });
             session.teacherData.gradeTypes = teacherGradeTypes;
             setSessionData('teacher', session);
-
-            showMsg('gtMsg', 'Grade types saved successfully!', false);
-        } catch (e) {
-            console.error('[TeacherSettings] saveGradeTypes:', e);
-            showMsg('gtMsg', 'Failed to save grade types. Please try again.', true);
-        }
+            showMsg('gtMsg', 'Configuration committed to active gradebook!', false);
+        } catch (e) { showMsg('gtMsg', 'Failed to save configuration. Please try again.', true); }
 
         saveGtBtn.disabled = false;
-        saveGtBtn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-2"></i> Save Grade Types';
+        saveGtBtn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-2"></i> Save Configuration';
     });
 }
