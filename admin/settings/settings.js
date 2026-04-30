@@ -1,11 +1,11 @@
 import { db } from '../../assets/js/firebase-init.js';
 import {
-    doc, getDoc, getDocs, setDoc, updateDoc, addDoc,
+    doc, getDoc, getDocs, setDoc, updateDoc,
     collection, query, where, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
-import { showMsg, letterGrade, openOverlay, closeOverlay } from '../../assets/js/utils.js';
+import { showMsg } from '../../assets/js/utils.js';
 
 // ── 1. AUTH & LAYOUT ──────────────────────────────────────────────────────
 const session = requireAuth('admin', '../login.html');
@@ -24,7 +24,7 @@ async function sha256(text) {
         .join('');
 }
 
-// ── Generate Sub-Admin ID ─────────────────────────────────────────────────
+// ── Generate Sub-Admin ID & PIN ───────────────────────────────────────────
 function generateAdminId() {
     const year  = new Date().getFullYear().toString().slice(-2);
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -33,7 +33,6 @@ function generateAdminId() {
     return `A${year}-${rand}`;
 }
 
-// ── Generate temporary PIN (8 chars) ──────────────────────────────────────
 function generateTempPin() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let pin = '';
@@ -55,37 +54,31 @@ async function loadSettingsData() {
         fullSchoolData = snap.data();
 
         // ── Populate profile fields ────────────────────────────────────────
-        document.getElementById('profileSchoolName').value    = fullSchoolData.schoolName    || '';
-        document.getElementById('profileContactEmail').value  = fullSchoolData.contactEmail  || '';
-        document.getElementById('profileDistrict').value      = fullSchoolData.district      || '';
-        document.getElementById('profileSchoolType').value    = fullSchoolData.schoolType    || '';
-        document.getElementById('profilePhone').value         = fullSchoolData.phone         || '';
-        document.getElementById('profileContactName').value   = fullSchoolData.contactName   || '';
-        document.getElementById('profileAddress').value       = fullSchoolData.schoolAddress || '';
+        document.getElementById('profileSchoolName').value    = fullSchoolData.schoolName   || '';
+        document.getElementById('profileContactEmail').value  = fullSchoolData.contactEmail || '';
+        document.getElementById('profileDistrict').value      = fullSchoolData.district     || 'Belize';
+        document.getElementById('profileSchoolType').value    = fullSchoolData.schoolType   || 'Primary';
+        document.getElementById('profilePhone').value         = fullSchoolData.phone        || '';
+        document.getElementById('profileContactName').value   = fullSchoolData.contactName  || '';
+        document.getElementById('profileAddress').value       = fullSchoolData.schoolAddress|| '';
 
-        // ── Subscription usage ─────────────────────────────────────────────
+        // ── Subscription usage & Renewal Date ──────────────────────────────
         await loadSubscriptionUsage();
 
-        // ── Archive management ─────────────────────────────────────────────
-        loadArchivedRecords();
+        const renewalDate = fullSchoolData.nextRenewalDate || fullSchoolData.subscriptionExpiresAt;
+        if (renewalDate) {
+            document.getElementById('renewalDateDisplay').textContent = new Date(renewalDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        } else {
+            document.getElementById('renewalDateDisplay').textContent = 'N/A';
+        }
 
         // ── Sub-admin management (super admin only) ────────────────────────
         if (session.isSuperAdmin) {
             document.getElementById('adminManagementSection').classList.remove('hidden');
             loadSubAdmins();
-        }
-
-        // ── Danger zone — hide for sub-admins ─────────────────────────────
-        if (!session.isSuperAdmin) {
+        } else {
             const danger = document.querySelector('.danger-zone');
             if (danger) danger.classList.add('hidden');
-        }
-
-        // ── Scroll to #admins anchor if navigated from sidebar ────────────
-        if (window.location.hash === '#admins' && session.isSuperAdmin) {
-            setTimeout(() => {
-                document.getElementById('adminManagementSection')?.scrollIntoView({ behavior: 'smooth' });
-            }, 400);
         }
 
     } catch (e) {
@@ -103,14 +96,10 @@ async function loadSubscriptionUsage() {
 
         document.getElementById('planBadge').textContent = planName;
 
-        // Fetch live counts in parallel
         const [tSnap, sSnap, aSnap] = await Promise.all([
             getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId))),
-            getDocs(query(collection(db, 'students'),
-                where('currentSchoolId', '==', session.schoolId),
-                where('enrollmentStatus', '==', 'Active'))),
-            getDocs(query(collection(db, 'schools', session.schoolId, 'admins'),
-                where('isArchived', '==', false)))
+            getDocs(query(collection(db, 'students'), where('currentSchoolId', '==', session.schoolId), where('enrollmentStatus', '==', 'Active'))),
+            getDocs(query(collection(db, 'schools', session.schoolId, 'admins'), where('isArchived', '==', false)))
         ]);
 
         const teacherCount = tSnap.size;
@@ -143,8 +132,7 @@ async function loadSubscriptionUsage() {
             </div>`;
         }).join('');
 
-        // Update admin usage badge
-        document.getElementById('adminUsageBadge').textContent = `${adminCount} / ${adminLimit} used`;
+        document.getElementById('adminUsageBadge').textContent = `${adminCount} / ${adminLimit} Active`;
 
     } catch (e) {
         console.error('[Settings] loadSubscriptionUsage:', e);
@@ -160,16 +148,13 @@ document.getElementById('updateCodeBtn').addEventListener('click', async () => {
     const btn = document.getElementById('updateCodeBtn');
 
     if (!cur || !nw || !cf) { showMsg(mid, 'All three fields are required.', true); return; }
-    if (nw !== cf)           { showMsg(mid, 'New codes do not match.', true);       return; }
-    if (nw.length < 6)       { showMsg(mid, 'Min. 6 characters required.', true);   return; }
+    if (nw !== cf)            { showMsg(mid, 'New codes do not match.', true);        return; }
+    if (nw.length < 6)        { showMsg(mid, 'Min. 6 characters required.', true);    return; }
 
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Updating...`;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Updating...`;
     btn.disabled  = true;
 
     try {
-        // ── Hash-aware comparison ──────────────────────────────────────────
-        // Super admin code is on the school document.
-        // Sub-admin code is on their own admin document.
         const hashedCurrent = await sha256(cur);
         const hashedNew     = await sha256(nw);
 
@@ -181,7 +166,6 @@ document.getElementById('updateCodeBtn').addEventListener('click', async () => {
             await updateDoc(doc(db, 'schools', session.schoolId), { adminCode: hashedNew });
             fullSchoolData.adminCode = hashedNew;
         } else {
-            // Sub-admin — fetch their own doc to compare
             const adminSnap = await getDoc(doc(db, 'schools', session.schoolId, 'admins', session.adminId));
             if (!adminSnap.exists() || hashedCurrent !== adminSnap.data().adminCode) {
                 showMsg(mid, 'Current admin code is incorrect.', true);
@@ -190,8 +174,7 @@ document.getElementById('updateCodeBtn').addEventListener('click', async () => {
             await updateDoc(doc(db, 'schools', session.schoolId, 'admins', session.adminId), { adminCode: hashedNew });
         }
 
-        ['currentAdminCode', 'newAdminCodeSettings', 'confirmAdminCodeSettings']
-            .forEach(id => document.getElementById(id).value = '');
+        ['currentAdminCode', 'newAdminCodeSettings', 'confirmAdminCodeSettings'].forEach(id => document.getElementById(id).value = '');
         showMsg(mid, 'Admin code updated successfully!', false);
 
     } catch (e) {
@@ -210,13 +193,12 @@ document.getElementById('saveProfileBtn').addEventListener('click', async () => 
         schoolName:    document.getElementById('profileSchoolName').value.trim(),
         contactEmail:  document.getElementById('profileContactEmail').value.trim(),
         district:      document.getElementById('profileDistrict').value,
-        schoolType:    document.getElementById('profileSchoolType').value,
         phone:         document.getElementById('profilePhone').value.trim(),
         contactName:   document.getElementById('profileContactName').value.trim(),
         schoolAddress: document.getElementById('profileAddress').value.trim()
     };
 
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...`;
     btn.disabled  = true;
 
     try {
@@ -224,7 +206,6 @@ document.getElementById('saveProfileBtn').addEventListener('click', async () => 
         Object.assign(fullSchoolData, u);
 
         session.schoolName   = u.schoolName;
-        session.schoolType   = u.schoolType;
         session.contactEmail = u.contactEmail;
         setSessionData('admin', session);
 
@@ -251,18 +232,17 @@ async function loadSubAdmins() {
         const active   = all.filter(a => !a.isArchived);
         const archived = all.filter(a =>  a.isArchived);
 
-        // Active list
         document.getElementById('activeAdminsList').innerHTML = active.length
             ? active.map(a => `
             <div class="flex items-center justify-between bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
                 <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center font-black text-sm">
+                    <div class="w-9 h-9 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center font-black text-sm shadow-sm">
                         ${(a.name || 'A').charAt(0).toUpperCase()}
                     </div>
                     <div>
                         <p class="font-black text-slate-700 text-sm">${escHtml(a.name)}</p>
                         <p class="text-xs text-slate-400 font-semibold">${escHtml(a.email || '—')} · ${a.id}</p>
-                        <p class="text-[10px] font-bold mt-0.5 ${a.securityQuestionsSet ? 'text-green-600' : 'text-amber-500'}">
+                        <p class="text-[10px] font-bold mt-0.5 ${a.securityQuestionsSet ? 'text-emerald-600' : 'text-amber-500'}">
                             ${a.securityQuestionsSet ? '✓ Setup complete' : '⚠ Awaiting first login setup'}
                         </p>
                     </div>
@@ -273,9 +253,8 @@ async function loadSubAdmins() {
                 </button>
             </div>`)
             .join('')
-            : '<p class="text-sm text-slate-400 italic font-semibold text-center py-4">No sub-admins created yet.</p>';
+            : '<p class="text-sm text-slate-400 italic font-semibold text-center py-4 border border-dashed border-slate-200 rounded-xl">No sub-admins created yet.</p>';
 
-        // Archived list
         if (archived.length) {
             document.getElementById('archivedAdminsWrap').classList.remove('hidden');
             document.getElementById('archivedAdminsList').innerHTML = archived.map(a => `
@@ -285,7 +264,7 @@ async function loadSubAdmins() {
                     <p class="text-xs text-slate-400 font-semibold">${escHtml(a.email || '—')} · Archived ${a.archivedAt ? new Date(a.archivedAt).toLocaleDateString() : ''}</p>
                 </div>
                 <button onclick="window.restoreSubAdmin('${a.id}', '${escHtml(a.name)}')"
-                    class="text-xs font-black text-green-700 hover:bg-green-600 hover:text-white border border-green-300 px-3 py-1.5 rounded-lg transition">
+                    class="text-xs font-black text-emerald-700 hover:bg-emerald-600 hover:text-white border border-emerald-300 px-3 py-1.5 rounded-lg transition">
                     Restore
                 </button>
             </div>`).join('');
@@ -298,10 +277,10 @@ async function loadSubAdmins() {
     }
 }
 
-// ── Create Sub-Admin ──────────────────────────────────────────────────────
+// ── Create Sub-Admin (WITH GLOBAL EMAIL CHECK & CLOUD FN TRIGGER) ──────────
 document.getElementById('createSubAdminBtn').addEventListener('click', async () => {
     const name  = document.getElementById('newAdminName').value.trim();
-    const email = document.getElementById('newAdminEmail').value.trim();
+    const email = document.getElementById('newAdminEmail').value.trim().toLowerCase();
     const btn   = document.getElementById('createSubAdminBtn');
 
     if (!name)  { showMsg('createAdminMsg', 'Name is required.', true); return; }
@@ -314,29 +293,39 @@ document.getElementById('createSubAdminBtn').addEventListener('click', async () 
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Creating...`;
 
     try {
-        // ── Check adminLimit ───────────────────────────────────────────────
+        // 1. Check adminLimit
         const adminLimit = session.adminLimit || 1;
-        const existingSnap = await getDocs(
-            query(collection(db, 'schools', session.schoolId, 'admins'),
-                  where('isArchived', '==', false))
-        );
+        const existingSnap = await getDocs(query(collection(db, 'schools', session.schoolId, 'admins'), where('isArchived', '==', false)));
         if (existingSnap.size >= adminLimit) {
-            showMsg('createAdminMsg',
-                `Sub-admin limit reached (${adminLimit} max). Contact ConnectUs to upgrade your plan.`, true);
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fa-solid fa-user-plus mr-1.5"></i>Create Sub-Admin';
+            showMsg('createAdminMsg', `Limit reached (${adminLimit} max). Upgrade your plan to add more.`, true);
+            btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-user-plus mr-1.5"></i>Create Sub-Admin';
             return;
         }
 
-        // ── Generate credentials ───────────────────────────────────────────
+        // 2. STRICT GLOBAL EMAIL UNIQUENESS CHECK
+        const [tSnap, sSnap, aSnap] = await Promise.all([
+            getDocs(query(collection(db, 'teachers'), where('email', '==', email))),
+            getDocs(query(collection(db, 'students'), where('email', '==', email))),
+            getDocs(query(collection(db, 'schools', session.schoolId, 'admins'), where('email', '==', email)))
+        ]);
+
+        if (!tSnap.empty || !sSnap.empty || !aSnap.empty) {
+            showMsg('createAdminMsg', 'This email is already in use by an existing user.', true);
+            btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-user-plus mr-1.5"></i>Create Sub-Admin';
+            return;
+        }
+
+        // 3. Generate credentials
         const newId   = generateAdminId();
         const tempPin = generateTempPin();
         const hashedPin = await sha256(tempPin);
 
+        // 4. Save to Database (including tempPin for the Cloud Function trigger)
         await setDoc(doc(db, 'schools', session.schoolId, 'admins', newId), {
             name,
-            email:                email.toLowerCase(),
-            adminCode:            hashedPin,   // SHA-256 hashed
+            email:                email,
+            adminCode:            hashedPin,   // SHA-256 hashed for login
+            tempPin:              tempPin,     // Picked up by Cloud Function, then instantly deleted
             role:                 'sub_admin',
             isArchived:           false,
             archivedAt:           null,
@@ -345,16 +334,15 @@ document.getElementById('createSubAdminBtn').addEventListener('click', async () 
             createdAt:            new Date().toISOString()
         });
 
-        // ── Show credentials slip ──────────────────────────────────────────
+        // 5. Show credentials slip on screen
         document.getElementById('newAdminIdDisplay').textContent  = newId;
         document.getElementById('newAdminPinDisplay').textContent = tempPin;
         document.getElementById('newAdminCredentials').classList.remove('hidden');
 
-        // ── Clear form ─────────────────────────────────────────────────────
         document.getElementById('newAdminName').value  = '';
         document.getElementById('newAdminEmail').value = '';
 
-        showMsg('createAdminMsg', `${name} has been created successfully.`, false);
+        showMsg('createAdminMsg', `${name} created. Welcome email dispatched!`, false);
         loadSubAdmins();
         loadSubscriptionUsage();
 
@@ -386,12 +374,9 @@ window.archiveSubAdmin = async function(adminId, name) {
 
 // ── Restore Sub-Admin ─────────────────────────────────────────────────────
 window.restoreSubAdmin = async function(adminId, name) {
-    // Check limit before restoring
     const adminLimit = session.adminLimit || 1;
-    const existingSnap = await getDocs(
-        query(collection(db, 'schools', session.schoolId, 'admins'),
-              where('isArchived', '==', false))
-    );
+    const existingSnap = await getDocs(query(collection(db, 'schools', session.schoolId, 'admins'), where('isArchived', '==', false)));
+    
     if (existingSnap.size >= adminLimit) {
         alert(`Cannot restore — sub-admin limit (${adminLimit}) already reached.`);
         return;
@@ -410,80 +395,6 @@ window.restoreSubAdmin = async function(adminId, name) {
     }
 };
 
-// ── 8. ARCHIVE MANAGEMENT (global collections, no deleteDoc) ──────────────
-window.switchArchiveTab = function(tab) {
-    document.getElementById('archiveTeachersList').classList.toggle('hidden', tab !== 'teachers');
-    document.getElementById('archiveStudentsList').classList.toggle('hidden', tab !== 'students');
-    document.getElementById('archiveTabTeachers').classList.toggle('active', tab === 'teachers');
-    document.getElementById('archiveTabStudents').classList.toggle('active', tab === 'students');
-};
-
-async function loadArchivedRecords() {
-    try {
-        // ── Archived Teachers (global collection) ──────────────────────────
-        document.getElementById('archiveTeachersList').innerHTML =
-            `<div class="bg-blue-50 border border-blue-100 rounded-xl p-4 text-center">
-                <p class="text-sm text-slate-600 font-semibold">
-                    Teacher archiving is managed through the
-                    <a href="../teachers/teachers.html" class="text-blue-600 font-black hover:underline">Teachers panel</a>
-                    using the Exit Evaluation workflow.
-                </p>
-            </div>`;
-
-        // ── Archived Students (global collection) ──────────────────────────
-        const sSnap = await getDocs(
-            query(collection(db, 'students'),
-                  where('currentSchoolId', '==', session.schoolId))
-        );
-        const archivedStudents = sSnap.docs
-            .map(d => ({ id: d.id, ...d.data() }))
-            .filter(s => s.enrollmentStatus && s.enrollmentStatus !== 'Active');
-
-        document.getElementById('archiveStudentsList').innerHTML = archivedStudents.length
-            ? archivedStudents.map(s => `
-            <div class="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl p-4">
-                <div>
-                    <p class="font-black text-slate-600">${escHtml(s.name || 'Unnamed')}</p>
-                    <p class="text-xs text-slate-400 font-semibold">
-                        ${escHtml(s.className || 'Unassigned')} ·
-                        <span class="font-bold ${s.enrollmentStatus === 'Graduated' ? 'text-green-600' : s.enrollmentStatus === 'Transferred' ? 'text-blue-600' : 'text-amber-600'}">
-                            ${s.enrollmentStatus}
-                        </span>
-                    </p>
-                    <p class="text-[10px] text-slate-400 font-mono mt-0.5">${s.id}</p>
-                </div>
-                <div class="flex gap-2">
-                    <button onclick="window.restoreStudent('${s.id}')"
-                        class="text-xs font-black text-green-700 hover:bg-green-600 hover:text-white border border-green-300 px-3 py-1.5 rounded-lg transition">
-                        Restore
-                    </button>
-                </div>
-            </div>`)
-            .join('')
-            : '<p class="text-sm text-slate-400 italic font-semibold text-center py-4">No archived students at this school.</p>';
-
-    } catch (e) {
-        console.error('[Settings] loadArchivedRecords:', e);
-    }
-}
-
-// ── Restore Student ───────────────────────────────────────────────────────
-window.restoreStudent = async function(studentId) {
-    if (!confirm('Restore this student to Active status? They will be unassigned and can be placed in a class.')) return;
-    try {
-        await updateDoc(doc(db, 'students', studentId), {
-            enrollmentStatus: 'Active',
-            currentSchoolId:  session.schoolId,
-            teacherId:        '',
-            className:        ''
-        });
-        loadArchivedRecords();
-    } catch (e) {
-        console.error('[Settings] restoreStudent:', e);
-        alert('Error restoring student. Please try again.');
-    }
-};
-
 // ── 9. END OF YEAR RESET (super admin only) ───────────────────────────────
 window.endOfYearReset = async function() {
     if (!session.isSuperAdmin) {
@@ -493,7 +404,7 @@ window.endOfYearReset = async function() {
 
     const c1 = confirm(
         "WARNING: This will unassign ALL active students from their current teachers and classes.\n\n" +
-        "Run this ONLY at the end of the school year. Grades are preserved.\n\n" +
+        "Run this ONLY at the end of the school year. Grades are preserved in the Global Passport.\n\n" +
         "Are you sure you want to proceed?"
     );
     if (!c1) return;
@@ -502,7 +413,6 @@ window.endOfYearReset = async function() {
     if (c2 !== 'RESET') { alert('Reset cancelled.'); return; }
 
     try {
-        // ── Use global students collection ─────────────────────────────────
         const snap = await getDocs(
             query(collection(db, 'students'),
                   where('currentSchoolId', '==', session.schoolId),
@@ -511,7 +421,6 @@ window.endOfYearReset = async function() {
 
         if (snap.empty) { alert('No active students found.'); return; }
 
-        // Firestore batch limit is 500 writes. Split if needed.
         const docs    = snap.docs;
         let committed = 0;
 
