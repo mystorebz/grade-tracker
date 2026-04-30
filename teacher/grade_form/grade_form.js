@@ -15,7 +15,6 @@ const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project'
 let isSemesterLocked = false;
 let rawSemesters = [];
 
-// Helper: Escapes HTML to prevent XSS
 function escHtml(str) {
     if (!str) return '';
     return String(str)
@@ -26,12 +25,12 @@ function escHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
-// Helper: Waits for a dynamically injected element (like the dropdown) to appear
+// Helper: Waits for a dynamically injected element without blocking other code
 async function waitForElement(id, maxTries = 20) {
     for (let i = 0; i < maxTries; i++) {
         const el = document.getElementById(id);
         if (el) return el;
-        await new Promise(r => setTimeout(r, 100)); // Check every 100ms
+        await new Promise(r => setTimeout(r, 100));
     }
     return null;
 }
@@ -40,28 +39,34 @@ async function waitForElement(id, maxTries = 20) {
 async function init() {
     if (!session) return;
 
-    document.getElementById('eg-date').valueAsDate = new Date();
+    // Set default date immediately
+    const dateInput = document.getElementById('eg-date');
+    if (dateInput) dateInput.valueAsDate = new Date();
 
-    // Attach Event Listeners for UI
-    document.getElementById('eg-score').addEventListener('input', updateLivePreview);
-    document.getElementById('eg-max').addEventListener('input', updateLivePreview);
-    document.getElementById('saveGradeBtn').addEventListener('click', saveGrade);
-    document.getElementById('closeBannerBtn').addEventListener('click', () => {
+    // Attach Event Listeners
+    document.getElementById('eg-score')?.addEventListener('input', updateLivePreview);
+    document.getElementById('eg-max')?.addEventListener('input', updateLivePreview);
+    document.getElementById('saveGradeBtn')?.addEventListener('click', saveGrade);
+    document.getElementById('closeBannerBtn')?.addEventListener('click', () => {
         document.getElementById('gradeSavedBanner').classList.add('hidden');
     });
 
-    // Load Data - We await this specifically
-    await loadSemestersAndLockStatus();
+    /**
+     * PARALLEL LOADING:
+     * We fire off all data requests at once so they don't block each other.
+     */
+    loadSemestersAndLockStatus(); // Don't 'await' - let it wait for UI in background
     populateSubjectDropdown();
     populateGradeTypeDropdown();
-    await populateStudentDropdown();
+    populateStudentDropdown();   // Priority fetch
 }
 
-// ── 4. INTELLIGENT SEARCHABLE DROPDOWN ENGINE ───────────────────────────────
+// ── 4. SEARCHABLE DROPDOWN ENGINE ──────────────────────────────────────────
 function setupSearchableDropdown(inputId, hiddenId, listId, dataArray, nextFocusId = null) {
     const inputEl = document.getElementById(inputId);
     const hiddenEl = document.getElementById(hiddenId);
     const listEl = document.getElementById(listId);
+    if (!inputEl || !listEl) return;
 
     function renderList(filterText = '') {
         const filtered = dataArray.filter(item => item.label.toLowerCase().includes(filterText.toLowerCase()));
@@ -90,7 +95,7 @@ function setupSearchableDropdown(inputId, hiddenId, listId, dataArray, nextFocus
         inputEl.value = item.label;
         hiddenEl.value = item.value;
         listEl.classList.add('hidden');
-        if(nextFocusId) document.getElementById(nextFocusId).focus();
+        if(nextFocusId) document.getElementById(nextFocusId)?.focus();
     }
 
     inputEl.addEventListener('input', (e) => {
@@ -114,43 +119,51 @@ function setupSearchableDropdown(inputId, hiddenId, listId, dataArray, nextFocus
              inputEl.value = '';
              hiddenEl.value = '';
         }
-        listEl.classList.add('hidden');
-    });
-
-    document.addEventListener('click', (e) => {
-        if(!inputEl.contains(e.target) && !listEl.contains(e.target)) {
-            listEl.classList.add('hidden');
-        }
+        setTimeout(() => listEl.classList.add('hidden'), 200);
     });
 }
 
 // ── 5. POPULATE DROPDOWNS ───────────────────────────────────────────────────
 function populateSubjectDropdown() {
-    const activeSubjects = (session.teacherData.subjects || []).filter(s => !s.archived);
+    const activeSubjects = (session.teacherData?.subjects || []).filter(s => !s.archived);
     const data = activeSubjects.map(s => ({ value: s.name, label: s.name }));
     setupSearchableDropdown('eg-subject-search', 'eg-subject', 'eg-subject-list', data, 'eg-type-search');
 }
 
 function populateGradeTypeDropdown() {
-    const types = session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES;
+    const types = session.teacherData?.customGradeTypes || DEFAULT_GRADE_TYPES;
     const data = types.map(t => ({ value: t, label: t }));
     setupSearchableDropdown('eg-type-search', 'eg-type', 'eg-type-list', data, 'eg-title');
 }
 
 async function populateStudentDropdown() {
     const inputEl = document.getElementById('eg-student-search');
+    if (!inputEl) return;
+
     inputEl.placeholder = "Loading students...";
     inputEl.disabled = true;
 
     try {
+        // Ensure we have IDs before querying
+        const sId = session.schoolId;
+        const tId = session.teacherId;
+
+        if (!sId || !tId) {
+            console.error("Session data missing", session);
+            inputEl.placeholder = "Session Error";
+            return;
+        }
+
         const stuQuery = query(
-            collection(db, 'schools', session.schoolId, 'students'),
+            collection(db, 'schools', sId, 'students'),
             where('archived', '==', false),
-            where('teacherId', '==', session.teacherId)
+            where('teacherId', '==', tId)
         );
+        
         const stuSnap = await getDocs(stuQuery);
         
         if (stuSnap.empty) {
+            console.warn("No students found for query:", { schoolId: sId, teacherId: tId });
             inputEl.placeholder = "No active students found";
             return;
         }
@@ -160,8 +173,10 @@ async function populateStudentDropdown() {
 
         inputEl.placeholder = "Type to search student...";
         inputEl.disabled = false;
+        
         setupSearchableDropdown('eg-student-search', 'eg-student', 'eg-student-list', students, 'eg-subject-search');
         handleQuickGrade(students);
+
     } catch (e) {
         console.error("[Grade Form] Error loading students:", e);
         inputEl.placeholder = "Error loading students";
@@ -173,14 +188,16 @@ function handleQuickGrade(studentsData) {
     if (quickGradeStudentId) {
         const student = studentsData.find(s => s.value === quickGradeStudentId);
         if(student) {
-            document.getElementById('eg-student').value = student.value;
-            document.getElementById('eg-student-search').value = student.label;
+            const idEl = document.getElementById('eg-student');
+            const searchEl = document.getElementById('eg-student-search');
+            if(idEl) idEl.value = student.value;
+            if(searchEl) searchEl.value = student.label;
             sessionStorage.removeItem('connectus_quick_grade_student'); 
         }
     }
 }
 
-// ── 6. STANDARDIZED SEMESTER & LOCK STATUS ──────────────────────────────────
+// ── 6. SEMESTER & LOCK STATUS (NON-BLOCKING) ────────────────────────────────
 async function loadSemestersAndLockStatus() {
     try {
         const cacheKey = `connectus_semesters_${session.schoolId}`;
@@ -198,9 +215,9 @@ async function loadSemestersAndLockStatus() {
         try {
             const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
             activeId = schoolSnap.data()?.activeSemesterId || '';
-        } catch(e) { console.warn("Error getting active semester", e); }
+        } catch(e) { console.warn("Active semester fetch failed", e); }
 
-        // FIX: WAIT for the layout to inject before looking for the dropdown
+        // Wait for element without blocking student fetch
         const topSemSel = await waitForElement('activeSemester');
         const sbPeriod = document.getElementById('sb-period');
         
@@ -223,7 +240,7 @@ async function loadSemestersAndLockStatus() {
             });
         }
     } catch (e) {
-        console.error("[Grade Form] Error loading semesters:", e);
+        console.error("[Grade Form] Semester load error:", e);
     }
 }
 
@@ -235,28 +252,36 @@ function checkLockStatus(semestersArray) {
     const activeSem = semestersArray.find(s => s.id === semId);
     isSemesterLocked = activeSem ? !!activeSem.isLocked : false;
     
-    const badge = document.getElementById('topbarLockedBadge');
-    const gradeBtn = document.getElementById('saveGradeBtn');
-    const formWrap = document.getElementById('enterGradeFormWrap');
-    const lockedNotice = document.getElementById('lockedGradeNotice');
+    const elements = {
+        badge: document.getElementById('topbarLockedBadge'),
+        btn: document.getElementById('saveGradeBtn'),
+        wrap: document.getElementById('enterGradeFormWrap'),
+        notice: document.getElementById('lockedGradeNotice')
+    };
 
     if (isSemesterLocked) {
-        if(badge) { badge.classList.remove('hidden'); badge.classList.add('flex'); }
-        if(gradeBtn) { gradeBtn.disabled = true; gradeBtn.classList.add('opacity-50', 'cursor-not-allowed'); }
-        if(formWrap) formWrap.classList.add('opacity-50', 'pointer-events-none', 'grayscale'); 
-        if(lockedNotice) lockedNotice.classList.remove('hidden');
+        elements.badge?.classList.replace('hidden', 'flex');
+        if(elements.btn) { elements.btn.disabled = true; elements.btn.classList.add('opacity-50', 'cursor-not-allowed'); }
+        elements.wrap?.classList.add('opacity-50', 'pointer-events-none', 'grayscale'); 
+        elements.notice?.classList.remove('hidden');
     } else {
-        if(badge) { badge.classList.add('hidden'); badge.classList.remove('flex'); }
-        if(gradeBtn) { gradeBtn.disabled = false; gradeBtn.classList.remove('opacity-50', 'cursor-not-allowed'); }
-        if(formWrap) formWrap.classList.remove('opacity-50', 'pointer-events-none', 'grayscale'); 
-        if(lockedNotice) lockedNotice.classList.add('hidden');
+        elements.badge?.classList.replace('flex', 'hidden');
+        if(elements.btn) { elements.btn.disabled = false; elements.btn.classList.remove('opacity-50', 'cursor-not-allowed'); }
+        elements.wrap?.classList.remove('opacity-50', 'pointer-events-none', 'grayscale'); 
+        elements.notice?.classList.add('hidden');
     }
 }
 
-// ── 7. UI PREVIEW LOGIC (PREMIUM STYLING) ───────────────────────────────────
+// ── 7. UI PREVIEW ──────────────────────────────────────────────────────────
 function updateLivePreview() {
     const score = parseFloat(document.getElementById('eg-score').value);
     const max = parseFloat(document.getElementById('eg-max').value);
+    const els = {
+        pct: document.getElementById('prev-pct'),
+        letter: document.getElementById('prev-letter'),
+        bar: document.getElementById('prev-bar'),
+        lbl: document.getElementById('prev-label')
+    };
     
     if (!isNaN(score) && !isNaN(max) && max > 0 && score >= 0) {
         const pct = Math.round((score / max) * 100);
@@ -265,26 +290,19 @@ function updateLivePreview() {
         const lbg = pct >= 90 ? 'bg-[#edfaf4] border-[#c6f0db] text-[#0ea871]' : pct >= 80 ? 'bg-[#eef4ff] border-[#c7d9fd] text-[#2563eb]' : pct >= 70 ? 'bg-[#ecfeff] border-[#a5f3fc] text-[#0891b2]' : pct >= 65 ? 'bg-[#fffbeb] border-[#fde68a] text-[#b45309]' : 'bg-[#fff0f3] border-[#fecaca] text-[#e31b4a]';
         const lbl = pct >= 90 ? 'Excelling' : pct >= 80 ? 'Good Standing' : pct >= 70 ? 'On Track' : pct >= 65 ? 'Needs Attention' : 'At Risk';
         
-        document.getElementById('prev-pct').textContent = pct + '%';
-        document.getElementById('prev-pct').className = `text-3xl font-mono font-bold tracking-tight ${color}`;
-        document.getElementById('prev-letter').textContent = letterGrade(pct);
-        document.getElementById('prev-letter').className = `text-xl font-black px-4 py-1.5 rounded-sm border text-center min-w-[56px] ${lbg}`;
-        document.getElementById('prev-bar').style.width = Math.min(pct, 100) + '%';
-        document.getElementById('prev-bar').style.background = fill;
-        document.getElementById('prev-label').textContent = lbl;
-        document.getElementById('prev-label').className = `text-[10px] uppercase tracking-widest font-bold mt-2 ${color}`;
+        if(els.pct) { els.pct.textContent = pct + '%'; els.pct.className = `text-3xl font-mono font-bold tracking-tight ${color}`; }
+        if(els.letter) { els.letter.textContent = letterGrade(pct); els.letter.className = `text-xl font-black px-4 py-1.5 rounded-sm border text-center min-w-[56px] ${lbg}`; }
+        if(els.bar) { els.bar.style.width = Math.min(pct, 100) + '%'; els.bar.style.background = fill; }
+        if(els.lbl) { els.lbl.textContent = lbl; els.lbl.className = `text-[10px] uppercase tracking-widest font-bold mt-2 ${color}`; }
     } else {
-        document.getElementById('prev-pct').textContent = '—';
-        document.getElementById('prev-pct').className = 'text-3xl font-mono font-bold text-[#c5d0db]';
-        document.getElementById('prev-letter').textContent = '—';
-        document.getElementById('prev-letter').className = 'text-xl font-black px-4 py-1.5 rounded-sm border border-[#dce3ed] bg-[#f8fafb] text-[#9ab0c6] text-center min-w-[56px]';
-        document.getElementById('prev-bar').style.width = '0%';
-        document.getElementById('prev-label').textContent = 'Awaiting Input';
-        document.getElementById('prev-label').className = 'text-[10px] font-bold uppercase tracking-widest mt-2 text-[#9ab0c6]';
+        if(els.pct) { els.pct.textContent = '—'; els.pct.className = 'text-3xl font-mono font-bold text-[#c5d0db]'; }
+        if(els.letter) { els.letter.textContent = '—'; els.letter.className = 'text-xl font-black px-4 py-1.5 rounded-sm border border-[#dce3ed] bg-[#f8fafb] text-[#9ab0c6] text-center min-w-[56px]'; }
+        if(els.bar) els.bar.style.width = '0%';
+        if(els.lbl) { els.lbl.textContent = 'Awaiting Input'; els.lbl.className = 'text-[10px] font-bold uppercase tracking-widest mt-2 text-[#9ab0c6]'; }
     }
 }
 
-// ── 8. SAVE GRADE LOGIC ─────────────────────────────────────────────────────
+// ── 8. SAVE GRADE ───────────────────────────────────────────────────────────
 async function saveGrade() {
     if (isSemesterLocked) return;
 
@@ -294,7 +312,7 @@ async function saveGrade() {
     const title = document.getElementById('eg-title').value.trim();
     const score = parseFloat(document.getElementById('eg-score').value);
     const max = parseFloat(document.getElementById('eg-max').value);
-    const semId = document.getElementById('activeSemester') ? document.getElementById('activeSemester').value : '';
+    const semId = document.getElementById('activeSemester')?.value || '';
     const gdate = document.getElementById('eg-date').value;
     const tNotes = document.getElementById('eg-notes').value.trim();
     
@@ -304,8 +322,7 @@ async function saveGrade() {
     }
     
     const btn = document.getElementById('saveGradeBtn');
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Committing...`;
-    btn.disabled = true;
+    if(btn) { btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Committing...`; btn.disabled = true; }
     
     try {
         const noteFormatted = tNotes ? `[${new Date().toLocaleDateString()}] ${tNotes}` : '';
@@ -334,16 +351,14 @@ async function saveGrade() {
             setTimeout(() => banner.classList.add('hidden'), 5000);
         }
         
-        const stuSearch = document.getElementById('eg-student-search');
-        stuSearch.focus();
-        stuSearch.select();
+        document.getElementById('eg-student-search')?.focus();
+        document.getElementById('eg-student-search')?.select();
     } catch (e) {
         console.error(e);
         alert('Error saving grade.');
     }
     
-    btn.innerHTML = `<i class="fa-solid fa-database text-[11px]"></i> Commit Record`;
-    btn.disabled = false;
+    if(btn) { btn.innerHTML = `<i class="fa-solid fa-database text-[11px]"></i> Commit Record`; btn.disabled = false; }
 }
 
 init();
