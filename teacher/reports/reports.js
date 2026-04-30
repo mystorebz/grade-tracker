@@ -216,7 +216,8 @@ async function fetchGradesForSemesters(semIds) {
         let semGrades = [];
         await Promise.all(allStudentsCache.map(async s => {
             try {
-                const q = query(collection(db, 'schools', session.schoolId, 'students', s.id, 'grades'), where('semesterId', '==', semId));
+                // FIXED: Point to the global students collection
+                const q = query(collection(db, 'students', s.id, 'grades'), where('schoolId', '==', session.schoolId), where('semesterId', '==', semId));
                 const snap = await getDocs(q);
                 snap.forEach(d => {
                     const data = d.data();
