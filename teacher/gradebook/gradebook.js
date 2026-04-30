@@ -25,8 +25,22 @@ let sfStudentValue = '';
 let sfSubjectValue = '';
 let sfTypeValue    = '';
 
-const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
-function getGradeTypes() { return session.teacherData.gradeTypes || session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
+// ── THE "PERFECT 100" DEFAULT SYLLABUS ──
+const DEFAULT_GRADE_TYPES = [
+    { name: 'Test', weight: 30 },
+    { name: 'Quiz', weight: 20 },
+    { name: 'Project', weight: 20 },
+    { name: 'Assignment', weight: 20 },
+    { name: 'Homework', weight: 10 }
+];
+
+function getGradeTypes() { 
+    const types = session.teacherData.gradeTypes || session.teacherData.customGradeTypes;
+    if (!types || types.length === 0) return DEFAULT_GRADE_TYPES;
+    
+    // Convert legacy flat strings into editable objects with 0 weight
+    return types.map(t => typeof t === 'string' ? { name: t, weight: 0 } : t);
+}
 
 // ── 3. SEARCHABLE SELECT COMPONENT ───────────────────────────────────────────
 function buildSearchableFilter(key, items, onSelect) {
@@ -525,7 +539,7 @@ function escHtml(str) {
 
 // ── 15. GRADE WEIGHTS CONFIGURATION MODAL ─────────────────────────────────────
 let modalGradeTypes = [];
-let usedGradeTypes = new Set(); // Tracks types currently in use
+let usedGradeTypes = new Set(); 
 
 document.getElementById('openGradeWeightsBtn')?.addEventListener('click', () => {
     if (isSemesterLocked) {
@@ -533,7 +547,7 @@ document.getElementById('openGradeWeightsBtn')?.addEventListener('click', () => 
         return;
     }
     
-    // 1. Scanner: Find all grade types currently in use to protect them
+    // Scan for protected/in-use grade types
     usedGradeTypes.clear();
     if (allGradesCache && allGradesCache.grades) {
         allGradesCache.grades.forEach(g => {
@@ -541,12 +555,8 @@ document.getElementById('openGradeWeightsBtn')?.addEventListener('click', () => 
         });
     }
 
-    // 2. Clone & Upconvert: Get types and ensure they are all objects {name, weight}
     const currentTypes = getGradeTypes();
-    modalGradeTypes = currentTypes.map(t => {
-        if (typeof t === 'string') return { name: t, weight: 0 };
-        return { name: t.name, weight: t.weight || 0 };
-    });
+    modalGradeTypes = JSON.parse(JSON.stringify(currentTypes));
 
     document.getElementById('gwSelect').value = '';
     document.getElementById('gwCustomName').style.display = 'none';
@@ -599,23 +609,35 @@ document.getElementById('addGwBtn')?.addEventListener('click', () => {
     weightInput.value = '';
 });
 
-// Inline editing logic
+// Inline editing logic with HARD STOP guardrails
 window.updateGwWeight = function(index, val) {
     let w = parseInt(val, 10);
+    // Snap negatives directly to 0
     if (isNaN(w) || w < 0) w = 0;
+    
+    // Sync the clean value back to the DOM input so users physically cannot see/leave a "-" sign
+    const inputEl = document.getElementById(`gw-input-${index}`);
+    if (inputEl && inputEl.value != w) inputEl.value = w;
+
     modalGradeTypes[index].weight = w;
     
-    // Dynamically update the total weight badge without redrawing the whole list (preserves focus)
     let total = modalGradeTypes.reduce((sum, g) => sum + g.weight, 0);
     const totalEl = document.getElementById('gwTotalWeight');
+    const saveBtn = document.getElementById('saveGwBtn');
+    
     totalEl.textContent = `Total Weight: ${total}%`;
     
+    // The "Hard Stop" Save Button Logic
     if (total === 100) {
         totalEl.style.color = '#0ea871';
-    } else if (total > 100) {
-        totalEl.style.color = '#e31b4a';
+        saveBtn.disabled = false;
+        saveBtn.style.opacity = '1';
+        saveBtn.style.cursor = 'pointer';
     } else {
-        totalEl.style.color = '#d97706';
+        totalEl.style.color = '#e31b4a';
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.5';
+        saveBtn.style.cursor = 'not-allowed';
     }
 };
 
@@ -636,16 +658,12 @@ function showGwMsg(text, isError) {
 
 function renderGradeWeights() {
     const list = document.getElementById('gwList');
-    let total = 0;
-
+    
     if (modalGradeTypes.length === 0) {
         list.innerHTML = `<div style="padding:20px;text-align:center;border:1px dashed #c5d0db;border-radius:3px;color:#9ab0c6;font-size:12px;">No metrics configured.</div>`;
     } else {
         list.innerHTML = modalGradeTypes.map((g, i) => {
-            total += g.weight;
             const isProtected = usedGradeTypes.has(g.name.toLowerCase());
-            
-            // If protected, show lock instead of delete button
             const actionHtml = isProtected 
                 ? `<span style="font-size:10px;font-weight:700;color:#9ab0c6;background:#f0f4f8;padding:4px 8px;border-radius:3px;display:flex;align-items:center;gap:4px;" title="Cannot delete: Active grades exist"><i class="fa-solid fa-lock"></i> In Use</span>`
                 : `<button onclick="window.removeGwType(${i})" style="background:none;border:none;color:#e31b4a;cursor:pointer;font-size:12px;padding:4px;" title="Delete Metric"><i class="fa-solid fa-trash-can"></i></button>`;
@@ -658,7 +676,7 @@ function renderGradeWeights() {
                 </div>
                 <div style="display:flex;align-items:center;gap:12px;">
                     <div style="position:relative;width:60px;">
-                        <input type="number" oninput="window.updateGwWeight(${i}, this.value)" value="${g.weight}" style="width:100%;padding:6px;padding-right:20px;background:#f8fafb;border:1px solid #c5d0db;border-radius:3px;font-size:13px;font-weight:700;color:#0ea871;font-family:'DM Mono',monospace;outline:none;">
+                        <input type="number" id="gw-input-${i}" min="0" oninput="window.updateGwWeight(${i}, this.value)" value="${g.weight}" style="width:100%;padding:6px;padding-right:20px;background:#f8fafb;border:1px solid #c5d0db;border-radius:3px;font-size:13px;font-weight:700;color:#0ea871;font-family:'DM Mono',monospace;outline:none;">
                         <span style="position:absolute;right:8px;top:7px;font-size:11px;font-weight:700;color:#9ab0c6;pointer-events:none;">%</span>
                     </div>
                     <div style="width:70px;display:flex;justify-content:flex-end;">
@@ -669,20 +687,26 @@ function renderGradeWeights() {
         }).join('');
     }
 
-    // Call our inline update function once just to set the initial total text correctly
-    window.updateGwWeight(0, modalGradeTypes[0]?.weight || 0);
+    // Trigger validation loop on initial load to set save button state correctly
+    if(modalGradeTypes.length > 0) {
+        window.updateGwWeight(0, modalGradeTypes[0].weight);
+    } else {
+        const saveBtn = document.getElementById('saveGwBtn');
+        if(saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.style.opacity = '0.5';
+            saveBtn.style.cursor = 'not-allowed';
+            document.getElementById('gwTotalWeight').textContent = `Total Weight: 0%`;
+            document.getElementById('gwTotalWeight').style.color = '#e31b4a';
+        }
+    }
 }
 
 document.getElementById('saveGwBtn')?.addEventListener('click', async () => {
-    if (modalGradeTypes.length === 0) {
-        showGwMsg('Please add at least one metric.', true); return;
-    }
-    
+    // Math guardrail ensures button physically cannot be clicked if total != 100, 
+    // but we add a safety check just in case.
     const total = modalGradeTypes.reduce((sum, g) => sum + g.weight, 0);
-    if (total !== 100) {
-        const proceed = confirm(`Your total weight is ${total}%. The math engine will auto-scale this to 100%, but it may confuse parents. Are you sure you want to proceed?`);
-        if (!proceed) return;
-    }
+    if (total !== 100) return;
     
     const btn = document.getElementById('saveGwBtn');
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving & Recalculating...';
@@ -708,10 +732,9 @@ document.getElementById('saveGwBtn')?.addEventListener('click', async () => {
     } catch (e) {
         console.error('[Gradebook] saveGradeWeights:', e);
         showGwMsg('Error saving configuration. Please try again.', true);
+        btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save & Recalculate';
+        btn.disabled = false;
     }
-    
-    btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save & Recalculate';
-    btn.disabled = false;
 });
 
 // ── FIRE ──────────────────────────────────────────────────────────────────────
