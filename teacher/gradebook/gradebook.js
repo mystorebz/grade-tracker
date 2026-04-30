@@ -516,7 +516,7 @@ window.printGradebook = function() {
                 ${rows.map(g=>{
                     const p=g.max?Math.round(g.score/g.max*100):null;
                     const cls=p>=75?'hi':p>=65?'mid':'lo';
-                    return \`<tr><td><strong>${escHtml(g.studentName)}</strong></td><td>${escHtml(g.subject||'—')}</td><td>${escHtml(g.title||'—')}</td><td>${escHtml(g.type||'—')}</td><td>${escHtml(g.date||'—')}</td><td class="mono">${g.score}/${g.max||'?'}</td><td class="mono ${cls}">${p!==null?p+'%':'—'}</td><td class="${cls}">${p!==null?letterGrade(p):'—'}</td></tr>\`;
+                    return `<tr><td><strong>${escHtml(g.studentName)}</strong></td><td>${escHtml(g.subject||'—')}</td><td>${escHtml(g.title||'—')}</td><td>${escHtml(g.type||'—')}</td><td>${escHtml(g.date||'—')}</td><td class="mono">${g.score}/${g.max||'?'}</td><td class="mono ${cls}">${p!==null?p+'%':'—'}</td><td class="${cls}">${p!==null?letterGrade(p):'—'}</td></tr>`;
                 }).join('')}
             </tbody>
         </table>
@@ -609,15 +609,13 @@ document.getElementById('addGwBtn')?.addEventListener('click', () => {
     weightInput.value = '';
 });
 
-// Inline editing logic with HARD STOP guardrails & 100 Max Cap
+// Inline editing logic with HARD STOP guardrails
 window.updateGwWeight = function(index, val) {
     let w = parseInt(val, 10);
     // Snap negatives directly to 0
     if (isNaN(w) || w < 0) w = 0;
-    // Hard cap at 100
-    if (w > 100) w = 100;
     
-    // Sync the clean value back to the DOM input so users physically cannot see/leave invalid numbers
+    // Sync the clean value back to the DOM input so users physically cannot see/leave a "-" sign
     const inputEl = document.getElementById(`gw-input-${index}`);
     if (inputEl && inputEl.value != w) inputEl.value = w;
 
@@ -627,53 +625,20 @@ window.updateGwWeight = function(index, val) {
     const totalEl = document.getElementById('gwTotalWeight');
     const saveBtn = document.getElementById('saveGwBtn');
     
-    // The "Hard Stop" Save Button Logic with Auto-Balance Magic Wand
+    totalEl.textContent = `Total Weight: ${total}%`;
+    
+    // The "Hard Stop" Save Button Logic
     if (total === 100) {
-        totalEl.innerHTML = `Total Weight: ${total}%`;
         totalEl.style.color = '#0ea871';
         saveBtn.disabled = false;
         saveBtn.style.opacity = '1';
         saveBtn.style.cursor = 'pointer';
     } else {
-        totalEl.innerHTML = `Total: ${total}% <button onclick="window.autoBalanceWeights()" style="margin-left:8px;background:#e31b4a;color:#fff;border:none;border-radius:3px;padding:3px 8px;font-size:9px;font-weight:700;cursor:pointer;letter-spacing:0.05em;text-transform:uppercase;"><i class="fa-solid fa-wand-magic-sparkles" style="margin-right:4px;"></i> Auto-Balance</button>`;
         totalEl.style.color = '#e31b4a';
         saveBtn.disabled = true;
         saveBtn.style.opacity = '0.5';
         saveBtn.style.cursor = 'not-allowed';
     }
-};
-
-// Auto-Distribute Magic Wand Logic
-window.autoBalanceWeights = function() {
-    let total = modalGradeTypes.reduce((sum, g) => sum + g.weight, 0);
-    let count = modalGradeTypes.length;
-    
-    if (count === 0 || total === 100) return;
-
-    let newTotal = 0;
-    modalGradeTypes.forEach(g => {
-        // If total is 0, we can't divide by zero, so we distribute evenly
-        if (total === 0) {
-            g.weight = Math.round(100 / count);
-        } else {
-            // Calculate proportional ratio
-            g.weight = Math.round((g.weight / total) * 100);
-        }
-        newTotal += g.weight;
-    });
-
-    // Fix any rounding errors (e.g. if the new math equals 99% or 101%)
-    if (newTotal !== 100) {
-        let diff = 100 - newTotal;
-        // Find the metric with the highest weight to absorb the tiny 1% difference
-        let maxIdx = 0;
-        for(let i = 1; i < count; i++) {
-            if (modalGradeTypes[i].weight > modalGradeTypes[maxIdx].weight) maxIdx = i;
-        }
-        modalGradeTypes[maxIdx].weight += diff;
-    }
-
-    renderGradeWeights();
 };
 
 window.removeGwType = function(index) {
@@ -711,7 +676,7 @@ function renderGradeWeights() {
                 </div>
                 <div style="display:flex;align-items:center;gap:12px;">
                     <div style="position:relative;width:60px;">
-                        <input type="number" id="gw-input-${i}" min="0" max="100" oninput="window.updateGwWeight(${i}, this.value)" value="${g.weight}" style="width:100%;padding:6px;padding-right:20px;background:#f8fafb;border:1px solid #c5d0db;border-radius:3px;font-size:13px;font-weight:700;color:#0ea871;font-family:'DM Mono',monospace;outline:none;">
+                        <input type="number" id="gw-input-${i}" min="0" oninput="window.updateGwWeight(${i}, this.value)" value="${g.weight}" style="width:100%;padding:6px;padding-right:20px;background:#f8fafb;border:1px solid #c5d0db;border-radius:3px;font-size:13px;font-weight:700;color:#0ea871;font-family:'DM Mono',monospace;outline:none;">
                         <span style="position:absolute;right:8px;top:7px;font-size:11px;font-weight:700;color:#9ab0c6;pointer-events:none;">%</span>
                     </div>
                     <div style="width:70px;display:flex;justify-content:flex-end;">
