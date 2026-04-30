@@ -13,11 +13,11 @@ let rawSemesters = [];
 
 // ── 3. INIT ───────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-    // Inject Date (Now matching your 'eg-date' ID)
+    // Inject Date
     const dateInput = document.getElementById('eg-date');
     if (dateInput) dateInput.valueAsDate = new Date();
 
-    // Attach Score/Preview Listeners (Matching your 'eg-score' & 'eg-max' IDs)
+    // Attach Score/Preview Listeners
     const scoreInput = document.getElementById('eg-score');
     const maxInput = document.getElementById('eg-max');
     if (scoreInput) scoreInput.addEventListener('input', updatePreview);
@@ -27,25 +27,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     const commitBtn = document.getElementById('saveGradeBtn');
     if (commitBtn) commitBtn.addEventListener('click', saveGrade);
 
-    // Close Custom Dropdowns when clicking outside
-    document.addEventListener('click', (e) => {
-        document.querySelectorAll('ul[id$="-list"]').forEach(ul => {
-            const searchId = ul.id.replace('-list', '-search');
-            const searchEl = document.getElementById(searchId);
-            if (e.target !== searchEl && e.target !== ul && !ul.contains(e.target)) {
-                ul.classList.add('hidden');
-            }
-        });
-    });
-
     // Load Core Data
     await loadSemesters();
     loadGradeTypes(); 
     await loadStudents();
 });
 
-// ── CUSTOM DROPDOWN HELPER ────────────────────────────────────────────────
-// This populates your custom <ul id="eg-x-list"> and connects it to your <input type="hidden">
+// ── CUSTOM DROPDOWN HELPER (Searchable UI) ────────────────────────────────
 function populateCustomDropdown(baseId, items) {
     const ulEl = document.getElementById(baseId + '-list');
     const hiddenEl = document.getElementById(baseId);
@@ -53,25 +41,47 @@ function populateCustomDropdown(baseId, items) {
 
     if (!ulEl || !hiddenEl || !searchEl) return;
 
-    // Generate list items
-    ulEl.innerHTML = items.map(i => 
-        `<li class="p-2 hover:bg-slate-100 cursor-pointer text-[13px] text-[#0d1f35] border-b border-[#f0f4f8] last:border-0" data-val="${i.value}">${i.text}</li>`
-    ).join('');
+    // Function to render list items dynamically
+    const renderList = (list) => {
+        if (list.length === 0) {
+            ulEl.innerHTML = `<li class="p-2 text-[13px] text-[#6b84a0] italic">No results found</li>`;
+            return;
+        }
+        ulEl.innerHTML = list.map(i => 
+            `<li class="p-2 hover:bg-slate-100 cursor-pointer text-[13px] text-[#0d1f35] border-b border-[#f0f4f8] last:border-0" data-val="${i.value}">${i.text}</li>`
+        ).join('');
+        
+        // Attach click listeners to the new list items
+        ulEl.querySelectorAll('li[data-val]').forEach(li => {
+            li.addEventListener('mousedown', (e) => {
+                e.preventDefault(); // Prevents the input from losing focus before click registers
+                searchEl.value = li.innerText;
+                hiddenEl.value = li.getAttribute('data-val');
+                ulEl.classList.add('hidden');
+            });
+        });
+    };
 
-    // Open dropdown on focus
+    renderList(items);
+
+    // Show list when clicked/focused
     searchEl.addEventListener('focus', () => {
         document.querySelectorAll('ul[id$="-list"]').forEach(el => el.classList.add('hidden')); // Close others
         ulEl.classList.remove('hidden');
+        renderList(items); // Reset the list in case they searched previously
     });
 
-    // Handle selection
-    ulEl.querySelectorAll('li').forEach(li => {
-        li.addEventListener('click', (e) => {
-            e.stopPropagation();
-            searchEl.value = li.innerText;
-            hiddenEl.value = li.getAttribute('data-val');
-            ulEl.classList.add('hidden');
-        });
+    // Hide list when clicking away
+    searchEl.addEventListener('blur', () => {
+        ulEl.classList.add('hidden');
+    });
+
+    // Search-as-you-type filter logic
+    searchEl.addEventListener('input', (e) => {
+        const term = e.target.value.toLowerCase();
+        const filtered = items.filter(i => i.text.toLowerCase().includes(term));
+        renderList(filtered);
+        ulEl.classList.remove('hidden');
     });
 }
 
@@ -117,18 +127,18 @@ async function loadSemesters() {
 // ── 5. LOAD ROSTER (SEARCHABLE DROPDOWN) ──────────────────────────────────
 async function loadStudents() {
     try {
+        // Safe Query: Fetch active students for this school, then filter by teacher in JS
         const q = query(
             collection(db, 'students'),
             where('currentSchoolId', '==', session.schoolId),
-            where('teacherId', '==', session.teacherId),
             where('enrollmentStatus', '==', 'Active')
         );
         const snap = await getDocs(q);
         
-        const studentItems = snap.docs.map(doc => ({
-            value: doc.id,
-            text: `${doc.data().name} (${doc.id})`
-        }));
+        const studentItems = snap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .filter(s => s.teacherId === session.teacherId) // Filter done safely here!
+            .map(s => ({ value: s.id, text: `${s.name} (${s.id})` }));
         
         populateCustomDropdown('eg-student', studentItems);
     } catch (e) {
@@ -170,7 +180,6 @@ function updatePreview() {
     if (prev && !isNaN(score) && !isNaN(max) && max > 0 && score >= 0) {
         const pct = Math.round((score / max) * 100);
         
-        // Remove hidden and update specific UI elements in your HTML
         prev.classList.remove('hidden');
         
         const prevPct = document.getElementById('prev-pct');
@@ -182,7 +191,6 @@ function updatePreview() {
         const prevBar = document.getElementById('prev-bar');
         if (prevBar) {
             prevBar.style.width = `${pct}%`;
-            // Dynamic color logic for bar
             prevBar.className = `h-full rounded-none transition-all duration-300 ${pct >= 90 ? 'bg-emerald-500' : pct >= 80 ? 'bg-blue-500' : pct >= 70 ? 'bg-teal-500' : pct >= 65 ? 'bg-amber-500' : 'bg-red-500'}`;
         }
     } else if (prev) {
@@ -192,14 +200,12 @@ function updatePreview() {
 
 // ── 8. SAVE GRADE (THE GLOBAL WRITE) ──────────────────────────────────────
 async function saveGrade() {
-    // Pulling values from the hidden inputs updated by your custom dropdowns
     const studentId = document.getElementById('eg-student')?.value;
     if (!studentId) { alert('Please select a student from the dropdown.'); return; }
 
     const subject = document.getElementById('eg-subject')?.value || '';
     const type    = document.getElementById('eg-type')?.value || '';
     
-    // Pulling values from standard text inputs
     const title   = document.getElementById('eg-title')?.value.trim() || 'Untitled Assessment';
     const scoreEl = document.getElementById('eg-score');
     const maxEl   = document.getElementById('eg-max');
@@ -238,12 +244,10 @@ async function saveGrade() {
             createdAt:       new Date().toISOString()
         });
 
-        // Clear only the fields necessary for the next grade entry
         if (scoreEl) scoreEl.value = '';
         if (notesEl) notesEl.value = '';
         document.getElementById('eg-title').value = '';
         
-        // Show the success banner
         const banner = document.getElementById('gradeSavedBanner');
         if (banner) banner.classList.remove('hidden');
 
