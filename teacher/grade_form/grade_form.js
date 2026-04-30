@@ -6,6 +6,8 @@ import { letterGrade } from '../../assets/js/utils.js';
 
 // ── 1. AUTH & LAYOUT ──────────────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
+
+// This injects the TOP header with the Period button. 
 injectTeacherLayout('grade-entry', 'Enter Grade', 'Log a new assignment or assessment into the system', false);
 
 // ── 2. STATE ──────────────────────────────────────────────────────────────
@@ -13,28 +15,21 @@ let rawSemesters = [];
 
 // ── 3. INIT ───────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-    // Resilient Date Injection: Looks for exact ID, or falls back to any date input
-    const dateInput = document.getElementById('agDate') || document.querySelector('input[type="date"]');
-    if (dateInput) {
-        dateInput.valueAsDate = new Date();
-        dateInput.id = dateInput.id || 'agDate'; // Force ID for later use
-    } 
+    // 1. Safe Date Injection
+    const dateInput = document.getElementById('agDate');
+    if (dateInput) dateInput.valueAsDate = new Date();
 
-    // Attach Score/Preview Listeners safely
-    const scoreInput = document.getElementById('agScore') || document.querySelector('input[placeholder="85"]') || document.querySelectorAll('input[type="number"]')[0];
-    const maxInput = document.getElementById('agMax') || document.querySelector('input[placeholder="100"]') || document.querySelectorAll('input[type="number"]')[1];
-    
-    if (scoreInput) { scoreInput.id = 'agScore'; scoreInput.addEventListener('input', updatePreview); }
-    if (maxInput) { maxInput.id = 'agMax'; maxInput.addEventListener('input', updatePreview); }
+    // 2. Attach Score/Preview Listeners
+    const scoreInput = document.getElementById('agScore');
+    const maxInput = document.getElementById('agMax');
+    if (scoreInput) scoreInput.addEventListener('input', updatePreview);
+    if (maxInput) maxInput.addEventListener('input', updatePreview);
 
-    // Attach Commit Button Listener
-    const commitBtn = document.getElementById('saveGradeBtn') || document.querySelector('button.bg-slate-900') || document.querySelector('button:contains("COMMIT RECORD")');
-    if (commitBtn) {
-        commitBtn.id = 'saveGradeBtn';
-        commitBtn.addEventListener('click', saveGrade);
-    }
+    // 3. Attach Commit Button Listener
+    const commitBtn = document.getElementById('saveGradeBtn');
+    if (commitBtn) commitBtn.addEventListener('click', saveGrade);
 
-    // Load Core Data (Term Sync, Grade Types, Student Dropdown)
+    // 4. Load Core Data
     await loadSemesters();
     loadGradeTypes(); 
     await loadStudents();
@@ -62,7 +57,7 @@ async function loadSemesters() {
             if (activeSem) activeName = activeSem.name;
         } catch(e) {}
 
-        // Fixes the "PERIOD Loading..." in the top header injected by layout-teachers.js
+        // Target the layout-injected semester select
         const activeSemesterSelect = document.getElementById('activeSemester');
         if (activeSemesterSelect) {
             activeSemesterSelect.innerHTML = '';
@@ -74,28 +69,22 @@ async function loadSemesters() {
             });
         }
 
-        // Also update sidebar/header text elements if they exist
+        // Update the period text in the top-right button injected by layout
         const sbPeriod = document.getElementById('sb-period');
         if (sbPeriod) sbPeriod.textContent = activeName;
-        
-        // Update the button text from the screenshot
-        const headerPeriodBtn = document.querySelector('.page-header button span');
-        if (headerPeriodBtn && headerPeriodBtn.textContent.includes('Loading')) {
-            headerPeriodBtn.textContent = activeName;
-        }
 
     } catch (e) { console.error('[TeacherGradeEntry] loadSemesters:', e); }
 }
 
 // ── 5. LOAD ROSTER (SEARCHABLE DROPDOWN) ──────────────────────────────────
 async function loadStudents() {
-    // Find the first select element (assuming it's the student dropdown based on UI)
-    const studentSelect = document.getElementById('agStudent') || document.querySelectorAll('select')[0];
-    if (!studentSelect) return;
-    studentSelect.id = 'agStudent';
+    const studentSelect = document.getElementById('agStudent');
+    if (!studentSelect) {
+        console.warn("Student dropdown missing. Ensure it has id='agStudent'");
+        return;
+    }
 
     try {
-        // Global Root Query: Filter students by this teacher's active roster
         const q = query(
             collection(db, 'students'),
             where('currentSchoolId', '==', session.schoolId),
@@ -120,27 +109,33 @@ async function loadStudents() {
 
 // ── 6. LOAD GRADE TYPES & SUBJECTS ────────────────────────────────────────
 function loadGradeTypes() {
-    const typeSelect = document.getElementById('agType') || document.querySelectorAll('select')[2]; // 3rd select in UI
-    const subjectSelect = document.getElementById('agSubject') || document.querySelectorAll('select')[1]; // 2nd select in UI
+    const typeSelect = document.getElementById('agType');
+    const subjectSelect = document.getElementById('agSubject');
     
+    // Process Grade Types
     if (typeSelect) {
-        typeSelect.id = 'agType';
         const defaultTypes = [{ name: 'Test' }, { name: 'Quiz' }, { name: 'Assignment' }, { name: 'Homework' }, { name: 'Project' }, { name: 'Final Exam' }];
         const types = session.teacherData.gradeTypes || session.teacherData.customGradeTypes || defaultTypes;
         
         typeSelect.innerHTML = '<option value="">Select type...</option>' + types.filter(t => t).map(t => {
             const name = t.name || (typeof t === 'string' ? t : 'Uncategorized');
-            const weight = t.weight ? ` (${t.weight}%)` : '';
-            return `<option value="${name}">${name}${weight}</option>`;
+            return `<option value="${name}">${name}</option>`;
         }).join('');
+    } else {
+        console.warn("Grade Type dropdown missing. Ensure it has id='agType'");
     }
 
+    // Process Subjects
     if (subjectSelect) {
-        subjectSelect.id = 'agSubject';
-        const subjects = session.teacherData.classes || [session.teacherData.className || 'General'];
+        let subjects = session.teacherData.classes || [];
+        if (subjects.length === 0 && session.teacherData.className) subjects = [session.teacherData.className];
+        if (subjects.length === 0) subjects = ['General'];
+
         subjectSelect.innerHTML = '<option value="">Select subject...</option>' + subjects.filter(Boolean).map(sub => {
             return `<option value="${sub}">${sub}</option>`;
         }).join('');
+    } else {
+        console.warn("Subject dropdown missing. Ensure it has id='agSubject'");
     }
 }
 
@@ -153,8 +148,6 @@ function updatePreview() {
     const score = parseFloat(scoreEl.value);
     const max   = parseFloat(maxEl.value);
 
-    // If there's a preview UI element, update it here.
-    // (Note: Your screenshot doesn't show the live preview card, but we keep the logic intact if it's hidden)
     const prev = document.getElementById('gradePreview');
     if (prev && !isNaN(score) && !isNaN(max) && max > 0 && score >= 0) {
         const pct = Math.round((score / max) * 100);
@@ -171,30 +164,21 @@ async function saveGrade() {
 
     const subject = document.getElementById('agSubject')?.value || '';
     const type    = document.getElementById('agType')?.value || '';
-    const titleEl = document.getElementById('agTitle') || document.querySelector('input[type="text"]');
-    const title   = titleEl ? titleEl.value.trim() : 'Untitled Assessment';
-    
+    const title   = document.getElementById('agTitle')?.value.trim() || 'Untitled Assessment';
     const scoreEl = document.getElementById('agScore');
     const maxEl   = document.getElementById('agMax');
     const score   = scoreEl ? parseFloat(scoreEl.value) : NaN;
     const max     = maxEl ? parseFloat(maxEl.value) : NaN;
-    
     const dateEl  = document.getElementById('agDate');
     const date    = dateEl ? dateEl.value : new Date().toISOString().split('T')[0];
-    
-    const notesEl = document.getElementById('agNotes') || document.querySelector('textarea');
+    const notesEl = document.getElementById('agNotes');
     const notes   = notesEl ? notesEl.value.trim() : '';
 
-    // Fallback to active semester if specific dropdown isn't in form
-    const semIdEl = document.getElementById('agSemester') || document.getElementById('activeSemester');
+    const semIdEl = document.getElementById('activeSemester');
     const semId   = semIdEl ? semIdEl.value : (rawSemesters[0]?.id || '');
 
-    if (!subject || !type || !title) {
-        alert('Subject, grade type, and title are required.'); return;
-    }
-    if (isNaN(score) || isNaN(max) || max <= 0 || score < 0 || score > max) {
-        alert('Please enter valid score and max values.'); return;
-    }
+    if (!subject || !type || !title) { alert('Subject, grade type, and title are required.'); return; }
+    if (isNaN(score) || isNaN(max) || max <= 0 || score < 0 || score > max) { alert('Please enter valid score and max values.'); return; }
 
     const btn = document.getElementById('saveGradeBtn');
     if (btn) {
@@ -203,7 +187,6 @@ async function saveGrade() {
     }
 
     try {
-        // GLOBAL WRITE: Saving to /students/{studentId}/grades
         await addDoc(collection(db, 'students', studentId, 'grades'), {
             schoolId:        session.schoolId,
             teacherId:       session.teacherId,  
@@ -219,10 +202,9 @@ async function saveGrade() {
             createdAt:       new Date().toISOString()
         });
 
-        // Reset Form
         if (scoreEl) scoreEl.value = '';
         if (notesEl) notesEl.value = '';
-        if (titleEl) titleEl.value = '';
+        document.getElementById('agTitle').value = '';
         
         alert('Grade successfully committed to Global Registry!');
 
