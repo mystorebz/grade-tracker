@@ -4,46 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Student Registry | Admin Portal | ConnectUs</title>
-
     <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
-    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
-
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="../../assets/css/global.css">
     <link rel="stylesheet" href="../../assets/css/admin.css">
-
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-
     <style>
-        /* ── Status badges ──────────────────────────────────── */
-        .status-active      { background:#dcfce7; color:#16a34a; border:1px solid #bbf7d0; }
-        .status-transferred { background:#dbeafe; color:#2563eb; border:1px solid #bfdbfe; }
-        .status-graduated   { background:#f3e8ff; color:#9333ea; border:1px solid #e9d5ff; }
-        .status-archived    { background:#fee2e2; color:#dc2626; border:1px solid #fecaca; }
-
-        /* ── Panel tabs ─────────────────────────────────────── */
         .panel-tab {
-            padding: 12px 16px;
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.07em;
-            color: #6b84a0;
-            border-bottom: 3px solid transparent;
-            white-space: nowrap;
-            transition: color 0.15s, border-color 0.15s;
-            background: transparent;
-            cursor: pointer;
-            flex-shrink: 0;
+            padding: 12px 16px; font-size: 11px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.07em; color: #6b84a0; border-bottom: 3px solid transparent;
+            cursor: pointer; transition: color 0.15s, border-color 0.15s;
         }
-        .panel-tab:hover  { color: #2563eb; }
         .panel-tab.active { color: #2563eb; border-bottom-color: #2563eb; }
-        .panel-tab[data-tab="enrollment"]         { color: #6b84a0; }
-        .panel-tab[data-tab="enrollment"]:hover   { color: #d97706; }
-        .panel-tab[data-tab="enrollment"].active  { color: #d97706; border-bottom-color: #d97706; }
-
-        /* ── Subject accordion ─────────────────────────────── */
         .subject-body { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; }
         .subject-body.open { max-height: 2000px; }
     </style>
@@ -63,26 +36,23 @@
                         <button id="exportCsvBtn" class="flex items-center gap-2 bg-white hover:bg-[#f8fafb] text-[#374f6b] font-bold px-4 py-2.5 rounded shadow-sm border border-[#c5d0db] transition text-[12px]">
                             <i class="fa-solid fa-file-csv"></i> Export Data
                         </button>
-                        <button onclick="window.openAddStudentModal()" class="flex items-center gap-2 bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold px-5 py-2.5 rounded shadow-md transition text-[13px]">
-                            <i class="fa-solid fa-user-plus"></i> Enroll or Claim Student
+                        <button id="printListBtn" class="flex items-center gap-2 bg-white hover:bg-[#f8fafb] text-[#374f6b] font-bold px-4 py-2.5 rounded shadow-sm border border-[#c5d0db] transition text-[12px]">
+                            <i class="fa-solid fa-print"></i> Print Directory
                         </button>
                     </div>
                 </div>
 
                 <div class="flex gap-3 flex-wrap">
-                    <select id="filterStudentClass" class="form-input p-2.5 text-[12px] bg-white rounded-lg border border-[#dce3ed] outline-none text-[#374f6b] font-semibold">
+                    <div class="flex items-center bg-white border border-[#dce3ed] rounded-lg overflow-hidden min-w-[240px]">
+                        <i class="fa-solid fa-magnifying-glass px-3 text-[#9ab0c6] bg-[#f8fafb] h-full flex items-center border-r border-[#e8edf2]"></i>
+                        <input type="text" id="searchInput" placeholder="Search students..." class="w-full p-2.5 text-[12.5px] outline-none text-[#0d1f35] font-semibold">
+                    </div>
+                    <select id="filterStudentClass" class="p-2.5 text-[12px] bg-white rounded-lg border border-[#dce3ed] outline-none text-[#374f6b] font-semibold">
                         <option value="">All Classes</option>
                         <option value="unassigned">Unassigned Only</option>
                     </select>
-                    <select id="filterStudentTeacher" class="form-input p-2.5 text-[12px] bg-white rounded-lg border border-[#dce3ed] outline-none text-[#374f6b] font-semibold">
+                    <select id="filterStudentTeacher" class="p-2.5 text-[12px] bg-white rounded-lg border border-[#dce3ed] outline-none text-[#374f6b] font-semibold">
                         <option value="">All Teachers</option>
-                    </select>
-                    <select id="filterStudentStatus" class="form-input p-2.5 text-[12px] bg-white rounded-lg border border-[#dce3ed] outline-none text-[#374f6b] font-semibold">
-                        <option value="">All Statuses</option>
-                        <option value="Active">Active</option>
-                        <option value="Transferred">Transferred</option>
-                        <option value="Graduated">Graduated</option>
-                        <option value="Archived">Archived</option>
                     </select>
                 </div>
 
@@ -91,16 +61,15 @@
                         <table class="w-full text-left text-[13px] text-[#374f6b]">
                             <thead class="bg-[#f8fafb] text-[#6b84a0] text-[10px] uppercase tracking-widest font-bold border-b-2 border-[#dce3ed]">
                                 <tr>
-                                    <th class="px-6 py-4">Global ID & Name</th>
-                                    <th class="px-6 py-4">Status</th>
+                                    <th class="px-6 py-4">Student Identity</th>
                                     <th class="px-6 py-4">Class</th>
-                                    <th class="px-6 py-4">Teacher</th>
-                                    <th class="px-6 py-4 text-center">Profile</th>
-                                    <th class="px-6 py-4 text-right">Actions</th>
+                                    <th class="px-6 py-4">Assigned Teacher</th>
+                                    <th class="px-6 py-4">Parent Phone</th>
+                                    <th class="px-6 py-4 text-right">Records</th>
                                 </tr>
                             </thead>
                             <tbody id="studentsTableBody" class="divide-y divide-[#f0f4f8]">
-                                <tr><td colspan="6" class="px-6 py-16 text-center text-[#9ab0c6] italic font-semibold">
+                                <tr><td colspan="5" class="px-6 py-16 text-center text-[#9ab0c6] italic font-semibold">
                                     <i class="fa-solid fa-spinner fa-spin mr-2 text-[#2563eb]"></i>Loading student records...
                                 </td></tr>
                             </tbody>
@@ -112,445 +81,160 @@
         </div>
     </main>
 
-
-    <div id="addStudentModal" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
-        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200 flex flex-col max-h-[92vh]" id="addStudentModalInner">
-            <div class="h-1 bg-[#2563eb] flex-shrink-0"></div>
-            <div class="px-7 py-5 border-b border-[#f0f4f8] flex justify-between items-center bg-[#f8fafb] flex-shrink-0">
-                <h3 class="font-bold text-lg text-[#0d1f35]">Enroll or Claim Student</h3>
-                <button onclick="window.closeAddStudentModal()" class="text-[#9ab0c6] hover:text-[#e31b4a] transition">
-                    <i class="fa-solid fa-xmark text-xl"></i>
-                </button>
-            </div>
-
-            <div class="overflow-y-auto flex-1 p-7 space-y-6">
-                <div>
-                    <div class="flex items-center gap-2.5 mb-1">
-                        <div class="h-6 w-6 rounded-full bg-[#2563eb] text-white text-[11px] font-black flex items-center justify-center flex-shrink-0">1</div>
-                        <p class="font-bold text-[#0d1f35] text-[14px]">Claim an Existing Student</p>
-                    </div>
-                    <p class="text-[11px] text-[#6b84a0] font-semibold ml-9 mb-3">
-                        Search by name, email, or Global Student ID. Only students not currently enrolled at any school will appear.
-                    </p>
-
-                    <div class="flex gap-2 ml-9">
-                        <input type="text" id="studentSearchInput"
-                            placeholder="Name, Email, or ID..."
-                            class="form-input flex-1 p-2.5 bg-white border border-[#c7d9fd] rounded text-[13px] outline-none focus:border-[#2563eb]">
-                        <button id="searchStudentBtn"
-                            class="px-4 py-2 bg-[#2563eb] text-white font-bold text-[12px] rounded hover:bg-[#1d4ed8] transition whitespace-nowrap min-w-[90px]">
-                            <i class="fa-solid fa-magnifying-glass mr-1"></i> Search
-                        </button>
-                    </div>
-
-                    <div id="studentSearchResults"
-                        class="hidden ml-9 mt-2 border border-[#dce3ed] rounded-lg overflow-hidden max-h-44 overflow-y-auto shadow-sm">
-                    </div>
-
-                    <div id="claimStudentPreview" class="hidden ml-9 mt-3 bg-[#eef4ff] border border-[#c7d9fd] rounded-xl p-4">
-                        <div class="flex items-start justify-between mb-3">
-                            <div>
-                                <p class="text-[10px] text-[#2563eb] font-black uppercase tracking-widest mb-1">Selected — Verify Before Claiming</p>
-                                <p id="claimSPreviewName" class="font-black text-[#0d1f35] text-[16px]"></p>
-                                <p id="claimSPreviewId"   class="font-mono text-[11px] text-[#6b84a0] font-bold mt-0.5"></p>
-                            </div>
-                            <button onclick="window.clearStudentSelection()" class="text-[#9ab0c6] hover:text-[#e31b4a] ml-3 mt-1 transition">
-                                <i class="fa-solid fa-xmark"></i>
-                            </button>
-                        </div>
-                        <div class="grid grid-cols-2 gap-2" id="claimSPreviewDetails"></div>
-                        <div id="claimSPreviewWarning" class="hidden mt-3 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
-                            <p class="text-[11px] text-amber-700 font-bold">
-                                <i class="fa-solid fa-triangle-exclamation mr-1"></i>
-                                <span id="claimSPreviewWarningText"></span>
-                            </p>
-                        </div>
-                        <button id="claimStudentBtn"
-                            class="mt-4 w-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold py-3 rounded-lg transition text-[12px] uppercase tracking-widest">
-                            <i class="fa-solid fa-handshake mr-2"></i> Claim This Student
-                        </button>
-                    </div>
-
-                    <div id="claimStudentEmpty" class="hidden ml-9 mt-3 p-4 bg-[#f8fafb] rounded-lg border border-[#dce3ed] text-center">
-                        <p class="text-[12px] text-[#9ab0c6] font-semibold italic">No unassigned students found. Try a different search or create a new profile below.</p>
-                    </div>
-                </div>
-
-                <div class="flex items-center gap-3">
-                    <hr class="flex-1 border-[#f0f4f8]">
-                    <span class="text-[10px] text-[#9ab0c6] font-bold uppercase tracking-widest px-1">Or Create New</span>
-                    <hr class="flex-1 border-[#f0f4f8]">
-                </div>
-
-                <div>
-                    <div class="flex items-center gap-2.5 mb-4">
-                        <div class="h-6 w-6 rounded-full bg-[#0d1f35] text-white text-[11px] font-black flex items-center justify-center flex-shrink-0">2</div>
-                        <p class="font-bold text-[#0d1f35] text-[14px]">Create New Student Profile</p>
-                    </div>
-
-                    <div class="space-y-4 ml-9">
-                        <div class="grid grid-cols-2 gap-3">
-                            <div>
-                                <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">First Name <span class="text-[#e31b4a]">*</span></label>
-                                <input type="text" id="sFirstName" placeholder="e.g. John"
-                                    class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Last Name <span class="text-[#e31b4a]">*</span></label>
-                                <input type="text" id="sLastName" placeholder="e.g. Doe"
-                                    class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-3">
-                            <div>
-                                <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Date of Birth <span class="text-[#e31b4a]">*</span></label>
-                                <input type="date" id="sDob"
-                                    class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Gender <span class="text-[#e31b4a]">*</span></label>
-                                <select id="sGender"
-                                    class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
-                                    <option value="">— Select —</option>
-                                    <option value="Male">Male</option>
-                                    <option value="Female">Female</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Email Address <span class="text-[#e31b4a]">*</span></label>
-                            <input type="email" id="sEmail" placeholder="student@email.com"
-                                class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
-                            <p class="text-[10px] text-[#9ab0c6] mt-1 font-semibold">Required for first-time login and PIN recovery.</p>
-                        </div>
-                        <div class="grid grid-cols-2 gap-3">
-                            <div>
-                                <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Parent / Guardian Name <span class="text-[#e31b4a]">*</span></label>
-                                <input type="text" id="sParentName" placeholder="Legal guardian"
-                                    class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Parent Phone <span class="text-[#e31b4a]">*</span></label>
-                                <input type="text" id="sParentPhone" placeholder="501-000-0000"
-                                    class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
-                            </div>
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Assign to Class</label>
-                            <select id="sClass"
-                                class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
-                                <option value="">— Optional —</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Assign Teacher</label>
-                            <select id="sTeacher" disabled
-                                class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb] disabled:opacity-50">
-                                <option value="">— Select a class first —</option>
-                            </select>
-                            <p class="text-[10px] text-[#9ab0c6] mt-1 font-semibold">Both can be left blank, but if a class is selected, a teacher must also be selected.</p>
-                        </div>
-
-                        <div>
-                            <p id="addStudentMsg" class="text-[11px] font-bold hidden mb-2"></p>
-                            <button id="saveStudentBtn"
-                                class="w-full bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-3.5 rounded transition shadow-md text-[13px] uppercase tracking-widest">
-                                <i class="fa-solid fa-user-plus mr-2"></i> Register
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-            </div>
-        </div>
-    </div>
-
-
-    <div id="studentCredentialSlipModal" class="overlay fixed inset-0 bg-[#0d1f35]/70 backdrop-blur-sm z-[70] flex items-center justify-center hidden opacity-0 transition-opacity">
-        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200" id="studentCredentialSlipModalInner">
-            <div class="h-1 bg-[#059669]"></div>
-            <div class="px-7 py-5 border-b border-[#f0f4f8] flex justify-between items-center bg-[#f0fdf9]">
-                <div class="flex items-center gap-3">
-                    <i class="fa-solid fa-circle-check text-[#059669] text-xl"></i>
-                    <div>
-                        <h3 class="font-bold text-[15px] text-[#064e3b]">Student Enrolled Successfully</h3>
-                        <p class="text-[11px] text-[#059669] font-bold m-0 mt-0.5">Credential slip for first-time login</p>
-                    </div>
-                </div>
-                <button onclick="window.closeStudentCredentialSlip()" class="text-[#9ab0c6] hover:text-[#374f6b] transition">
-                    <i class="fa-solid fa-xmark text-xl"></i>
-                </button>
-            </div>
-            <div class="p-7">
-                <div class="bg-[#f4f7fb] border-2 border-dashed border-[#c5d0db] rounded-xl p-6 text-center mb-5">
-                    <p id="sSlipName" class="font-black text-[#0d1f35] text-[17px] mb-4"></p>
-                    <p class="text-[9px] text-[#6b84a0] font-bold uppercase tracking-widest">Global Student ID</p>
-                    <p id="sSlipId"  class="font-mono font-black text-[#0d1f35] text-[20px] tracking-widest mb-4"></p>
-                    <p class="text-[9px] text-[#6b84a0] font-bold uppercase tracking-widest">Temporary Login PIN</p>
-                    <p id="sSlipPin" class="font-mono font-black text-[#059669] text-[32px] tracking-[0.4em]"></p>
-                </div>
-                <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-5">
-                    <p class="text-[11px] text-amber-700 font-bold leading-relaxed">
-                        <i class="fa-solid fa-triangle-exclamation mr-1.5"></i>
-                        This is a <strong>temporary PIN</strong> for first-time login only. The student must reset their PIN and set security questions before accessing the portal.
-                    </p>
-                </div>
-                <div class="flex gap-3">
-                    <button onclick="window.printStudentCredentialSlip()"
-                        class="flex-1 bg-white hover:bg-[#f8fafb] text-[#374f6b] font-bold py-2.5 rounded text-[12px] border border-[#dce3ed] transition">
-                        <i class="fa-solid fa-print mr-1.5"></i> Print Slip
-                    </button>
-                    <button onclick="window.closeStudentCredentialSlip()"
-                        class="flex-1 bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-2.5 rounded text-[12px] transition">
-                        Done
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-
-    <div id="archiveStudentModal" class="overlay fixed inset-0 bg-[#0d1f35]/80 backdrop-blur-md z-[60] flex items-center justify-center hidden opacity-0 transition-opacity">
-        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200 border-t-4 border-amber-400" id="archiveStudentModalInner">
-            <div class="px-7 py-5 border-b border-[#f0f4f8] flex justify-between items-center bg-amber-50">
-                <div class="flex items-center gap-3">
-                    <i class="fa-solid fa-box-archive text-amber-500 text-xl"></i>
-                    <div>
-                        <h3 class="font-bold text-[15px] text-amber-800">Student Enrollment Action</h3>
-                        <p class="text-[11px] text-amber-600 font-bold m-0 mt-0.5">Select the appropriate action for this student</p>
-                    </div>
-                </div>
-                <button onclick="window.closeArchiveStudentModal()" class="text-[#9ab0c6] hover:text-[#374f6b] transition">
-                    <i class="fa-solid fa-xmark text-xl"></i>
-                </button>
-            </div>
-            <div class="p-7 space-y-5">
-                <p class="text-[13px] text-[#374f6b] font-semibold leading-relaxed">
-                    Select what happens to <strong id="archiveSName" class="text-[#0d1f35]">this student</strong>.
-                </p>
-
-                <div class="space-y-3">
-                    <label class="flex items-start gap-3 p-4 border border-[#dce3ed] rounded-xl cursor-pointer hover:bg-[#f8fafb] transition">
-                        <input type="radio" name="sArchiveType" id="sOptArchive" value="archive" checked class="mt-0.5 accent-[#2563eb]" onchange="window.toggleSArchiveType()">
-                        <div>
-                            <p class="font-bold text-[13px] text-[#0d1f35]">Archive (Keep Enrolled)</p>
-                            <p class="text-[11px] text-[#6b84a0] font-semibold mt-0.5">Remove from active rosters and gradebooks. Student remains tied to your school.</p>
-                        </div>
-                    </label>
-                    <label class="flex items-start gap-3 p-4 border border-[#dce3ed] rounded-xl cursor-pointer hover:bg-[#f8fafb] transition">
-                        <input type="radio" name="sArchiveType" id="sOptTransfer" value="transfer" class="mt-0.5 accent-amber-500" onchange="window.toggleSArchiveType()">
-                        <div>
-                            <p class="font-bold text-[13px] text-[#0d1f35]">Transfer (Release Student)</p>
-                            <p class="text-[11px] text-[#6b84a0] font-semibold mt-0.5">Student has permanently left. Releases their Global ID so another school can claim them. Records are sealed.</p>
-                        </div>
-                    </label>
-                </div>
-
-                <div id="sReleaseFields" class="hidden space-y-4">
-                    <div class="bg-red-50 border border-red-200 rounded-lg p-3 flex gap-3">
-                        <i class="fa-solid fa-triangle-exclamation text-red-400 mt-0.5 flex-shrink-0"></i>
-                        <p class="text-[11px] text-red-600 font-bold leading-relaxed">
-                            Once enrollment is closed, this student's records at your school are permanently sealed. This cannot be undone.
-                        </p>
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Departure Reason <span class="text-[#e31b4a]">*</span></label>
-                        <select id="sReleaseReason" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none">
-                            <option value="">— Select reason —</option>
-                            <option value="Transferred">Transferred to Another School</option>
-                            <option value="Graduated">Graduated</option>
-                            <option value="Expelled">Expelled</option>
-                            <option value="Dropped Out">Dropped Out</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div>
-                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Administrator Notes (Optional)</label>
-                    <textarea id="sArchiveNotes" placeholder="Notes for internal records..."
-                        class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded text-[13px] h-20 resize-none outline-none focus:border-amber-400"></textarea>
-                </div>
-
-                <button id="confirmArchiveStudentBtn"
-                    class="w-full bg-[#0d1f35] hover:bg-amber-600 text-white font-bold py-4 rounded transition shadow-md text-[13px] uppercase tracking-widest flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-box-archive"></i> Confirm Action
-                </button>
-            </div>
-        </div>
-    </div>
-
-
     <div id="studentPanel" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-40 flex justify-end hidden opacity-0 transition-opacity">
-        <div id="studentPanelInner" class="side-panel bg-white w-full max-w-6xl h-full shadow-2xl flex flex-col translate-x-full transition-transform">
+        <div id="studentPanelInner" class="bg-white w-full max-w-4xl h-full shadow-2xl flex flex-col translate-x-full transition-transform">
             <div class="h-1 bg-[#2563eb] flex-shrink-0"></div>
 
             <div class="px-7 py-4 border-b border-[#f0f4f8] bg-[#f8fafb] flex-shrink-0">
                 <div class="flex items-center justify-between gap-4">
                     <div class="min-w-0 flex-1">
                         <h3 id="sPanelName" class="font-bold text-xl text-[#0d1f35] truncate">Loading...</h3>
-                        <p id="sPanelId"    class="font-mono text-[11px] text-[#6b84a0] font-bold mt-0.5">—</p>
+                        <p id="sPanelId" class="font-mono text-[11px] text-[#6b84a0] font-bold mt-0.5">—</p>
                     </div>
                     
-                    <div class="flex-1 flex justify-center">
-                        <div id="sPanelClassBadge" class="hidden text-center bg-[#eef4ff] border border-[#c7d9fd] rounded-lg px-4 py-1.5 shadow-sm">
-                            <p class="text-[9px] font-black text-[#2563eb] uppercase tracking-widest mb-0.5">Current Assignment</p>
-                            <p id="sPanelClassText" class="text-[13px] font-bold text-[#0d1f35] leading-tight">—</p>
-                        </div>
-                    </div>
-
-                    <div class="flex items-center justify-end gap-2 flex-1">
-                        <div class="relative" id="sEnrollActionsWrapper">
-                            <button id="sEnrollActionsBtn"
-                                onclick="window.toggleSEnrollDropdown()"
-                                class="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold px-3 py-2 rounded text-[11px] border border-amber-200 transition">
-                                <i class="fa-solid fa-ellipsis-vertical"></i> Actions
+                    <div class="flex items-center justify-end gap-3 flex-1">
+                        <div class="relative">
+                            <button onclick="window.toggleSEnrollDropdown()" class="flex items-center gap-2 bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold px-4 py-2 rounded-lg text-[12px] border border-amber-200 transition">
+                                <i class="fa-solid fa-gear"></i> Manage Identity
                             </button>
-                            <div id="sEnrollDropdown" class="hidden absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-[#dce3ed] z-10 min-w-[170px] overflow-hidden">
-                                <button onclick="window.openArchiveStudentModal()" class="w-full text-left px-4 py-3 text-[12px] font-bold text-amber-600 hover:bg-amber-50 transition border-t border-[#f0f4f8]">
+                            <div id="sEnrollDropdown" class="hidden absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-[#dce3ed] z-50 w-48 overflow-hidden">
+                                <button onclick="window.openReassignModal()" class="w-full text-left px-4 py-3 text-[12px] font-bold text-blue-700 hover:bg-blue-50 transition border-b border-[#f0f4f8]">
+                                    <i class="fa-solid fa-people-arrows mr-2"></i> Reassign Class
+                                </button>
+                                <button onclick="window.openArchiveReasonModal()" class="w-full text-left px-4 py-3 text-[12px] font-bold text-amber-600 hover:bg-amber-50 transition">
                                     <i class="fa-solid fa-box-archive mr-2"></i> Archive / Transfer
                                 </button>
                             </div>
                         </div>
-                        <button onclick="window.closeStudentPanel()"
-                            class="text-[#9ab0c6] hover:text-[#e31b4a] h-9 w-9 rounded-full flex items-center justify-center transition">
+                        <button onclick="window.printStudentRecord()" class="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 font-bold px-4 py-2 rounded-lg text-[12px] border border-slate-200 transition">
+                            <i class="fa-solid fa-print"></i> Print
+                        </button>
+                        <button onclick="window.closeStudentPanel()" class="text-[#9ab0c6] hover:text-[#e31b4a] h-9 w-9 rounded-full flex items-center justify-center transition ml-2">
                             <i class="fa-solid fa-xmark text-xl"></i>
                         </button>
                     </div>
                 </div>
             </div>
 
-            <div id="sPanelLoader" class="flex-1 flex items-center justify-center">
-                <i class="fa-solid fa-spinner fa-spin text-3xl text-[#2563eb]"></i>
-            </div>
-
-            <div id="sPanelTabs" class="hidden flex-shrink-0 border-b-2 border-[#f0f4f8] bg-white overflow-x-auto">
+            <div class="flex-shrink-0 border-b-2 border-[#f0f4f8] bg-white overflow-x-auto px-4">
                 <div class="flex">
-                    <button class="panel-tab active" data-tab="overview">
-                        <i class="fa-solid fa-id-card mr-1.5"></i>Overview
-                    </button>
-                    <button class="panel-tab" data-tab="academic">
-                        <i class="fa-solid fa-graduation-cap mr-1.5"></i>Academic
-                    </button>
-                    <button class="panel-tab" data-tab="history">
-                        <i class="fa-solid fa-clock-rotate-left mr-1.5"></i>History
-                    </button>
-                    <button class="panel-tab" data-tab="enrollment">
-                        <i class="fa-solid fa-chalkboard-user mr-1.5"></i>Enrollment
-                    </button>
+                    <button class="panel-tab active" data-tab="overview" onclick="window.switchStudentTab('overview')"><i class="fa-solid fa-id-card mr-1.5"></i>Overview</button>
+                    <button class="panel-tab" data-tab="academic" onclick="window.switchStudentTab('academic')"><i class="fa-solid fa-graduation-cap mr-1.5"></i>Academic Records</button>
+                    <button class="panel-tab" data-tab="history" onclick="window.switchStudentTab('history')"><i class="fa-solid fa-clock-rotate-left mr-1.5"></i>Passport History</button>
                 </div>
             </div>
 
-            <div id="tab-overview"   class="tab-pane flex-1 overflow-y-auto p-6 bg-[#f4f7fb] space-y-4 hidden"></div>
-            <div id="tab-academic"   class="tab-pane flex-1 overflow-y-auto p-6 bg-[#f4f7fb] hidden"></div>
-            <div id="tab-history"    class="tab-pane flex-1 overflow-y-auto p-6 bg-[#f4f7fb] hidden"></div>
-            <div id="tab-enrollment" class="tab-pane flex-1 overflow-y-auto p-6 bg-[#f4f7fb] hidden"></div>
+            <div id="sPanelLoader" class="flex-1 flex flex-col items-center justify-center hidden">
+                <i class="fa-solid fa-circle-notch fa-spin text-4xl mb-3 text-blue-500"></i>
+                <p class="font-semibold text-sm text-slate-500">Loading passport...</p>
+            </div>
+
+            <div id="tab-overview" class="tab-pane flex-1 overflow-y-auto p-6 bg-[#f4f7fb]">
+                <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                    <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Identity Details</h4>
+                    <div id="sInfoGrid" class="space-y-3"></div>
+                </div>
+            </div>
+
+            <div id="tab-academic" class="tab-pane hidden flex-1 overflow-y-auto p-6 bg-[#f4f7fb]">
+                <div class="flex justify-between items-center mb-4">
+                    <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest">Grades at this School</h4>
+                    <button onclick="window.openAdminAddGradeModal()" class="text-xs font-bold bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-100 transition">
+                        <i class="fa-solid fa-plus mr-1"></i> Admin Grade Override
+                    </button>
+                </div>
+                <div id="subjectAccordions" class="space-y-4"></div>
+            </div>
+
+            <div id="tab-history" class="tab-pane hidden flex-1 overflow-y-auto p-6 bg-[#f4f7fb]">
+                <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Global Transfer Logs</h4>
+                <div id="historyLogsContainer" class="space-y-3"></div>
+            </div>
         </div>
     </div>
 
+    <div id="reassignStudentModal" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0 transition-opacity">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full m-4 overflow-hidden" id="reassignStudentModalInner">
+            <div class="px-6 py-4 border-b border-[#f0f4f8] bg-blue-50 flex justify-between items-center">
+                <h3 class="font-bold text-blue-800">Reassign Student</h3>
+                <button onclick="window.closeReassignModal()"><i class="fa-solid fa-xmark text-slate-400 hover:text-red-500"></i></button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Class</label>
+                    <select id="rsClass" class="w-full p-2.5 border border-slate-300 rounded-lg text-sm"></select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Teacher</label>
+                    <select id="rsTeacher" class="w-full p-2.5 border border-slate-300 rounded-lg text-sm"></select>
+                </div>
+                <p id="reassignMsg" class="text-xs font-bold text-red-500 hidden"></p>
+                <button id="saveReassignBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition text-sm">Save Assignment</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="archiveReasonModal" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0 transition-opacity">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full m-4 overflow-hidden" id="archiveReasonModalInner">
+            <div class="px-6 py-4 border-b border-[#f0f4f8] bg-amber-50 flex justify-between items-center">
+                <h3 class="font-bold text-amber-800">Archive / Transfer</h3>
+                <button onclick="window.closeArchiveReasonModal()"><i class="fa-solid fa-xmark text-slate-400 hover:text-red-500"></i></button>
+            </div>
+            <div class="p-6 space-y-4">
+                <p class="text-sm text-slate-600 font-medium">Why is this student leaving the active roster?</p>
+                <select id="archiveReasonSelect" class="w-full p-2.5 border border-slate-300 rounded-lg text-sm">
+                    <option value="Transferred to another school">Transferred to another school</option>
+                    <option value="Graduated">Graduated</option>
+                    <option value="Expelled">Expelled</option>
+                    <option value="Dropped Out">Dropped Out</option>
+                    <option value="Other">Other</option>
+                </select>
+                <input type="text" id="archiveReasonOther" placeholder="Specify reason..." class="w-full p-2.5 border border-slate-300 rounded-lg text-sm hidden">
+                <button id="confirmArchiveBtn" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 rounded-lg transition text-sm">Confirm & Archive</button>
+            </div>
+        </div>
+    </div>
 
     <div id="adminAddGradeModal" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-[80] flex items-center justify-center hidden opacity-0 transition-opacity">
-        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200 flex flex-col" id="adminAddGradeModalInner">
-            <div class="h-1 bg-[#2563eb] flex-shrink-0"></div>
-            <div class="px-6 py-4 border-b border-[#f0f4f8] flex justify-between items-center bg-[#f8fafb]">
-                <h3 class="font-bold text-lg text-[#0d1f35]">Add Admin Grade</h3>
-                <button onclick="window.closeAdminAddGradeModal()" class="text-[#9ab0c6] hover:text-[#e31b4a] transition">
-                    <i class="fa-solid fa-xmark text-xl"></i>
-                </button>
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full m-4 overflow-hidden" id="adminAddGradeModalInner">
+            <div class="px-6 py-4 border-b border-[#f0f4f8] flex justify-between items-center bg-blue-50">
+                <h3 class="font-bold text-lg text-blue-900">Admin Grade Override</h3>
+                <button onclick="window.closeAdminAddGradeModal()"><i class="fa-solid fa-xmark text-slate-400 hover:text-red-500"></i></button>
             </div>
-            <div class="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
+            <div class="p-6 space-y-4">
                 <div class="grid grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Subject <span class="text-[#e31b4a]">*</span></label>
-                        <select id="agAddSubject" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]"></select>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Subject</label>
+                        <input type="text" id="agAddSubject" placeholder="e.g. Math" class="w-full p-2.5 border border-slate-300 rounded text-sm outline-none">
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Type <span class="text-[#e31b4a]">*</span></label>
-                        <select id="agAddType" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]"></select>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Type</label>
+                        <input type="text" id="agAddType" placeholder="e.g. Final Exam" class="w-full p-2.5 border border-slate-300 rounded text-sm outline-none">
                     </div>
                 </div>
                 <div>
-                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Title <span class="text-[#e31b4a]">*</span></label>
-                    <input type="text" id="agAddTitle" placeholder="e.g. Midterm Makeup" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
+                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Title</label>
+                    <input type="text" id="agAddTitle" placeholder="e.g. Administrative Placement Test" class="w-full p-2.5 border border-slate-300 rounded text-sm outline-none">
                 </div>
                 <div class="grid grid-cols-3 gap-3">
                     <div>
-                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Score <span class="text-[#e31b4a]">*</span></label>
-                        <input type="number" id="agAddScore" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Score</label>
+                        <input type="number" id="agAddScore" class="w-full p-2.5 border border-slate-300 rounded text-sm outline-none">
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Out Of <span class="text-[#e31b4a]">*</span></label>
-                        <input type="number" id="agAddMax" value="100" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Out Of</label>
+                        <input type="number" id="agAddMax" value="100" class="w-full p-2.5 border border-slate-300 rounded text-sm outline-none">
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Date <span class="text-[#e31b4a]">*</span></label>
-                        <input type="date" id="agAddDate" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Date</label>
+                        <input type="date" id="agAddDate" class="w-full p-2.5 border border-slate-300 rounded text-sm outline-none">
                     </div>
                 </div>
                 <div>
-                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Admin Notes (Optional)</label>
-                    <textarea id="agAddNotes" placeholder="Reason for admin entry..." class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb] resize-none h-16"></textarea>
+                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Admin Notes (Mandatory for Override)</label>
+                    <textarea id="agAddNotes" placeholder="Reason for admin entry..." class="w-full p-2.5 border border-slate-300 rounded text-sm outline-none resize-none h-16"></textarea>
                 </div>
-                
-                <p id="agAddMsg" class="text-[11px] font-bold hidden text-red-600 block"></p>
-                <button id="saveAdminAddGradeBtn" onclick="window.saveAdminAddGrade()" class="w-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold py-3 rounded transition shadow-md text-[12px] uppercase tracking-widest">
-                    <i class="fa-solid fa-floppy-disk mr-1"></i> Save Grade
-                </button>
-            </div>
-        </div>
-    </div>
-
-
-    <div id="adminEditGradeModal" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-[80] flex items-center justify-center hidden opacity-0 transition-opacity">
-        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200 flex flex-col" id="adminEditGradeModalInner">
-            <div class="h-1 bg-[#2563eb] flex-shrink-0"></div>
-            <div class="px-6 py-4 border-b border-[#f0f4f8] flex justify-between items-center bg-[#f8fafb]">
-                <h3 class="font-bold text-lg text-[#0d1f35]">Edit Your Grade Entry</h3>
-                <button onclick="window.closeAdminEditGradeModal()" class="text-[#9ab0c6] hover:text-[#e31b4a] transition">
-                    <i class="fa-solid fa-xmark text-xl"></i>
-                </button>
-            </div>
-            <div class="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
-                <input type="hidden" id="agEditGradeId">
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Subject</label>
-                        <input type="text" id="agEditSubject" class="form-input w-full p-2 bg-gray-100 border border-[#dce3ed] rounded text-[13px] outline-none text-gray-500 cursor-not-allowed" readonly>
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Type</label>
-                        <input type="text" id="agEditType" class="form-input w-full p-2 bg-gray-100 border border-[#dce3ed] rounded text-[13px] outline-none text-gray-500 cursor-not-allowed" readonly>
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Title</label>
-                    <input type="text" id="agEditTitle" class="form-input w-full p-2 bg-gray-100 border border-[#dce3ed] rounded text-[13px] outline-none text-gray-500 cursor-not-allowed" readonly>
-                </div>
-                <div class="grid grid-cols-3 gap-3">
-                    <div>
-                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Score <span class="text-[#e31b4a]">*</span></label>
-                        <input type="number" id="agEditScore" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Out Of <span class="text-[#e31b4a]">*</span></label>
-                        <input type="number" id="agEditMax" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Date <span class="text-[#e31b4a]">*</span></label>
-                        <input type="date" id="agEditDate" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">General Notes</label>
-                    <textarea id="agEditNotes" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb] resize-none h-16"></textarea>
-                </div>
-                <div class="bg-amber-50 border border-amber-200 p-3 rounded-lg">
-                    <label class="block text-[10px] font-bold text-amber-800 uppercase tracking-widest mb-1">Reason for Edit <span class="text-[#e31b4a]">*</span></label>
-                    <textarea id="agEditReason" placeholder="Mandatory explanation for editing this grade..." class="form-input w-full p-2 bg-white border border-amber-300 rounded text-[13px] outline-none focus:border-amber-500 resize-none h-16"></textarea>
-                </div>
-                <p id="agEditMsg" class="text-[11px] font-bold hidden text-red-600 block"></p>
-                <button id="saveAdminEditGradeBtn" onclick="window.saveAdminEditGrade()" class="w-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold py-3 rounded transition shadow-md text-[12px] uppercase tracking-widest">
-                    <i class="fa-solid fa-floppy-disk mr-1"></i> Save Changes
-                </button>
+                <button id="saveAdminAddGradeBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded transition text-sm">Save Official Grade</button>
             </div>
         </div>
     </div>
