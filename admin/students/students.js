@@ -30,9 +30,10 @@ async function loadStudents() {
     tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-16 text-center text-slate-400 font-semibold"><i class="fa-solid fa-spinner fa-spin text-emerald-400 text-2xl mb-3 block"></i>Loading students...</td></tr>`;
     
     try {
+        // ARCHITECTURE FIX: Querying by currentSchoolId for both students and teachers
         const [sSnap, tSnap] = await Promise.all([
-            getDocs(query(collection(db, 'students'), where('schoolId', '==', session.schoolId))),
-            getDocs(query(collection(db, 'teachers'), where('schoolId', '==', session.schoolId)))
+            getDocs(query(collection(db, 'students'), where('currentSchoolId', '==', session.schoolId))),
+            getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId)))
         ]);
         
         const tm = {};
@@ -234,7 +235,11 @@ window.openStudentPanel = async function(studentId) {
     openOverlay('studentPanel', 'studentPanelInner', true);
     
     try {
-        const gradesSnap = await getDocs(collection(db, 'students', studentId, 'grades'));
+        // ARCHITECTURE FIX: Lock grades to the current school so they don't bleed from passports
+        const gradesSnap = await getDocs(query(
+            collection(db, 'students', studentId, 'grades'),
+            where('schoolId', '==', session.schoolId)
+        ));
         
         if (gradesSnap.empty) {
             document.getElementById('sPanelLoader').innerHTML = `<div class="text-center py-16"><div class="text-5xl mb-3">📂</div><p class="text-slate-400 font-semibold">No grades recorded yet.</p></div>`;
@@ -308,7 +313,6 @@ window.closeAssignmentModal = function() {
 
 // ── 10. CSV & PRINT EXPORTS ───────────────────────────────────────────────
 document.getElementById('exportCsvBtn').addEventListener('click', () => {
-    // Helper to generate CSV download from array of arrays
     const rows = [['Name', 'Class', 'Teacher', 'Parent Phone'], ...allStudentsCache.map(s => [s.name || '', s.className || '', s.teacherName || '', s.parentPhone || ''])];
     const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })), download: `${session.schoolId}_students.csv` });
@@ -330,14 +334,15 @@ window.printStudentRecord = async function(studentId) {
     if (!sDoc.exists()) { alert("Student not found."); return; }
     const s = sDoc.data();
     
-    // Fetch all grades
-    const gradesSnap = await getDocs(collection(db, 'students', studentId, 'grades'));
+    // ARCHITECTURE FIX: Lock grades to the current school so they don't bleed from passports
+    const gradesSnap = await getDocs(query(
+        collection(db, 'students', studentId, 'grades'),
+        where('schoolId', '==', session.schoolId)
+    ));
+    
     const grades = [];
     gradesSnap.forEach(d => grades.push(d.data()));
 
-    // Organize by semester -> subject. Since semesters aren't fully loaded here, we group by ID and try to get names if needed, 
-    // or just group by subject directly if semester data isn't globally available.
-    // For simplicity, we fallback to "Unknown Period" as in the original if the map isn't available.
     const bySem = {};
     grades.forEach(g => {
         const sem = g.semesterId || 'Unknown Period';
