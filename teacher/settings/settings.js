@@ -6,7 +6,7 @@ import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 // ── 1. AUTH & LAYOUT ──────────────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
 if (session) {
-    injectTeacherLayout('settings', 'Settings', 'Profile, gradebook configuration, and account security', false);
+    injectTeacherLayout('settings', 'Settings', 'Profile and account security', false);
 }
 
 // ── SHA-256 ───────────────────────────────────────────────────────────────
@@ -27,14 +27,6 @@ function showMsg(elId, msg, isError) {
     setTimeout(() => el.classList.add('hidden'), 5000);
 }
 
-function escHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-// Global state for Grade Types
-let teacherGradeTypes = [];
-
 // ── 2. LOAD PROFILE & SEMESTERS ───────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
     if (!session) return;
@@ -54,7 +46,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('settingEmail').value = t.email || '';
     document.getElementById('settingPhone').value = t.phone || '';
 
-    // ── Security questions status badge & Grade Types ──────────────────────
+    // ── Security questions status badge ────────────────────────────────────
     try {
         const snap = await getDoc(doc(db, 'teachers', session.teacherId));
         if (snap.exists()) {
@@ -75,14 +67,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     badge.className   = 'ml-auto text-[10px] font-black px-2.5 py-1 rounded-sm uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200';
                 }
             }
-
-            // Load existing Grade Types
-            if (data.gradeTypes && Array.isArray(data.gradeTypes)) {
-                teacherGradeTypes = data.gradeTypes;
-            } else if (data.customGradeTypes && Array.isArray(data.customGradeTypes)) {
-                teacherGradeTypes = data.customGradeTypes; // Fallback for legacy naming
-            }
-            renderGradeTypes();
         }
     } catch (e) {
         console.error('[TeacherSettings] load profile data:', e);
@@ -249,109 +233,3 @@ document.getElementById('saveSecQBtn')?.addEventListener('click', async () => {
     btn.disabled  = false;
     btn.innerHTML = 'Save Security Questions';
 });
-
-// ── 6. GRADE TYPES MANAGEMENT ─────────────────────────────────────────────
-const gtSelect     = document.getElementById('gtSelect');
-const gtCustomName = document.getElementById('gtCustomName');
-const gtWeight     = document.getElementById('gtWeight');
-const addGtBtn     = document.getElementById('addGradeTypeBtn');
-const gtList       = document.getElementById('gradeTypesList');
-const gtTotal      = document.getElementById('gtTotalWeight');
-const saveGtBtn    = document.getElementById('saveGradeTypesBtn');
-
-if (gtSelect) {
-    gtSelect.addEventListener('change', (e) => {
-        if (e.target.value === 'Custom') {
-            gtCustomName.classList.remove('hidden');
-            gtCustomName.focus();
-        } else {
-            gtCustomName.classList.add('hidden');
-            gtCustomName.value = '';
-        }
-    });
-}
-
-if (addGtBtn) {
-    addGtBtn.addEventListener('click', () => {
-        const type   = gtSelect.value;
-        const name   = type === 'Custom' ? gtCustomName.value.trim() : type;
-        const weight = parseInt(gtWeight.value, 10);
-
-        if (!type) { showMsg('gtMsg', 'Please select a grade type.', true); return; }
-        if (type === 'Custom' && !name) { showMsg('gtMsg', 'Please enter a custom name.', true); return; }
-        if (isNaN(weight) || weight <= 0) { showMsg('gtMsg', 'Please enter a valid weight (e.g., 20).', true); return; }
-
-        if (teacherGradeTypes.some(g => g.name.toLowerCase() === name.toLowerCase())) {
-            showMsg('gtMsg', 'This grade type already exists.', true); return;
-        }
-
-        teacherGradeTypes.push({ name, weight });
-        renderGradeTypes();
-
-        gtSelect.value = '';
-        if (gtCustomName) { gtCustomName.classList.add('hidden'); gtCustomName.value = ''; }
-        gtWeight.value = '';
-    });
-}
-
-window.removeGradeType = function(index) {
-    teacherGradeTypes.splice(index, 1);
-    renderGradeTypes();
-};
-
-function renderGradeTypes() {
-    if (!gtList || !gtTotal) return;
-
-    let total = 0;
-    gtList.innerHTML = teacherGradeTypes.map((g, i) => {
-        total += g.weight;
-        return `
-        <div class="flex items-center justify-between p-3 bg-white border border-[#dce3ed] rounded-sm mb-2 hover:border-[#cbd5e1] transition">
-            <div class="flex items-center gap-3">
-                <div class="w-6 h-6 rounded-full bg-[#f0f4f8] text-[#6b84a0] flex items-center justify-center text-[10px] font-black"><i class="fa-solid fa-tag"></i></div>
-                <p class="text-[13px] font-bold text-[#0d1f35]">${escHtml(g.name)}</p>
-            </div>
-            <div class="flex items-center gap-4">
-                <span class="text-[12px] font-black text-[#0ea871] bg-[#edfaf4] px-2 py-0.5 rounded-sm border border-[#c6f0db]">${g.weight}%</span>
-                <button onclick="window.removeGradeType(${i})" class="text-[#e31b4a] hover:bg-[#fff0f3] p-1.5 rounded-sm transition" title="Remove">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-            </div>
-        </div>`;
-    }).join('');
-
-    if (teacherGradeTypes.length === 0) {
-        gtList.innerHTML = `<div class="p-6 text-center border-2 border-dashed border-[#dce3ed] rounded-sm"><p class="text-[12px] text-[#9ab0c6] font-medium">No metrics configured.<br>Add your first assessment type above.</p></div>`;
-    }
-
-    gtTotal.textContent = `Total Active Weight: ${total}%`;
-    if (total === 100) {
-        gtTotal.className = 'text-[12px] font-black text-[#0ea871] uppercase tracking-widest';
-    } else if (total > 100) {
-        gtTotal.className = 'text-[12px] font-black text-[#e31b4a] uppercase tracking-widest';
-        showMsg('gtMsg', 'Warning: Total weight exceeds 100%. Math will auto-scale, but this may confuse parents.', true);
-    } else {
-        gtTotal.className = 'text-[12px] font-black text-[#d97706] uppercase tracking-widest';
-    }
-}
-
-if (saveGtBtn) {
-    saveGtBtn.addEventListener('click', async () => {
-        if (teacherGradeTypes.length === 0) {
-            showMsg('gtMsg', 'Please add at least one metric before saving.', true); return;
-        }
-
-        saveGtBtn.disabled = true;
-        saveGtBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...';
-
-        try {
-            await updateDoc(doc(db, 'teachers', session.teacherId), { gradeTypes: teacherGradeTypes });
-            session.teacherData.gradeTypes = teacherGradeTypes;
-            setSessionData('teacher', session);
-            showMsg('gtMsg', 'Configuration committed to active gradebook!', false);
-        } catch (e) { showMsg('gtMsg', 'Failed to save configuration. Please try again.', true); }
-
-        saveGtBtn.disabled = false;
-        saveGtBtn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-2"></i> Save Configuration';
-    });
-}
