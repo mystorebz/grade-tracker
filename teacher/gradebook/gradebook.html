@@ -180,13 +180,15 @@
 
         <div class="gb-scroll">
 
-            <!-- PAGE HEADER -->
             <div class="gb-page-header">
                 <div>
                     <h1 class="gb-page-title">Class Gradebook</h1>
                     <p class="gb-page-sub">Full grade record — search, filter and audit every entry</p>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;" class="no-print">
+                    <button id="openGradeWeightsBtn" class="btn-sharp btn-outline" style="color:#0ea871;border-color:#a7f3d0;background:#edfaf4;">
+                        <i class="fa-solid fa-scale-balanced" style="font-size:11px;"></i> Grade Weights
+                    </button>
                     <button onclick="exportGradebookCSV()" class="btn-sharp btn-outline">
                         <i class="fa-solid fa-file-csv" style="font-size:11px;"></i> Export CSV
                     </button>
@@ -196,7 +198,6 @@
                 </div>
             </div>
 
-            <!-- SUMMARY STATS -->
             <div class="gb-stats">
                 <div class="gb-stat-card">
                     <div class="gb-stat-icon" style="background:#edfaf4;color:#0b8f5e;border:1px solid #a7f3d0;"><i class="fa-solid fa-graduation-cap"></i></div>
@@ -219,16 +220,13 @@
                 </div>
             </div>
 
-            <!-- FILTER BAR -->
             <div class="gb-controls no-print">
 
-                <!-- Title search -->
                 <div class="gb-search">
                     <div class="gb-search-icon"><i class="fa-solid fa-magnifying-glass"></i></div>
                     <input type="text" id="gbSearchInput" oninput="applyGradebookFilters()" placeholder="Search by assignment title…">
                 </div>
 
-                <!-- Student searchable select -->
                 <div class="sf-wrap" id="sfStudentWrap">
                     <div class="sf-trigger">
                         <span class="sf-label"><i class="fa-solid fa-user" style="margin-right:5px;font-size:9px;"></i>Student</span>
@@ -241,7 +239,6 @@
                     <div class="sf-dropdown" id="sfStudentDropdown"></div>
                 </div>
 
-                <!-- Subject searchable select -->
                 <div class="sf-wrap" id="sfSubjectWrap">
                     <div class="sf-trigger">
                         <span class="sf-label"><i class="fa-solid fa-book" style="margin-right:5px;font-size:9px;"></i>Subject</span>
@@ -254,7 +251,6 @@
                     <div class="sf-dropdown" id="sfSubjectDropdown"></div>
                 </div>
 
-                <!-- Type searchable select -->
                 <div class="sf-wrap" id="sfTypeWrap">
                     <div class="sf-trigger">
                         <span class="sf-label"><i class="fa-solid fa-tag" style="margin-right:5px;font-size:9px;"></i>Type</span>
@@ -267,7 +263,6 @@
                     <div class="sf-dropdown" id="sfTypeDropdown"></div>
                 </div>
 
-                <!-- Record count -->
                 <div class="gb-count-badge" id="gbRecordCount">
                     <div class="gb-count-dot"></div>
                     <span>— records</span>
@@ -275,7 +270,6 @@
 
             </div>
 
-            <!-- MAIN TABLE -->
             <div class="gb-table-wrap">
                 <div class="gb-table-header">
                     <div class="gb-table-header-left">
@@ -313,7 +307,6 @@
         </div>
     </main>
 
-    <!-- MODAL: VIEW ASSIGNMENT -->
     <div id="assignmentModal" class="modal-overlay hidden opacity-0">
         <div class="modal-box" id="assignmentModalInner" style="width:100%;max-width:460px;">
             <div class="modal-stripe"></div>
@@ -328,7 +321,6 @@
         </div>
     </div>
 
-    <!-- MODAL: EDIT GRADE -->
     <div id="editGradeModal" class="modal-overlay hidden opacity-0">
         <div class="modal-box" id="editGradeModalInner" style="width:100%;max-width:500px;max-height:90vh;overflow-y:auto;">
             <div class="modal-stripe-amber"></div>
@@ -344,7 +336,6 @@
             </div>
             <div style="padding:20px 22px;background:#fafbfc;display:flex;flex-direction:column;gap:16px;">
 
-                <!-- Score -->
                 <div style="background:#fff;border:1px solid #dce3ed;border-radius:4px;padding:18px;">
                     <p class="field-label" style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">
                         <i class="fa-solid fa-hashtag" style="color:#9ab0c6;"></i> Adjust Score
@@ -378,7 +369,6 @@
                     </div>
                 </div>
 
-                <!-- Notes -->
                 <div style="background:#fff;border:1px solid #dce3ed;border-radius:4px;padding:18px;">
                     <p class="field-label" style="margin-bottom:8px;"><i class="fa-solid fa-clock-rotate-left" style="color:#9ab0c6;margin-right:5px;"></i>Previous Notes</p>
                     <div id="ed-old-notes" style="font-size:12.5px;color:#374f6b;background:#f8fafb;padding:10px 12px;border:1px solid #e8edf2;border-radius:3px;max-height:100px;overflow-y:auto;white-space:pre-wrap;font-weight:500;margin-bottom:14px;min-height:36px;"></div>
@@ -392,6 +382,65 @@
                     <i class="fa-solid fa-floppy-disk"></i> Save Changes
                 </button>
                 <p id="editGradeMsg" class="hidden" style="font-size:12px;font-weight:600;padding:10px 14px;border-radius:3px;text-align:center;margin:0;"></p>
+            </div>
+        </div>
+    </div>
+
+    <div id="gradeWeightsModal" class="modal-overlay hidden opacity-0">
+        <div class="modal-box" id="gradeWeightsModalInner" style="width:100%;max-width:500px;max-height:90vh;overflow-y:auto;">
+            <div class="modal-stripe"></div>
+            <div class="modal-header" style="background:#f8fafb;">
+                <div class="modal-header-left">
+                    <div class="modal-icon" style="background:#edfaf4;color:#0ea871;border:1px solid #a7f3d0;"><i class="fa-solid fa-scale-balanced"></i></div>
+                    <div>
+                        <span class="modal-title">Gradebook Weights</span>
+                        <p style="font-size:11px;color:#9ab0c6;font-weight:500;margin:2px 0 0;">Define your metrics to auto-calculate final averages.</p>
+                    </div>
+                </div>
+                <button id="closeGradeWeightsBtn" class="modal-close"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <div style="padding:20px 22px;background:#fafbfc;display:flex;flex-direction:column;gap:16px;">
+                <div style="background:#fff;border:1px solid #dce3ed;border-radius:4px;padding:16px;box-shadow:0 1px 2px rgba(13,31,53,0.05);">
+                    <label class="field-label" style="color:#0ea871;">Add Assessment Metric</label>
+                    <div style="display:flex;gap:8px;">
+                        <div style="flex:1;">
+                            <select id="gwSelect" style="width:100%;padding:10px;background:#f8fafb;border:1px solid #c5d0db;border-radius:3px;font-size:13px;outline:none;color:#0d1f35;">
+                                <option value="">Select type...</option>
+                                <option value="Test">Test</option>
+                                <option value="Quiz">Quiz</option>
+                                <option value="Homework">Homework</option>
+                                <option value="Assignment">Assignment</option>
+                                <option value="Project">Project</option>
+                                <option value="Midterm Exam">Midterm Exam</option>
+                                <option value="Final Exam">Final Exam</option>
+                                <option value="Custom">-- Custom Type --</option>
+                            </select>
+                        </div>
+                        <div style="width:80px;position:relative;">
+                            <input type="number" id="gwWeight" placeholder="Wt" style="width:100%;padding:10px;background:#f8fafb;border:1px solid #c5d0db;border-radius:3px;font-size:13px;font-family:'DM Mono',monospace;outline:none;padding-right:24px;color:#0d1f35;">
+                            <span style="position:absolute;right:8px;top:10px;font-size:11px;font-weight:700;color:#9ab0c6;">%</span>
+                        </div>
+                        <button id="addGwBtn" style="background:#0ea871;color:#fff;border:none;border-radius:3px;padding:0 16px;cursor:pointer;font-weight:700;transition:background 0.12s;"><i class="fa-solid fa-plus"></i></button>
+                    </div>
+                    <input type="text" id="gwCustomName" placeholder="Enter custom name..." style="width:100%;margin-top:8px;padding:10px;background:#f8fafb;border:1px solid #c5d0db;border-radius:3px;font-size:13px;outline:none;display:none;color:#0d1f35;">
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-end;">
+                        <label class="field-label" style="margin:0;">Active Metrics</label>
+                        <span id="gwTotalWeight" style="font-size:11px;font-weight:700;color:#0ea871;text-transform:uppercase;letter-spacing:0.05em;">Total Weight: 0%</span>
+                    </div>
+                    <div id="gwList" style="display:flex;flex-direction:column;gap:8px;max-height:250px;overflow-y:auto;padding-right:4px;">
+                        </div>
+                    <p id="gwMsg" class="hidden" style="font-size:11.5px;font-weight:700;padding:10px 12px;border-radius:3px;text-align:center;margin:0;"></p>
+                </div>
+            </div>
+
+            <div style="padding:16px 22px;background:#fff;border-top:1px solid #e8edf2;">
+                <button id="saveGwBtn" style="width:100%;padding:12px;background:#0d1f35;border:none;border-radius:3px;color:#fff;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background 0.12s;text-transform:uppercase;letter-spacing:0.05em;">
+                    <i class="fa-solid fa-floppy-disk"></i> Save & Recalculate
+                </button>
             </div>
         </div>
     </div>
