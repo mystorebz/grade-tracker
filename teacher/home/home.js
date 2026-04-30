@@ -126,8 +126,10 @@ async function fetchMetrics() {
         allGrades = [];
         await Promise.all(allStudents.map(async s => {
             try {
+                // FIXED: Point to the global students collection
                 const gQuery = query(
-                    collection(db, 'schools', session.schoolId, 'students', s.id, 'grades'),
+                    collection(db, 'students', s.id, 'grades'),
+                    where('schoolId', '==', session.schoolId),
                     where('semesterId', '==', semId)
                 );
                 const gSnap = await getDocs(gQuery);
