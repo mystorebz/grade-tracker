@@ -96,10 +96,16 @@ export function calculateWeightedAverage(grades, gradeTypesData) {
         return Math.round(totalPct / grades.length);
     }
 
-    // Map weights for quick lookup (e.g., { 'test': 30, 'quiz': 15 })
+    // Map weights for quick lookup (handles both objects and plain strings)
     const weightMap = {};
     gradeTypes.forEach(t => {
-        weightMap[t.name.toLowerCase()] = t.weight || 0;
+        if (t && typeof t === 'object' && t.name) {
+            // Teacher has configured weights: { name: 'Test', weight: 30 }
+            weightMap[t.name.toLowerCase()] = t.weight || 0;
+        } else if (typeof t === 'string') {
+            // Fallback to default array: 'Test' (treated as equal/no specific weight)
+            weightMap[t.toLowerCase()] = 0; 
+        }
     });
 
     // 4. Group the student's actual grades by type
