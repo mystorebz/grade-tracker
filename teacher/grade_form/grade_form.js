@@ -14,27 +14,115 @@ const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project'
 
 // ── 3. INIT ───────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-    // Inject Date
     const dateInput = document.getElementById('agDate');
     if (dateInput) dateInput.valueAsDate = new Date();
 
-    // Attach Score/Preview Listeners
     const scoreInput = document.getElementById('agScore');
     const maxInput = document.getElementById('agMax');
     if (scoreInput) scoreInput.addEventListener('input', updatePreview);
     if (maxInput) maxInput.addEventListener('input', updatePreview);
 
-    // Attach Commit Button Listener
     const commitBtn = document.getElementById('saveGradeBtn');
     if (commitBtn) commitBtn.addEventListener('click', saveGrade);
 
-    // Load Core Data
     await loadSemesters();
     loadGradeTypesAndSubjects(); 
     await loadStudents();
 });
 
-// ── 4. LOAD SEMESTERS (TERM SYNC) ─────────────────────────────────────────
+// ── 4. SEARCHABLE DROPDOWN ENGINE (NO HTML CHANGES REQUIRED) ──────────────
+function makeSearchable(selectId) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+
+    const isWrapped = select.parentNode.classList.contains('searchable-wrapper');
+    let wrapper, input, list;
+
+    if (!isWrapped) {
+        // Hide native select and build the searchable UI dynamically
+        select.style.display = 'none';
+        wrapper = document.createElement('div');
+        wrapper.className = 'searchable-wrapper relative w-full';
+        select.parentNode.insertBefore(wrapper, select);
+        wrapper.appendChild(select);
+
+        input = document.createElement('input');
+        input.type = 'text';
+        // Copy original Tailwind styles so it looks identical to your design
+        input.className = select.className.replace('appearance-none', '').replace('form-select', '') + ' form-input pr-8';
+        input.placeholder = select.options[0]?.text || 'Select...';
+        
+        const icon = document.createElement('div');
+        icon.className = 'absolute right-2.5 top-2.5 text-[#9ab0c6] pointer-events-none';
+        icon.innerHTML = '<i class="fa-solid fa-caret-down text-[10px]"></i>';
+
+        list = document.createElement('ul');
+        list.className = 'absolute z-50 w-full mt-1 bg-white border border-[#dce3ed] rounded-sm shadow-lg max-h-52 overflow-y-auto hidden';
+        
+        wrapper.appendChild(input);
+        wrapper.appendChild(icon);
+        wrapper.appendChild(list);
+
+        // UI Interactions
+        input.addEventListener('focus', () => {
+            input.value = ''; // Clear text to show all options
+            updateList('');
+            list.classList.remove('hidden');
+        });
+
+        input.addEventListener('blur', () => {
+            // Slight delay so the click event on the list registers before hiding
+            setTimeout(() => {
+                list.classList.add('hidden');
+                const selectedOpt = select.options[select.selectedIndex];
+                input.value = (selectedOpt && selectedOpt.value) ? selectedOpt.text : '';
+            }, 150);
+        });
+
+        input.addEventListener('input', (e) => {
+            updateList(e.target.value);
+            list.classList.remove('hidden');
+        });
+
+        select.wrapperRef = { input, list }; // Save reference for resetting the form later
+    } else {
+        wrapper = select.parentNode;
+        input = select.wrapperRef.input;
+        list = select.wrapperRef.list;
+        input.placeholder = select.options[0]?.text || 'Select...';
+    }
+
+    // Filter Logic
+    function updateList(filter) {
+        list.innerHTML = '';
+        let hasResults = false;
+        Array.from(select.options).forEach(opt => {
+            if (opt.value === '') return; // Skip placeholder
+            if (opt.text.toLowerCase().includes(filter.toLowerCase())) {
+                hasResults = true;
+                const li = document.createElement('li');
+                li.className = 'p-2 hover:bg-slate-100 cursor-pointer text-[13px] text-[#0d1f35] border-b border-[#f0f4f8] last:border-0';
+                li.textContent = opt.text;
+                li.onmousedown = (e) => {
+                    e.preventDefault(); 
+                    input.value = opt.text;
+                    select.value = opt.value;
+                    list.classList.add('hidden');
+                };
+                list.appendChild(li);
+            }
+        });
+        if (!hasResults) {
+            list.innerHTML = '<li class="p-2 text-[13px] text-[#6b84a0] italic">No results found</li>';
+        }
+    }
+
+    // Set initial load value
+    const selectedOpt = select.options[select.selectedIndex];
+    input.value = (selectedOpt && selectedOpt.value) ? selectedOpt.text : '';
+}
+
+// ── 5. LOAD SEMESTERS ─────────────────────────────────────────────────────
 async function loadSemesters() {
     try {
         const cacheKey = `connectus_semesters_${session.schoolId}`;
@@ -74,13 +162,12 @@ async function loadSemesters() {
     } catch (e) { console.error('[TeacherGradeEntry] loadSemesters:', e); }
 }
 
-// ── 5. LOAD ROSTER (GLOBAL DB FETCH + JS FILTER) ──────────────────────────
+// ── 6. LOAD ROSTER ────────────────────────────────────────────────────────
 async function loadStudents() {
     const studentSelect = document.getElementById('agStudent');
     if (!studentSelect) return;
 
     try {
-        // Safe Query exactly matching roster.js
         const q = query(
             collection(db, 'students'),
             where('currentSchoolId', '==', session.schoolId),
@@ -88,7 +175,6 @@ async function loadStudents() {
         );
         const snap = await getDocs(q);
         
-        // Filter by Teacher inside JS exactly matching roster.js
         const teacherStudents = snap.docs
             .map(d => ({ id: d.id, ...d.data() }))
             .filter(s => s.teacherId === session.teacherId);
@@ -101,30 +187,31 @@ async function loadStudents() {
             studentSelect.appendChild(opt);
         });
 
+        // Trigger the searchable UI
+        makeSearchable('agStudent');
+
     } catch (e) {
         console.error('[Grade Form] Failed to load students:', e);
         studentSelect.innerHTML = '<option value="">Error loading roster</option>';
     }
 }
 
-// ── 6. LOAD GRADE TYPES & SUBJECTS (FROM TEACHER PROFILE) ─────────────────
+// ── 7. LOAD GRADE TYPES & SUBJECTS ────────────────────────────────────────
 function loadGradeTypesAndSubjects() {
-    // 1. Grade Types
     const typeSelect = document.getElementById('agType');
     if (typeSelect) {
-        // Matching roster.js: session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES
         const types = session.teacherData.customGradeTypes || session.teacherData.gradeTypes || DEFAULT_GRADE_TYPES;
-        
         typeSelect.innerHTML = '<option value="">Select type...</option>' + types.filter(t => t).map(t => {
             const name = t.name || (typeof t === 'string' ? t : 'Uncategorized');
             return `<option value="${name}">${name}</option>`;
         }).join('');
+        
+        // Trigger the searchable UI
+        makeSearchable('agType');
     }
 
-    // 2. Subjects
     const subjectSelect = document.getElementById('agSubject');
     if (subjectSelect) {
-        // Matching roster.js: getActiveSubjects() or getClasses()
         let subjects = [];
         if (session.teacherData.subjects && session.teacherData.subjects.length > 0) {
             subjects = session.teacherData.subjects.filter(s => !s.archived).map(s => s.name);
@@ -135,10 +222,13 @@ function loadGradeTypesAndSubjects() {
         subjectSelect.innerHTML = '<option value="">Select subject...</option>' + subjects.filter(Boolean).map(sub => {
             return `<option value="${sub}">${sub}</option>`;
         }).join('');
+        
+        // Trigger the searchable UI
+        makeSearchable('agSubject');
     }
 }
 
-// ── 7. LIVE PREVIEW ───────────────────────────────────────────────────────
+// ── 8. LIVE PREVIEW ───────────────────────────────────────────────────────
 function updatePreview() {
     const scoreEl = document.getElementById('agScore');
     const maxEl = document.getElementById('agMax');
@@ -169,7 +259,7 @@ function updatePreview() {
     }
 }
 
-// ── 8. SAVE GRADE (THE GLOBAL WRITE) ──────────────────────────────────────
+// ── 9. SAVE GRADE ─────────────────────────────────────────────────────────
 async function saveGrade() {
     const studentId = document.getElementById('agStudent')?.value;
     if (!studentId) { alert('Please select a student from the dropdown.'); return; }
@@ -217,16 +307,23 @@ async function saveGrade() {
             createdAt:       new Date().toISOString()
         });
 
-        // Clear only the fields necessary for the next grade entry
+        // Clear regular inputs
         if (scoreEl) scoreEl.value = '';
         if (notesEl) notesEl.value = '';
         document.getElementById('agTitle').value = '';
         
-        // Hide preview
+        // Reset Searchable Dropdowns back to placeholder empty state
+        ['agStudent', 'agSubject', 'agType'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.value = '';
+                if (el.wrapperRef) el.wrapperRef.input.value = '';
+            }
+        });
+        
         const prev = document.getElementById('gradePreview');
         if (prev) prev.classList.add('hidden');
 
-        // Show success banner
         const banner = document.getElementById('gradeSavedBanner');
         if (banner) banner.classList.remove('hidden');
 
