@@ -28,13 +28,6 @@
             
             <div class="max-w-5xl mx-auto space-y-6">
                 
-                <div class="flex items-end justify-between border-b-2 border-[#0d1f35] pb-4 mb-6">
-                    <div>
-                        <h1 class="text-xl font-bold text-[#0d1f35] tracking-tight mb-1">Enter Grade</h1>
-                        <p class="text-xs text-[#6b84a0] m-0">Log a new assignment or assessment into the system</p>
-                    </div>
-                </div>
-
                 <div class="bg-white rounded-sm shadow-sm border border-[#dce3ed] overflow-hidden relative flex flex-col">
                     <div class="h-[2px] bg-[#0ea871] w-full"></div>
                     
@@ -77,21 +70,21 @@
                                     <div class="relative">
                                         <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Student <span class="text-[#e31b4a]">*</span></label>
                                         <div class="relative">
-                                            <input type="text" id="eg-student-search" autocomplete="off" placeholder="Select student..." class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] pr-8 focus:border-[#2563eb] focus:ring-0 transition outline-none">
-                                            <div class="absolute right-2.5 top-2 text-[#9ab0c6] pointer-events-none"><i class="fa-solid fa-caret-down text-[10px]"></i></div>
+                                            <select id="agStudent" class="form-select w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] pr-8 focus:border-[#2563eb] focus:ring-0 transition outline-none appearance-none">
+                                                <option value="">Loading students...</option>
+                                            </select>
+                                            <div class="absolute right-2.5 top-2.5 text-[#9ab0c6] pointer-events-none"><i class="fa-solid fa-caret-down text-[10px]"></i></div>
                                         </div>
-                                        <input type="hidden" id="eg-student"> 
-                                        <ul id="eg-student-list" class="absolute z-50 w-full mt-1 bg-white border border-[#dce3ed] rounded-sm shadow-lg max-h-52 overflow-y-auto hidden"></ul>
                                     </div>
 
                                     <div class="relative">
                                         <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Subject <span class="text-[#e31b4a]">*</span></label>
                                         <div class="relative">
-                                            <input type="text" id="eg-subject-search" autocomplete="off" placeholder="Select subject..." class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] pr-8 focus:border-[#2563eb] focus:ring-0 transition outline-none">
-                                            <div class="absolute right-2.5 top-2 text-[#9ab0c6] pointer-events-none"><i class="fa-solid fa-caret-down text-[10px]"></i></div>
+                                            <select id="agSubject" class="form-select w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] pr-8 focus:border-[#2563eb] focus:ring-0 transition outline-none appearance-none">
+                                                <option value="">Select subject...</option>
+                                            </select>
+                                            <div class="absolute right-2.5 top-2.5 text-[#9ab0c6] pointer-events-none"><i class="fa-solid fa-caret-down text-[10px]"></i></div>
                                         </div>
-                                        <input type="hidden" id="eg-subject">
-                                        <ul id="eg-subject-list" class="absolute z-50 w-full mt-1 bg-white border border-[#dce3ed] rounded-sm shadow-lg max-h-52 overflow-y-auto hidden"></ul>
                                     </div>
 
                                     <div class="relative">
@@ -99,27 +92,27 @@
                                             <span>Grade Type <span class="text-[#e31b4a]">*</span></span>
                                         </label>
                                         <div class="relative">
-                                            <input type="text" id="eg-type-search" autocomplete="off" placeholder="Select type..." class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] pr-8 focus:border-[#2563eb] focus:ring-0 transition outline-none">
-                                            <div class="absolute right-2.5 top-2 text-[#9ab0c6] pointer-events-none"><i class="fa-solid fa-caret-down text-[10px]"></i></div>
+                                            <select id="agType" class="form-select w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] pr-8 focus:border-[#2563eb] focus:ring-0 transition outline-none appearance-none">
+                                                <option value="">Select type...</option>
+                                            </select>
+                                            <div class="absolute right-2.5 top-2.5 text-[#9ab0c6] pointer-events-none"><i class="fa-solid fa-caret-down text-[10px]"></i></div>
                                         </div>
-                                        <input type="hidden" id="eg-type">
-                                        <ul id="eg-type-list" class="absolute z-50 w-full mt-1 bg-white border border-[#dce3ed] rounded-sm shadow-lg max-h-52 overflow-y-auto hidden"></ul>
                                     </div>
 
                                     <div>
                                         <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Date</label>
-                                        <input type="date" id="eg-date" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] focus:border-[#2563eb] focus:ring-0 transition outline-none cursor-pointer">
+                                        <input type="date" id="agDate" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] focus:border-[#2563eb] focus:ring-0 transition outline-none cursor-pointer">
                                     </div>
                                 </div>
                                 
                                 <div>
                                     <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Assignment Title <span class="text-[#e31b4a]">*</span></label>
-                                    <input type="text" id="eg-title" placeholder="e.g. ENG-101 Midterm Paper" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] focus:border-[#2563eb] focus:ring-0 transition outline-none">
+                                    <input type="text" id="agTitle" placeholder="e.g. ENG-101 Midterm Paper" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] focus:border-[#2563eb] focus:ring-0 transition outline-none">
                                 </div>
                                 
                                 <div>
                                     <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Record Notes <span class="text-[9px] font-bold normal-case text-[#2563eb] bg-[#eef4ff] border border-[#c7d9fd] px-1.5 py-0.5 rounded-sm ml-1 tracking-normal">Visible to Parents</span></label>
-                                    <textarea id="eg-notes" placeholder="Optional context or feedback..." class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] h-20 resize-none focus:border-[#2563eb] focus:ring-0 transition outline-none"></textarea>
+                                    <textarea id="agNotes" placeholder="Optional context or feedback..." class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] h-20 resize-none focus:border-[#2563eb] focus:ring-0 transition outline-none"></textarea>
                                 </div>
                             </div>
                             
@@ -128,25 +121,25 @@
                                     <div class="grid grid-cols-2 gap-4">
                                         <div>
                                             <label class="block text-[10px] font-bold text-[#0d1f35] uppercase tracking-widest mb-2 text-center">Score</label>
-                                            <input type="number" id="eg-score" placeholder="85" class="form-input w-full p-3 bg-white border border-[#0d1f35] rounded-sm text-3xl font-mono font-bold text-[#0d1f35] text-center focus:border-[#0ea871] focus:ring-0 transition outline-none">
+                                            <input type="number" id="agScore" placeholder="85" class="form-input w-full p-3 bg-white border border-[#0d1f35] rounded-sm text-3xl font-mono font-bold text-[#0d1f35] text-center focus:border-[#0ea871] focus:ring-0 transition outline-none">
                                         </div>
                                         <div>
                                             <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-2 text-center">Out of (Max)</label>
-                                            <input type="number" id="eg-max" value="100" class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded-sm text-3xl font-mono font-bold text-[#6b84a0] text-center focus:border-[#2563eb] focus:ring-0 transition outline-none">
+                                            <input type="number" id="agMax" value="100" class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded-sm text-3xl font-mono font-bold text-[#6b84a0] text-center focus:border-[#2563eb] focus:ring-0 transition outline-none">
                                         </div>
                                     </div>
                                     
-                                    <div id="eg-preview" class="bg-white border border-[#dce3ed] rounded-sm p-4">
+                                    <div id="gradePreview" class="bg-white border border-[#dce3ed] rounded-sm p-4 hidden">
                                         <div class="flex flex-col items-center gap-3 text-center">
                                             <div class="flex items-center justify-center gap-4 w-full">
-                                                <span id="prev-pct" class="text-3xl font-mono font-bold text-[#c5d0db]">—</span>
-                                                <span id="prev-letter" class="text-xl font-black px-4 py-1.5 rounded-sm border border-[#dce3ed] bg-[#f8fafb] text-[#9ab0c6] text-center min-w-[56px]">—</span>
+                                                <span id="prevPct" class="text-3xl font-mono font-bold text-[#c5d0db]">—</span>
+                                                <span id="prevLetter" class="text-xl font-black px-4 py-1.5 rounded-sm border border-[#dce3ed] bg-[#f8fafb] text-[#9ab0c6] text-center min-w-[56px]">—</span>
                                             </div>
                                             <div class="w-full mt-1">
                                                 <div class="h-1.5 bg-[#dce3ed] rounded-none overflow-hidden w-full">
-                                                    <div id="prev-bar" class="h-full rounded-none transition-all duration-300" style="width:0%"></div>
+                                                    <div id="prevBar" class="h-full rounded-none transition-all duration-300" style="width:0%"></div>
                                                 </div>
-                                                <p id="prev-label" class="text-[10px] font-bold uppercase tracking-widest mt-2 text-[#9ab0c6] m-0">Awaiting Input</p>
+                                                <p id="prevLabel" class="text-[10px] font-bold uppercase tracking-widest mt-2 text-[#9ab0c6] m-0">Awaiting Input</p>
                                             </div>
                                         </div>
                                     </div>
