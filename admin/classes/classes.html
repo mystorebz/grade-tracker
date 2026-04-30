@@ -17,7 +17,6 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 
     <style>
-        /* New styling for the tabbed interface inside the panel */
         .panel-tab {
             padding: 14px 20px;
             font-size: 11px;
@@ -29,10 +28,9 @@
             cursor: pointer;
             transition: all 0.15s;
         }
-        .panel-tab:hover { color: #4f46e5; } /* indigo-600 */
+        .panel-tab:hover { color: #4f46e5; }
         .panel-tab.active { color: #4f46e5; border-bottom-color: #4f46e5; background: #f8fafb; }
         
-        /* Accordion behavior */
         .subject-body { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; }
         .subject-body.open { max-height: 2000px; }
     </style>
@@ -56,7 +54,19 @@
                             <p class="text-sm text-slate-400 font-semibold">Performance overview for each class</p>
                         </div>
                     </div>
-                    <div id="classesLoadingMsg" class="text-sm text-slate-400 font-semibold hidden"><i class="fa-solid fa-spinner fa-spin mr-2 text-indigo-400"></i>Loading class data...</div>
+                    <div class="flex items-center gap-3">
+                        <div id="classesLoadingMsg" class="text-sm text-slate-400 font-semibold hidden"><i class="fa-solid fa-spinner fa-spin mr-2 text-indigo-400"></i>Loading data...</div>
+                    </div>
+                </div>
+
+                <div class="p-4 border-b border-slate-100 bg-slate-50 flex gap-3 flex-wrap">
+                    <div class="flex items-center bg-white border border-[#dce3ed] rounded-lg overflow-hidden min-w-[240px]">
+                        <i class="fa-solid fa-magnifying-glass px-3 text-[#9ab0c6] bg-[#f8fafb] h-full flex items-center border-r border-[#e8edf2]"></i>
+                        <input type="text" id="searchInput" placeholder="Search class name..." class="w-full p-2.5 text-[12.5px] outline-none text-[#0d1f35] font-semibold">
+                    </div>
+                    <select id="filterTeacher" class="p-2.5 text-[12px] bg-white rounded-lg border border-[#dce3ed] outline-none text-[#374f6b] font-semibold">
+                        <option value="">All Teachers</option>
+                    </select>
                 </div>
                 
                 <div class="overflow-x-auto">
@@ -93,7 +103,12 @@
                     <h3 id="cpPanelTitle" class="font-black text-2xl text-slate-800">Class</h3>
                     <p id="cpPanelMeta" class="text-sm text-indigo-600 font-bold mt-0.5">—</p>
                 </div>
-                <button onclick="window.closeClassPanel()" class="text-slate-400 hover:text-red-500 h-9 w-9 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+                <div class="flex items-center gap-3">
+                    <button onclick="window.executeClassPrint()" class="flex items-center gap-2 bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 font-bold px-4 py-2 rounded-lg text-[12px] border border-indigo-200 transition">
+                        <i class="fa-solid fa-print"></i> Print Class Report
+                    </button>
+                    <button onclick="window.closeClassPanel()" class="text-slate-400 hover:text-red-500 h-9 w-9 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+                </div>
             </div>
 
             <div class="flex bg-white border-b border-slate-200 px-7 flex-shrink-0">
@@ -103,8 +118,7 @@
             </div>
 
             <div class="flex-1 overflow-y-auto p-7 space-y-6" id="classPanelBody">
-                <div class="flex justify-center py-16"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-indigo-500"></i></div>
-            </div>
+                </div>
         </div>
     </div>
 
