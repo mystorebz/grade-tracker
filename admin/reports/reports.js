@@ -19,7 +19,7 @@ function escHtml(s) {
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-// UPDATED: Helper to fetch the exact grade weights of a student's assigned teacher
+// Fetch exact grade weights of a student's assigned teacher
 function getTeacherGradeTypes(teacherId) {
     if (!teacherId) return ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
     const t = allTeachers.find(x => x.id === teacherId);
@@ -39,7 +39,8 @@ async function loadLiveDashboard() {
 
         // TRUE ROLLUP: Student -> Subjects -> Overall
         await Promise.all(allStudents.map(async s => {
-            const snap = await getDocs(collection(db, 'schools', session.schoolId, 'students', s.id, 'grades'));
+            // ARCHITECTURE FIX: Query from Global Passport
+            const snap = await getDocs(query(collection(db, 'students', s.id, 'grades'), where('schoolId', '==', session.schoolId)));
             const grades = snap.docs.map(d => d.data()).filter(g =>
                 !session.activeSemesterId || session.activeSemesterId === 'all' || g.semesterId === session.activeSemesterId
             );
@@ -59,7 +60,6 @@ async function loadLiveDashboard() {
 
             let sumAvgs = 0, totalSubjs = 0, failingSubjects = 0;
             Object.values(bySubj).forEach(subGrades => {
-                // UPDATED: Using Teacher-Specific Grade Types
                 const roundedSubAvg = calculateWeightedAverage(subGrades, gradeTypes);
                 if (roundedSubAvg !== null) {
                     sumAvgs += roundedSubAvg;
@@ -129,10 +129,12 @@ async function loadLiveDashboard() {
 
 // ── 5. DYNAMIC SUBJECT POPULATION ─────────────────────────────────────────
 function populateSubjects() {
-    const scope  = document.getElementById('reportScope').value;
-    const target = document.getElementById('reportTarget').value;
+    const scope  = document.getElementById('reportScope')?.value;
+    const target = document.getElementById('reportTarget')?.value;
     const subjectSelect = document.getElementById('reportSubject');
     
+    if (!subjectSelect) return;
+
     const currentSelection = subjectSelect.value;
     
     subjectSelect.innerHTML = '<option value="all">All Subjects</option>';
@@ -187,13 +189,15 @@ async function initializeBuilder() {
         allStudents  = sSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
         const reportPeriod = document.getElementById('reportPeriod');
-        allSemesters.forEach(s => {
-            const o = document.createElement('option');
-            o.value = s.id;
-            o.textContent = s.name;
-            if (s.id === session.activeSemesterId) o.selected = true;
-            reportPeriod.appendChild(o);
-        });
+        if (reportPeriod) {
+            allSemesters.forEach(s => {
+                const o = document.createElement('option');
+                o.value = s.id;
+                o.textContent = s.name;
+                if (s.id === session.activeSemesterId) o.selected = true;
+                reportPeriod.appendChild(o);
+            });
+        }
 
         const schoolType = session.schoolType || 'Primary';
         CLASSES = schoolType === 'Primary'
@@ -203,7 +207,6 @@ async function initializeBuilder() {
             : ['Year 1','Year 2'];
 
         await loadLiveDashboard();
-        
         populateSubjects();
 
     } catch (e) {
@@ -212,10 +215,13 @@ async function initializeBuilder() {
 }
 
 // ── 7. SCOPE & TARGET DROPDOWNS ───────────────────────────────────────────
-document.getElementById('reportScope').addEventListener('change', e => {
+document.getElementById('reportScope')?.addEventListener('change', e => {
     const scope  = e.target.value;
     const tc     = document.getElementById('targetContainer');
     const target = document.getElementById('reportTarget');
+    
+    if (!target || !tc) return;
+
     target.innerHTML = '<option value="">Select target...</option>';
 
     if (scope === 'school') { 
@@ -240,24 +246,26 @@ document.getElementById('reportScope').addEventListener('change', e => {
     populateSubjects();
 });
 
-document.getElementById('reportTarget').addEventListener('change', populateSubjects);
+document.getElementById('reportTarget')?.addEventListener('change', populateSubjects);
 
 
 // ── 8. GENERATE REPORT ────────────────────────────────────────────────────
-document.getElementById('generateBtn').addEventListener('click', async () => {
-    const period  = document.getElementById('reportPeriod').value;
-    const periodName = document.getElementById('reportPeriod').options[document.getElementById('reportPeriod').selectedIndex].text;
-    const scope   = document.getElementById('reportScope').value;
-    const target  = document.getElementById('reportTarget').value;
-    const subjectFilter = document.getElementById('reportSubject').value;
+document.getElementById('generateBtn')?.addEventListener('click', async () => {
+    const period  = document.getElementById('reportPeriod')?.value;
+    const periodName = document.getElementById('reportPeriod')?.options[document.getElementById('reportPeriod').selectedIndex].text;
+    const scope   = document.getElementById('reportScope')?.value;
+    const target  = document.getElementById('reportTarget')?.value;
+    const subjectFilter = document.getElementById('reportSubject')?.value;
 
     if (scope !== 'school' && !target) { alert('Please select a target.'); return; }
 
     const results = document.getElementById('reportResults');
     const loader  = document.getElementById('reportLoader');
-    results.classList.add('hidden', 'opacity-0');
-    loader.classList.remove('hidden');
-    loader.classList.add('flex');
+    if (results) results.classList.add('hidden', 'opacity-0');
+    if (loader) {
+        loader.classList.remove('hidden');
+        loader.classList.add('flex');
+    }
 
     try {
         // Determine scope students
@@ -282,17 +290,19 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
             subtitleText = `${targetStudents.length} active students`;
         }
 
-        document.getElementById('reportTitle').textContent    = titleText;
-        document.getElementById('reportSubtitle').textContent = subtitleText;
+        if (document.getElementById('reportTitle')) document.getElementById('reportTitle').textContent    = titleText;
+        if (document.getElementById('reportSubtitle')) document.getElementById('reportSubtitle').textContent = subtitleText;
 
         // Populate Formal Print Header
-        document.getElementById('phSchoolName').textContent = session.schoolName || 'ConnectUs School';
-        document.getElementById('phReportType').textContent = titleText;
-        document.getElementById('phMeta').innerHTML = `
-            Term: ${periodName} <br>
-            ${scope === 'student' ? 'Student Class: ' + subtitleText : subtitleText} <br>
-            Generated: ${new Date().toLocaleDateString()}
-        `;
+        if (document.getElementById('phSchoolName')) document.getElementById('phSchoolName').textContent = session.schoolName || 'ConnectUs School';
+        if (document.getElementById('phReportType')) document.getElementById('phReportType').textContent = titleText;
+        if (document.getElementById('phMeta')) {
+            document.getElementById('phMeta').innerHTML = `
+                Term: ${periodName} <br>
+                ${scope === 'student' ? 'Student Class: ' + subtitleText : subtitleText} <br>
+                Generated: ${new Date().toLocaleDateString()}
+            `;
+        }
 
         // ── Fetch and Process Grades (TRUE ROLLUP) ───────────────────────
         const allFilteredGrades = [];
@@ -300,7 +310,8 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
         let totalScopeAssessments = 0;
 
         await Promise.all(targetStudents.map(async s => {
-            const snap = await getDocs(collection(db, 'schools', session.schoolId, 'students', s.id, 'grades'));
+            // ARCHITECTURE FIX: Query from Global Passport
+            const snap = await getDocs(query(collection(db, 'students', s.id, 'grades'), where('schoolId', '==', session.schoolId)));
             const grades = snap.docs.map(d => d.data()).filter(g => {
                 if (period !== 'all' && g.semesterId !== period) return false;
                 if (subjectFilter !== 'all' && g.subject !== subjectFilter) return false;
@@ -333,7 +344,6 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
             const subjectAverages = [];
 
             Object.entries(bySubj).forEach(([sub, subGrades]) => {
-                // UPDATED: Using Teacher-Specific Grade Types
                 const roundedSubAvg = calculateWeightedAverage(subGrades, gradeTypes);
                 if (roundedSubAvg !== null) {
                     sumAvgs += roundedSubAvg;
@@ -368,50 +378,62 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
             const single = processedStudents[0];
             const hasGrades = single && single.hasData;
 
-            document.getElementById('rMeanAvgLbl').textContent = "Cumulative Avg";
-            document.getElementById('rMeanAvg').textContent = hasGrades ? `${single.cumulativeAvg}%` : 'N/A';
-            document.getElementById('rMeanAvg').style.color = hasGrades ? (single.cumulativeAvg >= 75 ? '#0ea871' : single.cumulativeAvg >= 60 ? '#b45309' : '#e31b4a') : '#9ab0c6';
+            if (document.getElementById('rMeanAvgLbl')) document.getElementById('rMeanAvgLbl').textContent = "Cumulative Avg";
+            if (document.getElementById('rMeanAvg')) {
+                document.getElementById('rMeanAvg').textContent = hasGrades ? `${single.cumulativeAvg}%` : 'N/A';
+                document.getElementById('rMeanAvg').style.color = hasGrades ? (single.cumulativeAvg >= 75 ? '#0ea871' : single.cumulativeAvg >= 60 ? '#b45309' : '#e31b4a') : '#9ab0c6';
+            }
 
-            document.getElementById('rPassRateLbl').textContent = "Subjects Passed";
+            if (document.getElementById('rPassRateLbl')) document.getElementById('rPassRateLbl').textContent = "Subjects Passed";
             const passedCount = hasGrades ? (single.totalSubjects - single.failingSubjects.length) : 0;
-            document.getElementById('rPassRate').textContent = hasGrades ? `${passedCount} / ${single.totalSubjects}` : 'N/A';
-            document.getElementById('rPassRate').style.color = hasGrades ? (passedCount === single.totalSubjects ? '#0ea871' : '#b45309') : '#9ab0c6';
+            if (document.getElementById('rPassRate')) {
+                document.getElementById('rPassRate').textContent = hasGrades ? `${passedCount} / ${single.totalSubjects}` : 'N/A';
+                document.getElementById('rPassRate').style.color = hasGrades ? (passedCount === single.totalSubjects ? '#0ea871' : '#b45309') : '#9ab0c6';
+            }
 
-            document.getElementById('rAtRiskLbl').textContent = "Failing Subjects";
-            document.getElementById('rAtRisk').textContent = hasGrades ? single.failingSubjects.length : 0;
-            document.getElementById('rAtRisk').style.color = hasGrades && single.failingSubjects.length > 0 ? '#e31b4a' : '#0ea871';
+            if (document.getElementById('rAtRiskLbl')) document.getElementById('rAtRiskLbl').textContent = "Failing Subjects";
+            if (document.getElementById('rAtRisk')) {
+                document.getElementById('rAtRisk').textContent = hasGrades ? single.failingSubjects.length : 0;
+                document.getElementById('rAtRisk').style.color = hasGrades && single.failingSubjects.length > 0 ? '#e31b4a' : '#0ea871';
+            }
 
         } else {
             const meanAvg  = gradedStudents.length ? Math.round(gradedStudents.reduce((s, x) => s + x.cumulativeAvg, 0) / gradedStudents.length) : null;
             const passRate = gradedStudents.length ? Math.round(gradedStudents.filter(x => x.cumulativeAvg >= 60 && x.failingSubjects.length === 0).length / gradedStudents.length * 100) : null;
             const atRiskCount = gradedStudents.filter(x => x.isAtRisk).length;
 
-            document.getElementById('rMeanAvgLbl').textContent = "Mean Average";
-            document.getElementById('rMeanAvg').textContent = meanAvg !== null ? meanAvg + '%' : 'N/A';
-            document.getElementById('rMeanAvg').style.color = meanAvg !== null ? (meanAvg >= 75 ? '#0ea871' : meanAvg >= 60 ? '#b45309' : '#e31b4a') : '#9ab0c6';
+            if (document.getElementById('rMeanAvgLbl')) document.getElementById('rMeanAvgLbl').textContent = "Mean Average";
+            if (document.getElementById('rMeanAvg')) {
+                document.getElementById('rMeanAvg').textContent = meanAvg !== null ? meanAvg + '%' : 'N/A';
+                document.getElementById('rMeanAvg').style.color = meanAvg !== null ? (meanAvg >= 75 ? '#0ea871' : meanAvg >= 60 ? '#b45309' : '#e31b4a') : '#9ab0c6';
+            }
 
-            document.getElementById('rPassRateLbl').textContent = "Pass Rate";
-            document.getElementById('rPassRate').textContent = passRate !== null ? passRate + '%' : 'N/A';
-            document.getElementById('rPassRate').style.color = passRate !== null ? (passRate >= 75 ? '#0ea871' : passRate >= 50 ? '#b45309' : '#e31b4a') : '#9ab0c6';
+            if (document.getElementById('rPassRateLbl')) document.getElementById('rPassRateLbl').textContent = "Pass Rate";
+            if (document.getElementById('rPassRate')) {
+                document.getElementById('rPassRate').textContent = passRate !== null ? passRate + '%' : 'N/A';
+                document.getElementById('rPassRate').style.color = passRate !== null ? (passRate >= 75 ? '#0ea871' : passRate >= 50 ? '#b45309' : '#e31b4a') : '#9ab0c6';
+            }
 
-            document.getElementById('rAtRiskLbl').textContent = "At Risk Students";
-            document.getElementById('rAtRisk').textContent = atRiskCount;
-            document.getElementById('rAtRisk').style.color = atRiskCount > 0 ? '#e31b4a' : '#0ea871';
+            if (document.getElementById('rAtRiskLbl')) document.getElementById('rAtRiskLbl').textContent = "At Risk Students";
+            if (document.getElementById('rAtRisk')) {
+                document.getElementById('rAtRisk').textContent = atRiskCount;
+                document.getElementById('rAtRisk').style.color = atRiskCount > 0 ? '#e31b4a' : '#0ea871';
+            }
         }
 
-        document.getElementById('rVolume').textContent = totalScopeAssessments.toLocaleString();
+        if (document.getElementById('rVolume')) document.getElementById('rVolume').textContent = totalScopeAssessments.toLocaleString();
 
         // ── GRADE DISTRIBUTION, STRENGTHS/WEAKNESSES, OR PASS/FAIL ────────
         if (scope === 'student') {
-            document.getElementById('distributionSection').classList.add('hidden');
-            document.getElementById('atRiskSection').classList.add('hidden');
-            document.getElementById('teacherPerfSection').classList.add('hidden');
+            document.getElementById('distributionSection')?.classList.add('hidden');
+            document.getElementById('atRiskSection')?.classList.add('hidden');
+            document.getElementById('teacherPerfSection')?.classList.add('hidden');
             
             const single = processedStudents[0];
             
-            document.getElementById('passFailTitle').textContent = "Strengths & Areas for Growth";
+            if (document.getElementById('passFailTitle')) document.getElementById('passFailTitle').textContent = "Strengths & Areas for Growth";
             
-            if (single && single.hasData) {
+            if (single && single.hasData && document.getElementById('passFailBody')) {
                 const strongHtml = single.strongSubjects.length > 0 
                     ? single.strongSubjects.map(s => `<div class="flex justify-between items-center py-2 border-b border-[#e2e8f0] last:border-0"><span class="text-[13px] font-bold text-[#0d1f35]">${escHtml(s.name)}</span><span class="text-[14px] font-black text-[#0ea871]">${s.avg}%</span></div>`).join('')
                     : '<p class="text-[12px] text-[#6b84a0] italic">No subjects currently over 80%.</p>';
@@ -431,13 +453,13 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
                             ${weakHtml}
                         </div>
                     </div>`;
-            } else {
+            } else if (document.getElementById('passFailBody')) {
                 document.getElementById('passFailBody').innerHTML = `<p class="text-center text-[#9ab0c6] italic text-[13px]">No grade data available for analysis.</p>`;
             }
 
         } else {
-            document.getElementById('distributionSection').classList.remove('hidden');
-            document.getElementById('atRiskSection').classList.remove('hidden');
+            document.getElementById('distributionSection')?.classList.remove('hidden');
+            document.getElementById('atRiskSection')?.classList.remove('hidden');
 
             const dist = { a:0, b:0, c:0, d:0, f:0 };
             gradedStudents.forEach(x => {
@@ -450,76 +472,86 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
             const totalG = gradedStudents.length || 1;
             const seg = (pct, color, label, count) => count
                 ? `<div class="dist-seg" style="width:${pct}%;background:${color}" title="${label}: ${count}">${count}</div>` : '';
-            document.getElementById('distBar').innerHTML = gradedStudents.length 
-                ? [
-                    seg(dist.a/totalG*100, '#0ea871', 'A (90–100%)', dist.a),
-                    seg(dist.b/totalG*100, '#2563eb', 'B (80–89%)', dist.b),
-                    seg(dist.c/totalG*100, '#0891b2', 'C (70–79%)', dist.c),
-                    seg(dist.d/totalG*100, '#f59e0b', 'D (60–69%)', dist.d),
-                    seg(dist.f/totalG*100, '#e31b4a', 'F (<60%)', dist.f)
-                ].join('')
-                : '<div class="dist-seg" style="width:100%;background:#e2e8f0;color:#9ab0c6;font-size:12px">No grade data</div>';
+            
+            if (document.getElementById('distBar')) {
+                document.getElementById('distBar').innerHTML = gradedStudents.length 
+                    ? [
+                        seg(dist.a/totalG*100, '#0ea871', 'A (90–100%)', dist.a),
+                        seg(dist.b/totalG*100, '#2563eb', 'B (80–89%)', dist.b),
+                        seg(dist.c/totalG*100, '#0891b2', 'C (70–79%)', dist.c),
+                        seg(dist.d/totalG*100, '#f59e0b', 'D (60–69%)', dist.d),
+                        seg(dist.f/totalG*100, '#e31b4a', 'F (<60%)', dist.f)
+                    ].join('')
+                    : '<div class="dist-seg" style="width:100%;background:#e2e8f0;color:#9ab0c6;font-size:12px">No grade data</div>';
+            }
 
-            document.getElementById('distLabels').innerHTML = [
-                ['A', dist.a, '#0ea871', '90–100%'], ['B', dist.b, '#2563eb', '80–89%'],
-                ['C', dist.c, '#0891b2', '70–79%'], ['D', dist.d, '#f59e0b', '60–69%'],
-                ['F', dist.f, '#e31b4a', '<60%']
-            ].map(([l, n, c, r]) => `
-                <div style="display:flex;align-items:center;gap:6px">
-                    <div style="width:12px;height:12px;border-radius:3px;background:${c}"></div>
-                    <span style="font-size:12px;font-weight:700;color:#374f6b">${l} ${r}</span>
-                    <span style="font-size:12px;font-weight:600;color:#9ab0c6">${n} students</span>
-                </div>`).join('');
+            if (document.getElementById('distLabels')) {
+                document.getElementById('distLabels').innerHTML = [
+                    ['A', dist.a, '#0ea871', '90–100%'], ['B', dist.b, '#2563eb', '80–89%'],
+                    ['C', dist.c, '#0891b2', '70–79%'], ['D', dist.d, '#f59e0b', '60–69%'],
+                    ['F', dist.f, '#e31b4a', '<60%']
+                ].map(([l, n, c, r]) => `
+                    <div style="display:flex;align-items:center;gap:6px">
+                        <div style="width:12px;height:12px;border-radius:3px;background:${c}"></div>
+                        <span style="font-size:12px;font-weight:700;color:#374f6b">${l} ${r}</span>
+                        <span style="font-size:12px;font-weight:600;color:#9ab0c6">${n} students</span>
+                    </div>`).join('');
+            }
 
             const passCount = gradedStudents.filter(x => x.cumulativeAvg >= 60 && x.failingSubjects.length === 0).length;
             const failCount = gradedStudents.length - passCount;
             const passPct   = totalG >= 1 ? Math.round(passCount / totalG * 100) : 0;
             
-            document.getElementById('passFailTitle').textContent = "Pass / Fail Breakdown";
-            document.getElementById('passFailBody').innerHTML = `
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-                    <div style="background:#edfaf4;border:1px solid #c6f0db;border-radius:var(--r-md);padding:20px;text-align:center">
-                        <div style="font-size:36px;font-weight:700;color:#0ea871">${passCount}</div>
-                        <div style="font-size:11px;font-weight:700;color:#0b8f5e;text-transform:uppercase;letter-spacing:0.08em;margin-top:4px">Passing (All Subjects)</div>
-                        <div style="font-size:13px;font-weight:600;color:#6b84a0;margin-top:6px">${passPct}% of graded students</div>
-                    </div>
-                    <div style="background:#fff0f3;border:1px solid #ffd6de;border-radius:var(--r-md);padding:20px;text-align:center">
-                        <div style="font-size:36px;font-weight:700;color:#e31b4a">${failCount}</div>
-                        <div style="font-size:11px;font-weight:700;color:#be1240;text-transform:uppercase;letter-spacing:0.08em;margin-top:4px">Failing (≥1 Subject)</div>
-                        <div style="font-size:13px;font-weight:600;color:#6b84a0;margin-top:6px">${totalG >= 1 ? 100 - passPct : 0}% of graded students</div>
-                    </div>
-                </div>`;
+            if (document.getElementById('passFailTitle')) document.getElementById('passFailTitle').textContent = "Pass / Fail Breakdown";
+            if (document.getElementById('passFailBody')) {
+                document.getElementById('passFailBody').innerHTML = `
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                        <div style="background:#edfaf4;border:1px solid #c6f0db;border-radius:var(--r-md);padding:20px;text-align:center">
+                            <div style="font-size:36px;font-weight:700;color:#0ea871">${passCount}</div>
+                            <div style="font-size:11px;font-weight:700;color:#0b8f5e;text-transform:uppercase;letter-spacing:0.08em;margin-top:4px">Passing (All Subjects)</div>
+                            <div style="font-size:13px;font-weight:600;color:#6b84a0;margin-top:6px">${passPct}% of graded students</div>
+                        </div>
+                        <div style="background:#fff0f3;border:1px solid #ffd6de;border-radius:var(--r-md);padding:20px;text-align:center">
+                            <div style="font-size:36px;font-weight:700;color:#e31b4a">${failCount}</div>
+                            <div style="font-size:11px;font-weight:700;color:#be1240;text-transform:uppercase;letter-spacing:0.08em;margin-top:4px">Failing (≥1 Subject)</div>
+                            <div style="font-size:13px;font-weight:600;color:#6b84a0;margin-top:6px">${totalG >= 1 ? 100 - passPct : 0}% of graded students</div>
+                        </div>
+                    </div>`;
+            }
             
             // ── At-Risk roster ─────────────────────────────────────────────────
             const atRiskStudents = gradedStudents.filter(x => x.isAtRisk);
-            document.getElementById('atRiskCount').textContent = `${atRiskStudents.length} student${atRiskStudents.length !== 1 ? 's' : ''}`;
-            document.getElementById('atRiskBody').innerHTML = atRiskStudents.length
-                ? atRiskStudents.sort((a, b) => a.cumulativeAvg - b.cumulativeAvg).map(s => {
-                    let riskReason = '';
-                    if (s.cumulativeAvg < 60) {
-                        riskReason = `Failing Overall Average (${s.cumulativeAvg}%)`;
-                    } else {
-                        riskReason = `Failing Core Subject(s): ${s.failingSubjects.map(sub => sub.name).join(', ')}`;
-                    }
+            if (document.getElementById('atRiskCount')) document.getElementById('atRiskCount').textContent = `${atRiskStudents.length} student${atRiskStudents.length !== 1 ? 's' : ''}`;
+            
+            if (document.getElementById('atRiskBody')) {
+                document.getElementById('atRiskBody').innerHTML = atRiskStudents.length
+                    ? atRiskStudents.sort((a, b) => a.cumulativeAvg - b.cumulativeAvg).map(s => {
+                        let riskReason = '';
+                        if (s.cumulativeAvg < 60) {
+                            riskReason = `Failing Overall Average (${s.cumulativeAvg}%)`;
+                        } else {
+                            riskReason = `Failing Core Subject(s): ${s.failingSubjects.map(sub => sub.name).join(', ')}`;
+                        }
 
-                    return `
-                    <div class="at-risk-row">
-                        <div style="display:flex;align-items:center;gap:12px">
-                            <div style="width:32px;height:32px;border-radius:8px;background:#fff0f3;border:1px solid #ffd6de;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#e31b4a;flex-shrink:0">
-                                ${(s.name || 'S').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
+                        return `
+                        <div class="at-risk-row">
+                            <div style="display:flex;align-items:center;gap:12px">
+                                <div style="width:32px;height:32px;border-radius:8px;background:#fff0f3;border:1px solid #ffd6de;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#e31b4a;flex-shrink:0">
+                                    ${(s.name || 'S').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
+                                </div>
+                                <div>
+                                    <p style="font-size:13px;font-weight:600;color:#0d1f35;margin:0">${escHtml(s.name)}</p>
+                                    <p style="font-size:11px;color:#6b84a0;font-weight:500;margin:2px 0 0">${s.className || 'Unassigned'}</p>
+                                </div>
                             </div>
-                            <div>
-                                <p style="font-size:13px;font-weight:600;color:#0d1f35;margin:0">${escHtml(s.name)}</p>
-                                <p style="font-size:11px;color:#6b84a0;font-weight:500;margin:2px 0 0">${s.className || 'Unassigned'}</p>
+                            <div style="text-align:right">
+                                <span style="font-size:18px;font-weight:700;color:#e31b4a">${s.cumulativeAvg}%</span>
+                                <p style="font-size:10.5px;font-weight:600;color:#e31b4a;margin:2px 0 0">${riskReason}</p>
                             </div>
-                        </div>
-                        <div style="text-align:right">
-                            <span style="font-size:18px;font-weight:700;color:#e31b4a">${s.cumulativeAvg}%</span>
-                            <p style="font-size:10.5px;font-weight:600;color:#e31b4a;margin:2px 0 0">${riskReason}</p>
-                        </div>
-                    </div>`
-                }).join('')
-                : '<div style="padding:24px;text-align:center;color:#0ea871;font-weight:600;font-size:13px"><i class="fa-solid fa-circle-check" style="margin-right:6px"></i>No at-risk students for this filter.</div>';
+                        </div>`
+                    }).join('')
+                    : '<div style="padding:24px;text-align:center;color:#0ea871;font-weight:600;font-size:13px"><i class="fa-solid fa-circle-check" style="margin-right:6px"></i>No at-risk students for this filter.</div>';
+            }
         }
 
         // ── Subject Performance Table ──────────────────────────────────────
@@ -532,8 +564,6 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
 
         const subjRows = Object.entries(bySubjGlobal)
             .map(([sub, grades]) => {
-                // Here we simplify the school-wide subject avg to standard math because it spans multiple teachers with multiple rubrics. 
-                // A true weighted average across different teachers' rubrics is mathematically impossible, so we use a straight mean.
                 const validGrades = grades.filter(g => g.max > 0);
                 const avg    = validGrades.length > 0 ? Math.round(validGrades.reduce((sum, g) => sum + ((g.score / g.max) * 100), 0) / validGrades.length) : 0;
                 const pass   = validGrades.filter(g => (g.score / g.max * 100) >= 60).length;
@@ -549,18 +579,20 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
             .sort((a, b) => a.localeCompare(b))
             .join('');
 
-        document.getElementById('subjectBody').innerHTML = `
-            <table style="width:100%">
-                <thead style="background:#f8fafb;border-bottom:2px solid #dce3ed">
-                    <tr>
-                        <th style="padding:10px 20px;text-align:left;font-size:10px;font-weight:700;color:#6b84a0;text-transform:uppercase;letter-spacing:0.1em">Subject</th>
-                        <th style="padding:10px 20px;text-align:center;font-size:10px;font-weight:700;color:#6b84a0;text-transform:uppercase;letter-spacing:0.1em">Assessments</th>
-                        <th style="padding:10px 20px;text-align:center;font-size:10px;font-weight:700;color:#6b84a0;text-transform:uppercase;letter-spacing:0.1em">Mean Avg</th>
-                        <th style="padding:10px 20px;text-align:center;font-size:10px;font-weight:700;color:#6b84a0;text-transform:uppercase;letter-spacing:0.1em">Pass Rate</th>
-                    </tr>
-                </thead>
-                <tbody>${subjRows || '<tr><td colspan="4" style="padding:24px;text-align:center;color:#9ab0c6;font-style:italic">No subject data for this filter.</td></tr>'}</tbody>
-            </table>`;
+        if (document.getElementById('subjectBody')) {
+            document.getElementById('subjectBody').innerHTML = `
+                <table style="width:100%">
+                    <thead style="background:#f8fafb;border-bottom:2px solid #dce3ed">
+                        <tr>
+                            <th style="padding:10px 20px;text-align:left;font-size:10px;font-weight:700;color:#6b84a0;text-transform:uppercase;letter-spacing:0.1em">Subject</th>
+                            <th style="padding:10px 20px;text-align:center;font-size:10px;font-weight:700;color:#6b84a0;text-transform:uppercase;letter-spacing:0.1em">Assessments</th>
+                            <th style="padding:10px 20px;text-align:center;font-size:10px;font-weight:700;color:#6b84a0;text-transform:uppercase;letter-spacing:0.1em">Mean Avg</th>
+                            <th style="padding:10px 20px;text-align:center;font-size:10px;font-weight:700;color:#6b84a0;text-transform:uppercase;letter-spacing:0.1em">Pass Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody>${subjRows || '<tr><td colspan="4" style="padding:24px;text-align:center;color:#9ab0c6;font-style:italic">No subject data for this filter.</td></tr>'}</tbody>
+                </table>`;
+        }
 
         // ── Comparison table ───────────────────────────────────────────────
         renderTable(scope, gradedStudents, allFilteredGrades, processedStudents);
@@ -568,7 +600,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
         // ── Teacher performance (school-wide only) ─────────────────────────
         const tpSection = document.getElementById('teacherPerfSection');
         if (scope === 'school') {
-            tpSection.classList.remove('hidden');
+            if (tpSection) tpSection.classList.remove('hidden');
             const byTeacher = {};
             allTeachers.forEach(t => { byTeacher[t.id] = { name: t.name, students: [], avgs: [] }; });
             gradedStudents.forEach(s => {
@@ -577,39 +609,48 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
                 }
             });
 
-            document.getElementById('teacherPerfBody').innerHTML = allTeachers
-                .filter(t => byTeacher[t.id]?.avgs.length > 0)
-                .map(t => {
-                    const avgs      = byTeacher[t.id].avgs;
-                    const mean      = Math.round(avgs.reduce((s, a) => s + a, 0) / avgs.length);
-                    const pass      = avgs.filter(a => a >= 60).length;
-                    const passPct   = Math.round(pass / avgs.length * 100);
-                    const risk      = avgs.filter(a => a < 60).length; 
-                    const col       = mean >= 75 ? '#0ea871' : mean >= 60 ? '#b45309' : '#e31b4a';
-                    return `<tr style="border-bottom:1px solid #f0f4f8">
-                        <td style="padding:12px 20px;font-size:13px;font-weight:600;color:#0d1f35">${escHtml(t.name)}</td>
-                        <td style="padding:12px 20px;text-align:center;font-size:13px;color:#6b84a0">${avgs.length}</td>
-                        <td style="padding:12px 20px;text-align:center;font-size:14px;font-weight:700;color:${col}">${mean}%</td>
-                        <td style="padding:12px 20px;text-align:center;font-size:13px;font-weight:600;color:${passPct >= 60 ? '#0ea871' : '#e31b4a'}">${passPct}%</td>
-                        <td style="padding:12px 20px;text-align:center;font-size:13px;font-weight:700;color:${risk > 0 ? '#e31b4a' : '#9ab0c6'}">${risk}</td>
-                    </tr>`;
-                }).join('') || '<tr><td colspan="5" style="padding:24px;text-align:center;color:#9ab0c6;font-style:italic">No teacher data available.</td></tr>';
+            if (document.getElementById('teacherPerfBody')) {
+                document.getElementById('teacherPerfBody').innerHTML = allTeachers
+                    .filter(t => byTeacher[t.id]?.avgs.length > 0)
+                    .map(t => {
+                        const avgs      = byTeacher[t.id].avgs;
+                        const mean      = Math.round(avgs.reduce((s, a) => s + a, 0) / avgs.length);
+                        const pass      = avgs.filter(a => a >= 60).length;
+                        const passPct   = Math.round(pass / avgs.length * 100);
+                        const risk      = avgs.filter(a => a < 60).length; 
+                        const col       = mean >= 75 ? '#0ea871' : mean >= 60 ? '#b45309' : '#e31b4a';
+                        return `<tr style="border-bottom:1px solid #f0f4f8">
+                            <td style="padding:12px 20px;font-size:13px;font-weight:600;color:#0d1f35">${escHtml(t.name)}</td>
+                            <td style="padding:12px 20px;text-align:center;font-size:13px;color:#6b84a0">${avgs.length}</td>
+                            <td style="padding:12px 20px;text-align:center;font-size:14px;font-weight:700;color:${col}">${mean}%</td>
+                            <td style="padding:12px 20px;text-align:center;font-size:13px;font-weight:600;color:${passPct >= 60 ? '#0ea871' : '#e31b4a'}">${passPct}%</td>
+                            <td style="padding:12px 20px;text-align:center;font-size:13px;font-weight:700;color:${risk > 0 ? '#e31b4a' : '#9ab0c6'}">${risk}</td>
+                        </tr>`;
+                    }).join('') || '<tr><td colspan="5" style="padding:24px;text-align:center;color:#9ab0c6;font-style:italic">No teacher data available.</td></tr>';
+            }
         } else if (tpSection) {
             tpSection.classList.add('hidden');
         }
 
         // ── Show results ───────────────────────────────────────────────────
-        loader.classList.remove('flex');
-        loader.classList.add('hidden');
-        results.classList.remove('hidden');
-        setTimeout(() => results.classList.remove('opacity-0'), 50);
-        results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (loader) {
+            loader.classList.remove('flex');
+            loader.classList.add('hidden');
+        }
+        if (results) {
+            results.classList.remove('hidden');
+            setTimeout(() => results.classList.remove('opacity-0'), 50);
+            results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
 
     } catch (e) {
         console.error('[Reports] generate:', e);
         alert('An error occurred while building the report. Please try again.');
-        document.getElementById('reportLoader').classList.remove('flex');
-        document.getElementById('reportLoader').classList.add('hidden');
+        const loader = document.getElementById('reportLoader');
+        if (loader) {
+            loader.classList.remove('flex');
+            loader.classList.add('hidden');
+        }
     }
 });
 
@@ -618,8 +659,10 @@ function renderTable(scope, gradedStudents, allGrades, processedStudents) {
     const head = document.getElementById('reportTableHead');
     const body = document.getElementById('reportTableBody');
 
+    if (!head || !body) return;
+
     if (scope === 'school') {
-        document.getElementById('tableTitle').textContent = 'Class Performance';
+        if (document.getElementById('tableTitle')) document.getElementById('tableTitle').textContent = 'Class Performance';
         head.innerHTML = `<tr>
             <th style="padding:10px 20px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em">Class</th>
             <th style="padding:10px 20px;text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em">Students</th>
@@ -654,7 +697,7 @@ function renderTable(scope, gradedStudents, allGrades, processedStudents) {
             }).join('');
 
     } else if (scope === 'teacher' || scope === 'class') {
-        document.getElementById('tableTitle').textContent = 'Student Rankings';
+        if (document.getElementById('tableTitle')) document.getElementById('tableTitle').textContent = 'Student Rankings';
         head.innerHTML = `<tr>
             <th style="padding:10px 20px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em">Student</th>
             <th style="padding:10px 20px;text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em">Cumulative Avg</th>
@@ -683,7 +726,7 @@ function renderTable(scope, gradedStudents, allGrades, processedStudents) {
         }).join('');
 
     } else if (scope === 'student') {
-        document.getElementById('tableTitle').textContent = 'Subject Breakdown';
+        if (document.getElementById('tableTitle')) document.getElementById('tableTitle').textContent = 'Subject Breakdown';
         head.innerHTML = `<tr>
             <th style="padding:10px 20px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em">Subject</th>
             <th style="padding:10px 20px;text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em">Avg</th>
@@ -711,9 +754,9 @@ function renderTable(scope, gradedStudents, allGrades, processedStudents) {
 }
 
 // ── 10. EXPORT & PRINT ────────────────────────────────────────────────────
-document.getElementById('printReportBtn').addEventListener('click', () => window.print());
+document.getElementById('printReportBtn')?.addEventListener('click', () => window.print());
 
-document.getElementById('exportCsvBtn').addEventListener('click', () => {
+document.getElementById('exportCsvBtn')?.addEventListener('click', () => {
     const rows = [];
     const headers = [];
     document.querySelectorAll('#reportTableHead th').forEach(th => headers.push(th.innerText.trim()));
