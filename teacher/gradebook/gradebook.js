@@ -97,7 +97,12 @@ async function init() {
     const classes = session.teacherData.classes || [session.teacherData.className || ''];
     document.getElementById('displayTeacherClasses').innerHTML = classes.filter(Boolean).map(c => `<span class="class-pill">${c}</span>`).join('');
 
-    sfType = buildSearchableFilter('type', getGradeTypes().map(t => { const name = t.name || t; return { id: name, label: name }; }), (val) => { sfTypeValue = val; applyGradebookFilters(); });
+    // BULLETPROOF FIX: Safely map grade types so it never crashes on legacy data
+    sfType = buildSearchableFilter('type', getGradeTypes().filter(t => t).map(t => { 
+        const name = t.name || (typeof t === 'string' ? t : 'Uncategorized'); 
+        return { id: name, label: name }; 
+    }), (val) => { sfTypeValue = val; applyGradebookFilters(); });
+    
     sfStudent = buildSearchableFilter('student', [], (val) => { sfStudentValue = val; applyGradebookFilters(); });
     sfSubject = buildSearchableFilter('subject', [], (val) => { sfSubjectValue = val; applyGradebookFilters(); });
 
