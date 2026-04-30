@@ -26,7 +26,6 @@ let sfSubjectValue = '';
 let sfTypeValue    = '';
 
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
-// UPDATED: Pull the gradeTypes array saved from the new Settings page
 function getGradeTypes() { return session.teacherData.gradeTypes || session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
 
 // ── 3. SEARCHABLE SELECT COMPONENT ───────────────────────────────────────────
@@ -97,7 +96,6 @@ async function init() {
     const classes = session.teacherData.classes || [session.teacherData.className || ''];
     document.getElementById('displayTeacherClasses').innerHTML = classes.filter(Boolean).map(c => `<span class="class-pill">${c}</span>`).join('');
 
-    // BULLETPROOF FIX: Safely map grade types so it never crashes on legacy data
     sfType = buildSearchableFilter('type', getGradeTypes().filter(t => t).map(t => { 
         const name = t.name || (typeof t === 'string' ? t : 'Uncategorized'); 
         return { id: name, label: name }; 
@@ -185,7 +183,6 @@ async function getAllGrades(semId) {
     const all = [];
     await Promise.all(allStudentsCache.map(async s => {
         try {
-            // FIXED: Look in global passport path, filtering for THIS school
             const q = query(
                 collection(db, 'students', s.id, 'grades'), 
                 where('schoolId', '==', session.schoolId),
@@ -213,7 +210,6 @@ async function loadGradebook() {
     const stuGMap = {};
     grades.forEach(g => { if (!stuGMap[g.studentId]) stuGMap[g.studentId] = []; stuGMap[g.studentId].push(g); });
     
-    // UPDATED: Using Teacher-Specific Grade Types
     const riskCount = Object.values(stuGMap).filter(sg => {
         const avg = calculateWeightedAverage(sg, getGradeTypes());
         return avg !== null && avg < 65;
@@ -248,7 +244,6 @@ function renderGradebook() {
     const stuGrps = {};
     allRows.forEach(g => { if (!stuGrps[g.studentId]) stuGrps[g.studentId] = []; stuGrps[g.studentId].push(g); });
     
-    // UPDATED: Using Teacher-Specific Grade Types
     const stuAvgs = Object.values(stuGrps).map(sg => calculateWeightedAverage(sg, getGradeTypes())).filter(a => a !== null);
     const avgAll  = stuAvgs.length ? Math.round(stuAvgs.reduce((a, b) => a + b, 0) / stuAvgs.length) : null;
     const allPcts = allRows.map(g => g.max ? Math.round(g.score / g.max * 100) : 0);
@@ -259,7 +254,6 @@ function renderGradebook() {
     const avgEl = document.getElementById('gbStatAvg');
     if (avgEl) { avgEl.textContent = avgAll !== null ? avgAll + '%' : '—'; avgEl.style.color = avgAll !== null ? gradeColor(avgAll) : '#0d1f35'; }
 
-    // UPDATED: Using Teacher-Specific Grade Types
     const riskStat = Object.values(stuGrps).filter(sg => {
         const avg = calculateWeightedAverage(sg, getGradeTypes());
         return avg !== null && avg < 65;
@@ -531,14 +525,29 @@ function escHtml(str) {
 
 // ── 15. GRADE WEIGHTS CONFIGURATION MODAL ─────────────────────────────────────
 let modalGradeTypes = [];
+let usedGradeTypes = new Set(); // Tracks types currently in use
 
 document.getElementById('openGradeWeightsBtn')?.addEventListener('click', () => {
     if (isSemesterLocked) {
         alert('The current grading period is locked. Grade weights cannot be changed at this time.');
         return;
     }
-    // Clone the array to avoid mutating live session data until "Save" is clicked
-    modalGradeTypes = JSON.parse(JSON.stringify(getGradeTypes()));
+    
+    // 1. Scanner: Find all grade types currently in use to protect them
+    usedGradeTypes.clear();
+    if (allGradesCache && allGradesCache.grades) {
+        allGradesCache.grades.forEach(g => {
+            if (g.type) usedGradeTypes.add(g.type.toLowerCase());
+        });
+    }
+
+    // 2. Clone & Upconvert: Get types and ensure they are all objects {name, weight}
+    const currentTypes = getGradeTypes();
+    modalGradeTypes = currentTypes.map(t => {
+        if (typeof t === 'string') return { name: t, weight: 0 };
+        return { name: t.name, weight: t.weight || 0 };
+    });
+
     document.getElementById('gwSelect').value = '';
     document.getElementById('gwCustomName').style.display = 'none';
     document.getElementById('gwCustomName').value = '';
@@ -577,8 +586,7 @@ document.getElementById('addGwBtn')?.addEventListener('click', () => {
     if (type === 'Custom' && !name) { showGwMsg('Please enter a custom name.', true); return; }
     if (isNaN(weight) || weight <= 0) { showGwMsg('Please enter a valid weight (e.g., 20).', true); return; }
 
-    // Prevent duplicates
-    if (modalGradeTypes.some(g => (g.name || g).toLowerCase() === name.toLowerCase())) {
+    if (modalGradeTypes.some(g => g.name.toLowerCase() === name.toLowerCase())) {
         showGwMsg('This metric already exists in your list.', true); return;
     }
 
@@ -590,6 +598,26 @@ document.getElementById('addGwBtn')?.addEventListener('click', () => {
     customName.value = '';
     weightInput.value = '';
 });
+
+// Inline editing logic
+window.updateGwWeight = function(index, val) {
+    let w = parseInt(val, 10);
+    if (isNaN(w) || w < 0) w = 0;
+    modalGradeTypes[index].weight = w;
+    
+    // Dynamically update the total weight badge without redrawing the whole list (preserves focus)
+    let total = modalGradeTypes.reduce((sum, g) => sum + g.weight, 0);
+    const totalEl = document.getElementById('gwTotalWeight');
+    totalEl.textContent = `Total Weight: ${total}%`;
+    
+    if (total === 100) {
+        totalEl.style.color = '#0ea871';
+    } else if (total > 100) {
+        totalEl.style.color = '#e31b4a';
+    } else {
+        totalEl.style.color = '#d97706';
+    }
+};
 
 window.removeGwType = function(index) {
     modalGradeTypes.splice(index, 1);
@@ -608,40 +636,41 @@ function showGwMsg(text, isError) {
 
 function renderGradeWeights() {
     const list = document.getElementById('gwList');
-    const totalEl = document.getElementById('gwTotalWeight');
     let total = 0;
 
     if (modalGradeTypes.length === 0) {
         list.innerHTML = `<div style="padding:20px;text-align:center;border:1px dashed #c5d0db;border-radius:3px;color:#9ab0c6;font-size:12px;">No metrics configured.</div>`;
     } else {
         list.innerHTML = modalGradeTypes.map((g, i) => {
-            // Support both new {name, weight} objects and legacy string arrays
-            const name = g.name || g;
-            const weight = g.weight || 0;
-            total += weight;
+            total += g.weight;
+            const isProtected = usedGradeTypes.has(g.name.toLowerCase());
+            
+            // If protected, show lock instead of delete button
+            const actionHtml = isProtected 
+                ? `<span style="font-size:10px;font-weight:700;color:#9ab0c6;background:#f0f4f8;padding:4px 8px;border-radius:3px;display:flex;align-items:center;gap:4px;" title="Cannot delete: Active grades exist"><i class="fa-solid fa-lock"></i> In Use</span>`
+                : `<button onclick="window.removeGwType(${i})" style="background:none;border:none;color:#e31b4a;cursor:pointer;font-size:12px;padding:4px;" title="Delete Metric"><i class="fa-solid fa-trash-can"></i></button>`;
+
             return `
             <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:#fff;border:1px solid #dce3ed;border-radius:3px;">
                 <div style="display:flex;align-items:center;gap:10px;">
                     <i class="fa-solid fa-tag" style="color:#9ab0c6;font-size:10px;"></i>
-                    <span style="font-size:13px;font-weight:700;color:#0d1f35;">${escHtml(name)}</span>
+                    <span style="font-size:13px;font-weight:700;color:#0d1f35;">${escHtml(g.name)}</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:12px;">
-                    <span style="font-size:12px;font-weight:700;color:#0ea871;background:#edfaf4;padding:2px 8px;border-radius:2px;border:1px solid #c6f0db;">${weight}%</span>
-                    <button onclick="window.removeGwType(${i})" style="background:none;border:none;color:#e31b4a;cursor:pointer;font-size:12px;padding:4px;"><i class="fa-solid fa-xmark"></i></button>
+                    <div style="position:relative;width:60px;">
+                        <input type="number" oninput="window.updateGwWeight(${i}, this.value)" value="${g.weight}" style="width:100%;padding:6px;padding-right:20px;background:#f8fafb;border:1px solid #c5d0db;border-radius:3px;font-size:13px;font-weight:700;color:#0ea871;font-family:'DM Mono',monospace;outline:none;">
+                        <span style="position:absolute;right:8px;top:7px;font-size:11px;font-weight:700;color:#9ab0c6;pointer-events:none;">%</span>
+                    </div>
+                    <div style="width:70px;display:flex;justify-content:flex-end;">
+                        ${actionHtml}
+                    </div>
                 </div>
             </div>`;
         }).join('');
     }
 
-    totalEl.textContent = `Total Weight: ${total}%`;
-    if (total === 100) {
-        totalEl.style.color = '#0ea871';
-    } else if (total > 100) {
-        totalEl.style.color = '#e31b4a';
-        showGwMsg('Warning: Weights exceed 100%. Math will auto-scale, but this may confuse parents.', true);
-    } else {
-        totalEl.style.color = '#d97706';
-    }
+    // Call our inline update function once just to set the initial total text correctly
+    window.updateGwWeight(0, modalGradeTypes[0]?.weight || 0);
 }
 
 document.getElementById('saveGwBtn')?.addEventListener('click', async () => {
@@ -649,31 +678,30 @@ document.getElementById('saveGwBtn')?.addEventListener('click', async () => {
         showGwMsg('Please add at least one metric.', true); return;
     }
     
+    const total = modalGradeTypes.reduce((sum, g) => sum + g.weight, 0);
+    if (total !== 100) {
+        const proceed = confirm(`Your total weight is ${total}%. The math engine will auto-scale this to 100%, but it may confuse parents. Are you sure you want to proceed?`);
+        if (!proceed) return;
+    }
+    
     const btn = document.getElementById('saveGwBtn');
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving & Recalculating...';
     btn.disabled = true;
 
     try {
-        // Save to Database
         await updateDoc(doc(db, 'teachers', session.teacherId), { 
             gradeTypes: modalGradeTypes,
-            customGradeTypes: modalGradeTypes // Keeps legacy fields in sync
+            customGradeTypes: modalGradeTypes
         });
 
-        // Update active session memory so recalculation works instantly
         session.teacherData.gradeTypes = modalGradeTypes;
         session.teacherData.customGradeTypes = modalGradeTypes; 
         setSessionData('teacher', session);
         
-        // Update the searchable filter dropdown dynamically
         if (sfType) {
-            sfType.setItems(modalGradeTypes.map(t => { 
-                const name = t.name || t; 
-                return { id: name, label: name }; 
-            }));
+            sfType.setItems(modalGradeTypes.map(t => ({ id: t.name, label: t.name })));
         }
 
-        // Close modal and instantly refresh the math on the page!
         closeOverlay('gradeWeightsModal', 'gradeWeightsModalInner');
         loadGradebook(); 
         
