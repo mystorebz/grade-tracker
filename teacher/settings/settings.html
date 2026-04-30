@@ -24,7 +24,7 @@
         <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
 
         <div class="flex-1 overflow-y-auto p-8">
-            <div class="max-w-[1400px] mx-auto space-y-6">
+            <div class="max-w-[1000px] mx-auto space-y-6">
 
                 <div class="bg-white rounded-sm shadow-sm border border-[#dce3ed] p-6 flex items-center gap-4">
                     <div id="profileAvatar" class="w-14 h-14 bg-[#0d1f35] text-white rounded-sm flex items-center justify-center font-black text-2xl flex-shrink-0">T</div>
@@ -34,7 +34,7 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
                     
                     <div class="space-y-6">
                         <div class="bg-white rounded-sm shadow-sm border border-[#dce3ed] overflow-hidden">
@@ -98,60 +98,6 @@
                                 </div>
                                 <p id="pinMsg" class="text-[12px] font-bold hidden p-2.5 rounded-sm"></p>
                             </div>
-                        </div>
-                    </div>
-
-                    <div class="bg-white rounded-sm shadow-sm border border-[#0d1f35] overflow-hidden flex flex-col h-full ring-4 ring-[#0d1f35]/5">
-                        <div class="h-[4px] bg-[#0ea871] w-full"></div>
-                        <div class="p-6 border-b border-[#f0f4f8] bg-[#0d1f35] text-white">
-                            <h3 class="text-[14px] font-bold uppercase tracking-widest mb-1"><i class="fa-solid fa-calculator mr-2 text-[#0ea871]"></i> Gradebook Config</h3>
-                            <p class="text-[11px] text-[#9ab0c6] font-medium">Define assignment types and calculation weights.</p>
-                        </div>
-                        
-                        <div class="p-6 flex-1 flex flex-col bg-[#f8fafb]">
-                            <div class="bg-white p-4 border border-[#dce3ed] rounded-sm shadow-sm mb-6">
-                                <label class="block text-[10px] font-bold text-[#0ea871] uppercase tracking-widest mb-3">Add Assessment Metric</label>
-                                <div class="flex gap-2">
-                                    <div class="flex-1">
-                                        <select id="gtSelect" class="w-full p-2.5 bg-[#f4f7fb] border border-[#dce3ed] rounded-sm text-[12px] outline-none focus:border-[#0ea871]">
-                                            <option value="">Select type...</option>
-                                            <option value="Test">Test</option>
-                                            <option value="Quiz">Quiz</option>
-                                            <option value="Homework">Homework</option>
-                                            <option value="Assignment">Assignment</option>
-                                            <option value="Project">Project</option>
-                                            <option value="Midterm Exam">Midterm Exam</option>
-                                            <option value="Final Exam">Final Exam</option>
-                                            <option value="Custom">-- Custom Type --</option>
-                                        </select>
-                                    </div>
-                                    <div class="w-20">
-                                        <div class="relative">
-                                            <input type="number" id="gtWeight" placeholder="Wt" class="w-full p-2.5 bg-[#f4f7fb] border border-[#dce3ed] rounded-sm text-[12px] font-mono pr-6 outline-none focus:border-[#0ea871]">
-                                            <span class="absolute right-2 top-2.5 text-[10px] text-[#9ab0c6] font-black">%</span>
-                                        </div>
-                                    </div>
-                                    <button id="addGradeTypeBtn" class="bg-[#0ea871] hover:bg-[#044a30] text-white px-4 rounded-sm text-[12px] font-bold transition"><i class="fa-solid fa-plus"></i></button>
-                                </div>
-                                <input type="text" id="gtCustomName" placeholder="Enter custom name..." class="w-full p-2.5 mt-2 bg-[#f4f7fb] border border-[#dce3ed] rounded-sm text-[12px] outline-none focus:border-[#0ea871] hidden">
-                            </div>
-
-                            <div class="flex-1">
-                                <div class="flex justify-between items-end mb-3">
-                                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Active Metrics</label>
-                                    <span id="gtTotalWeight" class="text-[12px] font-black text-[#0ea871] uppercase tracking-widest">Total Weight: 0%</span>
-                                </div>
-                                <div id="gradeTypesList" class="space-y-2 max-h-[350px] overflow-y-auto pr-1">
-                                    </div>
-                            </div>
-
-                            <div id="gtMsg" class="hidden mt-4"></div>
-                        </div>
-
-                        <div class="p-6 bg-white border-t border-[#f0f4f8]">
-                            <button id="saveGradeTypesBtn" class="w-full bg-[#0d1f35] hover:bg-[#0ea871] text-white font-bold py-3 rounded-sm transition text-[13px] uppercase tracking-widest">
-                                <i class="fa-solid fa-floppy-disk mr-2"></i> Save Configuration
-                            </button>
                         </div>
                     </div>
 
