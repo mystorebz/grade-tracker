@@ -1,57 +1,46 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { doc, getDoc, getDocs, addDoc, collection } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { doc, getDoc, getDocs, addDoc, collection, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
-import { letterGrade, gradeFill } from '../../assets/js/utils.js';
+import { letterGrade } from '../../assets/js/utils.js';
 
 // ── 1. AUTH & LAYOUT ──────────────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
-injectTeacherLayout('grade-entry', 'Enter Grade', 'Log a new grade for a student in your active roster', false);
+injectTeacherLayout('grade-entry', 'Enter Grade', 'Log a new assignment or assessment into the system', false);
 
 // ── 2. STATE ──────────────────────────────────────────────────────────────
-let foundStudent  = null; 
-let rawSemesters  = [];
+let rawSemesters = [];
 
 // ── 3. INIT ───────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-    // 1. Safe Date Injection
-    const dateInput = document.getElementById('agDate');
+    // Resilient Date Injection: Looks for exact ID, or falls back to any date input
+    const dateInput = document.getElementById('agDate') || document.querySelector('input[type="date"]');
     if (dateInput) {
         dateInput.valueAsDate = new Date();
-    } else {
-        console.warn("[Grade Form] Element 'agDate' not found in HTML. Skipping auto-date.");
-    }
+        dateInput.id = dateInput.id || 'agDate'; // Force ID for later use
+    } 
+
+    // Attach Score/Preview Listeners safely
+    const scoreInput = document.getElementById('agScore') || document.querySelector('input[placeholder="85"]') || document.querySelectorAll('input[type="number"]')[0];
+    const maxInput = document.getElementById('agMax') || document.querySelector('input[placeholder="100"]') || document.querySelectorAll('input[type="number"]')[1];
     
-    // 2. Load Core Data
-    await loadSemesters();
-    loadGradeTypes(); // Teacher grade types can load immediately!
+    if (scoreInput) { scoreInput.id = 'agScore'; scoreInput.addEventListener('input', updatePreview); }
+    if (maxInput) { maxInput.id = 'agMax'; maxInput.addEventListener('input', updatePreview); }
 
-    // 3. Safe Event Listener Attachments
-    const lookupBtn = document.getElementById('lookupBtn');
-    if (lookupBtn) lookupBtn.addEventListener('click', lookupStudent);
-
-    const lookupId = document.getElementById('lookupId');
-    if (lookupId) lookupId.addEventListener('keydown', e => { if (e.key === 'Enter') lookupStudent(); });
-
-    const agScore = document.getElementById('agScore');
-    if (agScore) agScore.addEventListener('input', updatePreview);
-
-    const agMax = document.getElementById('agMax');
-    if (agMax) agMax.addEventListener('input', updatePreview);
-
-    const saveGradeBtn = document.getElementById('saveGradeBtn');
-    if (saveGradeBtn) saveGradeBtn.addEventListener('click', saveGrade);
-
-    // 4. Auto-Lookup hook for the "Quick Grade" button on the Roster page
-    const quickGradeId = localStorage.getItem('connectus_quick_grade_student');
-    if (quickGradeId && lookupId) {
-        lookupId.value = quickGradeId;
-        lookupStudent();
-        localStorage.removeItem('connectus_quick_grade_student'); // Clear it after use
+    // Attach Commit Button Listener
+    const commitBtn = document.getElementById('saveGradeBtn') || document.querySelector('button.bg-slate-900') || document.querySelector('button:contains("COMMIT RECORD")');
+    if (commitBtn) {
+        commitBtn.id = 'saveGradeBtn';
+        commitBtn.addEventListener('click', saveGrade);
     }
+
+    // Load Core Data (Term Sync, Grade Types, Student Dropdown)
+    await loadSemesters();
+    loadGradeTypes(); 
+    await loadStudents();
 });
 
-// ── 4. LOAD SEMESTERS ─────────────────────────────────────────────────────
+// ── 4. LOAD SEMESTERS (TERM SYNC) ─────────────────────────────────────────
 async function loadSemesters() {
     try {
         const cacheKey = `connectus_semesters_${session.schoolId}`;
@@ -65,204 +54,147 @@ async function loadSemesters() {
         }
 
         let activeId = '';
+        let activeName = 'Period';
         try {
             const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
             activeId = schoolSnap.data()?.activeSemesterId || '';
+            const activeSem = rawSemesters.find(s => s.id === activeId);
+            if (activeSem) activeName = activeSem.name;
         } catch(e) {}
 
-        const sel = document.getElementById('agSemester');
-        if (!sel) return;
+        // Fixes the "PERIOD Loading..." in the top header injected by layout-teachers.js
+        const activeSemesterSelect = document.getElementById('activeSemester');
+        if (activeSemesterSelect) {
+            activeSemesterSelect.innerHTML = '';
+            rawSemesters.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.id; opt.textContent = s.name;
+                if (s.id === activeId) opt.selected = true;
+                activeSemesterSelect.appendChild(opt);
+            });
+        }
+
+        // Also update sidebar/header text elements if they exist
+        const sbPeriod = document.getElementById('sb-period');
+        if (sbPeriod) sbPeriod.textContent = activeName;
         
-        sel.innerHTML = '';
-        rawSemesters.forEach(s => {
-            const opt = document.createElement('option');
-            opt.value = s.id; opt.textContent = s.name;
-            if (s.id === activeId) opt.selected = true;
-            sel.appendChild(opt);
-        });
+        // Update the button text from the screenshot
+        const headerPeriodBtn = document.querySelector('.page-header button span');
+        if (headerPeriodBtn && headerPeriodBtn.textContent.includes('Loading')) {
+            headerPeriodBtn.textContent = activeName;
+        }
+
     } catch (e) { console.error('[TeacherGradeEntry] loadSemesters:', e); }
 }
 
-// ── 5. LOAD GRADE TYPES (TEACHER SPECIFIC) ────────────────────────────────
-function loadGradeTypes() {
-    const sel = document.getElementById('agType');
-    if (!sel) return;
-    
-    // Pull exactly what they created in their Settings!
-    const defaultTypes = [{ name: 'Test' }, { name: 'Quiz' }, { name: 'Assignment' }, { name: 'Homework' }, { name: 'Project' }, { name: 'Final Exam' }];
-    const types = session.teacherData.gradeTypes || session.teacherData.customGradeTypes || defaultTypes;
-    
-    sel.innerHTML = '<option value="">Select type...</option>' + types.map(t => {
-        const name = t.name || t;
-        const weight = t.weight ? ` (${t.weight}%)` : '';
-        return `<option value="${name}">${name}${weight}</option>`;
-    }).join('');
-}
-
-// ── 6. STUDENT LOOKUP ─────────────────────────────────────────────────────
-async function lookupStudent() {
-    const lookupEl = document.getElementById('lookupId');
-    if (!lookupEl) return;
-    
-    const rawId = lookupEl.value.trim().toUpperCase();
-    const msgEl = document.getElementById('lookupMsg');
-    const badge = document.getElementById('studentBadge');
-    const form  = document.getElementById('gradeFormSection');
-    if (msgEl) msgEl.classList.add('hidden');
-
-    if (!rawId) { showLookupMsg('Please enter a Student Global ID.'); return; }
-    if (!/^S\d{2}-[A-Z0-9]{5}$/.test(rawId)) { showLookupMsg('Invalid format. Student ID should look like S26-XXXXX.'); return; }
-
-    const btn = document.getElementById('lookupBtn');
-    if (btn) {
-        btn.disabled = true; 
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-    }
+// ── 5. LOAD ROSTER (SEARCHABLE DROPDOWN) ──────────────────────────────────
+async function loadStudents() {
+    // Find the first select element (assuming it's the student dropdown based on UI)
+    const studentSelect = document.getElementById('agStudent') || document.querySelectorAll('select')[0];
+    if (!studentSelect) return;
+    studentSelect.id = 'agStudent';
 
     try {
-        const snap = await getDoc(doc(db, 'students', rawId));
-        if (!snap.exists()) { 
-            showLookupMsg('No student found with that ID.'); 
-            if (btn) { btn.disabled = false; btn.innerHTML = 'Look Up'; }
-            return; 
-        }
-
-        const data = snap.data();
+        // Global Root Query: Filter students by this teacher's active roster
+        const q = query(
+            collection(db, 'students'),
+            where('currentSchoolId', '==', session.schoolId),
+            where('teacherId', '==', session.teacherId),
+            where('enrollmentStatus', '==', 'Active')
+        );
+        const snap = await getDocs(q);
         
-        // Ensure student actually belongs to THIS teacher
-        if (data.teacherId !== session.teacherId) {
-            showLookupMsg('This student is not assigned to your active roster.');
-            if (btn) { btn.disabled = false; btn.innerHTML = 'Look Up'; }
-            return;
-        }
-
-        if (data.enrollmentStatus !== 'Active') {
-            showLookupMsg(`This student's enrollment status is "${data.enrollmentStatus}". Only Active students can receive grades.`);
-            if (btn) { btn.disabled = false; btn.innerHTML = 'Look Up'; }
-            return;
-        }
-
-        foundStudent = { id: snap.id, ...data };
-        
-        const badgeInitial = document.getElementById('badgeInitial');
-        const badgeName = document.getElementById('badgeName');
-        const badgeMeta = document.getElementById('badgeMeta');
-        const badgeId = document.getElementById('badgeId');
-        
-        if (badgeInitial) badgeInitial.textContent = (data.name || '?').charAt(0).toUpperCase();
-        if (badgeName) badgeName.textContent    = data.name || 'Unknown';
-        if (badgeMeta) badgeMeta.textContent    = [data.className || 'Unassigned class', data.dob ? `DOB: ${data.dob}` : ''].filter(Boolean).join(' · ');
-        if (badgeId) badgeId.textContent      = snap.id;
-        
-        if (badge) badge.classList.remove('hidden'); 
-        if (form) {
-            form.classList.remove('hidden');
-            form.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-
-    } catch (e) { 
-        showLookupMsg('Connection error. Please try again.'); 
-    }
-
-    if (btn) {
-        btn.disabled = false; 
-        btn.innerHTML = 'Look Up';
+        studentSelect.innerHTML = '<option value="">Select student...</option>';
+        snap.forEach(doc => {
+            const s = doc.data();
+            const opt = document.createElement('option');
+            opt.value = doc.id; 
+            opt.textContent = `${s.name} (${doc.id})`;
+            studentSelect.appendChild(opt);
+        });
+    } catch (e) {
+        console.error('[Grade Form] Failed to load students:', e);
+        studentSelect.innerHTML = '<option value="">Error loading roster</option>';
     }
 }
 
-function showLookupMsg(msg) { 
-    const el = document.getElementById('lookupMsg'); 
-    if (el) {
-        el.textContent = msg; 
-        el.classList.remove('hidden'); 
-    }
-}
-
-window.resetLookup = function() {
-    foundStudent = null; 
-    const lookupId = document.getElementById('lookupId');
-    if (lookupId) lookupId.value = '';
+// ── 6. LOAD GRADE TYPES & SUBJECTS ────────────────────────────────────────
+function loadGradeTypes() {
+    const typeSelect = document.getElementById('agType') || document.querySelectorAll('select')[2]; // 3rd select in UI
+    const subjectSelect = document.getElementById('agSubject') || document.querySelectorAll('select')[1]; // 2nd select in UI
     
-    const elementsToHide = ['studentBadge', 'gradeFormSection', 'lookupMsg', 'gradeSavedBanner'];
-    elementsToHide.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.classList.add('hidden');
-    });
-};
+    if (typeSelect) {
+        typeSelect.id = 'agType';
+        const defaultTypes = [{ name: 'Test' }, { name: 'Quiz' }, { name: 'Assignment' }, { name: 'Homework' }, { name: 'Project' }, { name: 'Final Exam' }];
+        const types = session.teacherData.gradeTypes || session.teacherData.customGradeTypes || defaultTypes;
+        
+        typeSelect.innerHTML = '<option value="">Select type...</option>' + types.filter(t => t).map(t => {
+            const name = t.name || (typeof t === 'string' ? t : 'Uncategorized');
+            const weight = t.weight ? ` (${t.weight}%)` : '';
+            return `<option value="${name}">${name}${weight}</option>`;
+        }).join('');
+    }
+
+    if (subjectSelect) {
+        subjectSelect.id = 'agSubject';
+        const subjects = session.teacherData.classes || [session.teacherData.className || 'General'];
+        subjectSelect.innerHTML = '<option value="">Select subject...</option>' + subjects.filter(Boolean).map(sub => {
+            return `<option value="${sub}">${sub}</option>`;
+        }).join('');
+    }
+}
 
 // ── 7. LIVE PREVIEW ───────────────────────────────────────────────────────
 function updatePreview() {
     const scoreEl = document.getElementById('agScore');
     const maxEl = document.getElementById('agMax');
-    const prev = document.getElementById('gradePreview');
-    
-    if (!scoreEl || !maxEl || !prev) return;
+    if (!scoreEl || !maxEl) return;
 
     const score = parseFloat(scoreEl.value);
     const max   = parseFloat(maxEl.value);
 
-    if (!isNaN(score) && !isNaN(max) && max > 0 && score >= 0) {
+    // If there's a preview UI element, update it here.
+    // (Note: Your screenshot doesn't show the live preview card, but we keep the logic intact if it's hidden)
+    const prev = document.getElementById('gradePreview');
+    if (prev && !isNaN(score) && !isNaN(max) && max > 0 && score >= 0) {
         const pct = Math.round((score / max) * 100);
-        const color = pct >= 90 ? 'text-emerald-600' : pct >= 80 ? 'text-blue-600' : pct >= 70 ? 'text-teal-600' : pct >= 65 ? 'text-amber-600' : 'text-red-600';
-        const lbg = pct >= 90 ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : pct >= 80 ? 'bg-blue-50 border-blue-200 text-blue-600' : pct >= 70 ? 'bg-teal-50 border-teal-200 text-teal-600' : pct >= 65 ? 'bg-amber-50 border-amber-200 text-amber-600' : 'bg-red-50 border-red-200 text-red-600';
-        const lbl = pct >= 90 ? 'Excelling' : pct >= 80 ? 'Good Standing' : pct >= 70 ? 'On Track' : pct >= 65 ? 'Needs Attention' : 'At Risk';
-
         prev.classList.remove('hidden');
-        
         const prevPct = document.getElementById('prevPct');
-        if (prevPct) { prevPct.textContent = `${pct}%`; prevPct.className = `text-3xl font-black font-mono ${color}`; }
-        
-        const prevLetter = document.getElementById('prevLetter');
-        if (prevLetter) { prevLetter.textContent = letterGrade(pct); prevLetter.className = `text-xl font-black px-4 py-1.5 rounded-lg border ${lbg}`; }
-        
-        const prevLabel = document.getElementById('prevLabel');
-        if (prevLabel) { prevLabel.textContent = lbl; prevLabel.className = `text-xs font-bold uppercase tracking-widest mt-2 ${color}`; }
-    } else { prev.classList.add('hidden'); }
+        if (prevPct) prevPct.textContent = `${pct}%`;
+    }
 }
 
-// ── 8. SAVE GRADE ─────────────────────────────────────────────────────────
+// ── 8. SAVE GRADE (THE GLOBAL WRITE) ──────────────────────────────────────
 async function saveGrade() {
-    if (!foundStudent) { alert('Please look up a student first.'); return; }
+    const studentId = document.getElementById('agStudent')?.value;
+    if (!studentId) { alert('Please select a student from the dropdown.'); return; }
 
-    const subjectEl = document.getElementById('agSubject');
-    const typeEl = document.getElementById('agType');
-    const titleEl = document.getElementById('agTitle');
+    const subject = document.getElementById('agSubject')?.value || '';
+    const type    = document.getElementById('agType')?.value || '';
+    const titleEl = document.getElementById('agTitle') || document.querySelector('input[type="text"]');
+    const title   = titleEl ? titleEl.value.trim() : 'Untitled Assessment';
+    
     const scoreEl = document.getElementById('agScore');
-    const maxEl = document.getElementById('agMax');
-    const semIdEl = document.getElementById('agSemester');
-    const dateEl = document.getElementById('agDate');
-    const notesEl = document.getElementById('agNotes');
-    const gradeMsg = document.getElementById('gradeMsg');
-
-    if (!subjectEl || !typeEl || !titleEl || !scoreEl || !maxEl || !semIdEl || !dateEl) return;
-
-    const subject = subjectEl.value.trim();
-    const type    = typeEl.value;
-    const title   = titleEl.value.trim();
-    const score   = parseFloat(scoreEl.value);
-    const max     = parseFloat(maxEl.value);
-    const semId   = semIdEl.value;
-    const date    = dateEl.value;
+    const maxEl   = document.getElementById('agMax');
+    const score   = scoreEl ? parseFloat(scoreEl.value) : NaN;
+    const max     = maxEl ? parseFloat(maxEl.value) : NaN;
+    
+    const dateEl  = document.getElementById('agDate');
+    const date    = dateEl ? dateEl.value : new Date().toISOString().split('T')[0];
+    
+    const notesEl = document.getElementById('agNotes') || document.querySelector('textarea');
     const notes   = notesEl ? notesEl.value.trim() : '';
 
+    // Fallback to active semester if specific dropdown isn't in form
+    const semIdEl = document.getElementById('agSemester') || document.getElementById('activeSemester');
+    const semId   = semIdEl ? semIdEl.value : (rawSemesters[0]?.id || '');
+
     if (!subject || !type || !title) {
-        if (gradeMsg) {
-            gradeMsg.textContent = 'Subject, grade type, and title are required.';
-            gradeMsg.className = 'text-sm font-bold p-3 rounded-xl text-red-600 bg-red-50 border border-red-100';
-            gradeMsg.classList.remove('hidden'); 
-        }
-        return;
+        alert('Subject, grade type, and title are required.'); return;
     }
     if (isNaN(score) || isNaN(max) || max <= 0 || score < 0 || score > max) {
-        if (gradeMsg) {
-            gradeMsg.textContent = 'Please enter valid score and max values.';
-            gradeMsg.className = 'text-sm font-bold p-3 rounded-xl text-red-600 bg-red-50 border border-red-100';
-            gradeMsg.classList.remove('hidden'); 
-        }
-        return;
+        alert('Please enter valid score and max values.'); return;
     }
-
-    if (gradeMsg) gradeMsg.classList.add('hidden');
 
     const btn = document.getElementById('saveGradeBtn');
     if (btn) {
@@ -271,8 +203,8 @@ async function saveGrade() {
     }
 
     try {
-        // Teacher write to global student passport path
-        await addDoc(collection(db, 'students', foundStudent.id, 'grades'), {
+        // GLOBAL WRITE: Saving to /students/{studentId}/grades
+        await addDoc(collection(db, 'students', studentId, 'grades'), {
             schoolId:        session.schoolId,
             teacherId:       session.teacherId,  
             semesterId:      semId,
@@ -287,25 +219,20 @@ async function saveGrade() {
             createdAt:       new Date().toISOString()
         });
 
-        scoreEl.value = '';
+        // Reset Form
+        if (scoreEl) scoreEl.value = '';
         if (notesEl) notesEl.value = '';
-        updatePreview();
-
-        const banner = document.getElementById('gradeSavedBanner');
-        if (banner) banner.classList.remove('hidden');
+        if (titleEl) titleEl.value = '';
         
-        subjectEl.focus();
+        alert('Grade successfully committed to Global Registry!');
 
     } catch (e) {
-        if (gradeMsg) {
-            gradeMsg.textContent = 'System error. Could not commit record.';
-            gradeMsg.className = 'text-sm font-bold p-3 rounded-xl text-red-600 bg-red-50 border border-red-100';
-            gradeMsg.classList.remove('hidden');
-        }
+        console.error("Save Error:", e);
+        alert('System error. Could not commit record.');
     }
 
     if (btn) {
         btn.disabled = false; 
-        btn.innerHTML = '<i class="fa-solid fa-database mr-2 text-xs"></i>Commit Grade Record';
+        btn.innerHTML = '<i class="fa-solid fa-database mr-2 text-xs"></i> COMMIT RECORD';
     }
 }
