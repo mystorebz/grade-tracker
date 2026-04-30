@@ -1,8 +1,8 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { collection, doc, getDoc, getDocs, updateDoc, addDoc, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, doc, getDoc, getDocs, updateDoc, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
-import { openOverlay, closeOverlay, showMsg, letterGrade } from '../../assets/js/utils.js';
+import { openOverlay, closeOverlay, letterGrade, calculateWeightedAverage } from '../../assets/js/utils.js';
 
 // ── 1. INIT & AUTH ────────────────────────────────────────────────────────
 const session = requireAuth('admin', '../login.html');
@@ -11,8 +11,10 @@ injectAdminLayout('students', 'School Directory', 'All enrolled students and the
 // ── 2. STATE ──────────────────────────────────────────────────────────────
 let allStudentsCache = [];
 let allTeachersCache = [];
+let rawSemesters = [];
 let currentStudentId = null;
 let currentStudentGradesCache = [];
+let currentTeacherWeights = ['Test', 'Quiz', 'Assignment', 'Midterm Exam', 'Final Exam']; // Fallback
 
 const CLASSES = {
     'Primary': ['Infant 1', 'Infant 2', 'Standard 1', 'Standard 2', 'Standard 3', 'Standard 4', 'Standard 5', 'Standard 6'],
@@ -25,8 +27,17 @@ const filterClassSelect = document.getElementById('filterStudentClass');
 const filterTeacherSelect = document.getElementById('filterStudentTeacher');
 const searchInput = document.getElementById('searchInput');
 
-// ── 3. LOAD DIRECTORY ─────────────────────────────────────────────────────
-async function loadStudents() {
+// ── 3. LOAD DATA ──────────────────────────────────────────────────────────
+async function loadData() {
+    // 1. Fetch Semesters for the Academic Tab & Print filters
+    try {
+        const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
+        rawSemesters = semSnap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b) => (a.order||0)-(b.order||0));
+    } catch(e) {
+        console.error("Error loading semesters:", e);
+    }
+
+    // 2. Fetch Directory
     if (!tbody) return;
     tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-16 text-center text-slate-400 font-semibold"><i class="fa-solid fa-spinner fa-spin text-blue-500 text-2xl mb-3 block"></i>Loading directory...</td></tr>`;
     
@@ -120,11 +131,8 @@ window.switchStudentTab = function(tabId) {
     document.getElementById(`tab-${tabId}`)?.classList.remove('hidden');
     
     document.querySelectorAll('.panel-tab').forEach(btn => {
-        if (btn.dataset.tab === tabId) {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
-        }
+        if (btn.dataset.tab === tabId) btn.classList.add('active');
+        else btn.classList.remove('active');
     });
 };
 
@@ -160,38 +168,34 @@ window.openStudentPanel = async function(studentId) {
         `).join('');
     }
 
-    // Populate Passport History Tab
-    const historyContainer = document.getElementById('historyLogsContainer');
-    if (historyContainer) {
-        const history = student?.academicHistory || [];
-        if (history.length > 0) {
-            historyContainer.innerHTML = history.map(h => `
-                <div class="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
-                    <p class="font-bold text-slate-700">${h.schoolName || 'Unknown School'}</p>
-                    <p class="text-xs text-slate-500 font-semibold mb-2">Departed: ${h.leftAt ? new Date(h.leftAt).toLocaleDateString() : 'Unknown Date'}</p>
-                    <p class="text-sm text-slate-600 bg-slate-50 p-2 rounded border border-slate-100">Reason: ${h.reason || 'Not specified'}</p>
-                </div>
-            `).join('');
-        } else {
-            historyContainer.innerHTML = `<p class="text-center text-slate-400 font-semibold py-10 italic">No global transfer history for this student.</p>`;
-        }
-    }
-
     window.switchStudentTab('overview');
     document.getElementById('sPanelLoader')?.classList.remove('hidden');
     openOverlay('studentPanel', 'studentPanelInner', true);
     
-    // Fetch Grades from global passport
     try {
-        const gradesSnap = await getDocs(query(
-            collection(db, 'students', studentId, 'grades'),
-            where('schoolId', '==', session.schoolId)
-        ));
-        
+        // 1. Fetch Teacher's Custom Grade Weights (CRITICAL FOR ACCURATE ADMIN MATH)
+        if (student.teacherId) {
+            const tDoc = await getDoc(doc(db, 'teachers', student.teacherId));
+            if (tDoc.exists() && tDoc.data().gradeTypes) {
+                currentTeacherWeights = tDoc.data().gradeTypes;
+            }
+        }
+
+        // 2. Fetch Grades from global passport
+        const gradesSnap = await getDocs(query(collection(db, 'students', studentId, 'grades'), where('schoolId', '==', session.schoolId)));
         currentStudentGradesCache = [];
         gradesSnap.forEach(d => currentStudentGradesCache.push({ id: d.id, ...d.data() }));
         
-        renderAdminGrades();
+        // 3. Populate Semester Dropdown
+        const semSelect = document.getElementById('sPanelSemester');
+        let activeId = '';
+        const schoolDoc = await getDoc(doc(db, 'schools', session.schoolId));
+        if (schoolDoc.exists()) activeId = schoolDoc.data().activeSemesterId || '';
+
+        semSelect.innerHTML = rawSemesters.map(s => `<option value="${s.id}" ${s.id === activeId ? 'selected' : ''}>${s.name}</option>`).join('');
+        if (rawSemesters.length === 0) semSelect.innerHTML = '<option value="">No Terms Found</option>';
+
+        window.renderAdminGrades(); // Initial render based on active term
     } catch(e) {
         console.error(e);
     } finally {
@@ -199,41 +203,57 @@ window.openStudentPanel = async function(studentId) {
     }
 };
 
-window.closeStudentPanel = function() {
-    closeOverlay('studentPanel', 'studentPanelInner', true);
-};
+window.closeStudentPanel = function() { closeOverlay('studentPanel', 'studentPanelInner', true); };
 
 // ── 6. RENDER ADMIN GRADES (ACADEMIC TAB) ─────────────────────────────────
-function renderAdminGrades() {
+window.renderAdminGrades = function() {
     const container = document.getElementById('subjectAccordions');
     if (!container) return;
 
-    if (currentStudentGradesCache.length === 0) {
-        container.innerHTML = `<div class="text-center py-16 bg-white rounded-xl border border-slate-200"><i class="fa-solid fa-folder-open text-4xl text-slate-300 mb-3"></i><p class="text-slate-400 font-semibold">No grades recorded yet.</p></div>`;
+    const termId = document.getElementById('sPanelSemester').value;
+    const filterSubj = document.getElementById('sPanelFilterSubject').value;
+    const filterType = document.getElementById('sPanelFilterType').value;
+
+    // Filter grades for the selected term
+    let filteredGrades = currentStudentGradesCache.filter(g => g.semesterId === termId);
+
+    // Populate the Subject and Type dropdown filters dynamically based on this term's grades
+    const subjSet = [...new Set(filteredGrades.map(g => g.subject || 'Uncategorized'))].sort();
+    const typeSet = [...new Set(filteredGrades.map(g => g.type || 'Uncategorized'))].sort();
+
+    // Preserve current selections if they exist
+    document.getElementById('sPanelFilterSubject').innerHTML = '<option value="">All Subjects</option>' + subjSet.map(s => `<option value="${s}" ${s === filterSubj ? 'selected' : ''}>${s}</option>`).join('');
+    document.getElementById('sPanelFilterType').innerHTML = '<option value="">All Types</option>' + typeSet.map(t => `<option value="${t}" ${t === filterType ? 'selected' : ''}>${t}</option>`).join('');
+
+    // Apply specific Subj/Type filters
+    if (filterSubj) filteredGrades = filteredGrades.filter(g => g.subject === filterSubj);
+    if (filterType) filteredGrades = filteredGrades.filter(g => g.type === filterType);
+
+    if (filteredGrades.length === 0) {
+        container.innerHTML = `<div class="text-center py-16 bg-white rounded-xl border border-slate-200"><i class="fa-solid fa-folder-open text-4xl text-slate-300 mb-3"></i><p class="text-slate-400 font-semibold">No grades recorded for these filters.</p></div>`;
         return;
     }
     
     const bySubj = {};
-    currentStudentGradesCache.forEach(g => {
+    filteredGrades.forEach(g => {
         const subj = g.subject || 'Uncategorized';
         if (!bySubj[subj]) bySubj[subj] = [];
         bySubj[subj].push(g);
     });
     
     container.innerHTML = Object.entries(bySubj).map(([subject, grades]) => {
-        // Standard average for admin view
-        const avg = grades.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / grades.length;
+        // Teacher-Weighted Average
+        const avg = calculateWeightedAverage(grades, currentTeacherWeights);
         const avgR = Math.round(avg);
         const ac = avgR >= 75 ? 'text-green-700 bg-green-50 border-green-200' : avgR >= 60 ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-red-700 bg-red-50 border-red-200';
         
         const rows = grades.sort((a,b) => (b.date||'').localeCompare(a.date||'')).map(g => {
             const pct = g.max ? Math.round((g.score / g.max) * 100) : null;
             const c = pct == null ? 'text-slate-600' : pct >= 75 ? 'text-green-600' : pct >= 60 ? 'text-amber-600' : 'text-red-600';
-            const adminTag = g.enteredByAdmin ? `<span class="ml-2 text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-black uppercase">Admin Entry</span>` : '';
             
             return `<div class="border border-slate-200 rounded-lg bg-white p-3 flex items-center justify-between">
                 <div>
-                    <p class="font-bold text-slate-700 text-sm">${g.title||'Assessment'} ${adminTag}</p>
+                    <p class="font-bold text-slate-700 text-sm">${g.title||'Assessment'}</p>
                     <p class="text-xs text-slate-400 font-semibold mt-0.5">${g.type||''} · ${g.date||'No Date'}</p>
                 </div>
                 <div class="flex items-center gap-3">
@@ -244,7 +264,7 @@ function renderAdminGrades() {
         }).join('');
         
         return `<div class="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-sm">
-            <div class="flex items-center justify-between px-5 py-4 bg-slate-50 border-b border-slate-200">
+            <div class="flex items-center justify-between px-5 py-4 bg-slate-50 border-b border-slate-200 cursor-pointer" onclick="window.toggleSubjectAccordion(this)">
                 <div class="flex items-center gap-3">
                     <div class="w-8 h-8 bg-slate-800 text-white rounded flex items-center justify-center font-black text-xs">${subject.charAt(0)}</div>
                     <div>
@@ -254,79 +274,200 @@ function renderAdminGrades() {
                 </div>
                 <div class="flex items-center gap-3">
                     <span class="${ac} border font-black text-xs px-2 py-1 rounded">${avgR}% Avg</span>
+                    <i class="fa-solid fa-chevron-down text-slate-400" style="transition:transform 0.2s"></i>
                 </div>
             </div>
-            <div class="p-3 bg-slate-100 space-y-2">${rows}</div>
+            <div class="subject-body open p-3 bg-slate-100 space-y-2 border-t border-slate-200">${rows}</div>
         </div>`;
     }).join('');
-}
-
-// ── 7. ADMIN GRADE OVERRIDE LOGIC ─────────────────────────────────────────
-window.openAdminAddGradeModal = function() {
-    document.getElementById('agAddSubject').value = '';
-    document.getElementById('agAddType').value = '';
-    document.getElementById('agAddTitle').value = '';
-    document.getElementById('agAddScore').value = '';
-    document.getElementById('agAddMax').value = '100';
-    document.getElementById('agAddDate').value = new Date().toISOString().split('T')[0];
-    document.getElementById('agAddNotes').value = '';
-    
-    openOverlay('adminAddGradeModal', 'adminAddGradeModalInner');
 };
 
-window.closeAdminAddGradeModal = function() {
-    closeOverlay('adminAddGradeModal', 'adminAddGradeModalInner');
+window.toggleSubjectAccordion = function(header) {
+    const body = header.nextElementSibling;
+    body.classList.toggle('open');
+    const chevron = header.querySelector('.fa-chevron-down');
+    if (chevron) chevron.style.transform = body.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0deg)';
 };
 
-document.getElementById('saveAdminAddGradeBtn')?.addEventListener('click', async () => {
-    const subj  = document.getElementById('agAddSubject').value.trim();
-    const type  = document.getElementById('agAddType').value.trim();
-    const title = document.getElementById('agAddTitle').value.trim();
-    const score = document.getElementById('agAddScore').value;
-    const max   = document.getElementById('agAddMax').value;
-    const date  = document.getElementById('agAddDate').value;
-    const notes = document.getElementById('agAddNotes').value.trim();
-
-    if (!subj || !type || !title || score === '' || max === '' || !notes) {
-        alert("All fields, including Admin Notes, are mandatory for an override.");
-        return;
-    }
-
-    const btn = document.getElementById('saveAdminAddGradeBtn');
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...';
-    btn.disabled = true;
-
-    try {
-        const payload = {
-            schoolId: session.schoolId, // Strict passport adherence
-            subject: subj,
-            type: type,
-            title: title,
-            score: parseFloat(score),
-            max: parseFloat(max),
-            date: date,
-            notes: notes,
-            enteredByAdmin: true,
-            adminId: session.adminId || 'Admin',
-            adminName: session.adminName || 'Admin User',
-            createdAt: new Date().toISOString()
-        };
-
-        const docRef = await addDoc(collection(db, 'students', currentStudentId, 'grades'), payload);
-        currentStudentGradesCache.push({ id: docRef.id, ...payload });
-        
-        renderAdminGrades();
-        closeAdminAddGradeModal();
-    } catch (e) {
-        console.error("Error adding admin grade:", e);
-        alert("Failed to save admin grade override.");
-    }
+// ── 7. PROFESSIONAL PRINT RECORDS ─────────────────────────────────────────
+window.openPrintStudentModal = function() {
+    const termId = document.getElementById('sPanelSemester')?.value;
+    const termGrades = currentStudentGradesCache.filter(g => g.semesterId === termId);
+    const subjSet = [...new Set(termGrades.map(g => g.subject || 'Uncategorized'))].sort();
     
-    btn.innerHTML = 'Save Official Grade';
-    btn.disabled = false;
-});
+    const psSubj = document.getElementById('psSubject');
+    psSubj.innerHTML = '<option value="all">All Subjects</option>' + 
+        subjSet.map(s => `<option value="${s.replace(/"/g, '&quot;')}">${s}</option>`).join('');
 
-// ── 8. ARCHIVE & REASSIGN (MOVED TO PANEL ACTIONS) ────────────────────────
+    openOverlay('printStudentModal', 'printStudentModalInner');
+};
+
+window.closePrintStudentModal = function() { closeOverlay('printStudentModal', 'printStudentModalInner'); };
+
+window.executeStudentPrint = function() {
+    const mode = document.getElementById('psMode').value;
+    const subjFilter = document.getElementById('psSubject').value;
+    const termId = document.getElementById('sPanelSemester')?.value;
+    const semSelect = document.getElementById('sPanelSemester');
+    const semName = semSelect?.options[semSelect.selectedIndex]?.text || 'Active Term';
+    
+    const student = allStudentsCache.find(s => s.id === currentStudentId);
+    if (!student) return;
+
+    let gradesToPrint = currentStudentGradesCache.filter(g => g.semesterId === termId);
+    if (subjFilter !== 'all') {
+        gradesToPrint = gradesToPrint.filter(g => g.subject === subjFilter);
+    }
+
+    const bySub = {};
+    let totalAssessments = 0;
+    
+    gradesToPrint.forEach(g => {
+        const sub = g.subject || 'Uncategorized';
+        if (!bySub[sub]) bySub[sub] = [];
+        bySub[sub].push(g);
+        if (g.max) totalAssessments++;
+    });
+
+    const cumulativeAvg = gradesToPrint.length ? calculateWeightedAverage(gradesToPrint, currentTeacherWeights) : 0;
+    const gpaLetter = totalAssessments > 0 ? letterGrade(cumulativeAvg) : 'N/A';
+    const schoolName = session.schoolName || 'ConnectUs School';
+
+    const escapeHtml = (str) => {
+        if (!str) return '';
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    };
+
+    let gradesHtml = Object.keys(bySub).length === 0
+        ? `<tr><td colspan="4" style="text-align:center;color:#64748b;font-style:italic;padding:40px;">No grades recorded for this filter.</td></tr>`
+        : Object.entries(bySub).sort((a,b) => a[0].localeCompare(b[0])).map(([sub, gList]) => {
+            const subAvg = calculateWeightedAverage(gList, currentTeacherWeights);
+            let html = `
+                <tr style="background:#f8fafc; font-weight:800;">
+                    <td style="border-bottom:1px solid #cbd5e1;padding:12px 15px;color:#1e293b;">${escapeHtml(sub)}</td>
+                    <td style="border-bottom:1px solid #cbd5e1;padding:12px 15px;text-align:center;color:#64748b;">${gList.length}</td>
+                    <td style="border-bottom:1px solid #cbd5e1;padding:12px 15px;text-align:center;color:#0f172a;">${subAvg}%</td>
+                    <td style="border-bottom:1px solid #cbd5e1;padding:12px 15px;text-align:center;color:#0f172a;">${letterGrade(subAvg)}</td>
+                </tr>
+            `;
+
+            if (mode === 'detailed') {
+                gList.sort((a,b) => (b.date||'').localeCompare(a.date||'')).forEach(g => {
+                    const pct = g.max ? Math.round((g.score/g.max)*100) : null;
+                    html += `
+                    <tr style="font-size:11px; background:#fff;">
+                        <td style="border-bottom:1px solid #f1f5f9;padding:8px 15px 8px 30px;color:#475569;">
+                            ${escapeHtml(g.title)} <span style="color:#94a3b8;margin-left:6px;">${escapeHtml(g.type)} · ${g.date}</span>
+                        </td>
+                        <td style="border-bottom:1px solid #f1f5f9;padding:8px 15px;text-align:center;color:#64748b;font-family:monospace;">${g.score}/${g.max||'?'}</td>
+                        <td style="border-bottom:1px solid #f1f5f9;padding:8px 15px;text-align:center;color:#475569;font-family:monospace;">${pct!==null?pct+'%':'-'}</td>
+                        <td style="border-bottom:1px solid #f1f5f9;padding:8px 15px;text-align:center;color:#475569;">${pct!==null?letterGrade(pct):'-'}</td>
+                    </tr>`;
+                });
+            }
+            return html;
+        }).join('');
+
+    const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Official Term Report — ${escapeHtml(student.name)}</title>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
+            body { font-family: 'Nunito', sans-serif; padding: 40px; color: #0f172a; line-height: 1.5; margin: 0 auto; max-width: 8.5in; }
+            .header-flex { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid #1e1b4b; padding-bottom: 20px; margin-bottom: 30px; }
+            .logo { max-height: 60px; max-width: 200px; object-fit: contain; }
+            .header-text { text-align: right; }
+            .header-text h1 { margin: 0 0 5px; font-size: 24px; font-weight: 900; text-transform: uppercase; color: #1e1b4b; }
+            .header-text h2 { margin: 0; font-size: 14px; color: #64748b; font-weight: 700; letter-spacing: 2px; }
+            
+            .student-info-box { display: flex; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; margin-bottom: 30px; }
+            .info-col { flex: 1; padding: 15px 20px; border-right: 1px solid #cbd5e1; }
+            .info-col:last-child { border-right: none; background: #f8fafc; }
+            .info-item { margin-bottom: 10px; }
+            .info-item:last-child { margin-bottom: 0; }
+            .info-label { font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: 800; display: block; margin-bottom: 2px; }
+            .info-value { font-size: 15px; font-weight: 800; color: #0f172a; }
+            
+            .analytics-grid { display: flex; gap: 15px; margin-bottom: 30px; }
+            .analytic-card { flex: 1; background: #fff; border: 2px solid #e2e8f0; border-radius: 8px; padding: 15px; text-align: center; }
+            .analytic-val { font-size: 28px; font-weight: 900; color: #1e1b4b; line-height: 1; margin-bottom: 5px; }
+            .analytic-lbl { font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
+
+            table { width: 100%; border-collapse: collapse; font-size: 13px; border: 1px solid #e2e8f0; }
+            th { background: #1e1b4b; color: #fff; padding: 10px 15px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+            th.center { text-align: center; }
+
+            .footer { margin-top: 50px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 20px; font-weight: 600; }
+        </style>
+    </head>
+    <body>
+        <div class="header-flex">
+            <img src="${session.logo || ''}" alt="${escapeHtml(schoolName)}" class="logo" onerror="this.style.display='none'">
+            <div class="header-text">
+                <h1>${escapeHtml(schoolName)}</h1>
+                <h2>OFFICIAL TERM REPORT</h2>
+            </div>
+        </div>
+
+        <div class="student-info-box">
+            <div class="info-col">
+                <div class="info-item"><span class="info-label">Student Name</span><span class="info-value">${escapeHtml(student.name)}</span></div>
+                <div class="info-item"><span class="info-label">Global ID Number</span><span class="info-value" style="font-family:monospace;letter-spacing:1px;">${student.id}</span></div>
+            </div>
+            <div class="info-col">
+                <div class="info-item"><span class="info-label">Academic Term</span><span class="info-value">${escapeHtml(semName)}</span></div>
+                <div class="info-item"><span class="info-label">Current Enrollment</span><span class="info-value">${escapeHtml(student.className || 'Unassigned')}</span></div>
+            </div>
+        </div>
+
+        <div class="analytics-grid">
+            <div class="analytic-card">
+                <div class="analytic-val">${cumulativeAvg}%</div>
+                <div class="analytic-lbl">Term Average</div>
+            </div>
+            <div class="analytic-card">
+                <div class="analytic-val">${gpaLetter}</div>
+                <div class="analytic-lbl">Overall Grade</div>
+            </div>
+            <div class="analytic-card">
+                <div class="analytic-val">${totalAssessments}</div>
+                <div class="analytic-lbl">Total Assessments</div>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Subject / Assignment</th>
+                    <th class="center">Assessments / Score</th>
+                    <th class="center">Average / Pct</th>
+                    <th class="center">Grade</th>
+                </tr>
+            </thead>
+            <tbody>${gradesHtml}</tbody>
+        </table>
+
+        <div class="footer" style="display:flex; flex-direction:column; justify-content:center; align-items:center; gap:8px;">
+            <span><strong>NOTICE:</strong> This document is an official academic report generated for <strong>${escapeHtml(schoolName)}</strong>.</span>
+            <span>Date Issued: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+            <div style="display:flex; justify-content:center; align-items:center; gap:8px; margin-top:10px;">
+                <span>Record generated by Admin</span>
+            </div>
+        </div>
+    </body>
+    </html>`;
+
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+    
+    window.closePrintStudentModal();
+    setTimeout(() => w.print(), 800);
+};
+
+// ── 8. ARCHIVE & REASSIGN ─────────────────────────────────────────────────
 window.openReassignModal = function() {
     document.getElementById('sEnrollDropdown')?.classList.add('hidden');
     const s = allStudentsCache.find(x => x.id === currentStudentId);
@@ -362,9 +503,8 @@ document.getElementById('saveReassignBtn')?.addEventListener('click', async () =
         await updateDoc(doc(db, 'students', currentStudentId), { className, teacherId });
         
         closeReassignModal();
-        await loadStudents(); 
+        await loadData(); 
         
-        // Update Panel UI instantly
         if (document.getElementById('sInfoGrid')) {
             const tm = allTeachersCache.find(t => t.id === teacherId);
             document.getElementById('sInfoGrid').innerHTML = document.getElementById('sInfoGrid').innerHTML
@@ -418,7 +558,7 @@ document.getElementById('confirmArchiveBtn')?.addEventListener('click', async ()
         
         closeArchiveReasonModal();
         closeStudentPanel(); 
-        loadStudents(); 
+        loadData(); 
     } catch(e) { 
         console.error(e);
         alert("Error archiving student."); 
@@ -429,4 +569,4 @@ document.getElementById('confirmArchiveBtn')?.addEventListener('click', async ()
 });
 
 // Initialize
-document.addEventListener('DOMContentLoaded', loadStudents);
+document.addEventListener('DOMContentLoaded', loadData);
