@@ -93,13 +93,12 @@ async function loadSchoolAnalytics(teachersList, studentsList) {
         };
 
         // 2. Fetch Data for all active students (Grades & Evaluations)
-        // Note: In a production environment with thousands of students, this would be handled by a cloud function. 
-        // For standard capacities (50-300), parallel fetching is acceptable.
         await Promise.all(studentsList.map(async (student) => {
             
-            // Fetch Grades
+            // Fetch Grades - UPDATED TO INCLUDE SCHOOL ID FILTER
             const gSnap = await getDocs(query(
                 collection(db, 'students', student.id, 'grades'), 
+                where('schoolId', '==', session.schoolId),
                 where('semesterId', '==', session.activeSemesterId)
             ));
             
@@ -137,9 +136,10 @@ async function loadSchoolAnalytics(teachersList, studentsList) {
                 }
             }
 
-            // Fetch Evaluations for Matrix
+            // Fetch Evaluations for Matrix - UPDATED TO INCLUDE SCHOOL ID FILTER
             const eSnap = await getDocs(query(
                 collection(db, 'students', student.id, 'evaluations'), 
+                where('schoolId', '==', session.schoolId),
                 where('semesterId', '==', session.activeSemesterId)
             ));
             
