@@ -206,7 +206,7 @@ window.permanentDeleteStudent = async function(id, studentName) {
     
     try {
         // Grades still at siloed path; student doc now global
-        const gradesSnap = await getDocs(collection(db, 'schools', session.schoolId, 'students', id, 'grades'));
+        const gradesSnap = await getDocs(collection(db, 'students', id, 'grades'));
         const batch = writeBatch(db);
         gradesSnap.forEach(d => batch.delete(d.ref));
         if (!gradesSnap.empty) { await batch.commit(); }
@@ -277,7 +277,7 @@ window.executeStudentPrint = async function() {
         if (!sDoc.exists()) { alert('Student not found.'); return; }
         
         const s = sDoc.data();
-        const gradesSnap = await getDocs(collection(db, 'schools', session.schoolId, 'students', studentId, 'grades'));
+        const gradesSnap = await getDocs(collection(db, 'students', studentId, 'grades'));
         
         let grades = [];
         gradesSnap.forEach(d => grades.push(d.data()));
