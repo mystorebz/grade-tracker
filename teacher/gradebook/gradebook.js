@@ -511,7 +511,7 @@ window.printGradebook = function() {
                 ${rows.map(g=>{
                     const p=g.max?Math.round(g.score/g.max*100):null;
                     const cls=p>=75?'hi':p>=65?'mid':'lo';
-                    return \`<tr><td><strong>${escHtml(g.studentName)}</strong></td><td>${escHtml(g.subject||'—')}</td><td>${escHtml(g.title||'—')}</td><td>${escHtml(g.type||'—')}</td><td>${escHtml(g.date||'—')}</td><td class="mono">${g.score}/${g.max||'?'}</td><td class="mono ${cls}">${p!==null?p+'%':'—'}</td><td class="${cls}">${p!==null?letterGrade(p):'—'}</td></tr>\`;
+                    return `<tr><td><strong>${escHtml(g.studentName)}</strong></td><td>${escHtml(g.subject||'—')}</td><td>${escHtml(g.title||'—')}</td><td>${escHtml(g.type||'—')}</td><td>${escHtml(g.date||'—')}</td><td class="mono">${g.score}/${g.max||'?'}</td><td class="mono ${cls}">${p!==null?p+'%':'—'}</td><td class="${cls}">${p!==null?letterGrade(p):'—'}</td></tr>`;
                 }).join('')}
             </tbody>
         </table>
