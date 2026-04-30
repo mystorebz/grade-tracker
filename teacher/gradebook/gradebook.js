@@ -1,6 +1,6 @@
 import { db } from '../../assets/js/firebase-init.js';
 import { collection, query, where, getDocs, getDoc, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { requireAuth } from '../../assets/js/auth.js';
+import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { openOverlay, closeOverlay, showMsg, gradeColorClass, gradeFill, letterGrade, downloadCSV, calculateWeightedAverage } from '../../assets/js/utils.js';
 
@@ -371,7 +371,6 @@ window.closeAssignmentModal = function() { closeOverlay('assignmentModal', 'assi
 window.openEditGradeModal = async function(studentId, gradeId) {
     if (isSemesterLocked) return;
     try {
-        // ADDED: Re-target edit grab to global path
         const snap = await getDoc(doc(db, 'students', studentId, 'grades', gradeId));
         if (!snap.exists()) return;
         currentEditData = { studentId, gradeId, ...snap.data() };
@@ -419,7 +418,6 @@ async function saveEditedGrade() {
             updates.historyLogs = [...(currentEditData.historyLogs||[]), { changedAt: new Date().toLocaleString(), oldScore: originalScore, oldMax: originalMax, newScore: nScore, newMax: nMax, reason }];
         }
         
-        // ADDED: Re-target edit write to global path
         await updateDoc(doc(db, 'students', currentEditData.studentId, 'grades', currentEditData.gradeId), updates);
         
         closeEditGradeModal();
@@ -437,7 +435,6 @@ window.deleteGrade = async function(studentId, gradeId) {
     if (isSemesterLocked) return;
     if (!confirm('Are you sure you want to permanently delete this grade?')) return;
     try {
-        // ADDED: Re-target delete to global path
         await deleteDoc(doc(db, 'students', studentId, 'grades', gradeId));
         allGradesCache = null;
         loadGradebook();
@@ -532,4 +529,162 @@ function escHtml(str) {
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ── 15. GRADE WEIGHTS CONFIGURATION MODAL ─────────────────────────────────────
+let modalGradeTypes = [];
+
+document.getElementById('openGradeWeightsBtn')?.addEventListener('click', () => {
+    if (isSemesterLocked) {
+        alert('The current grading period is locked. Grade weights cannot be changed at this time.');
+        return;
+    }
+    // Clone the array to avoid mutating live session data until "Save" is clicked
+    modalGradeTypes = JSON.parse(JSON.stringify(getGradeTypes()));
+    document.getElementById('gwSelect').value = '';
+    document.getElementById('gwCustomName').style.display = 'none';
+    document.getElementById('gwCustomName').value = '';
+    document.getElementById('gwWeight').value = '';
+    document.getElementById('gwMsg').classList.add('hidden');
+    
+    renderGradeWeights();
+    openOverlay('gradeWeightsModal', 'gradeWeightsModalInner');
+});
+
+document.getElementById('closeGradeWeightsBtn')?.addEventListener('click', () => {
+    closeOverlay('gradeWeightsModal', 'gradeWeightsModalInner');
+});
+
+document.getElementById('gwSelect')?.addEventListener('change', (e) => {
+    const customInput = document.getElementById('gwCustomName');
+    if (e.target.value === 'Custom') {
+        customInput.style.display = 'block';
+        customInput.focus();
+    } else {
+        customInput.style.display = 'none';
+        customInput.value = '';
+    }
+});
+
+document.getElementById('addGwBtn')?.addEventListener('click', () => {
+    const typeSelect = document.getElementById('gwSelect');
+    const customName = document.getElementById('gwCustomName');
+    const weightInput = document.getElementById('gwWeight');
+    
+    const type = typeSelect.value;
+    const name = type === 'Custom' ? customName.value.trim() : type;
+    const weight = parseInt(weightInput.value, 10);
+
+    if (!type) { showGwMsg('Please select a grade type.', true); return; }
+    if (type === 'Custom' && !name) { showGwMsg('Please enter a custom name.', true); return; }
+    if (isNaN(weight) || weight <= 0) { showGwMsg('Please enter a valid weight (e.g., 20).', true); return; }
+
+    // Prevent duplicates
+    if (modalGradeTypes.some(g => (g.name || g).toLowerCase() === name.toLowerCase())) {
+        showGwMsg('This metric already exists in your list.', true); return;
+    }
+
+    modalGradeTypes.push({ name, weight });
+    renderGradeWeights();
+
+    typeSelect.value = '';
+    customName.style.display = 'none';
+    customName.value = '';
+    weightInput.value = '';
+});
+
+window.removeGwType = function(index) {
+    modalGradeTypes.splice(index, 1);
+    renderGradeWeights();
+};
+
+function showGwMsg(text, isError) {
+    const el = document.getElementById('gwMsg');
+    el.textContent = text;
+    el.style.background = isError ? '#fff0f3' : '#edfaf4';
+    el.style.color = isError ? '#e31b4a' : '#0ea871';
+    el.style.border = `1px solid ${isError ? '#fecaca' : '#a7f3d0'}`;
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 3500);
+}
+
+function renderGradeWeights() {
+    const list = document.getElementById('gwList');
+    const totalEl = document.getElementById('gwTotalWeight');
+    let total = 0;
+
+    if (modalGradeTypes.length === 0) {
+        list.innerHTML = `<div style="padding:20px;text-align:center;border:1px dashed #c5d0db;border-radius:3px;color:#9ab0c6;font-size:12px;">No metrics configured.</div>`;
+    } else {
+        list.innerHTML = modalGradeTypes.map((g, i) => {
+            // Support both new {name, weight} objects and legacy string arrays
+            const name = g.name || g;
+            const weight = g.weight || 0;
+            total += weight;
+            return `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:#fff;border:1px solid #dce3ed;border-radius:3px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <i class="fa-solid fa-tag" style="color:#9ab0c6;font-size:10px;"></i>
+                    <span style="font-size:13px;font-weight:700;color:#0d1f35;">${escHtml(name)}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <span style="font-size:12px;font-weight:700;color:#0ea871;background:#edfaf4;padding:2px 8px;border-radius:2px;border:1px solid #c6f0db;">${weight}%</span>
+                    <button onclick="window.removeGwType(${i})" style="background:none;border:none;color:#e31b4a;cursor:pointer;font-size:12px;padding:4px;"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    totalEl.textContent = `Total Weight: ${total}%`;
+    if (total === 100) {
+        totalEl.style.color = '#0ea871';
+    } else if (total > 100) {
+        totalEl.style.color = '#e31b4a';
+        showGwMsg('Warning: Weights exceed 100%. Math will auto-scale, but this may confuse parents.', true);
+    } else {
+        totalEl.style.color = '#d97706';
+    }
+}
+
+document.getElementById('saveGwBtn')?.addEventListener('click', async () => {
+    if (modalGradeTypes.length === 0) {
+        showGwMsg('Please add at least one metric.', true); return;
+    }
+    
+    const btn = document.getElementById('saveGwBtn');
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving & Recalculating...';
+    btn.disabled = true;
+
+    try {
+        // Save to Database
+        await updateDoc(doc(db, 'teachers', session.teacherId), { 
+            gradeTypes: modalGradeTypes,
+            customGradeTypes: modalGradeTypes // Keeps legacy fields in sync
+        });
+
+        // Update active session memory so recalculation works instantly
+        session.teacherData.gradeTypes = modalGradeTypes;
+        session.teacherData.customGradeTypes = modalGradeTypes; 
+        setSessionData('teacher', session);
+        
+        // Update the searchable filter dropdown dynamically
+        if (sfType) {
+            sfType.setItems(modalGradeTypes.map(t => { 
+                const name = t.name || t; 
+                return { id: name, label: name }; 
+            }));
+        }
+
+        // Close modal and instantly refresh the math on the page!
+        closeOverlay('gradeWeightsModal', 'gradeWeightsModalInner');
+        loadGradebook(); 
+        
+    } catch (e) {
+        console.error('[Gradebook] saveGradeWeights:', e);
+        showGwMsg('Error saving configuration. Please try again.', true);
+    }
+    
+    btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save & Recalculate';
+    btn.disabled = false;
+});
+
+// ── FIRE ──────────────────────────────────────────────────────────────────────
 init();
