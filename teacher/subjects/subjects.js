@@ -125,7 +125,8 @@ async function getAllGrades(semId) {
     const all = [];
     await Promise.all(allStudentsCache.map(async s => {
         try {
-            const q = query(collection(db, 'schools', session.schoolId, 'students', s.id, 'grades'), where('semesterId', '==', semId));
+            // FIXED: Point to the global students collection
+            const q = query(collection(db, 'students', s.id, 'grades'), where('schoolId', '==', session.schoolId), where('semesterId', '==', semId));
             const snap = await getDocs(q);
             snap.forEach(d => all.push({ id: d.id, studentId: s.id, studentName: s.name, ...d.data() }));
         } catch (e) { }
@@ -309,7 +310,6 @@ function getFilteredSubjectData() {
 
     return { sg, stuData, stuIds };
 }
-
 
 window.renderSubjectPanelData = function() {
     const { sg, stuData, stuIds } = getFilteredSubjectData();
