@@ -10,16 +10,17 @@ injectTeacherLayout('grade-entry', 'Enter Grade', 'Log a new assignment or asses
 
 // ── 2. STATE ──────────────────────────────────────────────────────────────
 let rawSemesters = [];
+const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 
 // ── 3. INIT ───────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
     // Inject Date
-    const dateInput = document.getElementById('eg-date');
+    const dateInput = document.getElementById('agDate');
     if (dateInput) dateInput.valueAsDate = new Date();
 
     // Attach Score/Preview Listeners
-    const scoreInput = document.getElementById('eg-score');
-    const maxInput = document.getElementById('eg-max');
+    const scoreInput = document.getElementById('agScore');
+    const maxInput = document.getElementById('agMax');
     if (scoreInput) scoreInput.addEventListener('input', updatePreview);
     if (maxInput) maxInput.addEventListener('input', updatePreview);
 
@@ -29,61 +30,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Load Core Data
     await loadSemesters();
-    loadGradeTypes(); 
+    loadGradeTypesAndSubjects(); 
     await loadStudents();
 });
-
-// ── CUSTOM DROPDOWN HELPER (Searchable UI) ────────────────────────────────
-function populateCustomDropdown(baseId, items) {
-    const ulEl = document.getElementById(baseId + '-list');
-    const hiddenEl = document.getElementById(baseId);
-    const searchEl = document.getElementById(baseId + '-search');
-
-    if (!ulEl || !hiddenEl || !searchEl) return;
-
-    // Function to render list items dynamically
-    const renderList = (list) => {
-        if (list.length === 0) {
-            ulEl.innerHTML = `<li class="p-2 text-[13px] text-[#6b84a0] italic">No results found</li>`;
-            return;
-        }
-        ulEl.innerHTML = list.map(i => 
-            `<li class="p-2 hover:bg-slate-100 cursor-pointer text-[13px] text-[#0d1f35] border-b border-[#f0f4f8] last:border-0" data-val="${i.value}">${i.text}</li>`
-        ).join('');
-        
-        // Attach click listeners to the new list items
-        ulEl.querySelectorAll('li[data-val]').forEach(li => {
-            li.addEventListener('mousedown', (e) => {
-                e.preventDefault(); // Prevents the input from losing focus before click registers
-                searchEl.value = li.innerText;
-                hiddenEl.value = li.getAttribute('data-val');
-                ulEl.classList.add('hidden');
-            });
-        });
-    };
-
-    renderList(items);
-
-    // Show list when clicked/focused
-    searchEl.addEventListener('focus', () => {
-        document.querySelectorAll('ul[id$="-list"]').forEach(el => el.classList.add('hidden')); // Close others
-        ulEl.classList.remove('hidden');
-        renderList(items); // Reset the list in case they searched previously
-    });
-
-    // Hide list when clicking away
-    searchEl.addEventListener('blur', () => {
-        ulEl.classList.add('hidden');
-    });
-
-    // Search-as-you-type filter logic
-    searchEl.addEventListener('input', (e) => {
-        const term = e.target.value.toLowerCase();
-        const filtered = items.filter(i => i.text.toLowerCase().includes(term));
-        renderList(filtered);
-        ulEl.classList.remove('hidden');
-    });
-}
 
 // ── 4. LOAD SEMESTERS (TERM SYNC) ─────────────────────────────────────────
 async function loadSemesters() {
@@ -91,8 +40,9 @@ async function loadSemesters() {
         const cacheKey = `connectus_semesters_${session.schoolId}`;
         const cached   = localStorage.getItem(cacheKey);
 
-        if (cached) rawSemesters = JSON.parse(cached);
-        else {
+        if (cached) {
+            rawSemesters = JSON.parse(cached);
+        } else {
             const snap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
             rawSemesters = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
             localStorage.setItem(cacheKey, JSON.stringify(rawSemesters));
@@ -124,10 +74,13 @@ async function loadSemesters() {
     } catch (e) { console.error('[TeacherGradeEntry] loadSemesters:', e); }
 }
 
-// ── 5. LOAD ROSTER (SEARCHABLE DROPDOWN) ──────────────────────────────────
+// ── 5. LOAD ROSTER (GLOBAL DB FETCH + JS FILTER) ──────────────────────────
 async function loadStudents() {
+    const studentSelect = document.getElementById('agStudent');
+    if (!studentSelect) return;
+
     try {
-        // Safe Query: Fetch active students for this school, then filter by teacher in JS
+        // Safe Query exactly matching roster.js
         const q = query(
             collection(db, 'students'),
             where('currentSchoolId', '==', session.schoolId),
@@ -135,60 +88,78 @@ async function loadStudents() {
         );
         const snap = await getDocs(q);
         
-        const studentItems = snap.docs
+        // Filter by Teacher inside JS exactly matching roster.js
+        const teacherStudents = snap.docs
             .map(d => ({ id: d.id, ...d.data() }))
-            .filter(s => s.teacherId === session.teacherId) // Filter done safely here!
-            .map(s => ({ value: s.id, text: `${s.name} (${s.id})` }));
+            .filter(s => s.teacherId === session.teacherId);
         
-        populateCustomDropdown('eg-student', studentItems);
+        studentSelect.innerHTML = '<option value="">Select student...</option>';
+        teacherStudents.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s.id;
+            opt.textContent = `${s.name} (${s.id})`;
+            studentSelect.appendChild(opt);
+        });
+
     } catch (e) {
         console.error('[Grade Form] Failed to load students:', e);
+        studentSelect.innerHTML = '<option value="">Error loading roster</option>';
     }
 }
 
-// ── 6. LOAD GRADE TYPES & SUBJECTS ────────────────────────────────────────
-function loadGradeTypes() {
-    // Process Grade Types
-    const defaultTypes = [{ name: 'Test' }, { name: 'Quiz' }, { name: 'Assignment' }, { name: 'Homework' }, { name: 'Project' }, { name: 'Final Exam' }];
-    const types = session.teacherData.gradeTypes || session.teacherData.customGradeTypes || defaultTypes;
-    
-    const typeItems = types.filter(t => t).map(t => {
-        const name = t.name || (typeof t === 'string' ? t : 'Uncategorized');
-        return { value: name, text: name };
-    });
-    populateCustomDropdown('eg-type', typeItems);
+// ── 6. LOAD GRADE TYPES & SUBJECTS (FROM TEACHER PROFILE) ─────────────────
+function loadGradeTypesAndSubjects() {
+    // 1. Grade Types
+    const typeSelect = document.getElementById('agType');
+    if (typeSelect) {
+        // Matching roster.js: session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES
+        const types = session.teacherData.customGradeTypes || session.teacherData.gradeTypes || DEFAULT_GRADE_TYPES;
+        
+        typeSelect.innerHTML = '<option value="">Select type...</option>' + types.filter(t => t).map(t => {
+            const name = t.name || (typeof t === 'string' ? t : 'Uncategorized');
+            return `<option value="${name}">${name}</option>`;
+        }).join('');
+    }
 
-    // Process Subjects
-    let subjects = session.teacherData.classes || [];
-    if (subjects.length === 0 && session.teacherData.className) subjects = [session.teacherData.className];
-    if (subjects.length === 0) subjects = ['General'];
+    // 2. Subjects
+    const subjectSelect = document.getElementById('agSubject');
+    if (subjectSelect) {
+        // Matching roster.js: getActiveSubjects() or getClasses()
+        let subjects = [];
+        if (session.teacherData.subjects && session.teacherData.subjects.length > 0) {
+            subjects = session.teacherData.subjects.filter(s => !s.archived).map(s => s.name);
+        } else {
+            subjects = session.teacherData.classes || [session.teacherData.className || 'General'];
+        }
 
-    const subjectItems = subjects.filter(Boolean).map(sub => ({ value: sub, text: sub }));
-    populateCustomDropdown('eg-subject', subjectItems);
+        subjectSelect.innerHTML = '<option value="">Select subject...</option>' + subjects.filter(Boolean).map(sub => {
+            return `<option value="${sub}">${sub}</option>`;
+        }).join('');
+    }
 }
 
 // ── 7. LIVE PREVIEW ───────────────────────────────────────────────────────
 function updatePreview() {
-    const scoreEl = document.getElementById('eg-score');
-    const maxEl = document.getElementById('eg-max');
+    const scoreEl = document.getElementById('agScore');
+    const maxEl = document.getElementById('agMax');
     if (!scoreEl || !maxEl) return;
 
     const score = parseFloat(scoreEl.value);
     const max   = parseFloat(maxEl.value);
 
-    const prev = document.getElementById('eg-preview');
+    const prev = document.getElementById('gradePreview');
     if (prev && !isNaN(score) && !isNaN(max) && max > 0 && score >= 0) {
         const pct = Math.round((score / max) * 100);
         
         prev.classList.remove('hidden');
         
-        const prevPct = document.getElementById('prev-pct');
+        const prevPct = document.getElementById('prevPct');
         if (prevPct) prevPct.textContent = `${pct}%`;
         
-        const prevLetter = document.getElementById('prev-letter');
+        const prevLetter = document.getElementById('prevLetter');
         if (prevLetter) prevLetter.textContent = letterGrade(pct);
         
-        const prevBar = document.getElementById('prev-bar');
+        const prevBar = document.getElementById('prevBar');
         if (prevBar) {
             prevBar.style.width = `${pct}%`;
             prevBar.className = `h-full rounded-none transition-all duration-300 ${pct >= 90 ? 'bg-emerald-500' : pct >= 80 ? 'bg-blue-500' : pct >= 70 ? 'bg-teal-500' : pct >= 65 ? 'bg-amber-500' : 'bg-red-500'}`;
@@ -200,20 +171,22 @@ function updatePreview() {
 
 // ── 8. SAVE GRADE (THE GLOBAL WRITE) ──────────────────────────────────────
 async function saveGrade() {
-    const studentId = document.getElementById('eg-student')?.value;
+    const studentId = document.getElementById('agStudent')?.value;
     if (!studentId) { alert('Please select a student from the dropdown.'); return; }
 
-    const subject = document.getElementById('eg-subject')?.value || '';
-    const type    = document.getElementById('eg-type')?.value || '';
+    const subject = document.getElementById('agSubject')?.value || '';
+    const type    = document.getElementById('agType')?.value || '';
+    const title   = document.getElementById('agTitle')?.value.trim() || 'Untitled Assessment';
     
-    const title   = document.getElementById('eg-title')?.value.trim() || 'Untitled Assessment';
-    const scoreEl = document.getElementById('eg-score');
-    const maxEl   = document.getElementById('eg-max');
+    const scoreEl = document.getElementById('agScore');
+    const maxEl   = document.getElementById('agMax');
     const score   = scoreEl ? parseFloat(scoreEl.value) : NaN;
     const max     = maxEl ? parseFloat(maxEl.value) : NaN;
-    const dateEl  = document.getElementById('eg-date');
+    
+    const dateEl  = document.getElementById('agDate');
     const date    = dateEl ? dateEl.value : new Date().toISOString().split('T')[0];
-    const notesEl = document.getElementById('eg-notes');
+    
+    const notesEl = document.getElementById('agNotes');
     const notes   = notesEl ? notesEl.value.trim() : '';
 
     const semIdEl = document.getElementById('activeSemester');
@@ -244,10 +217,16 @@ async function saveGrade() {
             createdAt:       new Date().toISOString()
         });
 
+        // Clear only the fields necessary for the next grade entry
         if (scoreEl) scoreEl.value = '';
         if (notesEl) notesEl.value = '';
-        document.getElementById('eg-title').value = '';
+        document.getElementById('agTitle').value = '';
         
+        // Hide preview
+        const prev = document.getElementById('gradePreview');
+        if (prev) prev.classList.add('hidden');
+
+        // Show success banner
         const banner = document.getElementById('gradeSavedBanner');
         if (banner) banner.classList.remove('hidden');
 
