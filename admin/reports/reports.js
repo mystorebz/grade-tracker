@@ -19,12 +19,118 @@ function escHtml(s) {
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-// Fetch exact grade weights of a student's assigned teacher
 function getTeacherGradeTypes(teacherId) {
     if (!teacherId) return ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
     const t = allTeachers.find(x => x.id === teacherId);
     return t?.gradeTypes || t?.customGradeTypes || ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 }
+
+// ── 3.5 SEARCHABLE DROPDOWN WIDGET (NEW UX UPGRADE) ───────────────────────
+function enableSearchableSelect(selectId) {
+    const select = document.getElementById(selectId);
+    if (!select || select.dataset.searchableEnabled) return;
+    select.dataset.searchableEnabled = "true";
+
+    // Create wrapper
+    const wrapper = document.createElement('div');
+    wrapper.className = 'relative w-full';
+    select.parentNode.insertBefore(wrapper, select);
+    
+    // Hide original select, move inside wrapper
+    select.style.display = 'none';
+    wrapper.appendChild(select);
+
+    // Create typeable input
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = select.className; // Steal the exact styling of the original select
+    input.placeholder = select.options.length > 0 ? select.options[0].text : 'Select...';
+    
+    // Create chevron icon
+    const icon = document.createElement('i');
+    icon.className = 'fa-solid fa-chevron-down absolute right-4 top-1/2 transform -translate-y-1/2 text-slate-400 pointer-events-none text-[12px]';
+
+    // Create dropdown list container
+    const dropdown = document.createElement('div');
+    dropdown.className = 'absolute left-0 right-0 mt-1 bg-white border border-slate-300 rounded-lg shadow-xl z-50 hidden max-h-60 overflow-y-auto';
+    
+    wrapper.appendChild(input);
+    wrapper.appendChild(icon);
+    wrapper.appendChild(dropdown);
+
+    let isDropdownOpen = false;
+
+    const renderOptions = (filter = '') => {
+        dropdown.innerHTML = '';
+        let hasVisible = false;
+        
+        // Ensure placeholder is accurate
+        input.placeholder = select.options.length > 0 ? select.options[0].text : 'Select...';
+
+        Array.from(select.options).forEach(opt => {
+            if (opt.value === '') return; // Skip the "Select..." placeholder option
+            if (opt.text.toLowerCase().includes(filter.toLowerCase())) {
+                hasVisible = true;
+                const div = document.createElement('div');
+                div.className = 'px-4 py-2.5 hover:bg-blue-50 cursor-pointer text-[13px] text-slate-700 font-semibold border-b border-slate-50 last:border-0 transition';
+                div.textContent = opt.text;
+                
+                div.onclick = (e) => {
+                    e.stopPropagation();
+                    select.value = opt.value;
+                    input.value = opt.text;
+                    dropdown.classList.add('hidden');
+                    isDropdownOpen = false;
+                    select.dispatchEvent(new Event('change')); // Trigger existing logic
+                };
+                dropdown.appendChild(div);
+            }
+        });
+
+        if (!hasVisible) {
+            dropdown.innerHTML = '<div class="px-4 py-3 text-[13px] text-slate-400 italic">No matches found...</div>';
+        }
+    };
+
+    const syncValue = () => {
+        if (select.selectedIndex >= 0 && select.options[select.selectedIndex].value !== '') {
+            input.value = select.options[select.selectedIndex].text;
+        } else {
+            input.value = '';
+            input.placeholder = select.options.length > 0 ? select.options[0].text : 'Select...';
+        }
+    };
+
+    input.addEventListener('focus', () => {
+        input.value = ''; // Clear so they can type freely
+        renderOptions('');
+        dropdown.classList.remove('hidden');
+        isDropdownOpen = true;
+    });
+
+    input.addEventListener('input', () => {
+        dropdown.classList.remove('hidden');
+        isDropdownOpen = true;
+        renderOptions(input.value);
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!wrapper.contains(e.target)) {
+            dropdown.classList.add('hidden');
+            isDropdownOpen = false;
+            syncValue(); // Snap back to selected value if they didn't pick anything
+        }
+    });
+
+    // Auto-update widget if the underlying dropdown data changes (e.g. changing scopes)
+    const observer = new MutationObserver(() => {
+        if (!isDropdownOpen) syncValue();
+    });
+    observer.observe(select, { childList: true });
+    
+    syncValue();
+}
+
 
 // ── 4. LIVE KPI DASHBOARD (loads on page open) ────────────────────────────
 async function loadLiveDashboard() {
@@ -209,6 +315,10 @@ async function initializeBuilder() {
         await loadLiveDashboard();
         populateSubjects();
 
+        // 🔥 ENABLE SEARCHABLE TYPING UI
+        enableSearchableSelect('reportTarget');
+        enableSearchableSelect('reportSubject');
+
     } catch (e) {
         console.error('[Reports] initializeBuilder:', e);
     }
@@ -268,7 +378,6 @@ document.getElementById('generateBtn')?.addEventListener('click', async () => {
     }
 
     try {
-        // Determine scope students
         let targetStudents = allStudents;
         let titleText = 'School-Wide Performance';
         let subtitleText = '';
@@ -293,7 +402,6 @@ document.getElementById('generateBtn')?.addEventListener('click', async () => {
         if (document.getElementById('reportTitle')) document.getElementById('reportTitle').textContent    = titleText;
         if (document.getElementById('reportSubtitle')) document.getElementById('reportSubtitle').textContent = subtitleText;
 
-        // Populate Formal Print Header
         if (document.getElementById('phSchoolName')) document.getElementById('phSchoolName').textContent = session.schoolName || 'ConnectUs School';
         if (document.getElementById('phReportType')) document.getElementById('phReportType').textContent = titleText;
         if (document.getElementById('phMeta')) {
@@ -310,7 +418,6 @@ document.getElementById('generateBtn')?.addEventListener('click', async () => {
         let totalScopeAssessments = 0;
 
         await Promise.all(targetStudents.map(async s => {
-            // ARCHITECTURE FIX: Query from Global Passport
             const snap = await getDocs(query(collection(db, 'students', s.id, 'grades'), where('schoolId', '==', session.schoolId)));
             const grades = snap.docs.map(d => d.data()).filter(g => {
                 if (period !== 'all' && g.semesterId !== period) return false;
@@ -327,7 +434,6 @@ document.getElementById('generateBtn')?.addEventListener('click', async () => {
                 return;
             }
 
-            // Group by Subject
             const bySubj = {};
             grades.forEach(g => {
                 const sub = g.subject || 'Uncategorized';
@@ -335,7 +441,6 @@ document.getElementById('generateBtn')?.addEventListener('click', async () => {
                 bySubj[sub].push(g);
             });
 
-            // Fetch this specific student's teacher's rubric
             const gradeTypes = getTeacherGradeTypes(s.teacherId);
 
             let sumAvgs = 0, totalSubjs = 0;
