@@ -32,12 +32,12 @@
                     <div class="p-6 md:p-8 border-b border-slate-100 bg-gradient-to-r from-white to-indigo-50/40 flex items-center gap-4">
                         <div class="w-14 h-14 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center text-2xl"><i class="fa-solid fa-file-contract"></i></div>
                         <div>
-                            <h3 class="font-black text-2xl text-slate-800">Official Reports & Transcripts</h3>
-                            <p class="text-base text-slate-500 font-semibold mt-1">Generate custom academic profiles or print full official transcripts.</p>
+                            <h3 class="font-black text-2xl text-slate-800">Academic Progress Reports</h3>
+                            <p class="text-base text-slate-500 font-semibold mt-1">Generate custom live progress reports based on current gradebook data.</p>
                         </div>
                     </div>
                     
-                    <div class="p-6 md:p-8 grid grid-cols-1 sm:grid-cols-3 gap-6">
+                    <div class="p-6 md:p-8 grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <div class="bg-slate-50 border border-slate-200 rounded-2xl p-6 text-center shadow-sm">
                             <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Cumulative Average</p>
                             <p id="cumulativeGpa" class="text-5xl font-black text-slate-800"><i class="fa-solid fa-spinner fa-spin text-slate-300 text-3xl"></i></p>
@@ -45,12 +45,6 @@
                         <div class="bg-slate-50 border border-slate-200 rounded-2xl p-6 text-center shadow-sm">
                             <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Total Assignments</p>
                             <p id="totalAssignments" class="text-5xl font-black text-indigo-600"><i class="fa-solid fa-spinner fa-spin text-indigo-200 text-3xl"></i></p>
-                        </div>
-                        <div class="bg-slate-50 border border-slate-200 rounded-2xl p-6 flex flex-col items-center justify-center shadow-sm">
-                            <button id="generateTranscriptBtn" class="w-full h-full bg-slate-800 hover:bg-slate-900 text-white font-black px-6 py-4 rounded-xl shadow-md transition flex flex-col items-center justify-center gap-3">
-                                <i class="fa-solid fa-file-lines text-3xl"></i>
-                                <span class="text-base tracking-wide">Print Full Transcript</span>
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -104,7 +98,7 @@
                             <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3 max-w-lg">
                                 <i class="fa-solid fa-circle-info text-amber-500 text-lg"></i>
                                 <p class="text-xs md:text-sm text-amber-800 font-semibold leading-snug m-0">
-                                    Documents are generated from the live gradebook. For an officially sealed copy, contact administration.
+                                    Documents are generated from the live gradebook. For an officially sealed copy or final transcript, contact administration.
                                 </p>
                             </div>
                             
