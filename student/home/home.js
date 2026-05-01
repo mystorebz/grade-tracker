@@ -31,7 +31,7 @@ function standingLabel(avg) {
     if (avg >= 80) return { label: 'Good Standing',    icon: 'fa-thumbs-up',           bg: 'bg-blue-50',    border: 'border-blue-200',    text: 'text-blue-700',    sub: 'text-blue-500'    };
     if (avg >= 70) return { label: 'On Track',         icon: 'fa-arrow-right',         bg: 'bg-teal-50',    border: 'border-teal-200',    text: 'text-teal-700',    sub: 'text-teal-500'    };
     if (avg >= 65) return { label: 'Needs Attention',  icon: 'fa-eye',                 bg: 'bg-amber-50',   border: 'border-amber-200',   text: 'text-amber-700',   sub: 'text-amber-500'   };
-    return               { label: 'At Risk',           icon: 'fa-triangle-exclamation', bg: 'bg-red-50',     border: 'border-red-200',     text: 'text-red-700',     sub: 'text-red-500'     };
+    return               { label: 'At Risk',          icon: 'fa-triangle-exclamation', bg: 'bg-red-50',     border: 'border-red-200',     text: 'text-red-700',     sub: 'text-red-500'     };
 }
 
 function timeAgo(ds) {
@@ -66,9 +66,9 @@ async function loadDashboardData() {
         document.getElementById('displayStudentClass').textContent = session.studentData.className || 'Unassigned';
 
         if (!activeSemesterId) {
-            activityListEl.innerHTML = `<p class="text-amber-600 font-bold text-center">No active semester set by the school.</p>`;
+            activityListEl.innerHTML = `<p class="text-amber-600 font-bold text-lg text-center">No active semester set by the school.</p>`;
             document.getElementById('analyticsLoader').innerHTML =
-                '<p class="text-xs font-bold text-amber-500 text-center">No active grading period set.</p>';
+                '<p class="text-base font-bold text-amber-500 text-center">No active grading period set.</p>';
             return;
         }
 
@@ -141,9 +141,9 @@ async function loadDashboardData() {
 
     } catch (error) {
         console.error('[StudentHome] Dashboard error:', error);
-        activityListEl.innerHTML = `<p class="text-red-500 font-bold text-center">Failed to load dashboard data.</p>`;
+        activityListEl.innerHTML = `<p class="text-red-500 font-bold text-lg text-center">Failed to load dashboard data.</p>`;
         document.getElementById('analyticsLoader').innerHTML =
-            '<p class="text-xs font-bold text-red-500 text-center">Analytics failed to load.</p>';
+            '<p class="text-base font-bold text-red-500 text-center">Analytics failed to load.</p>';
     }
 }
 
@@ -151,8 +151,8 @@ async function loadDashboardData() {
 function renderActivityFeed(recent) {
     if (!recent.length) {
         activityListEl.innerHTML = `
-            <div class="text-center py-6 text-slate-400 font-semibold">
-                <i class="fa-solid fa-mug-hot text-2xl mb-2 block text-slate-300"></i>
+            <div class="text-center py-10 text-slate-400 font-semibold text-lg">
+                <i class="fa-solid fa-mug-hot text-4xl mb-4 block text-slate-300"></i>
                 No new grades posted in the last 7 days.
             </div>`;
         return;
@@ -164,28 +164,28 @@ function renderActivityFeed(recent) {
         const timeStr  = g.createdAt ? timeAgo(g.createdAt) : g.date;
         const col      = gradeColor(pct);
         const adminTag = g.enteredByAdmin
-            ? `<span class="text-[9px] font-black text-blue-500 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded ml-1">Admin entry</span>`
+            ? `<span class="text-xs font-black text-blue-500 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded ml-2">Admin entry</span>`
             : '';
         const rubric  = g.teacherId ? (teacherRubricsCache[g.teacherId] || []) : [];
         const typeDef = rubric.find(t => t.name && g.type && t.name.toLowerCase() === g.type.toLowerCase());
         const weightTag = typeDef ? ` (${typeDef.weight}%)` : '';
 
         return `
-        <div class="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl shadow-sm hover:shadow-md hover:bg-white transition cursor-pointer"
+        <div class="flex items-center justify-between p-5 bg-slate-50 border border-slate-100 rounded-2xl shadow-sm hover:shadow-md hover:bg-white transition cursor-pointer"
              onclick="window.location.href='../grades/grades.html'">
-            <div class="flex items-center gap-4">
-                <div class="h-11 w-11 bg-indigo-600 text-white rounded-xl flex items-center justify-center text-lg font-black shadow-sm flex-shrink-0">
+            <div class="flex items-center gap-5">
+                <div class="h-14 w-14 bg-indigo-600 text-white rounded-xl flex items-center justify-center text-2xl font-black shadow-sm flex-shrink-0">
                     ${g.subject ? escHtml(g.subject.charAt(0).toUpperCase()) : '?'}
                 </div>
                 <div>
-                    <p class="text-[10px] font-black text-indigo-600 uppercase tracking-wider mb-0.5">${escHtml(g.subject || 'Uncategorized')}</p>
-                    <p class="font-black text-slate-800 text-sm">${escHtml(g.title || '—')}${adminTag}</p>
-                    <p class="text-xs text-slate-400 font-semibold mt-0.5">${escHtml(tName)} · ${escHtml(g.type || '')}${weightTag} · ${timeStr}</p>
+                    <p class="text-xs font-black text-indigo-600 uppercase tracking-wider mb-1">${escHtml(g.subject || 'Uncategorized')}</p>
+                    <p class="font-black text-slate-800 text-base">${escHtml(g.title || '—')}${adminTag}</p>
+                    <p class="text-sm text-slate-400 font-semibold mt-1">${escHtml(tName)} · ${escHtml(g.type || '')}${weightTag} · ${timeStr}</p>
                 </div>
             </div>
             <div class="text-right flex-shrink-0 ml-4">
-                <span class="font-black text-lg ${col.text}">${g.score}/${g.max}</span>
-                <p class="text-xs font-bold text-slate-400">${pct}%</p>
+                <span class="font-black text-xl md:text-2xl ${col.text}">${g.score}/${g.max}</span>
+                <p class="text-sm font-bold text-slate-400">${pct}%</p>
             </div>
         </div>`;
     }).join('');
@@ -198,22 +198,22 @@ function renderAnalytics(grades, subjectAverages, overallAvg) {
 
     if (!grades.length || overallAvg === null) {
         loader.innerHTML = `
-            <i class="fa-solid fa-chart-pie text-2xl text-slate-300 mb-3 block"></i>
-            <p class="text-sm font-bold text-slate-400">No grade data yet for this period.</p>`;
+            <i class="fa-solid fa-chart-pie text-4xl text-slate-300 mb-4 block"></i>
+            <p class="text-base font-bold text-slate-400">No grade data yet for this period.</p>`;
         return;
     }
 
     // ── Standing banner ───────────────────────────────────────────────────
     const st = standingLabel(overallAvg);
     document.getElementById('standingBanner').className =
-        `rounded-3xl p-5 border flex items-center gap-4 ${st.bg} ${st.border}`;
+        `rounded-3xl p-6 md:p-8 border flex items-center gap-6 ${st.bg} ${st.border}`;
     document.getElementById('standingBanner').innerHTML = `
-        <div class="w-12 h-12 rounded-2xl ${st.bg} border ${st.border} flex items-center justify-center flex-shrink-0">
-            <i class="fa-solid ${st.icon} ${st.text} text-xl"></i>
+        <div class="w-16 h-16 rounded-2xl ${st.bg} border ${st.border} flex items-center justify-center flex-shrink-0">
+            <i class="fa-solid ${st.icon} ${st.text} text-3xl"></i>
         </div>
         <div>
-            <p class="font-black ${st.text} text-lg">${st.label}</p>
-            <p class="${st.sub} text-sm font-semibold">Your overall term average is <strong>${overallAvg}%</strong> across ${Object.keys(subjectAverages).length} subject${Object.keys(subjectAverages).length !== 1 ? 's' : ''}.</p>
+            <p class="font-black ${st.text} text-xl">${st.label}</p>
+            <p class="${st.sub} text-base font-semibold mt-1">Your overall term average is <strong>${overallAvg}%</strong> across ${Object.keys(subjectAverages).length} subject${Object.keys(subjectAverages).length !== 1 ? 's' : ''}.</p>
         </div>`;
 
     // ── Subject performance bars ──────────────────────────────────────────
@@ -223,16 +223,16 @@ function renderAnalytics(grades, subjectAverages, overallAvg) {
             const col = gradeColor(avg);
             return `
             <div>
-                <div class="flex justify-between items-center mb-1">
-                    <span class="text-xs font-black text-slate-700">${escHtml(sub)}</span>
-                    <span class="text-xs font-black ${col.text}">${avg}%</span>
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-sm font-black text-slate-700">${escHtml(sub)}</span>
+                    <span class="text-sm font-black ${col.text}">${avg}%</span>
                 </div>
-                <div class="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                <div class="h-3 w-full bg-slate-100 rounded-full overflow-hidden">
                     <div class="h-full ${col.bg} rounded-full transition-all duration-500" style="width:${Math.min(avg,100)}%"></div>
                 </div>
             </div>`;
         }).join('')
-        : '<p class="text-xs font-bold text-slate-400">No subject data.</p>';
+        : '<p class="text-sm font-bold text-slate-400">No subject data.</p>';
 
     // ── Grade type breakdown ──────────────────────────────────────────────
     const byType = {};
@@ -252,19 +252,19 @@ function renderAnalytics(grades, subjectAverages, overallAvg) {
             const col = gradeColor(t.avg);
             return `
             <div>
-                <div class="flex justify-between items-center mb-1">
-                    <span class="text-xs font-black text-slate-700">${escHtml(t.type)}</span>
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-sm font-black text-slate-700">${escHtml(t.type)}</span>
                     <div class="text-right">
-                        <span class="text-xs font-black ${col.text}">${t.avg}%</span>
-                        <span class="text-[10px] text-slate-400 font-semibold ml-1">(${t.count})</span>
+                        <span class="text-sm font-black ${col.text}">${t.avg}%</span>
+                        <span class="text-xs text-slate-400 font-semibold ml-1">(${t.count})</span>
                     </div>
                 </div>
-                <div class="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                <div class="h-3 w-full bg-slate-100 rounded-full overflow-hidden">
                     <div class="h-full ${col.bg} rounded-full transition-all duration-500" style="width:${Math.min(t.avg,100)}%"></div>
                 </div>
             </div>`;
         }).join('')
-        : '<p class="text-xs font-bold text-slate-400">No assignment type data.</p>';
+        : '<p class="text-sm font-bold text-slate-400">No assignment type data.</p>';
 
     // ── Strengths & needs improvement ────────────────────────────────────
     const strengths    = subjectsSorted.filter(([, avg]) => avg >= 75).slice(0, 3);
@@ -272,19 +272,19 @@ function renderAnalytics(grades, subjectAverages, overallAvg) {
 
     document.getElementById('strengthsList').innerHTML = strengths.length
         ? strengths.map(([sub, avg]) => `
-            <div class="flex items-center justify-between bg-white rounded-xl px-4 py-2.5 border border-emerald-100">
-                <span class="text-sm font-black text-slate-700">${escHtml(sub)}</span>
-                <span class="text-sm font-black text-emerald-600">${avg}%</span>
+            <div class="flex items-center justify-between bg-white rounded-xl px-5 py-3 border border-emerald-100">
+                <span class="text-base font-black text-slate-700">${escHtml(sub)}</span>
+                <span class="text-base font-black text-emerald-600">${avg}%</span>
             </div>`).join('')
-        : '<p class="text-xs font-semibold text-emerald-700 opacity-60">Keep working — strengths will appear here.</p>';
+        : '<p class="text-sm font-semibold text-emerald-700 opacity-60">Keep working — strengths will appear here.</p>';
 
     document.getElementById('improvementList').innerHTML = improvements.length
         ? improvements.map(([sub, avg]) => `
-            <div class="flex items-center justify-between bg-white rounded-xl px-4 py-2.5 border border-red-100">
-                <span class="text-sm font-black text-slate-700">${escHtml(sub)}</span>
-                <span class="text-sm font-black text-red-500">${avg}%</span>
+            <div class="flex items-center justify-between bg-white rounded-xl px-5 py-3 border border-red-100">
+                <span class="text-base font-black text-slate-700">${escHtml(sub)}</span>
+                <span class="text-base font-black text-red-500">${avg}%</span>
             </div>`).join('')
-        : '<p class="text-xs font-semibold text-red-700 opacity-60">All subjects are above 75% — great work!</p>';
+        : '<p class="text-sm font-semibold text-red-700 opacity-60">All subjects are above 75% — great work!</p>';
 
     // Reveal analytics
     loader.classList.add('hidden');
