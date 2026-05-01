@@ -1,4 +1,4 @@
-import { logout } from './auth.js';
+import { logout, requireAuth } from './auth.js';
 
 /**
  * Injects the Family/Student Sidebar and Topbar into the page.
@@ -7,14 +7,24 @@ import { logout } from './auth.js';
  * @param {string} pageSub - The small subtitle for the topbar
  */
 export function injectStudentLayout(activePageId, pageTitle, pageSub) {
+    
+    // Retrieve session data to populate sidebar dynamically from the secure student document
+    const session = requireAuth('student', '../login.html');
+    const studentName = session?.studentData?.name || 'Loading...';
+    const studentInitial = session?.studentData?.name ? session.studentData.name.charAt(0).toUpperCase() : 'S';
+    const studentId = session?.studentId || '—';
+    const studentClass = session?.studentData?.className || '—';
+    const schoolId = session?.schoolId || '—';
+
     // 1. The Family/Student Sidebar HTML
     const sidebarHTML = `
       <aside id="sidebar" class="text-slate-300 flex flex-col shadow-2xl z-20 flex-shrink-0 h-screen" style="width:272px; background: linear-gradient(180deg, #1e1b4b 0%, #312e81 50%, #3730a3 100%); border-right: 1px solid rgba(255,255,255,0.04);">
         <div class="p-5 border-b border-white/5">
           <div class="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col items-center text-center">
-            <div id="studentAvatar" class="h-14 w-14 bg-indigo-600 border border-indigo-400/50 rounded-xl flex items-center justify-center text-2xl font-black text-white mb-3 shadow-inner">S</div>
-            <h2 id="displayStudentName" class="font-black text-white text-base leading-tight">Loading...</h2>
-            <p id="displayStudentClass" class="text-xs text-indigo-300 font-bold mt-1">—</p>
+            <div id="studentAvatar" class="h-14 w-14 bg-indigo-600 border border-indigo-400/50 rounded-xl flex items-center justify-center text-2xl font-black text-white mb-3 shadow-inner">${studentInitial}</div>
+            <p class="text-[11px] text-indigo-300 font-mono font-bold mb-1 tracking-wider">ID: ${studentId}</p>
+            <h2 id="displayStudentName" class="font-black text-white text-base leading-tight">${studentName}</h2>
+            <p id="displayStudentClass" class="text-xs text-indigo-300 font-bold mt-1">${studentClass}</p>
           </div>
         </div>
         <nav class="flex-1 p-4 space-y-1 overflow-y-auto mt-1">
@@ -34,6 +44,7 @@ export function injectStudentLayout(activePageId, pageTitle, pageSub) {
           <div class="rounded-xl p-3 text-center" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.2)">
             <p class="text-[10px] text-indigo-400 font-black uppercase tracking-widest">School</p>
             <p id="displaySchoolName" class="text-white font-black text-sm mt-0.5 truncate px-2">Loading...</p>
+            <p class="text-[10px] text-indigo-300 font-mono mt-1.5 opacity-80 tracking-wide px-2">ID: ${schoolId}</p>
           </div>
           <button id="logoutBtn" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 text-slate-300 hover:bg-rose-500 hover:text-white transition font-black text-sm border border-white/10 hover:border-rose-500">
             <i class="fa-solid fa-power-off"></i> Log Out
