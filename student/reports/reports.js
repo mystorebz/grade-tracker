@@ -1,5 +1,5 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, getDocs, doc, getDoc, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectStudentLayout } from '../../assets/js/layout-student.js';
 import { letterGrade, gradeColorClass, calculateWeightedAverage } from '../../assets/js/utils.js';
@@ -10,21 +10,24 @@ const session = requireAuth('student', '../login.html');
 // Inject layout
 injectStudentLayout('reports', 'Official Reports', 'Download and print academic records');
 
-// Update UI with session data
-document.getElementById('displayStudentName').innerText = session.studentData.name || 'Student';
-document.getElementById('studentAvatar').innerText = (session.studentData.name || 'S').charAt(0).toUpperCase();
-document.getElementById('displayStudentClass').innerText = session.studentData.className ? `Class: ${session.studentData.className}` : 'Unassigned Class';
-
 // Elements
-const reportSemesterSelect = document.getElementById('reportSemesterSelect');
-const generateReportCardBtn = document.getElementById('generateReportCardBtn');
+const buildReportBtn = document.getElementById('buildReportBtn');
+const printCustomReportBtn = document.getElementById('printCustomReportBtn');
 const generateTranscriptBtn = document.getElementById('generateTranscriptBtn');
 
-// State
+// State Variables
 let allSemesters = [];
 let allGrades = [];
 let schoolData = {};
-let teacherRubricsCache = {}; // Cache for individual teacher rubrics
+let teacherRubricsCache = {}; 
+let currentQueryResults = []; 
+let currentQueryMeta = {};
+
+// Escapes HTML to prevent XSS
+function escHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
 
 // ── 2. INITIALIZE DATA ────────────────────────────────────────────────────
 async function initializeReports() {
@@ -33,31 +36,26 @@ async function initializeReports() {
         const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
         if (schoolSnap.exists()) {
             schoolData = schoolSnap.data();
-            document.getElementById('displaySchoolName').innerText = schoolData.schoolName;
+            document.getElementById('displaySchoolName').innerText = schoolData.schoolName || 'ConnectUs School';
         }
+        document.getElementById('displayStudentName').innerText = session.studentData.name || 'Student';
+        document.getElementById('displayStudentClass').innerText = session.studentData.className || 'Unassigned Class';
 
         // Fetch Semesters
         const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
         allSemesters = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
 
-        // Populate Topbar Active Period Display
         const activeSemObj = allSemesters.find(s => s.id === schoolData.activeSemesterId);
         document.getElementById('activeSemesterDisplay').textContent = activeSemObj ? activeSemObj.name : 'Unknown';
 
-        // Populate Dropdown
-        reportSemesterSelect.innerHTML = allSemesters.map(s => 
-            `<option value="${s.id}">${s.name}${s.id === schoolData.activeSemesterId ? ' (Current)' : ''}</option>`
-        ).join('');
-        
-        if (schoolData.activeSemesterId) {
-            reportSemesterSelect.value = schoolData.activeSemesterId;
-        }
-
-        // Fetch all grades for the student
-        const gSnap = await getDocs(collection(db, 'schools', session.schoolId, 'students', session.studentId, 'grades'));
+        // Fetch ALL grades for the student globally matching home.js logic
+        const gSnap = await getDocs(query(
+            collection(db, 'students', session.studentId, 'grades'),
+            where('schoolId', '==', session.schoolId)
+        ));
         allGrades = gSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        // Pre-fetch all teacher rubrics for accurate GPA calculation
+        // Pre-fetch teacher rubrics for GPA calculations
         const uniqueTeacherIds = [...new Set(allGrades.map(g => g.teacherId).filter(Boolean))];
         for (const tId of uniqueTeacherIds) {
             if (!teacherRubricsCache[tId]) {
@@ -70,7 +68,7 @@ async function initializeReports() {
             }
         }
 
-        // Calculate High-Level Stats (Cumulative GPA using Weighted Math)
+        // Calculate High-Level Stats
         document.getElementById('totalAssignments').textContent = allGrades.length;
         
         if (allGrades.length > 0) {
@@ -96,11 +94,9 @@ async function initializeReports() {
             }
 
             const totalAvg = subjCount > 0 ? Math.round(sumSubjAvgs / subjCount) : 0;
-
             const gpaEl = document.getElementById('cumulativeGpa');
             gpaEl.textContent = `${totalAvg}%`;
             
-            // Add a little color depending on GPA
             if (totalAvg >= 90) gpaEl.classList.add('text-emerald-600');
             else if (totalAvg >= 80) gpaEl.classList.add('text-blue-600');
             else if (totalAvg >= 70) gpaEl.classList.add('text-teal-600');
@@ -110,116 +106,280 @@ async function initializeReports() {
             document.getElementById('cumulativeGpa').textContent = 'N/A';
         }
 
+        // Populate Custom Builder Checkboxes
+        populateCheckboxes();
+
     } catch (e) {
         console.error("Error loading report data:", e);
-        reportSemesterSelect.innerHTML = '<option value="">Error loading data</option>';
     }
 }
 
-// ── 3. PRINT GENERATOR LOGIC ──────────────────────────────────────────────
-function generatePrintableDocument(isTranscript = false) {
-    if (allGrades.length === 0) {
-        alert("No academic records found to generate a report.");
+// ── 3. QUERY BUILDER UI LOGIC ─────────────────────────────────────────────
+function buildCheckbox(idPrefix, value, label, isChecked = true) {
+    const safeId = `${idPrefix}-${value.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    return `
+    <label class="flex items-center gap-3 p-3 md:p-3.5 border border-slate-200 rounded-xl cursor-pointer transition ${isChecked ? 'bg-indigo-50 border-indigo-200' : 'bg-white hover:bg-slate-50'}" id="wrap-${safeId}">
+        <input type="checkbox" value="${escHtml(value)}" ${isChecked ? 'checked' : ''} onchange="toggleCbVisuals(this, 'wrap-${safeId}')" class="w-5 h-5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500">
+        <span class="font-bold text-slate-700 text-sm md:text-base select-none truncate" title="${escHtml(label)}">${escHtml(label)}</span>
+    </label>`;
+}
+
+window.toggleCbVisuals = function(cb, wrapId) {
+    const wrap = document.getElementById(wrapId);
+    if (cb.checked) {
+        wrap.classList.add('bg-indigo-50', 'border-indigo-200');
+        wrap.classList.remove('bg-white', 'hover:bg-slate-50');
+    } else {
+        wrap.classList.remove('bg-indigo-50', 'border-indigo-200');
+        wrap.classList.add('bg-white', 'hover:bg-slate-50');
+    }
+};
+
+window.toggleAllCheckboxes = function(containerId, state) {
+    const container = document.getElementById(containerId);
+    const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+    checkboxes.forEach(cb => {
+        cb.checked = state;
+        const wrapId = cb.closest('label').id;
+        window.toggleCbVisuals(cb, wrapId);
+    });
+};
+
+function getCheckedValues(containerId) {
+    const checkboxes = document.querySelectorAll(`#${containerId} input[type="checkbox"]:checked`);
+    return Array.from(checkboxes).map(cb => cb.value);
+}
+
+function populateCheckboxes() {
+    // Semesters
+    const semGrid = document.getElementById('rb-semester-grid');
+    semGrid.innerHTML = allSemesters.length 
+        ? allSemesters.map(s => buildCheckbox('sem', s.id, s.name, true)).join('')
+        : '<p class="text-sm font-bold text-slate-400">No periods found.</p>';
+
+    // Subjects (Unique from grades)
+    const uniqueSubjects = [...new Set(allGrades.map(g => g.subject || 'Uncategorized'))].sort();
+    const subGrid = document.getElementById('rb-subject-grid');
+    subGrid.innerHTML = uniqueSubjects.length
+        ? uniqueSubjects.map(s => buildCheckbox('sub', s, s, true)).join('')
+        : '<p class="text-sm font-bold text-slate-400">No subjects found.</p>';
+
+    // Grade Types (Unique from grades)
+    const uniqueTypes = [...new Set(allGrades.map(g => g.type || 'Uncategorized'))].sort();
+    const typeGrid = document.getElementById('rb-type-grid');
+    typeGrid.innerHTML = uniqueTypes.length
+        ? uniqueTypes.map(t => buildCheckbox('typ', t, t, true)).join('')
+        : '<p class="text-sm font-bold text-slate-400">No grade types found.</p>';
+}
+
+// ── 4. EXECUTE CUSTOM REPORT ──────────────────────────────────────────────
+async function executeCustomQuery() {
+    const selectedSems = getCheckedValues('rb-semester-grid');
+    const selectedSubs = getCheckedValues('rb-subject-grid');
+    const selectedTypes = getCheckedValues('rb-type-grid');
+
+    if (!selectedSems.length || !selectedSubs.length || !selectedTypes.length) {
+        alert("Please select at least one Period, Subject, and Grade Type.");
         return;
     }
 
-    const targetSemesterId = reportSemesterSelect.value;
-    const targetSemesterName = reportSemesterSelect.options[reportSemesterSelect.selectedIndex]?.text || 'Unknown Period';
+    buildReportBtn.disabled = true;
+    buildReportBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Processing...`;
 
-    // Group grades by Semester -> Subject
-    const bySem = {};
-    allGrades.forEach(g => {
-        const semId = g.semesterId || 'Unknown';
-        // If it's not a full transcript, filter out grades that don't match the selected semester
-        if (!isTranscript && semId !== targetSemesterId) return;
+    // Filter local grades array
+    let filteredGrades = allGrades.filter(g => 
+        selectedSems.includes(g.semesterId) && 
+        selectedSubs.includes(g.subject || 'Uncategorized') && 
+        selectedTypes.includes(g.type || 'Uncategorized')
+    );
 
-        const semName = allSemesters.find(s => s.id === semId)?.name || 'Unknown Period';
-        const sub = g.subject || 'Uncategorized';
-        
-        if (!bySem[semName]) bySem[semName] = {};
-        if (!bySem[semName][sub]) bySem[semName][sub] = [];
-        bySem[semName][sub].push(g);
-    });
+    filteredGrades.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    currentQueryResults = filteredGrades;
 
-    const docTitle = isTranscript ? "OFFICIAL ACADEMIC TRANSCRIPT" : `STUDENT REPORT CARD`;
-    const docSubtitle = isTranscript ? "Complete Academic History" : targetSemesterName.replace(' (Current)', '');
+    const semText = selectedSems.length === allSemesters.length ? 'All Periods' : `${selectedSems.length} Periods`;
+    const subText = selectedSubs.length === document.querySelectorAll('#rb-subject-grid input').length ? 'All Subjects' : `${selectedSubs.length} Subjects`;
+    
+    currentQueryMeta = { selectedSems, semText, subText };
 
-    let html = `<html><head><title>${docTitle} - ${session.studentData.name}</title>
+    document.getElementById('reportOutputMeta').textContent = `${semText} · ${subText}`;
+
+    const tbody = document.getElementById('reportTableBody');
+    if (filteredGrades.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="px-8 py-16 text-center text-slate-400 italic font-black text-lg">No records match the selected criteria.</td></tr>`;
+    } else {
+        tbody.innerHTML = filteredGrades.map(g => {
+            const pct = g.max ? Math.round((g.score / g.max) * 100) : null;
+            let textCol = 'text-slate-800';
+            if(pct !== null) {
+                if(pct >= 90) textCol = 'text-emerald-600';
+                else if(pct >= 80) textCol = 'text-blue-600';
+                else if(pct >= 70) textCol = 'text-teal-600';
+                else if(pct >= 65) textCol = 'text-amber-600';
+                else textCol = 'text-red-600';
+            }
+            const semTag = selectedSems.length > 1 ? `<br><span class="text-[11px] font-black uppercase tracking-wider text-indigo-500 mt-1 inline-block">${allSemesters.find(s=>s.id===g.semesterId)?.name || 'Unknown'}</span>` : '';
+            
+            return `
+            <tr class="hover:bg-slate-50 transition border-b border-slate-100">
+                <td class="px-8 py-5 text-sm font-black font-mono text-slate-500">${g.date || '—'} ${semTag}</td>
+                <td class="px-8 py-5"><span class="text-xs font-black bg-indigo-50 text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-lg tracking-wider">${escHtml(g.subject || '—')}</span></td>
+                <td class="px-8 py-5 font-black text-slate-800 text-base">${escHtml(g.title || '—')}</td>
+                <td class="px-8 py-5"><span class="text-xs font-black uppercase tracking-widest bg-slate-100 text-slate-500 border border-slate-200 px-3 py-1.5 rounded-lg">${escHtml(g.type || '—')}</span></td>
+                <td class="px-8 py-5 text-center font-black font-mono text-slate-800 text-base">${g.score} / ${g.max || '?'}</td>
+                <td class="px-8 py-5 text-center"><span class="font-black font-mono text-lg md:text-xl ${textCol}">${pct !== null ? pct + '%' : '—'}</span></td>
+            </tr>`;
+        }).join('');
+    }
+
+    const area = document.getElementById('reportResultsArea');
+    area.classList.remove('hidden');
+    setTimeout(() => { area.classList.remove('opacity-0'); }, 50);
+
+    buildReportBtn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles"></i> Build Report`;
+    buildReportBtn.disabled = false;
+}
+
+// ── 5. PROFESSIONAL PRINT GENERATOR ───────────────────────────────────────
+function printDocument(isTranscript = false) {
+    const gradesToPrint = isTranscript ? allGrades : currentQueryResults;
+
+    if (!gradesToPrint || gradesToPrint.length === 0) {
+        alert("No academic records found to print.");
+        return;
+    }
+
+    const docTitle = isTranscript ? "OFFICIAL ACADEMIC TRANSCRIPT" : "ACADEMIC PROFILE REPORT";
+    const docSubtitle = isTranscript ? "Complete Academic History" : `${currentQueryMeta.semText || 'Custom'} • ${currentQueryMeta.subText || 'Custom'}`;
+    const unofficalBanner = `<div style="background:#4f46e5;color:white;text-align:center;font-weight:900;letter-spacing:0.3em;padding:8px;font-size:12px;margin-bottom:20px;width:100%;">*** FAMILY PORTAL RECORD ***</div>`;
+
+    let html = `<html><head><title>${docTitle} - ${escHtml(session.studentData.name)}</title>
     <style>
-        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #1e293b; line-height: 1.5; }
-        .header { text-align: center; border-bottom: 2px solid #cbd5e1; padding-bottom: 20px; margin-bottom: 30px; }
-        .header h1 { margin: 0 0 5px 0; font-size: 24px; color: #0f172a; text-transform: uppercase; letter-spacing: 1px; }
-        .header h2 { margin: 0; font-size: 16px; color: #64748b; font-weight: normal; letter-spacing: 2px; }
-        .header h3 { margin: 5px 0 0 0; font-size: 14px; color: #4f46e5; }
-        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 40px; background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; }
-        .info-item label { display: block; font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: bold; letter-spacing: 1px; }
-        .info-item span { font-size: 14px; font-weight: bold; color: #0f172a; }
-        .sem-block { margin-bottom: 40px; page-break-inside: avoid; }
-        .sem-title { font-size: 16px; font-weight: bold; background: #312e81; color: white; padding: 8px 15px; margin: 0 0 15px 0; border-radius: 4px; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 13px; }
-        th, td { border: 1px solid #e2e8f0; padding: 10px 15px; text-align: left; }
-        th { background: #f1f5f9; color: #475569; font-weight: bold; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
-        .text-center { text-align: center; }
-        .text-right { text-align: right; }
-        .avg-row { background: #f8fafc; font-weight: bold; }
-        .footer { margin-top: 50px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 15px; }
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500;700&display=swap');
+        
+        @media print {
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            body { padding: 0; margin: 0; }
+            @page { margin: 1.5cm; }
+        }
+        
+        body { font-family: 'DM Sans', sans-serif; padding: 40px; color: #0f172a; line-height: 1.5; background: white; }
+        .header { display: flex; flex-direction: column; align-items: center; border-bottom: 3px solid #0f172a; padding-bottom: 25px; margin-bottom: 30px; }
+        .header h1 { margin: 0 0 6px 0; font-size: 26px; color: #0f172a; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 900; }
+        .header h2 { margin: 0 0 4px 0; font-size: 16px; color: #4f46e5; font-weight: 800; letter-spacing: 0.15em; text-transform: uppercase; }
+        .header h3 { margin: 0; font-size: 13px; color: #64748b; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+        
+        .info-grid { background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .info-grid div { font-size: 15px; color: #0f172a; font-weight: 700; }
+        .info-grid strong { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.15em; display: block; margin-bottom: 4px; font-weight: 800; }
+        
+        .sem-block { margin-bottom: 40px; page-break-inside: avoid; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; }
+        .sem-title { font-size: 14px; font-weight: 800; background: #0f172a; color: white; text-transform: uppercase; letter-spacing: 0.15em; padding: 12px 16px; margin: 0; }
+        
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border-bottom: 1px solid #f1f5f9; padding: 14px 16px; text-align: left; font-size: 14px; font-weight: 600; }
+        th { background: #f8fafc; color: #64748b; font-weight: 800; text-transform: uppercase; font-size: 11px; letter-spacing: 0.1em; border-bottom: 2px solid #cbd5e1; }
+        .tc { text-align: center; }
+        .tr { text-align: right; }
+        .font-mono { font-family: 'DM Mono', monospace; font-weight: 700; }
+        .bg-light { background: #f8fafc; }
+        
+        .footer { font-size: 11px; color: #94a3b8; margin-top: 50px; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px; font-weight: 600; font-style: italic; }
     </style></head><body>
 
+    ${unofficalBanner}
+
     <div class="header">
-        <h1>${schoolData.schoolName || 'ConnectUs School'}</h1>
+        <h1>${escHtml(schoolData.schoolName || 'ConnectUs School')}</h1>
         <h2>${docTitle}</h2>
         <h3>${docSubtitle}</h3>
     </div>
 
     <div class="info-grid">
-        <div class="info-item"><label>Student Name</label><span>${session.studentData.name || 'Unknown'}</span></div>
-        <div class="info-item"><label>Student ID / PIN</label><span>${session.studentData.pin || 'N/A'}</span></div>
-        <div class="info-item"><label>Class</label><span>${session.studentData.className || 'Unassigned'}</span></div>
-        <div class="info-item"><label>Date Generated</label><span>${new Date().toLocaleDateString()}</span></div>
+        <div><strong>Student Name</strong> ${escHtml(session.studentData.name || 'Unknown')}</div>
+        <div><strong>Student ID / PIN</strong> ${escHtml(session.studentData.pin || 'N/A')}</div>
+        <div><strong>Homeroom / Class</strong> ${escHtml(session.studentData.className || 'Unassigned')}</div>
+        <div><strong>Date Generated</strong> ${new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}</div>
     </div>`;
 
-    if (Object.keys(bySem).length === 0) {
-        html += `<p style="text-align:center; color:#64748b; font-style:italic; padding: 40px;">No academic grades recorded for the selected criteria.</p>`;
-    } else {
-        for (let semName in bySem) {
-            html += `<div class="sem-block"><h3 class="sem-title">${semName}</h3><table>
-                <thead><tr><th>Subject</th><th class="text-center">Assignments</th><th class="text-center">Average (%)</th><th class="text-center">Letter Grade</th></tr></thead><tbody>`;
+    // Group grades by Semester
+    const bySem = {};
+    gradesToPrint.forEach(g => {
+        const semId = g.semesterId || 'Unknown';
+        const semName = allSemesters.find(s => s.id === semId)?.name || 'Unknown Period';
+        if (!bySem[semName]) bySem[semName] = [];
+        bySem[semName].push(g);
+    });
+
+    for (let semName in bySem) {
+        html += `<div class="sem-block">
+            <h3 class="sem-title">${escHtml(semName)}</h3>
+            <table>
+                <thead><tr>
+                    <th>Subject</th>
+                    <th>Assignment</th>
+                    <th class="tc">Type</th>
+                    <th class="tc">Score</th>
+                    <th class="tc">%</th>
+                </tr></thead>
+                <tbody>`;
+        
+        let semValidCount = 0;
+        
+        // If it's a transcript, we might want to aggregate subjects. 
+        // But to keep it detailed and matching the teacher side: Print individual assignments
+        bySem[semName].sort((a, b) => (a.date || '').localeCompare(b.date || '')).forEach(g => {
+            const pct = g.max ? Math.round((g.score / g.max) * 100) : null;
+            if (pct !== null) semValidCount++;
             
-            let semTotalPct = 0; let semSubjCount = 0;
-            
-            // Sort subjects alphabetically
-            const subjects = Object.keys(bySem[semName]).sort();
-            
-            for (let sub of subjects) {
-                const sGrades = bySem[semName][sub];
-                
-                // Fetch specific teacher rubric for this subject row
-                const tId = sGrades[0]?.teacherId;
-                const rubric = tId ? (teacherRubricsCache[tId] || []) : [];
-                
-                const avgRaw = calculateWeightedAverage(sGrades, rubric);
-                const avg = Math.round(avgRaw !== null ? avgRaw : 0);
-                
-                semTotalPct += avg; semSubjCount++;
-                html += `<tr><td>${sub}</td><td class="text-center">${sGrades.length}</td><td class="text-center">${avg}%</td><td class="text-center">${letterGrade(avg)}</td></tr>`;
-            }
-            const semAvg = Math.round(semTotalPct / semSubjCount);
-            html += `<tr class="avg-row"><td colspan="2" class="text-right">PERIOD AVERAGE:</td><td class="text-center">${semAvg}%</td><td class="text-center">${letterGrade(semAvg)}</td></tr>`;
-            html += `</tbody></table></div>`;
+            html += `<tr>
+                <td>${escHtml(g.subject)}</td>
+                <td>${escHtml(g.title)}<br><span style="font-size:11px;color:#94a3b8">${g.date || ''}</span></td>
+                <td class="tc" style="font-size:11px;color:#64748b;text-transform:uppercase;">${escHtml(g.type)}</td>
+                <td class="tc font-mono">${g.score}/${g.max}</td>
+                <td class="tc font-mono">${pct !== null ? pct + '%' : '—'}</td>
+            </tr>`;
+        });
+
+        // Subject averages for this semester
+        const bySub = {};
+        bySem[semName].forEach(g => {
+            const sub = g.subject || 'Uncategorized';
+            if (!bySub[sub]) bySub[sub] = [];
+            bySub[sub].push(g);
+        });
+
+        let semSum = 0; let semSubCount = 0;
+        for(let sub in bySub) {
+            const tId = bySub[sub][0]?.teacherId;
+            const rubric = tId ? (teacherRubricsCache[tId] || []) : [];
+            const avg = calculateWeightedAverage(bySub[sub], rubric);
+            if(avg !== null) { semSum += avg; semSubCount++; }
         }
+
+        const semAvg = semSubCount > 0 ? Math.round(semSum / semSubCount) : null;
+
+        if (semAvg !== null) {
+            html += `<tr>
+                <td colspan="4" class="tr" style="font-size:12px;font-weight:900;color:#64748b;text-transform:uppercase;letter-spacing:0.1em;padding:16px;">Term Average</td>
+                <td class="tc font-mono bg-light" style="font-size:16px;">${semAvg}% (${letterGrade(semAvg)})</td>
+            </tr>`;
+        }
+        
+        html += `</tbody></table></div>`;
     }
 
-    html += `<div class="footer">Document generated securely via ConnectUs Family Portal.<br>For an officially sealed copy, please contact the administration office.</div></body></html>`;
+    html += `<div class="footer">Generated securely by the ConnectUs Family Portal.<br>This document does not constitute a certified administrative transcript unless signed and stamped by school administration.</div></body></html>`;
     
     const w = window.open('', '_blank'); 
     w.document.write(html); 
     w.document.close();
-    setTimeout(() => w.print(), 500);
+    setTimeout(() => w.print(), 600);
 }
 
-// ── 4. EVENT LISTENERS ────────────────────────────────────────────────────
-generateReportCardBtn.addEventListener('click', () => generatePrintableDocument(false));
-generateTranscriptBtn.addEventListener('click', () => generatePrintableDocument(true));
+// ── 6. EVENT LISTENERS ────────────────────────────────────────────────────
+buildReportBtn.addEventListener('click', executeCustomQuery);
+printCustomReportBtn.addEventListener('click', () => printDocument(false));
+generateTranscriptBtn.addEventListener('click', () => printDocument(true));
 
 // ── INITIALIZE ────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', initializeReports);
