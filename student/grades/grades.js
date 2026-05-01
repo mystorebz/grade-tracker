@@ -191,15 +191,9 @@ function renderTable(bySub) {
             </div>`;
         }).join('');
 
-        // Rubric chips
-        const rubricLine = teacherRubric.length
-            ? teacherRubric.map(r => `<span class="rubric-chip">${esc(r.name)} ${r.weight}%</span>`).join('')
-            : '<span class="rubric-chip" style="background:#f1f5f9;color:#64748b;border-color:#e2e8f0;">Standard grading</span>';
-
         const subjKey = `subj-${subject.replace(/[^a-z0-9]/gi,'-')}`;
 
         return `
-        <!-- Subject row -->
         <div class="subj-row" id="${subjKey}" onclick="window.toggleSubject('${subjKey}')">
             <div class="subj-row-name">
                 <div class="subj-initial">${esc(subject.charAt(0).toUpperCase())}</div>
@@ -217,7 +211,6 @@ function renderTable(bySub) {
             <div class="subj-row-chev"><i class="fa-solid fa-chevron-down"></i></div>
         </div>
 
-        <!-- Type section (hidden by default) -->
         <div class="type-section" id="types-${subjKey}">
             <div class="type-table-head">
                 <span>Grade Type</span>
@@ -226,10 +219,6 @@ function renderTable(bySub) {
                 <span style="text-align:right;">Details</span>
             </div>
             ${typeRowsHtml}
-            <div class="rubric-footer">
-                <span style="font-size:9.5px;font-weight:700;color:#7c83c8;text-transform:uppercase;letter-spacing:0.08em;margin-right:4px;">Rubric:</span>
-                ${rubricLine}
-            </div>
         </div>`;
     }).join('');
 }
