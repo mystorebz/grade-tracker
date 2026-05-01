@@ -25,6 +25,10 @@ export function injectStudentLayout(activePageId, pageTitle, pageSub) {
           
           <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-3 mt-6 mb-2">Records & Reports</p>
           <a href="../analytics/analytics.html" id="nav-analytics" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-star-half-stroke w-5 text-base opacity-70"></i> My Evaluations</a>
+          <a href="../reports/reports.html" id="nav-reports" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-file-lines w-5 text-base opacity-70"></i> Reports</a>
+
+          <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-3 mt-6 mb-2">Account</p>
+          <a href="../settings/settings.html" id="nav-settings" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-gear w-5 text-base opacity-70"></i> Settings</a>
         </nav>
         <div class="p-4 border-t border-white/5 space-y-3">
           <div class="rounded-xl p-3 text-center" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.2)">
