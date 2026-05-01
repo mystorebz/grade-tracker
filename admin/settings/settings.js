@@ -303,14 +303,15 @@ document.getElementById('createSubAdminBtn').addEventListener('click', async () 
         }
 
         // 2. STRICT GLOBAL EMAIL UNIQUENESS CHECK
-        const [tSnap, sSnap, aSnap] = await Promise.all([
+        const [tSnap, sSnap, aSnap, schoolSnap] = await Promise.all([
             getDocs(query(collection(db, 'teachers'), where('email', '==', email))),
             getDocs(query(collection(db, 'students'), where('email', '==', email))),
-            getDocs(query(collection(db, 'schools', session.schoolId, 'admins'), where('email', '==', email)))
+            getDocs(query(collection(db, 'schools', session.schoolId, 'admins'), where('email', '==', email))),
+            getDocs(query(collection(db, 'schools'), where('contactEmail', '==', email))) // <-- NEW SUPER ADMIN CHECK
         ]);
 
-        if (!tSnap.empty || !sSnap.empty || !aSnap.empty) {
-            showMsg('createAdminMsg', 'This email is already in use by an existing user.', true);
+        if (!tSnap.empty || !sSnap.empty || !aSnap.empty || !schoolSnap.empty) {
+            showMsg('createAdminMsg', 'This email is already in use by an existing user or Super Admin.', true);
             btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-user-plus mr-1.5"></i>Create Sub-Admin';
             return;
         }
