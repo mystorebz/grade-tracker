@@ -20,7 +20,7 @@ export function injectStudentLayout(activePageId, pageTitle, pageSub) {
         <nav class="flex-1 p-4 space-y-1 overflow-y-auto mt-1">
           <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-3 mb-2">Main Menu</p>
           <a href="../home/home.html" id="nav-overview" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-house w-5 text-base opacity-90"></i> Dashboard</a>
-          <a href="../gradebook/gradebook.html" id="nav-gradebook" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-book-open w-5 text-base opacity-70"></i> Current Grades</a>
+          <a href="../gradebook/grades.html" id="nav-gradebook" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-book-open w-5 text-base opacity-70"></i> Current Grades</a>
           <a href="../history/history.html" id="nav-history" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-clock-rotate-left w-5 text-base opacity-70"></i> Academic History</a>
           
           <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-3 mt-6 mb-2">Records & Reports</p>
