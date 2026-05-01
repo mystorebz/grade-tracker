@@ -7,12 +7,13 @@ import { calculateWeightedAverage, letterGrade } from '../../assets/js/utils.js'
 // ── 1. SAFE INIT & AUTH ───────────────────────────────────────────────────
 const session = requireAuth('student', '../login.html');
 
-if (session) {
-    // 1. Inject the layout first
-    injectStudentLayout('analytics', 'Evaluations', 'Review official teacher evaluations and performance matrices');
+// Bulletproof initialization that handles module deferred loading correctly
+async function initPage() {
+    try {
+        // 1. Inject the layout first
+        injectStudentLayout('analytics', 'Evaluations', 'Review official teacher evaluations and performance matrices');
 
-    // 2. Wrap DOM updates in an event listener or check to ensure elements exist
-    document.addEventListener('DOMContentLoaded', () => {
+        // 2. Safely populate the sidebar elements now that they exist
         const elName = document.getElementById('displayStudentName');
         if (elName) elName.innerText = session.studentData?.name || 'Student';
 
@@ -22,9 +23,20 @@ if (session) {
         const elClass = document.getElementById('displayStudentClass');
         if (elClass) elClass.innerText = session.studentData?.className ? `Class: ${session.studentData.className}` : 'Unassigned Class';
 
-        // Start loading the actual data
-        loadAnalyticsData();
-    });
+        // 3. Start fetching data
+        await loadAnalyticsData();
+    } catch (error) {
+        console.error("Critical error during page initialization:", error);
+    }
+}
+
+// Trigger initialization safely based on current document state
+if (session) {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initPage);
+    } else {
+        initPage();
+    }
 }
 
 // State Caches
@@ -82,16 +94,17 @@ async function loadAnalyticsData() {
 
         // Populate Dropdown
         if (allSemesters.length === 0) {
-            periodSelect.innerHTML = '<option value="">No periods available</option>';
-            loader.classList.add('hidden');
+            if (periodSelect) periodSelect.innerHTML = '<option value="">No periods available</option>';
+            if (loader) loader.classList.add('hidden');
             return;
         }
 
-        periodSelect.innerHTML = allSemesters.map(s => 
-            `<option value="${s.id}">${s.name}${s.id === activeSemId ? ' (Current)' : ''}</option>`
-        ).join('');
-        
-        periodSelect.value = activeSemId || allSemesters[allSemesters.length - 1].id;
+        if (periodSelect) {
+            periodSelect.innerHTML = allSemesters.map(s => 
+                `<option value="${s.id}">${s.name}${s.id === activeSemId ? ' (Current)' : ''}</option>`
+            ).join('');
+            periodSelect.value = activeSemId || allSemesters[allSemesters.length - 1].id;
+        }
 
         // Fetch Academic Grades
         const gSnap = await getDocs(query(collection(db, 'students', studentId, 'grades'), where('schoolId', '==', schoolId)));
@@ -115,15 +128,17 @@ async function loadAnalyticsData() {
         }
 
         // Setup Listener & Initial Render
-        periodSelect.addEventListener('change', () => renderDashboardForPeriod(periodSelect.value));
-        renderDashboardForPeriod(periodSelect.value);
+        if (periodSelect) {
+            periodSelect.addEventListener('change', () => renderDashboardForPeriod(periodSelect.value));
+            renderDashboardForPeriod(periodSelect.value);
+        }
 
-        loader.classList.add('hidden');
-        content.classList.remove('hidden');
+        if (loader) loader.classList.add('hidden');
+        if (content) content.classList.remove('hidden');
 
     } catch (e) {
         console.error("Error loading evaluation data:", e);
-        loader.innerHTML = '<p class="text-red-500 font-bold text-base">Failed to load evaluation data.</p>';
+        if (loader) loader.innerHTML = '<p class="text-red-500 font-bold text-base">Failed to load evaluation data.</p>';
     }
 }
 
