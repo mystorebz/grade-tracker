@@ -2,240 +2,331 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectStudentLayout } from '../../assets/js/layout-student.js';
-import { calculateWeightedAverage } from '../../assets/js/utils.js'; // Added Math Engine
+import { calculateWeightedAverage } from '../../assets/js/utils.js';
 
-// ── 1. INIT & AUTH ────────────────────────────────────────────────────────
+// ── 1. AUTH & LAYOUT ──────────────────────────────────────────────────────
 const session = requireAuth('student', '../login.html');
+injectStudentLayout('gradebook', 'My Gradebook', 'Full grade breakdown by subject');
 
-injectStudentLayout('gradebook', 'Current Grades', 'Detailed grades for the active period');
+document.getElementById('displayStudentName').innerText  = session.studentData.name || 'Student';
+document.getElementById('studentAvatar').innerText       = (session.studentData.name || 'S').charAt(0).toUpperCase();
+document.getElementById('displayStudentClass').innerText = session.studentData.className ? `Class: ${session.studentData.className}` : 'Unassigned';
 
-document.getElementById('displayStudentName').innerText = session.studentData.name || 'Student';
-document.getElementById('studentAvatar').innerText = (session.studentData.name || 'S').charAt(0).toUpperCase();
-document.getElementById('displayStudentClass').innerText = session.studentData.className ? `Class: ${session.studentData.className}` : 'Unassigned Class';
+// ── 2. STATE ─────────────────────────────────────────────────────────────
+let allGrades         = [];
+let teacherRubric     = [];
+let teachersMap       = {};
+let activeTypeKey     = null; // tracks currently open type section: 'SubjName::TypeName'
 
-const gradesLoader = document.getElementById('gradesLoader');
-const currentSubjectsContainer = document.getElementById('currentSubjectsContainer');
-const noCurrentGradesMsg = document.getElementById('noCurrentGradesMsg');
-
-let currentGrades = [];
-let schoolActiveSemesterId = null;
-let teacherGradeTypes = []; // Added to store the teacher's specific rubric
-
-// ── 2. UI HELPERS ─────────────────────────────────────────────────────────
-function getGradeStyle(p) {
-    if (p >= 90) return { cls: 'text-emerald-700 bg-emerald-50 border-emerald-200', ltr: 'A' };
-    if (p >= 80) return { cls: 'text-blue-700 bg-blue-50 border-blue-200', ltr: 'B' };
-    if (p >= 70) return { cls: 'text-teal-700 bg-teal-50 border-teal-200', ltr: 'C' };
-    if (p >= 65) return { cls: 'text-amber-700 bg-amber-50 border-amber-200', ltr: 'D' };
-    return { cls: 'text-red-700 bg-red-50 border-red-200', ltr: 'F' };
+// ── 3. HELPERS ────────────────────────────────────────────────────────────
+function escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-function gradeColorText(p) {
-    if (p >= 90) return 'text-emerald-600'; if (p >= 80) return 'text-blue-600';
-    if (p >= 70) return 'text-teal-600'; if (p >= 65) return 'text-amber-600'; return 'text-red-600';
+function gradeStyle(p) {
+    if (p >= 90) return { color: '#059669', bg: '#d1fae5', border: '#6ee7b7', letter: 'A', barColor: '#10b981' };
+    if (p >= 80) return { color: '#2563eb', bg: '#dbeafe', border: '#93c5fd', letter: 'B', barColor: '#3b82f6' };
+    if (p >= 70) return { color: '#0d9488', bg: '#ccfbf1', border: '#5eead4', letter: 'C', barColor: '#14b8a6' };
+    if (p >= 65) return { color: '#d97706', bg: '#fef3c7', border: '#fcd34d', letter: 'D', barColor: '#f59e0b' };
+    return             { color: '#dc2626', bg: '#fee2e2', border: '#fca5a5', letter: 'F', barColor: '#ef4444' };
+}
+
+function standingText(avg) {
+    if (avg >= 90) return '⭐ Excelling';
+    if (avg >= 80) return '👍 Good Standing';
+    if (avg >= 70) return '➡ On Track';
+    if (avg >= 65) return '👁 Needs Attention';
+    return '⚠ At Risk';
 }
 
 function isNew(dateStr, createdStr) {
     const d = createdStr ? new Date(createdStr) : new Date(dateStr);
-    if (isNaN(d)) return false;
-    return Math.ceil(Math.abs(new Date() - d) / (1000 * 60 * 60 * 24)) <= 5;
+    return !isNaN(d) && Math.ceil(Math.abs(new Date() - d) / 86400000) <= 5;
 }
 
-window.toggleAccordion = function(h) {
-    const b = h.nextElementSibling;
-    b.classList.toggle('open');
-    h.querySelector('.fa-chevron-down').style.transform = b.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0deg)';
-};
+function getWeight(type) {
+    if (!type) return null;
+    const t = teacherRubric.find(r => r.name?.toLowerCase() === type.toLowerCase());
+    return t ? t.weight : null;
+}
 
-// ── 3. FETCH & RENDER GRADES ──────────────────────────────────────────────
-async function loadCurrentGrades() {
+// ── 4. LOAD ───────────────────────────────────────────────────────────────
+async function loadGrades() {
+    const loader    = document.getElementById('gradesLoader');
+    const emptyMsg  = document.getElementById('noCurrentGradesMsg');
+    const container = document.getElementById('currentSubjectsContainer');
+
     try {
+        // School + active semester
         const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
-        if (schoolSnap.exists()) {
-            document.getElementById('displaySchoolName').innerText = schoolSnap.data().schoolName;
-            schoolActiveSemesterId = schoolSnap.data().activeSemesterId;
-        }
+        const schoolData = schoolSnap.data() || {};
+        const activeSemId   = schoolData.activeSemesterId;
+        const schoolName    = schoolData.schoolName || 'ConnectUs School';
 
-        if (!schoolActiveSemesterId) {
-            gradesLoader.classList.add('hidden');
-            noCurrentGradesMsg.classList.remove('hidden');
-            document.getElementById('activeSemesterDisplay').textContent = "Not Set";
+        document.getElementById('displaySchoolName').innerText = schoolName;
+
+        if (!activeSemId) {
+            loader.innerHTML = '<i class="fa-solid fa-calendar-xmark" style="font-size:28px;color:#fbbf24;"></i><p>No active grading period set by the school.</p>';
             return;
         }
 
-        const semSnap = await getDoc(doc(db, 'schools', session.schoolId, 'semesters', schoolActiveSemesterId));
-        if (semSnap.exists()) {
-            document.getElementById('activeSemesterDisplay').textContent = semSnap.data().name;
-        }
+        // Semester name
+        const semSnap  = await getDoc(doc(db, 'schools', session.schoolId, 'semesters', activeSemId));
+        const semName  = semSnap.data()?.name || 'Current Period';
+        document.getElementById('activeSemesterDisplay').textContent = semName;
+        document.getElementById('gbTermLabel').textContent = semName;
 
-        // ADDED: Fetch the specific teacher's rubric based on the student's assigned teacherId
-        const tId = session.studentData.teacherId;
+        // Teacher rubric — from the student's assigned teacher
+        const tId = session.studentData?.teacherId;
         if (tId) {
             const tSnap = await getDoc(doc(db, 'teachers', tId));
             if (tSnap.exists()) {
-                teacherGradeTypes = tSnap.data().gradeTypes || tSnap.data().customGradeTypes || [];
+                teacherRubric = tSnap.data().gradeTypes || tSnap.data().customGradeTypes || [];
+                teachersMap[tId] = tSnap.data().name || 'Teacher';
             }
         }
 
-        // Query directly from the global student passport, filtering by the current school
-        const q = query(
+        // All teachers map (for admin-entered grades)
+        const tAllSnap = await getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId)));
+        tAllSnap.forEach(d => { teachersMap[d.id] = d.data().name; });
+
+        // Grades — global student path
+        const gSnap = await getDocs(query(
             collection(db, 'students', session.studentId, 'grades'),
-            where('schoolId', '==', session.schoolId),
-            where('semesterId', '==', schoolActiveSemesterId)
-        );
-        const gSnap = await getDocs(q);
-        
-        currentGrades = gSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            where('schoolId',    '==', session.schoolId),
+            where('semesterId',  '==', activeSemId)
+        ));
+        allGrades = gSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        gradesLoader.classList.add('hidden');
-        renderSubjectAccordions(currentGrades);
+        loader.style.display = 'none';
 
-    } catch (e) {
-        console.error("Error fetching grades:", e);
-        gradesLoader.innerHTML = '<p class="text-red-500 font-bold">Failed to load grades. Please refresh.</p>';
+        if (!allGrades.length) {
+            emptyMsg.classList.remove('hidden');
+            return;
+        }
+
+        // Overall weighted average (per-subject weighted, then averaged across subjects)
+        const bySub = {};
+        allGrades.forEach(g => {
+            const sub = g.subject || 'Uncategorized';
+            if (!bySub[sub]) bySub[sub] = [];
+            bySub[sub].push(g);
+        });
+
+        let totalSubjAvg = 0, subjCount = 0;
+        for (const sub in bySub) {
+            // fetch per-subject teacher rubric if different teacher entered grades
+            const subTeacherId = bySub[sub][0]?.teacherId;
+            let rubric = teacherRubric;
+            if (subTeacherId && subTeacherId !== tId && !teacherRubric.length) {
+                try {
+                    const stDoc = await getDoc(doc(db, 'teachers', subTeacherId));
+                    rubric = stDoc.data()?.gradeTypes || stDoc.data()?.customGradeTypes || [];
+                } catch(e) {}
+            }
+            const avg = calculateWeightedAverage(bySub[sub], rubric);
+            if (avg !== null) { totalSubjAvg += avg; subjCount++; }
+        }
+
+        const overallAvg = subjCount > 0 ? Math.round(totalSubjAvg / subjCount) : null;
+
+        // Populate header
+        const header = document.getElementById('gbHeader');
+        header.style.display = 'flex';
+        if (overallAvg !== null) {
+            const st = gradeStyle(overallAvg);
+            document.getElementById('gbAvgNum').textContent      = overallAvg;
+            document.getElementById('gbStandingLabel').textContent = standingText(overallAvg);
+            document.getElementById('gbStandingLabel').style.color = 'rgba(255,255,255,0.75)';
+        } else {
+            document.getElementById('gbAvgNum').textContent = '--';
+        }
+
+        renderSubjects(bySub);
+
+    } catch(e) {
+        console.error('[Grades] load error:', e);
+        loader.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color:#ef4444;"></i><p style="color:#ef4444;">Failed to load grades. Please refresh.</p>';
     }
 }
 
-function renderSubjectAccordions(grades) {
-    if (!grades.length) { 
-        currentSubjectsContainer.innerHTML = ''; 
-        noCurrentGradesMsg.classList.remove('hidden'); 
-        return; 
-    }
-    
-    noCurrentGradesMsg.classList.add('hidden');
+// ── 5. RENDER SUBJECTS ────────────────────────────────────────────────────
+function renderSubjects(bySub) {
+    const container = document.getElementById('currentSubjectsContainer');
 
-    const bySub = {};
-    grades.forEach(g => { 
-        const s = g.subject || 'Uncategorized'; 
-        if (!bySub[s]) bySub[s] = []; 
-        bySub[s].push(g); 
-    });
+    container.innerHTML = Object.entries(bySub).sort((a,b) => a[0].localeCompare(b[0])).map(([subject, grades]) => {
+        const avg    = calculateWeightedAverage(grades, teacherRubric);
+        const avgRnd = avg !== null ? Math.round(avg) : null;
+        const st     = avgRnd !== null ? gradeStyle(avgRnd) : null;
 
-    // Build the smart UI subtitle for weights
-    let rubricSubtitle = '';
-    if (teacherGradeTypes && teacherGradeTypes.length > 0) {
-        rubricSubtitle = teacherGradeTypes.map(t => `${t.name} ${t.weight}%`).join(' • ');
-    } else {
-        rubricSubtitle = "Standard Grading (Unweighted)";
-    }
+        // Group by type
+        const byType = {};
+        grades.forEach(g => {
+            const t = g.type || 'Other';
+            if (!byType[t]) byType[t] = [];
+            byType[t].push(g);
+        });
 
-    currentSubjectsContainer.innerHTML = Object.entries(bySub).map(([subject, gList]) => {
-        // UPDATED: Use the math engine with the fetched teacher rubric
-        const avgRaw = calculateWeightedAverage(gList, teacherGradeTypes);
-        const avg = avgRaw !== null ? avgRaw : 0;
-        const style = getGradeStyle(Math.round(avg));
-        
-        const rows = gList.sort((a, b) => (b.date || '').localeCompare(a.date || '')).map(g => {
-            const pct = g.max ? Math.round((g.score / g.max) * 100) : null;
-            const pColor = pct !== null ? gradeColorText(pct) : 'text-slate-500';
-            const badge = isNew(g.date, g.createdAt) ? `<span class="new-badge">New</span>` : '';
-            const hasNotes = g.notes || (g.historyLogs && g.historyLogs.length > 0);
-            
-            // Look up the weight for this specific assignment type to inject into the UI
-            const typeDef = teacherGradeTypes.find(t => t.name && g.type && t.name.toLowerCase() === g.type.toLowerCase());
-            const weightBadge = typeDef ? ` • ${typeDef.weight}% Weight` : '';
-            
+        const typeRows = Object.entries(byType).map(([type, tGrades]) => {
+            const typeAvgRaw = tGrades.reduce((s, g) => s + (g.max ? (g.score/g.max)*100 : 0), 0) / tGrades.length;
+            const typeAvg    = Math.round(typeAvgRaw);
+            const typeKey    = `${subject}::${type}`;
+            const tSt        = gradeStyle(typeAvg);
+            const w          = getWeight(type);
+
+            const assignRows = tGrades.sort((a,b) => (b.date||'').localeCompare(a.date||'')).map(g => {
+                const pct    = g.max ? Math.round((g.score/g.max)*100) : null;
+                const aSt    = pct !== null ? gradeStyle(pct) : null;
+                const newBdg = isNew(g.date, g.createdAt) ? `<span class="new-badge">New</span>` : '';
+                const adminTag = g.enteredByAdmin
+                    ? `<span style="font-size:9px;font-weight:700;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;padding:1px 6px;border-radius:4px;margin-left:5px;">Admin</span>` : '';
+
+                return `
+                <div class="assign-row" onclick="window.viewGrade('${escHtml(g.id)}')">
+                    <div style="flex:1;min-width:0;">
+                        <p class="assign-title">${escHtml(g.title || '—')}${newBdg}${adminTag}</p>
+                        <p class="assign-meta">${escHtml(g.date || '')}${g.notes ? ' · <i class="fa-solid fa-comment-dots" style="color:#6366f1;"></i> Has notes' : ''}</p>
+                    </div>
+                    <div style="flex-shrink:0;margin-left:16px;text-align:right;">
+                        <p class="assign-score" style="color:${aSt?.color || '#1e293b'}">${g.score}/${g.max ?? '?'}</p>
+                        <p class="assign-pct">${pct !== null ? pct + '%' : '—'}</p>
+                    </div>
+                    <i class="fa-solid fa-chevron-right" style="font-size:10px;color:#cbd5e1;margin-left:12px;flex-shrink:0;"></i>
+                </div>`;
+            }).join('');
+
             return `
-            <div class="bg-white border border-slate-200 rounded-xl p-3 sm:p-4 flex items-center justify-between hover:shadow-md transition cursor-pointer mb-2 last:mb-0" onclick="window.viewGradeDetails('${g.id}')">
-                <div class="flex-1 min-w-0">
-                    <p class="font-black text-slate-800 text-sm sm:text-base truncate">${g.title} ${badge}</p>
-                    <p class="text-xs text-slate-400 font-bold mt-1 uppercase tracking-wider">${g.type}${weightBadge} • ${g.date}</p>
-                </div>
-                <div class="flex items-center gap-3 sm:gap-5 flex-shrink-0 ml-2">
-                    <div class="text-right">
-                        <span class="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">Score</span>
-                        <span class="font-black text-sm sm:text-base ${pColor}">${g.score}/${g.max||'?'}</span>
+            <div class="type-section" data-key="${escHtml(typeKey)}">
+                <div class="type-row-header" onclick="window.toggleTypeRow('${escHtml(typeKey)}')">
+                    <div style="display:flex;align-items:center;flex:1;min-width:0;">
+                        <span class="type-pill">${tGrades.length} item${tGrades.length !== 1 ? 's' : ''}</span>
+                        <span class="type-label">${escHtml(type)}</span>
+                        ${w !== null ? `<span class="type-weight">${w}% of grade</span>` : ''}
                     </div>
-                    <div class="hidden sm:block text-right">
-                        <span class="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">Pct</span>
-                        <span class="font-black text-sm sm:text-base ${pColor}">${pct !== null ? pct + '%' : '—'}</span>
+                    <div style="display:flex;align-items:center;">
+                        <span class="type-avg" style="color:${tSt.color};">${typeAvg}%</span>
+                        <i class="fa-solid fa-chevron-down type-chevron"></i>
                     </div>
-                    ${hasNotes ? '<i class="fa-solid fa-comment-dots text-indigo-400 text-lg drop-shadow-sm ml-1"></i>' : '<i class="fa-solid fa-chevron-right text-slate-300 ml-1"></i>'}
                 </div>
+                <div class="type-body" id="tbody-${escHtml(typeKey.replace(/[^a-z0-9]/gi,'-'))}">${assignRows}</div>
             </div>`;
         }).join('');
 
+        // Rubric chips
+        const rubricChips = teacherRubric.length
+            ? teacherRubric.map(r => `<span class="rubric-chip">${escHtml(r.name)} ${r.weight}%</span>`).join('')
+            : '<span class="rubric-chip" style="background:#f1f5f9;color:#64748b;border-color:#e2e8f0;">Standard grading</span>';
+
         return `
-        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden transition-shadow hover:shadow-md">
-            <div class="p-5 sm:p-6 border-b border-slate-100 flex justify-between items-center cursor-pointer bg-slate-50/50 hover:bg-slate-100/50 transition" onclick="window.toggleAccordion(this)">
-                <div class="flex items-center gap-4">
-                    <div class="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-xl flex items-center justify-center font-black text-lg shadow-sm">${subject.charAt(0)}</div>
+        <div class="subj-card">
+            <div class="subj-header">
+                <div style="display:flex;align-items:center;flex:1;min-width:0;">
+                    <div class="subj-icon">${escHtml(subject.charAt(0).toUpperCase())}</div>
                     <div>
-                        <h3 class="text-lg sm:text-xl font-extrabold text-slate-800">${subject}</h3>
-                        <p class="text-xs text-slate-500 font-bold mt-1 uppercase tracking-wider">${gList.length} Assignment${gList.length !== 1 ? 's' : ''}</p>
-                        <p class="text-[10px] text-indigo-500 font-bold mt-1 tracking-wide">${rubricSubtitle}</p>
+                        <p class="subj-name">${escHtml(subject)}</p>
+                        <p class="subj-count">${grades.length} assignment${grades.length !== 1 ? 's' : ''}</p>
                     </div>
                 </div>
-                <div class="flex items-center gap-4">
-                    <div class="text-right hidden sm:block">
-                        <span class="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">Average</span>
-                        <span class="px-3 py-1.5 rounded-xl font-black text-sm border shadow-sm ${style.cls}">${Math.round(avg)}% • ${style.ltr}</span>
-                    </div>
-                    <div class="sm:hidden px-3 py-1 rounded-xl font-black text-sm border shadow-sm ${style.cls}">${Math.round(avg)}%</div>
-                    <i class="fa-solid fa-chevron-down text-slate-400 transition-transform duration-200 text-lg"></i>
-                </div>
+                ${avgRnd !== null ? `
+                <div class="subj-avg-badge">
+                    <span class="subj-avg-num">${avgRnd}%</span>
+                    <span class="subj-ltr" style="background:${st.bg};color:${st.color};border:1px solid ${st.border};">${st.letter}</span>
+                </div>` : ''}
             </div>
-            <div class="subject-body"><div class="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 shadow-inner">${rows}</div></div>
+            ${typeRows}
+            <div class="rubric-bar">
+                <span style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;margin-right:4px;">Weights:</span>
+                ${rubricChips}
+            </div>
         </div>`;
     }).join('');
 }
 
-window.viewGradeDetails = function(gradeId) {
-    const g = currentGrades.find(x => x.id === gradeId); 
+// ── 6. TYPE ACCORDION (one open at a time) ────────────────────────────────
+window.toggleTypeRow = function(key) {
+    const safeKey    = key.replace(/[^a-z0-9]/gi, '-');
+    const body       = document.getElementById(`tbody-${safeKey}`);
+    const allBodies  = document.querySelectorAll('.type-body');
+    const allChevs   = document.querySelectorAll('.type-chevron');
+
+    if (!body) return;
+
+    const isOpen = body.classList.contains('open');
+
+    // Close all
+    allBodies.forEach(b => b.classList.remove('open'));
+    allChevs.forEach(c => c.style.transform = 'rotate(0deg)');
+
+    // Open this one if it was closed
+    if (!isOpen) {
+        body.classList.add('open');
+        const header = body.previousElementSibling;
+        if (header) {
+            const chev = header.querySelector('.type-chevron');
+            if (chev) chev.style.transform = 'rotate(180deg)';
+        }
+    }
+};
+
+// ── 7. ASSIGNMENT MODAL ───────────────────────────────────────────────────
+window.viewGrade = function(gradeId) {
+    const g = allGrades.find(x => x.id === gradeId);
     if (!g) return;
-    
-    const p = g.max ? Math.round((g.score / g.max) * 100) : 0;
-    
-    // Inject weight into the modal context
-    const typeDef = teacherGradeTypes.find(t => t.name && g.type && t.name.toLowerCase() === g.type.toLowerCase());
-    const weightBadge = typeDef ? ` (${typeDef.weight}% weight)` : '';
-    
-    document.getElementById('modalTitle').innerText = g.title;
-    document.getElementById('modalMeta').innerText = `${g.date} • ${g.subject} • ${g.type}${weightBadge}`;
-    document.getElementById('modalScore').innerText = `${g.score} / ${g.max}`;
-    
-    const pEl = document.getElementById('modalPercentage');
-    pEl.innerText = `${p}%`; 
-    pEl.className = `font-black text-3xl ${gradeColorText(p)}`;
-    
-    const notesEl = document.getElementById('modalNotes');
+
+    const pct  = g.max ? Math.round((g.score / g.max) * 100) : 0;
+    const st   = gradeStyle(pct);
+    const w    = getWeight(g.type);
+    const tName = g.enteredByAdmin
+        ? (g.adminName || 'Administrator')
+        : (teachersMap[g.teacherId] || 'Teacher');
+
+    document.getElementById('mdSubject').textContent  = g.subject || 'Uncategorized';
+    document.getElementById('mdTitle').textContent    = g.title || 'Assessment';
+    document.getElementById('mdScore').textContent    = `${g.score} / ${g.max ?? '?'}`;
+    document.getElementById('mdPct').textContent      = `${pct}%`;
+    document.getElementById('mdPct').style.color      = st.color;
+    document.getElementById('mdBar').style.width      = `${Math.min(pct,100)}%`;
+    document.getElementById('mdBar').style.background = st.barColor;
+    document.getElementById('mdType').textContent     = g.type || '—';
+    document.getElementById('mdWeight').textContent   = w !== null ? `${w}% of final grade` : 'Not weighted';
+    document.getElementById('mdDate').textContent     = g.date || '—';
+    document.getElementById('mdTeacher').textContent  = tName;
+
+    const notesEl = document.getElementById('mdNotes');
     if (g.notes) {
-        notesEl.innerText = g.notes;
-        notesEl.className = "bg-indigo-50 border-l-4 border-indigo-500 p-5 rounded-r-2xl text-sm text-indigo-900 whitespace-pre-wrap leading-relaxed shadow-sm font-bold";
+        notesEl.textContent = g.notes;
+        notesEl.style.cssText = 'background:#eef2ff;border-left:3px solid #6366f1;padding:14px 16px;border-radius:0 8px 8px 0;font-size:13px;color:#1e293b;line-height:1.6;white-space:pre-wrap;font-weight:500;';
     } else {
-        notesEl.innerText = "No specific notes provided by teacher.";
-        notesEl.className = "bg-slate-50 border-l-4 border-slate-300 p-5 rounded-r-2xl text-sm text-slate-500 italic whitespace-pre-wrap leading-relaxed";
+        notesEl.textContent = 'No notes provided by the teacher.';
+        notesEl.style.cssText = 'background:#f8fafc;border-left:3px solid #e2e8f0;padding:14px 16px;border-radius:0 8px 8px 0;font-size:13px;color:#94a3b8;font-style:italic;';
     }
-    
-    const histSec = document.getElementById('historySection');
-    const histEl = document.getElementById('modalHistory');
-    
-    if (g.historyLogs && g.historyLogs.length > 0) {
-        histSec.classList.remove('hidden');
-        histEl.innerHTML = g.historyLogs.map(log => 
-            `<div class="bg-amber-50/50 border border-amber-200 p-3 text-[11px] text-amber-800 rounded-xl shadow-sm font-bold leading-relaxed"><i class="fa-solid fa-clock-rotate-left mr-1"></i>${typeof log === 'object' ? `[${log.changedAt}] Changed from ${log.oldScore} to ${log.newScore}. Reason: ${log.reason}` : log}</div>`
-        ).join('');
+
+    const histWrap = document.getElementById('mdHistoryWrap');
+    const histEl   = document.getElementById('mdHistory');
+    if (g.historyLogs?.length) {
+        histWrap.classList.remove('hidden');
+        histEl.innerHTML = g.historyLogs.map(log => `
+            <div style="background:#fffbeb;border:1px solid #fde68a;padding:10px 14px;border-radius:8px;font-size:11.5px;color:#92400e;font-weight:600;line-height:1.5;">
+                <i class="fa-solid fa-clock-rotate-left" style="margin-right:5px;"></i>
+                ${typeof log === 'object'
+                    ? `${log.changedAt} · Changed from ${log.oldScore} → ${log.newScore}${log.reason ? '. Reason: ' + escHtml(log.reason) : ''}`
+                    : escHtml(String(log))}
+            </div>`).join('');
     } else {
-        histSec.classList.add('hidden');
+        histWrap.classList.add('hidden');
     }
-    
-    const modal = document.getElementById('assignmentModal');
-    const inner = document.getElementById('assignmentModalInner');
-    modal.classList.remove('hidden');
-    
-    setTimeout(() => { 
-        modal.classList.remove('opacity-0'); 
-        inner.classList.remove('scale-95'); 
-    }, 10);
+
+    document.getElementById('assignmentModal').classList.remove('hidden');
 };
 
 window.closeAssignmentModal = function() {
-    const modal = document.getElementById('assignmentModal');
-    const inner = document.getElementById('assignmentModalInner');
-    modal.classList.add('opacity-0'); 
-    inner.classList.add('scale-95');
-    setTimeout(() => modal.classList.add('hidden'), 300);
+    document.getElementById('assignmentModal').classList.add('hidden');
 };
 
-document.addEventListener('DOMContentLoaded', loadCurrentGrades);
+// Close modal on backdrop click
+document.getElementById('assignmentModal').addEventListener('click', function(e) {
+    if (e.target === this) window.closeAssignmentModal();
+});
+
+// ── INITIALIZE ────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', loadGrades);
