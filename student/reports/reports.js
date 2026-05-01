@@ -32,7 +32,7 @@ function escHtml(str) {
 // ── 2. INITIALIZE DATA ────────────────────────────────────────────────────
 async function initializeReports() {
     try {
-        // Fetch School Data (for print headers)
+        // Fetch School Data (for print headers & logo)
         const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
         if (schoolSnap.exists()) {
             schoolData = schoolSnap.data();
@@ -157,14 +157,14 @@ function populateCheckboxes() {
         ? allSemesters.map(s => buildCheckbox('sem', s.id, s.name, true)).join('')
         : '<p class="text-sm font-bold text-slate-400">No periods found.</p>';
 
-    // Subjects (Unique from grades)
+    // Subjects
     const uniqueSubjects = [...new Set(allGrades.map(g => g.subject || 'Uncategorized'))].sort();
     const subGrid = document.getElementById('rb-subject-grid');
     subGrid.innerHTML = uniqueSubjects.length
         ? uniqueSubjects.map(s => buildCheckbox('sub', s, s, true)).join('')
         : '<p class="text-sm font-bold text-slate-400">No subjects found.</p>';
 
-    // Grade Types (Unique from grades)
+    // Grade Types
     const uniqueTypes = [...new Set(allGrades.map(g => g.type || 'Uncategorized'))].sort();
     const typeGrid = document.getElementById('rb-type-grid');
     typeGrid.innerHTML = uniqueTypes.length
@@ -249,8 +249,9 @@ function printDocument(isTranscript = false) {
     }
 
     const docTitle = isTranscript ? "OFFICIAL ACADEMIC TRANSCRIPT" : "ACADEMIC PROFILE REPORT";
-    const docSubtitle = isTranscript ? "Complete Academic History" : `${currentQueryMeta.semText || 'Custom'} • ${currentQueryMeta.subText || 'Custom'}`;
-    const unofficalBanner = `<div style="background:#4f46e5;color:white;text-align:center;font-weight:900;letter-spacing:0.3em;padding:8px;font-size:12px;margin-bottom:20px;width:100%;">*** FAMILY PORTAL RECORD ***</div>`;
+    const docSubtitle = isTranscript ? "Comprehensive Academic Record" : `${currentQueryMeta.semText || 'Custom'} • ${currentQueryMeta.subText || 'Custom'}`;
+    const unofficalBanner = `<div style="background:#4f46e5;color:white;text-align:center;font-weight:900;letter-spacing:0.3em;padding:8px;font-size:12px;margin-bottom:20px;width:100%;">*** OFFICIAL FAMILY PORTAL RECORD ***</div>`;
+    const logoSrc = schoolData.logo || '../../assets/images/logo.png';
 
     let html = `<html><head><title>${docTitle} - ${escHtml(session.studentData.name)}</title>
     <style>
@@ -263,7 +264,8 @@ function printDocument(isTranscript = false) {
         }
         
         body { font-family: 'DM Sans', sans-serif; padding: 40px; color: #0f172a; line-height: 1.5; background: white; }
-        .header { display: flex; flex-direction: column; align-items: center; border-bottom: 3px solid #0f172a; padding-bottom: 25px; margin-bottom: 30px; }
+        .header { display: flex; flex-direction: column; align-items: center; border-bottom: 3px solid #0f172a; padding-bottom: 25px; margin-bottom: 30px; text-align: center; }
+        .logo { max-height: 70px; max-width: 250px; object-fit: contain; margin-bottom: 15px; }
         .header h1 { margin: 0 0 6px 0; font-size: 26px; color: #0f172a; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 900; }
         .header h2 { margin: 0 0 4px 0; font-size: 16px; color: #4f46e5; font-weight: 800; letter-spacing: 0.15em; text-transform: uppercase; }
         .header h3 { margin: 0; font-size: 13px; color: #64748b; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
@@ -283,12 +285,17 @@ function printDocument(isTranscript = false) {
         .font-mono { font-family: 'DM Mono', monospace; font-weight: 700; }
         .bg-light { background: #f8fafc; }
         
+        .cum-gpa { display: flex; justify-content: flex-end; align-items: center; gap: 16px; padding: 20px; background: #eef2ff; border: 2px solid #c7d2fe; border-radius: 6px; margin-top: 30px; }
+        .cum-gpa-label { font-size: 14px; font-weight: 800; color: #4f46e5; text-transform: uppercase; letter-spacing: 0.15em; }
+        .cum-gpa-val { font-size: 26px; font-weight: 900; color: #0f172a; font-family: 'DM Mono', monospace; }
+
         .footer { font-size: 11px; color: #94a3b8; margin-top: 50px; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px; font-weight: 600; font-style: italic; }
     </style></head><body>
 
     ${unofficalBanner}
 
     <div class="header">
+        <img src="${logoSrc}" class="logo" onerror="this.style.display='none'">
         <h1>${escHtml(schoolData.schoolName || 'ConnectUs School')}</h1>
         <h2>${docTitle}</h2>
         <h3>${docSubtitle}</h3>
@@ -296,7 +303,7 @@ function printDocument(isTranscript = false) {
 
     <div class="info-grid">
         <div><strong>Student Name</strong> ${escHtml(session.studentData.name || 'Unknown')}</div>
-        <div><strong>Student ID / PIN</strong> ${escHtml(session.studentData.pin || 'N/A')}</div>
+        <div><strong>Student ID</strong> ${escHtml(session.studentData.studentId || 'N/A')}</div>
         <div><strong>Homeroom / Class</strong> ${escHtml(session.studentData.className || 'Unassigned')}</div>
         <div><strong>Date Generated</strong> ${new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}</div>
     </div>`;
@@ -310,62 +317,121 @@ function printDocument(isTranscript = false) {
         bySem[semName].push(g);
     });
 
+    let cumTotalSum = 0;
+    let cumTotalCount = 0;
+
     for (let semName in bySem) {
         html += `<div class="sem-block">
             <h3 class="sem-title">${escHtml(semName)}</h3>
-            <table>
-                <thead><tr>
-                    <th>Subject</th>
-                    <th>Assignment</th>
-                    <th class="tc">Type</th>
-                    <th class="tc">Score</th>
-                    <th class="tc">%</th>
-                </tr></thead>
-                <tbody>`;
-        
-        let semValidCount = 0;
-        
-        // If it's a transcript, we might want to aggregate subjects. 
-        // But to keep it detailed and matching the teacher side: Print individual assignments
-        bySem[semName].sort((a, b) => (a.date || '').localeCompare(b.date || '')).forEach(g => {
-            const pct = g.max ? Math.round((g.score / g.max) * 100) : null;
-            if (pct !== null) semValidCount++;
+            <table>`;
+
+        if (isTranscript) {
+            // FULL TRANSCRIPT: Only show Subjects, Average, and Letter Grade
+            html += `<thead><tr>
+                        <th>Subject</th>
+                        <th class="tc" style="width: 25%;">Average (%)</th>
+                        <th class="tc" style="width: 25%;">Letter Grade</th>
+                    </tr></thead>
+                    <tbody>`;
             
-            html += `<tr>
-                <td>${escHtml(g.subject)}</td>
-                <td>${escHtml(g.title)}<br><span style="font-size:11px;color:#94a3b8">${g.date || ''}</span></td>
-                <td class="tc" style="font-size:11px;color:#64748b;text-transform:uppercase;">${escHtml(g.type)}</td>
-                <td class="tc font-mono">${g.score}/${g.max}</td>
-                <td class="tc font-mono">${pct !== null ? pct + '%' : '—'}</td>
-            </tr>`;
-        });
+            // Group by Subject within the Semester
+            const bySub = {};
+            bySem[semName].forEach(g => {
+                const sub = g.subject || 'Uncategorized';
+                if (!bySub[sub]) bySub[sub] = [];
+                bySub[sub].push(g);
+            });
 
-        // Subject averages for this semester
-        const bySub = {};
-        bySem[semName].forEach(g => {
-            const sub = g.subject || 'Uncategorized';
-            if (!bySub[sub]) bySub[sub] = [];
-            bySub[sub].push(g);
-        });
+            let semSum = 0; let semSubCount = 0;
+            const sortedSubjects = Object.keys(bySub).sort();
 
-        let semSum = 0; let semSubCount = 0;
-        for(let sub in bySub) {
-            const tId = bySub[sub][0]?.teacherId;
-            const rubric = tId ? (teacherRubricsCache[tId] || []) : [];
-            const avg = calculateWeightedAverage(bySub[sub], rubric);
-            if(avg !== null) { semSum += avg; semSubCount++; }
-        }
+            sortedSubjects.forEach(sub => {
+                const tId = bySub[sub][0]?.teacherId;
+                const rubric = tId ? (teacherRubricsCache[tId] || []) : [];
+                const avgRaw = calculateWeightedAverage(bySub[sub], rubric);
+                
+                if (avgRaw !== null) {
+                    const avg = Math.round(avgRaw);
+                    semSum += avg; 
+                    semSubCount++;
+                    
+                    html += `<tr>
+                        <td>${escHtml(sub)}</td>
+                        <td class="tc font-mono">${avg}%</td>
+                        <td class="tc font-mono">${letterGrade(avg)}</td>
+                    </tr>`;
+                }
+            });
 
-        const semAvg = semSubCount > 0 ? Math.round(semSum / semSubCount) : null;
+            const semAvg = semSubCount > 0 ? Math.round(semSum / semSubCount) : null;
+            if (semAvg !== null) {
+                cumTotalSum += semAvg;
+                cumTotalCount++;
+                html += `<tr>
+                    <td class="tr" style="font-size:12px;font-weight:900;color:#64748b;text-transform:uppercase;letter-spacing:0.1em;padding:16px;">Term Average</td>
+                    <td class="tc font-mono bg-light" style="font-size:16px;">${semAvg}%</td>
+                    <td class="tc font-mono bg-light" style="font-size:16px;">${letterGrade(semAvg)}</td>
+                </tr>`;
+            }
 
-        if (semAvg !== null) {
-            html += `<tr>
-                <td colspan="4" class="tr" style="font-size:12px;font-weight:900;color:#64748b;text-transform:uppercase;letter-spacing:0.1em;padding:16px;">Term Average</td>
-                <td class="tc font-mono bg-light" style="font-size:16px;">${semAvg}% (${letterGrade(semAvg)})</td>
-            </tr>`;
+        } else {
+            // CUSTOM REPORT: Show Individual Assignments
+            html += `<thead><tr>
+                        <th>Subject</th>
+                        <th>Assignment</th>
+                        <th class="tc">Type</th>
+                        <th class="tc">Score</th>
+                        <th class="tc">%</th>
+                    </tr></thead>
+                    <tbody>`;
+            
+            bySem[semName].sort((a, b) => (a.date || '').localeCompare(b.date || '')).forEach(g => {
+                const pct = g.max ? Math.round((g.score / g.max) * 100) : null;
+                
+                html += `<tr>
+                    <td>${escHtml(g.subject)}</td>
+                    <td>${escHtml(g.title)}<br><span style="font-size:11px;color:#94a3b8">${g.date || ''}</span></td>
+                    <td class="tc" style="font-size:11px;color:#64748b;text-transform:uppercase;">${escHtml(g.type)}</td>
+                    <td class="tc font-mono">${g.score}/${g.max}</td>
+                    <td class="tc font-mono">${pct !== null ? pct + '%' : '—'}</td>
+                </tr>`;
+            });
+
+            // Semester Average based on assignment subjects
+            const bySub = {};
+            bySem[semName].forEach(g => {
+                const sub = g.subject || 'Uncategorized';
+                if (!bySub[sub]) bySub[sub] = [];
+                bySub[sub].push(g);
+            });
+
+            let semSum = 0; let semSubCount = 0;
+            for(let sub in bySub) {
+                const tId = bySub[sub][0]?.teacherId;
+                const rubric = tId ? (teacherRubricsCache[tId] || []) : [];
+                const avg = calculateWeightedAverage(bySub[sub], rubric);
+                if(avg !== null) { semSum += avg; semSubCount++; }
+            }
+
+            const semAvg = semSubCount > 0 ? Math.round(semSum / semSubCount) : null;
+            if (semAvg !== null) {
+                html += `<tr>
+                    <td colspan="4" class="tr" style="font-size:12px;font-weight:900;color:#64748b;text-transform:uppercase;letter-spacing:0.1em;padding:16px;">Term Average</td>
+                    <td class="tc font-mono bg-light" style="font-size:16px;">${semAvg}% (${letterGrade(semAvg)})</td>
+                </tr>`;
+            }
         }
         
         html += `</tbody></table></div>`;
+    }
+
+    // Add Overall Cumulative GPA at the bottom of Full Transcripts
+    if (isTranscript && cumTotalCount > 0) {
+        const finalCumAvg = Math.round(cumTotalSum / cumTotalCount);
+        html += `<div class="cum-gpa">
+            <span class="cum-gpa-label">Cumulative Academic Average</span>
+            <span class="cum-gpa-val">${finalCumAvg}% (${letterGrade(finalCumAvg)})</span>
+        </div>`;
     }
 
     html += `<div class="footer">Generated securely by the ConnectUs Family Portal.<br>This document does not constitute a certified administrative transcript unless signed and stamped by school administration.</div></body></html>`;
