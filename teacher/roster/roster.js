@@ -1,6 +1,6 @@
 import { db } from '../../assets/js/firebase-init.js';
 import { collection, query, where, getDocs, getDoc, doc, updateDoc, addDoc, setDoc, arrayUnion, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { requireAuth, setSessionData } from '../../assets/js/auth.js';
+import { requireAuth } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { openOverlay, closeOverlay, showMsg, gradeColorClass, standingBadge, standingText, gradeFill, letterGrade, downloadCSV, calculateWeightedAverage } from '../../assets/js/utils.js';
 
@@ -10,7 +10,7 @@ if (session) {
     injectTeacherLayout('students', 'My Roster', 'Manage students · PINs · academic standing', true);
 }
 
-// ── 2. STATE & HELPERS ───────────────────────────────────────────────────────
+// ── 2. STATE ─────────────────────────────────────────────────────────────────
 let allStudentsCache        = [];
 let unassignedStudentsCache = [];
 let studentMap              = {};
@@ -20,19 +20,21 @@ let rawSemesters            = [];
 let isSemesterLocked        = false;
 let gradeDetailCache        = {};
 let schoolLimit             = 50;
-let cachedEvaluations       = []; 
+let cachedEvaluations       = [];
 
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 
-// RESTORED: Handles all variables across the 3 types of evaluations
+// Star ratings for the regular eval modal (behavioral, end-of-year, academic progress)
 window.evalRatings = {
-    // Academic / Report Card
-    academicComprehension: 0, attitudeWork: 0, effortResilience: 0,
-    participation: 0, organization: 0, behavior: 0, peerRelations: 0, punctualityRating: 0,
-    // End of Year
+    academicMastery: 0, taskExecution: 0, engagement: 0,
     academicGrowth: 0, socialDynamics: 0, resilience: 0,
-    // Behavioral
     ruleAdherence: 0, conflictResolution: 0, respectAuthority: 0
+};
+
+// Star ratings for the report card modal (separate from evalModal)
+window.rcRatings = {
+    academicComprehension: 0, attitudeWork: 0, effortResilience: 0,
+    participation: 0, organization: 0, behavior: 0, peerRelations: 0, punctualityRating: 0
 };
 
 function getClasses()        { return session.teacherData.classes || [session.teacherData.className || '']; }
@@ -107,8 +109,8 @@ async function loadSemesters() {
             activeId = schoolSnap.data()?.activeSemesterId || '';
         } catch(e) {}
 
-        const semSel   = document.getElementById('activeSemester');
-        const sbPeriod = document.getElementById('sb-period');
+        const semSel     = document.getElementById('activeSemester');
+        const sbPeriod   = document.getElementById('sb-period');
         const evalSemSel = document.getElementById('evalSemester');
         if (evalSemSel) evalSemSel.innerHTML = '';
 
@@ -119,8 +121,8 @@ async function loadSemesters() {
                 opt.value = s.id; opt.textContent = s.name;
                 if (s.id === activeId) opt.selected = true;
                 semSel.appendChild(opt);
-                
-                if(evalSemSel) {
+
+                if (evalSemSel) {
                     const eOpt = document.createElement('option');
                     eOpt.value = s.id; eOpt.textContent = s.name;
                     if (s.id === activeId) eOpt.selected = true;
@@ -325,15 +327,11 @@ window.searchStudentRegistry = async function() {
     if (!rawId) { alert('Enter a Student Global ID to search.'); return; }
 
     if (!/^S\d{2}-[A-Z0-9]{5}$/.test(rawId)) {
-        resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">
-            Invalid format. Student ID should look like S26-XXXXX.
-        </div>`;
+        resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">Invalid format. Student ID should look like S26-XXXXX.</div>`;
         resultsDiv.classList.remove('hidden'); return;
     }
 
-    resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#9ab0c6;font-size:12px;">
-        <i class="fa-solid fa-spinner fa-spin" style="margin-right:6px;"></i>Searching National Registry…
-    </div>`;
+    resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#9ab0c6;font-size:12px;"><i class="fa-solid fa-spinner fa-spin" style="margin-right:6px;"></i>Searching National Registry…</div>`;
     resultsDiv.classList.remove('hidden');
 
     const btn = document.getElementById('sSearchBtn');
@@ -343,9 +341,7 @@ window.searchStudentRegistry = async function() {
         const snap = await getDoc(doc(db, 'students', rawId));
 
         if (!snap.exists()) {
-            resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#9ab0c6;font-size:12px;font-weight:600;">
-                No student found with that ID. Fill in the form below to create a new identity.
-            </div>`;
+            resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#9ab0c6;font-size:12px;font-weight:600;">No student found with that ID. Fill in the form below to create a new identity.</div>`;
             btn.textContent = 'Search'; btn.disabled = false; return;
         }
 
@@ -357,17 +353,15 @@ window.searchStudentRegistry = async function() {
                 btn.textContent = 'Search'; btn.disabled = false; return;
             } else {
                 if (s.teacherId && s.teacherId !== '') {
-                    if (s.teacherId === session.teacherId) {
-                        resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">This student is already in your active roster!</div>`;
-                    } else {
-                        resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">This student is already assigned to another teacher's roster at this school.</div>`;
-                    }
+                    resultsDiv.innerHTML = s.teacherId === session.teacherId
+                        ? `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">This student is already in your active roster!</div>`
+                        : `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">This student is already assigned to another teacher's roster at this school.</div>`;
                     btn.textContent = 'Search'; btn.disabled = false; return;
                 }
             }
         }
 
-        const lastSchool = s.academicHistory?.length
+        const lastSchool  = s.academicHistory?.length
             ? `Last school: ${s.academicHistory[s.academicHistory.length-1].schoolName || s.academicHistory[s.academicHistory.length-1].schoolId}`
             : 'No prior enrollment';
         const emailStatus = !s.email
@@ -424,18 +418,17 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
     const btn           = document.getElementById('saveStudentBtn');
 
     if (!name)  { showMsg('addStudentMsg', 'Student name is required.', true); return; }
-    if (!email) { showMsg('addStudentMsg', 'Email address is required so the student can recover their PIN.', true); return; }
+    if (!email) { showMsg('addStudentMsg', 'Email address is required so the parent can recover their PIN.', true); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showMsg('addStudentMsg', 'Please enter a valid email address.', true); return; }
 
     btn.textContent = 'Saving…'; btn.disabled = true;
 
     try {
-        const emailCheckQ = query(collection(db, 'students'), where('email', '==', email));
+        const emailCheckQ    = query(collection(db, 'students'), where('email', '==', email));
         const emailCheckSnap = await getDocs(emailCheckQ);
         if (!emailCheckSnap.empty) {
             showMsg('addStudentMsg', 'This email address is already in use by another student.', true);
-            btn.textContent = 'Create New Student Identity'; btn.disabled = false;
-            return;
+            btn.textContent = 'Create New Student Identity'; btn.disabled = false; return;
         }
 
         const countSnap = await getDocs(query(
@@ -481,16 +474,16 @@ window.switchStudentTab = function(tabName) {
     const conG = document.getElementById('tabContentGrades');
     const conE = document.getElementById('tabContentEvaluations');
 
-    if(tabName === 'grades') {
+    if (tabName === 'grades') {
         btnG.style.borderBottomColor = '#0ea871'; btnG.style.color = '#0d1f35';
         btnE.style.borderBottomColor = 'transparent'; btnE.style.color = '#6b84a0';
-        conG.classList.remove('hidden');
-        conE.classList.add('hidden');
+        conG.classList.remove('hidden'); conG.style.display = 'flex';
+        conE.classList.add('hidden');   conE.style.display = 'none';
     } else {
         btnE.style.borderBottomColor = '#0ea871'; btnE.style.color = '#0d1f35';
         btnG.style.borderBottomColor = 'transparent'; btnG.style.color = '#6b84a0';
-        conE.classList.remove('hidden');
-        conG.classList.add('hidden');
+        conE.classList.remove('hidden'); conE.style.display = 'flex';
+        conG.classList.add('hidden');    conG.style.display = 'none';
     }
 };
 
@@ -502,13 +495,13 @@ window.openStudentPanel = async function(studentId) {
     document.getElementById('sPanelMeta').textContent =
         [student?.className, student?.parentPhone].filter(Boolean).join(' · ') || '—';
 
-    togglePinResetUI(false);
-    window.switchStudentTab('grades'); 
+    window.switchStudentTab('grades');
 
+    // Show current PIN (read-only)
     document.getElementById('spinReadonly').textContent = student?.pin || '—';
+
     document.getElementById('sPanelLoader').style.display = 'flex';
     document.getElementById('sViewMode').classList.add('hidden');
-    document.getElementById('sEditForm').classList.add('hidden');
 
     const qGBtn = document.getElementById('spQuickGradeBtn2');
     if (qGBtn) {
@@ -520,11 +513,7 @@ window.openStudentPanel = async function(studentId) {
 
     openOverlay('studentPanel', 'studentPanelInner');
 
-    document.getElementById('editSName').value       = student?.name        || '';
-    document.getElementById('editSDob').value        = student?.dob         || '';
-    document.getElementById('editSParentName').value = student?.parentName  || '';
-    document.getElementById('editSPhone').value      = student?.parentPhone || '';
-
+    // Populate class selector (only editable field)
     const classSel = document.getElementById('editSClass');
     const classes  = getClasses().filter(Boolean);
     classSel.innerHTML = classes.map(c =>
@@ -533,12 +522,13 @@ window.openStudentPanel = async function(studentId) {
     classSel.dataset.original = student?.className || '';
     document.getElementById('editSClassReasonWrap').classList.add('hidden');
     document.getElementById('editSClassReason').value = '';
+    document.getElementById('editClassMsg').classList.add('hidden');
 
+    // Build read-only profile info
     document.getElementById('sInfoGrid').innerHTML = [
         ['Name',         student?.name         || '—'],
         ['Global ID',    student?.id           || '—'],
-        ['Class',        student?.className    || '<span style="color:#d97706;font-weight:700;">Unassigned — cannot enter grades</span>'],
-        ['Email',        student?.email        || '<span style="color:#d97706;font-weight:700;">Not set — required for PIN recovery</span>'],
+        ['Email',        student?.email        || '<span style="color:#d97706;font-weight:700;">Not set</span>'],
         ['DOB',          student?.dob          || '—'],
         ['Parent Name',  student?.parentName   || '—'],
         ['Parent Phone', student?.parentPhone  || '—'],
@@ -552,9 +542,9 @@ window.openStudentPanel = async function(studentId) {
 
     const semId   = document.getElementById('activeSemester')?.value || '';
     const semName = document.getElementById('activeSemester')?.options[document.getElementById('activeSemester')?.selectedIndex]?.text || '';
-    document.getElementById('sPanelSemName').textContent       = semName;
-    document.getElementById('sPanelFilterSubject').value       = '';
-    document.getElementById('sPanelFilterType').value          = '';
+    document.getElementById('sPanelSemName').textContent = semName;
+    document.getElementById('sPanelFilterSubject').value = '';
+    document.getElementById('sPanelFilterType').value    = '';
 
     try {
         const gradesSnap = await getDocs(query(collection(db, 'students', studentId, 'grades'), where('schoolId', '==', session.schoolId)));
@@ -565,9 +555,7 @@ window.openStudentPanel = async function(studentId) {
         document.getElementById('sPanelFilterSubject').innerHTML = '<option value="">All Subjects</option>' + subjSet.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
         document.getElementById('sPanelFilterType').innerHTML    = '<option value="">All Types</option>' + getGradeTypes().map(t => `<option value="${escHtml(t.name || t)}">${escHtml(t.name || t)}</option>`).join('');
         window.renderStudentGrades();
-        
         await window.loadStudentEvaluations(studentId);
-        
     } catch (e) { console.error('[Roster] openStudentPanel data load:', e); }
 
     document.getElementById('sPanelLoader').style.display = 'none';
@@ -604,23 +592,24 @@ window.renderStudentGrades = function() {
             const bgCol = pct >= 90 ? '#dcfce7' : pct >= 80 ? '#dbeafe' : pct >= 70 ? '#ccfbf1' : pct >= 65 ? '#fef3c7' : '#fee2e2';
             const bdCol = pct >= 90 ? '#bbf7d0' : pct >= 80 ? '#bfdbfe' : pct >= 70 ? '#99f6e4' : pct >= 65 ? '#fde68a' : '#fecaca';
             const adminTag = g.enteredByAdmin ? `<span style="font-size:9px;font-weight:700;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;padding:1px 5px;border-radius:3px;margin-left:4px;">Admin</span>` : '';
-            return `<div onclick="window.openAssignmentModal('${g.id}')" style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #e8edf2;border-radius:3px;padding:10px 14px;cursor:pointer;transition:border-color 0.12s;" onmouseover="this.style.borderColor='#0ea871';this.style.background='#f8fefb'" onmouseout="this.style.borderColor='#e8edf2';this.style.background='#fff'">
+            return `<div onclick="window.openAssignmentModal('${g.id}')" style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #e8edf2;border-radius:3px;padding:10px 14px;cursor:pointer;" onmouseover="this.style.borderColor='#0ea871';this.style.background='#f8fefb'" onmouseout="this.style.borderColor='#e8edf2';this.style.background='#fff'">
                 <div style="flex:1;min-width:0;"><p style="font-size:12.5px;font-weight:600;color:#0d1f35;margin:0 0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(g.title||'Assessment')}${adminTag}</p><p style="font-size:11px;color:#9ab0c6;font-weight:400;margin:0;">${escHtml(g.type||'')}${g.date?' · '+g.date:''}</p></div>
                 <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:16px;"><span style="font-size:12px;font-weight:600;color:${color};font-family:'DM Mono',monospace;">${g.score}/${g.max||'?'}</span><span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:3px;background:${bgCol};border:1px solid ${bdCol};color:${color};font-family:'DM Mono',monospace;">${pct!==null?pct+'%':'—'}</span></div>
             </div>`;
         }).join('');
 
-        const avgR   = Math.round(avg);
+        const avgR    = Math.round(avg);
         const hdColor = avgR >= 90 ? '#14532d' : avgR >= 80 ? '#1e3a8a' : avgR >= 70 ? '#134e4a' : avgR >= 65 ? '#78350f' : '#7f1d1d';
         const hdBg    = avgR >= 90 ? '#dcfce7' : avgR >= 80 ? '#dbeafe' : avgR >= 70 ? '#ccfbf1' : avgR >= 65 ? '#fef3c7' : '#fee2e2';
         const hdBd    = avgR >= 90 ? '#bbf7d0' : avgR >= 80 ? '#bfdbfe' : avgR >= 70 ? '#99f6e4' : avgR >= 65 ? '#fde68a' : '#fecaca';
 
+        // Accordions start COLLAPSED (no 'open' class)
         return `<div style="border:1px solid #dce3ed;border-radius:4px;overflow:hidden;background:#fff;">
-            <div onclick="window.toggleAccordion(this)" style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;cursor:pointer;background:#fff;transition:background 0.12s;" onmouseover="this.style.background='#f8fafb'" onmouseout="this.style.background='#fff'">
+            <div onclick="window.toggleAccordion(this)" style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;cursor:pointer;background:#fff;" onmouseover="this.style.background='#f8fafb'" onmouseout="this.style.background='#fff'">
                 <div style="display:flex;align-items:center;gap:12px;"><div style="width:32px;height:32px;border-radius:4px;background:#0d1f35;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;">${escHtml(subject.charAt(0))}</div><div><p style="font-size:13px;font-weight:700;color:#0d1f35;margin:0;">${escHtml(subject)}</p><p style="font-size:10.5px;color:#9ab0c6;font-weight:400;margin:0;">${grades.length} assessment${grades.length!==1?'s':''}</p></div></div>
                 <div style="display:flex;align-items:center;gap:10px;"><span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:3px;background:${hdBg};border:1px solid ${hdBd};color:${hdColor};font-family:'DM Mono',monospace;">${avgR}% · ${letterGrade(avg)}</span><i class="fa-solid fa-chevron-down" style="font-size:11px;color:#9ab0c6;transition:transform 0.2s;"></i></div>
             </div>
-            <div class="subject-body open" style="border-top:1px solid #f0f4f8;"><div style="padding:10px 12px;background:#f8fafb;display:flex;flex-direction:column;gap:6px;">${rows}</div></div>
+            <div class="subject-body" style="border-top:1px solid #f0f4f8;"><div style="padding:10px 12px;background:#f8fafb;display:flex;flex-direction:column;gap:6px;">${rows}</div></div>
         </div>`;
     }).join('');
 };
@@ -632,7 +621,82 @@ window.toggleAccordion = function(header) {
     if (chevron) chevron.style.transform = body.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0)';
 };
 
-// ── 10.5. FORMAL EVALUATIONS LOGIC (RESTORED TYPES + NEW METRICS) ─────────────
+// ── 10.5. CLASS-ONLY EDIT ────────────────────────────────────────────────────
+window.checkClassChange = function() {
+    const sel  = document.getElementById('editSClass');
+    const wrap = document.getElementById('editSClassReasonWrap');
+    if (sel.value !== sel.dataset.original && sel.dataset.original !== '') wrap.classList.remove('hidden');
+    else wrap.classList.add('hidden');
+};
+
+window.saveStudentClass = async function() {
+    const btn        = document.getElementById('saveClassBtn');
+    const newClass   = document.getElementById('editSClass').value;
+    const origClass  = document.getElementById('editSClass').dataset.original;
+    const reason     = document.getElementById('editSClassReason').value.trim();
+
+    if (newClass !== origClass && origClass !== '' && !reason) {
+        showMsg('editClassMsg', 'Please provide a reason for the class change.', true); return;
+    }
+
+    btn.textContent = 'Saving…'; btn.disabled = true;
+    try {
+        const u = { className: newClass };
+        if (newClass !== origClass && origClass !== '') {
+            u.lastClassChangeReason = reason;
+            u.lastClassChangeDate   = new Date().toISOString();
+        }
+        await updateDoc(doc(db, 'students', currentStudentId), u);
+        const idx = allStudentsCache.findIndex(s => s.id === currentStudentId);
+        if (idx !== -1) allStudentsCache[idx].className = newClass;
+        document.getElementById('editSClass').dataset.original = newClass;
+        document.getElementById('editSClassReasonWrap').classList.add('hidden');
+        document.getElementById('editSClassReason').value = '';
+        document.getElementById('sPanelMeta').textContent =
+            [newClass, allStudentsCache[idx]?.parentPhone].filter(Boolean).join(' · ') || '—';
+        showMsg('editClassMsg', 'Class updated.', false);
+        await loadStudents();
+    } catch (e) {
+        console.error('[Roster] saveStudentClass:', e);
+        showMsg('editClassMsg', 'Error saving. Please try again.', true);
+    }
+    btn.textContent = 'Save Class'; btn.disabled = false;
+};
+
+// ── 10.6. PIN — EMAIL RESET ONLY ─────────────────────────────────────────────
+window.sendPinResetEmail = async function() {
+    const student = allStudentsCache.find(s => s.id === currentStudentId);
+    if (!student?.email) {
+        alert('This student has no email on file. A PIN reset email cannot be sent.\n\nPlease contact the admin to update the student\'s email first.');
+        return;
+    }
+
+    const btn      = document.getElementById('pinResetEmailBtn');
+    const original = btn.innerHTML;
+    btn.innerHTML  = '<i class="fa-solid fa-spinner fa-spin"></i> Sending…';
+    btn.disabled   = true;
+
+    try {
+        await addDoc(collection(db, 'reset_vault'), {
+            email:     student.email,
+            name:      student.name,
+            roleLabel: 'Student Account',
+            userType:  'student',
+            studentId: currentStudentId,
+            expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+            createdAt: new Date().toISOString()
+        });
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> Email Sent';
+        setTimeout(() => { btn.innerHTML = original; btn.disabled = false; }, 3000);
+    } catch (e) {
+        console.error('[Roster] sendPinResetEmail:', e);
+        alert('Failed to send reset email. Please try again.');
+        btn.innerHTML = original;
+        btn.disabled  = false;
+    }
+};
+
+// ── 11. EVALUATIONS — REGULAR (BEHAVIORAL / EOY / ACADEMIC PROGRESS) ─────────
 window.buildStarGroups = function() {
     document.querySelectorAll('.rating-row').forEach(row => {
         const field = row.dataset.field;
@@ -650,25 +714,13 @@ window.buildStarGroups = function() {
 window.renderStars = function(field) {
     const val = window.evalRatings[field] || 0;
     document.querySelectorAll(`[data-field="${field}"]`).forEach(btn => {
-        if(btn.tagName === 'BUTTON') {
-            if(parseInt(btn.dataset.val) <= val) {
-                btn.classList.add('star-active');
-            } else {
-                btn.classList.remove('star-active');
-            }
-        }
+        if (btn.tagName === 'BUTTON') btn.classList.toggle('star-active', parseInt(btn.dataset.val) <= val);
     });
 };
 
 window.hoverStars = function(field, val) {
     document.querySelectorAll(`[data-field="${field}"]`).forEach(btn => {
-        if(btn.tagName === 'BUTTON') {
-            if(parseInt(btn.dataset.val) <= val) {
-                btn.classList.add('star-active');
-            } else {
-                btn.classList.remove('star-active');
-            }
-        }
+        if (btn.tagName === 'BUTTON') btn.classList.toggle('star-active', parseInt(btn.dataset.val) <= val);
     });
 };
 
@@ -679,11 +731,8 @@ window.setRating = function(field, val) {
 
 window.openEvalModal = function() {
     document.getElementById('evalDate').value = new Date().toISOString().split('T')[0];
-    document.querySelectorAll('.eval-section textarea, .eval-section select, .eval-section input').forEach(el => el.value = '');
-    
-    Object.keys(window.evalRatings).forEach(k => window.evalRatings[k] = 0);
-    Object.keys(window.evalRatings).forEach(k => window.renderStars(k));
-    
+    document.querySelectorAll('.eval-section textarea, .eval-section select').forEach(el => el.value = '');
+    Object.keys(window.evalRatings).forEach(k => { window.evalRatings[k] = 0; window.renderStars(k); });
     document.getElementById('evalType').value = 'academic';
     window.toggleEvalType();
     openOverlay('evalModal', 'evalModalInner');
@@ -691,150 +740,97 @@ window.openEvalModal = function() {
 
 window.closeEvalModal = function() { closeOverlay('evalModal', 'evalModalInner'); };
 
-// RESTORED: Switching between evaluation types
 window.toggleEvalType = function() {
     const type = document.getElementById('evalType').value;
     document.getElementById('type-academic').classList.toggle('hidden', type !== 'academic');
-    document.getElementById('type-eoy').classList.toggle('hidden', type !== 'end_of_year');
+    document.getElementById('type-eoy').classList.toggle('hidden',      type !== 'end_of_year');
     document.getElementById('type-behavioral').classList.toggle('hidden', type !== 'behavioral');
 };
 
 window.saveEvaluation = async function() {
-    const type = document.getElementById('evalType').value;
-    const semId = document.getElementById('evalSemester').value;
+    const type    = document.getElementById('evalType').value;
+    const semId   = document.getElementById('evalSemester').value;
     const semName = document.getElementById('evalSemester').options[document.getElementById('evalSemester').selectedIndex].text;
-    const date = document.getElementById('evalDate').value;
-    const btn = document.getElementById('btnSubmitEval');
-    
-    if(!semId || !date) { alert("Please ensure Semester and Date are filled."); return; }
+    const date    = document.getElementById('evalDate').value;
+    const btn     = document.getElementById('btnSubmitEval');
+
+    if (!semId || !date) { alert('Please ensure Semester and Date are filled.'); return; }
 
     let payload = {
-        type: type,
-        schoolId: session.schoolId,
-        teacherId: session.teacherId,
-        teacherName: session.teacherData.name,
-        semesterId: semId,
-        semesterName: semName,
-        date: date,
-        createdAt: new Date().toISOString()
+        type, schoolId: session.schoolId, teacherId: session.teacherId,
+        teacherName: session.teacherData.name, semesterId: semId,
+        semesterName: semName, date, createdAt: new Date().toISOString()
     };
 
-    if(type === 'academic') {
-        if(!window.evalRatings.academicComprehension || !window.evalRatings.attitudeWork || !window.evalRatings.effortResilience || !window.evalRatings.participation || !window.evalRatings.organization || !window.evalRatings.behavior || !window.evalRatings.peerRelations || !window.evalRatings.punctualityRating) {
-            alert("Please complete all 8 star ratings for the Academic Report Card record."); return;
+    if (type === 'academic') {
+        if (!window.evalRatings.academicMastery || !window.evalRatings.taskExecution || !window.evalRatings.engagement) {
+            alert('Please rate all quantitative metrics.'); return;
         }
-        payload.attendance = {
-            totalSessions: document.getElementById('evalTotalSessions').value || 0,
-            daysAbsent: document.getElementById('evalDaysAbsent').value || 0,
-            daysLate: document.getElementById('evalDaysLate').value || 0
-        };
-        payload.ratings = {
-            academicComprehension: window.evalRatings.academicComprehension,
-            attitudeWork: window.evalRatings.attitudeWork,
-            effortResilience: window.evalRatings.effortResilience,
-            participation: window.evalRatings.participation,
-            organization: window.evalRatings.organization,
-            behavior: window.evalRatings.behavior,
-            peerRelations: window.evalRatings.peerRelations,
-            punctualityRating: window.evalRatings.punctualityRating
-        };
-        payload.comment = document.getElementById('evalAcadComment').value.trim();
-    } 
-    else if (type === 'end_of_year') {
-        if(!window.evalRatings.academicGrowth || !window.evalRatings.socialDynamics || !window.evalRatings.resilience) {
-            alert("Please rate all summative metrics."); return;
+        payload.ratings = { mastery: window.evalRatings.academicMastery, execution: window.evalRatings.taskExecution, engagement: window.evalRatings.engagement };
+        payload.written = { strengths: document.getElementById('evalAcadStrengths').value.trim(), growth: document.getElementById('evalAcadGrowth').value.trim(), steps: document.getElementById('evalAcadSteps').value.trim() };
+    } else if (type === 'end_of_year') {
+        if (!window.evalRatings.academicGrowth || !window.evalRatings.socialDynamics || !window.evalRatings.resilience) {
+            alert('Please rate all summative metrics.'); return;
         }
-        payload.ratings = {
-            growth: window.evalRatings.academicGrowth,
-            social: window.evalRatings.socialDynamics,
-            resilience: window.evalRatings.resilience
-        };
-        payload.written = {
-            narrative: document.getElementById('evalEoyNarrative').value.trim(),
-            interventions: document.getElementById('evalEoyInterventions').value.trim()
-        };
-        payload.status = document.getElementById('evalEoyStatus').value;
-        if(!payload.status) { alert("Please select a Promotion Status."); return; }
-    }
-    else if (type === 'behavioral') {
-        if(!window.evalRatings.ruleAdherence || !window.evalRatings.conflictResolution || !window.evalRatings.respectAuthority) {
-            alert("Please rate all conduct metrics."); return;
+        payload.ratings = { growth: window.evalRatings.academicGrowth, social: window.evalRatings.socialDynamics, resilience: window.evalRatings.resilience };
+        payload.written = { narrative: document.getElementById('evalEoyNarrative').value.trim(), interventions: document.getElementById('evalEoyInterventions').value.trim() };
+        payload.status  = document.getElementById('evalEoyStatus').value;
+        if (!payload.status) { alert('Please select a Promotion Status.'); return; }
+    } else if (type === 'behavioral') {
+        if (!window.evalRatings.ruleAdherence || !window.evalRatings.conflictResolution || !window.evalRatings.respectAuthority) {
+            alert('Please rate all conduct metrics.'); return;
         }
-        payload.ratings = {
-            adherence: window.evalRatings.ruleAdherence,
-            resolution: window.evalRatings.conflictResolution,
-            respect: window.evalRatings.respectAuthority
-        };
-        payload.written = {
-            description: document.getElementById('evalBehDesc').value.trim(),
-            prior: document.getElementById('evalBehPrior').value.trim(),
-            actionPlan: document.getElementById('evalBehAction').value.trim()
-        };
-        payload.status = document.getElementById('evalBehStatus').value;
-        if(!payload.status) { alert("Please select an Action Taken."); return; }
+        payload.ratings = { adherence: window.evalRatings.ruleAdherence, resolution: window.evalRatings.conflictResolution, respect: window.evalRatings.respectAuthority };
+        payload.written = { description: document.getElementById('evalBehDesc').value.trim(), prior: document.getElementById('evalBehPrior').value.trim(), actionPlan: document.getElementById('evalBehAction').value.trim() };
+        payload.status  = document.getElementById('evalBehStatus').value;
+        if (!payload.status) { alert('Please select an Action Taken.'); return; }
     }
 
     btn.textContent = 'Saving...'; btn.disabled = true;
-
     try {
-        if (type === 'academic') {
-            // Lock Academic types to 1 per term
-            const evalDocId = `${currentStudentId}_${semId}`;
-            await setDoc(doc(db, 'students', currentStudentId, 'evaluations', evalDocId), payload);
-        } else {
-            // Behavioral and End of Year can generate standard docs
-            await addDoc(collection(db, 'students', currentStudentId, 'evaluations'), payload);
-        }
-        
+        await addDoc(collection(db, 'students', currentStudentId, 'evaluations'), payload);
         window.closeEvalModal();
         await window.loadStudentEvaluations(currentStudentId);
     } catch (e) {
-        console.error("Error saving evaluation", e);
-        alert("Failed to save formal evaluation.");
+        console.error('[Roster] saveEvaluation:', e);
+        alert('Failed to save evaluation.');
     }
-    btn.textContent = 'Save Evaluation'; btn.disabled = false;
+    btn.textContent = 'Save to Formal Record'; btn.disabled = false;
 };
 
 window.loadStudentEvaluations = async function(studentId) {
-    const list = document.getElementById('evaluationsList');
+    const list  = document.getElementById('evaluationsList');
     const noMsg = document.getElementById('noEvaluationsMsg');
-    list.innerHTML = '';
+    list.innerHTML    = '';
     cachedEvaluations = [];
 
     try {
-        const q = query(
-            collection(db, 'students', studentId, 'evaluations'), 
+        const snap = await getDocs(query(
+            collection(db, 'students', studentId, 'evaluations'),
             where('schoolId', '==', session.schoolId)
-        );
-        const snap = await getDocs(q);
-        
-        snap.forEach(d => {
-            cachedEvaluations.push({ id: d.id, ...d.data() });
-        });
-
+        ));
+        snap.forEach(d => cachedEvaluations.push({ id: d.id, ...d.data() }));
         cachedEvaluations.sort((a,b) => new Date(b.date) - new Date(a.date));
 
-        if(cachedEvaluations.length === 0) {
+        if (!cachedEvaluations.length) {
             noMsg.classList.remove('hidden');
         } else {
             noMsg.classList.add('hidden');
-            
-            // RESTORED: Render beautiful badges based on type
             cachedEvaluations.forEach(ev => {
-                let badgeClass = '';
-                let typeLabel = '';
-                let highlightText = '';
-                
-                if(ev.type === 'academic') {
-                    badgeClass = 'background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;';
-                    typeLabel = 'Academic / Report Card Record';
-                } else if(ev.type === 'end_of_year') {
-                    badgeClass = 'background:#fef3c7;color:#b45309;border:1px solid #fde68a;';
-                    typeLabel = 'Comprehensive End-of-Year';
+                let badgeStyle = '', typeLabel = '', highlightText = '';
+                if (ev.type === 'academic') {
+                    badgeStyle = 'background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;';
+                    typeLabel  = 'Academic Progress';
+                } else if (ev.type === 'academic_report_card') {
+                    badgeStyle = 'background:#edf7f1;color:#065f46;border:1px solid #a7f3d0;';
+                    typeLabel  = 'Report Card Evaluation';
+                } else if (ev.type === 'end_of_year') {
+                    badgeStyle    = 'background:#fef3c7;color:#b45309;border:1px solid #fde68a;';
+                    typeLabel     = 'Comprehensive End-of-Year';
                     highlightText = `<div style="margin-top:10px;padding:6px 10px;background:#f8fafb;border-radius:4px;font-size:11px;font-weight:700;color:#0d1f35;"><i class="fa-solid fa-award" style="color:#f59e0b;margin-right:5px;"></i> Status: ${ev.status}</div>`;
-                } else if(ev.type === 'behavioral') {
-                    badgeClass = 'background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;';
-                    typeLabel = 'Behavioral Intervention';
+                } else if (ev.type === 'behavioral') {
+                    badgeStyle    = 'background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;';
+                    typeLabel     = 'Behavioral Intervention';
                     highlightText = `<div style="margin-top:10px;padding:6px 10px;background:#fff0f3;border-radius:4px;font-size:11px;font-weight:700;color:#be1240;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:5px;"></i> Action: ${ev.status}</div>`;
                 }
 
@@ -843,9 +839,9 @@ window.loadStudentEvaluations = async function(studentId) {
                 card.innerHTML = `
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;">
                         <div>
-                            <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:99px;text-transform:uppercase;letter-spacing:0.05em;${badgeClass}">${typeLabel}</span>
+                            <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:99px;text-transform:uppercase;letter-spacing:0.05em;${badgeStyle}">${typeLabel}</span>
                             <h4 style="font-size:14px;font-weight:700;color:#0d1f35;margin:8px 0 2px;">${ev.semesterName}</h4>
-                            <p style="font-size:11px;color:#6b84a0;margin:0;">Filed by ${ev.teacherName} on ${ev.date}</p>
+                            <p style="font-size:11px;color:#6b84a0;margin:0;">Filed by ${escHtml(ev.teacherName)} on ${ev.date}</p>
                         </div>
                     </div>
                     ${highlightText}
@@ -854,93 +850,254 @@ window.loadStudentEvaluations = async function(studentId) {
             });
         }
     } catch (e) {
-        console.error("Error loading evaluations", e);
+        console.error('[Roster] loadStudentEvaluations:', e);
         noMsg.classList.remove('hidden');
     }
 };
 
-// ── 11. EDIT STUDENT ──────────────────────────────────────────────────────────
-window.toggleStudentEdit = function(show) {
-    const form = document.getElementById('sEditForm');
-    const isVisible = show !== undefined ? show : form.classList.contains('hidden');
-    form.classList.toggle('hidden', !isVisible);
-    document.getElementById('editStudentMsg').classList.add('hidden');
+// ── 12. REPORT CARD MODAL (GENERATE REPORT CARD FLOW) ────────────────────────
+window.buildRcStarGroups = function() {
+    document.querySelectorAll('.rc-rating-row').forEach(row => {
+        const field = row.dataset.field;
+        const group = row.querySelector('.rc-star-group');
+        group.innerHTML = [1,2,3,4,5].map(n =>
+            `<button type="button" class="star-btn" data-val="${n}" data-rcfield="${field}"
+              onmouseover="window.hoverRcStars('${field}',${n})"
+              onmouseout="window.renderRcStars('${field}')"
+              onclick="window.setRcRating('${field}',${n})">★</button>`
+        ).join('');
+        window.renderRcStars(field);
+    });
 };
 
-window.checkClassChange = function() {
-    const sel  = document.getElementById('editSClass');
-    const wrap = document.getElementById('editSClassReasonWrap');
-    if (sel.value !== sel.dataset.original && sel.dataset.original !== '') wrap.classList.remove('hidden');
-    else wrap.classList.add('hidden');
+window.renderRcStars = function(field) {
+    const val = window.rcRatings[field] || 0;
+    document.querySelectorAll(`[data-rcfield="${field}"]`).forEach(btn => {
+        if (btn.tagName === 'BUTTON') btn.classList.toggle('star-active', parseInt(btn.dataset.val) <= val);
+    });
 };
 
-document.getElementById('saveStudentEditBtn').addEventListener('click', async () => {
-    const btn           = document.getElementById('saveStudentEditBtn');
-    const newClass      = document.getElementById('editSClass').value;
-    const originalClass = document.getElementById('editSClass').dataset.original;
-    const reason        = document.getElementById('editSClassReason').value.trim();
-    if (newClass !== originalClass && originalClass !== '' && !reason) {
-        showMsg('editStudentMsg', "You must provide a reason for changing the student's class.", true); return;
+window.hoverRcStars = function(field, val) {
+    document.querySelectorAll(`[data-rcfield="${field}"]`).forEach(btn => {
+        if (btn.tagName === 'BUTTON') btn.classList.toggle('star-active', parseInt(btn.dataset.val) <= val);
+    });
+};
+
+window.setRcRating = function(field, val) {
+    window.rcRatings[field] = val;
+    window.renderRcStars(field);
+};
+
+window.openReportCardModal = function() {
+    // Reset ratings
+    Object.keys(window.rcRatings).forEach(k => { window.rcRatings[k] = 0; });
+    
+    // Reset fields
+    ['rcTotalSessions','rcDaysAbsent','rcDaysLate','rcComment'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+    });
+
+    // Populate semester dropdown from rawSemesters
+    const rcSem     = document.getElementById('rcSemester');
+    const activeSemVal = document.getElementById('activeSemester')?.value;
+    rcSem.innerHTML = '';
+    rawSemesters.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s.id; opt.textContent = s.name;
+        if (s.id === activeSemVal) opt.selected = true;
+        rcSem.appendChild(opt);
+    });
+
+    openOverlay('reportCardModal', 'reportCardModalInner');
+
+    // Build stars after modal is visible
+    window.buildRcStarGroups();
+};
+
+window.closeReportCardModal = function() { closeOverlay('reportCardModal', 'reportCardModalInner'); };
+
+window.saveAndGenerateReportCard = async function() {
+    const semId   = document.getElementById('rcSemester').value;
+    const semName = document.getElementById('rcSemester').options[document.getElementById('rcSemester').selectedIndex]?.text || '';
+    const btn     = document.getElementById('btnSaveGenerate');
+
+    if (!semId) { alert('Please select a grading period.'); return; }
+
+    // Validate all 8 ratings
+    if (Object.values(window.rcRatings).some(v => !v)) {
+        alert('Please complete all 8 Behavior & Work Habit ratings before generating the report card.');
+        return;
     }
-    btn.textContent = 'Saving…'; btn.disabled = true;
+
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
+    btn.disabled  = true;
+
+    const payload = {
+        type:        'academic_report_card',
+        schoolId:    session.schoolId,
+        teacherId:   session.teacherId,
+        teacherName: session.teacherData.name,
+        semesterId:  semId,
+        semesterName: semName,
+        date:        new Date().toISOString().split('T')[0],
+        createdAt:   new Date().toISOString(),
+        attendance: {
+            totalSessions: parseInt(document.getElementById('rcTotalSessions').value) || 0,
+            daysAbsent:    parseInt(document.getElementById('rcDaysAbsent').value)    || 0,
+            daysLate:      parseInt(document.getElementById('rcDaysLate').value)      || 0
+        },
+        ratings: { ...window.rcRatings },
+        comment: document.getElementById('rcComment').value.trim()
+    };
+
     try {
-        const u = {
-            name:        document.getElementById('editSName').value.trim(),
-            dob:         document.getElementById('editSDob').value,
-            parentName:  document.getElementById('editSParentName').value.trim(),
-            parentPhone: document.getElementById('editSPhone').value.trim(),
-            className:   newClass
-        };
-        if (newClass !== originalClass && originalClass !== '') {
-            u.lastClassChangeReason = reason; u.lastClassChangeDate = new Date().toISOString();
-        }
-        await updateDoc(doc(db, 'students', currentStudentId), u);
-        const idx = allStudentsCache.findIndex(s => s.id === currentStudentId);
-        if (idx !== -1) Object.assign(allStudentsCache[idx], u);
-        studentMap[currentStudentId] = u.name;
-        showMsg('editStudentMsg', 'Changes saved successfully.', false);
-        window.toggleStudentEdit(false);
-        document.getElementById('sPanelName').textContent = u.name;
-        await loadStudents();
+        // 1 per term — overwrite if regenerated
+        await setDoc(doc(db, 'students', currentStudentId, 'evaluations', `${currentStudentId}_${semId}_rc`), payload);
+        await window.loadStudentEvaluations(currentStudentId);
+        window.closeReportCardModal();
+        generateFormalReportCardPDF(payload, semName);
     } catch (e) {
-        console.error('[Roster] saveStudentEdit:', e);
-        showMsg('editStudentMsg', 'Error saving changes.', true);
+        console.error('[Roster] saveAndGenerateReportCard:', e);
+        alert('Failed to save. Please try again.');
     }
-    btn.textContent = 'Save Changes'; btn.disabled = false;
-});
 
-// ── 12. PIN ───────────────────────────────────────────────────────────────────
-window.togglePinResetUI = function(show) {
-    document.getElementById('pinDisplayArea').classList.toggle('hidden',  show);
-    document.getElementById('pinEditArea').classList.toggle('hidden',    !show);
-    if (show) document.getElementById('inlineNewPin').value = '';
+    btn.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Save & Generate Report Card';
+    btn.disabled  = false;
 };
 
-window.saveInlinePin = async function() {
-    const npin = document.getElementById('inlineNewPin').value.trim();
-    if (!npin || npin.length < 4) { alert('PIN must be 4–6 digits.'); return; }
-    const btn = document.getElementById('inlinePinSaveBtn');
-    btn.textContent = '…'; btn.disabled = true;
-    try {
-        await updateDoc(doc(db, 'students', currentStudentId), { pin: npin });
-        const idx = allStudentsCache.findIndex(s => s.id === currentStudentId);
-        if (idx !== -1) allStudentsCache[idx].pin = npin;
-        document.getElementById('spinReadonly').textContent = npin;
-        window.togglePinResetUI(false);
-        await loadStudents();
-    } catch (e) { console.error('[Roster] saveInlinePin:', e); alert('Error saving PIN.'); }
-    btn.textContent = 'Save'; btn.disabled = false;
-};
+function generateFormalReportCardPDF(ev, semName) {
+    const student    = allStudentsCache.find(s => s.id === currentStudentId);
+    if (!student)    return;
+    const schoolName = session.schoolName || 'ConnectUs School';
+
+    const bySub = {};
+    currentStudentGradesCache.forEach(g => {
+        const sub = g.subject || 'Uncategorized';
+        if (!bySub[sub]) bySub[sub] = [];
+        bySub[sub].push(g);
+    });
+
+    const cumulativeAvg = currentStudentGradesCache.length
+        ? calculateWeightedAverage(currentStudentGradesCache, session.teacherData.gradeTypes || getGradeTypes())
+        : 0;
+    const gpaLetter = cumulativeAvg > 0 ? letterGrade(cumulativeAvg) : 'N/A';
+
+    const r2l = v => v >= 5 ? 'E' : v === 4 ? 'D' : v === 3 ? 'B' : v > 0 ? 'I' : '—';
+
+    const gradesHtml = Object.keys(bySub).length === 0
+        ? `<tr><td colspan="3" style="text-align:center;padding:30px;color:#64748b;font-style:italic;">No grades recorded for this term.</td></tr>`
+        : Object.entries(bySub).sort((a,b) => a[0].localeCompare(b[0])).map(([sub, gList]) => {
+            const subAvg = calculateWeightedAverage(gList, session.teacherData.gradeTypes || getGradeTypes());
+            return `<tr style="border-bottom:1px solid #e2e8f0;">
+                <td style="padding:12px 15px;font-weight:700;color:#1e293b;">${escHtml(sub)}</td>
+                <td style="padding:12px 15px;text-align:center;font-weight:700;">${subAvg}%</td>
+                <td style="padding:12px 15px;text-align:center;font-weight:800;font-family:monospace;">${letterGrade(subAvg)}</td>
+            </tr>`;
+        }).join('');
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<title>Official Report Card — ${escHtml(student.name)}</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
+body { font-family:'Nunito',sans-serif; padding:40px; color:#0f172a; line-height:1.5; margin:0 auto; max-width:8.5in; }
+.header-flex { display:flex; justify-content:space-between; align-items:flex-end; border-bottom:3px solid #1e1b4b; padding-bottom:20px; margin-bottom:20px; }
+.logo { max-height:80px; max-width:250px; object-fit:contain; }
+.header-text { text-align:right; }
+.header-text h1 { margin:0 0 5px; font-size:26px; font-weight:900; text-transform:uppercase; color:#1e1b4b; }
+.header-text h2 { margin:0; font-size:14px; color:#64748b; font-weight:700; letter-spacing:2px; }
+.student-info { display:flex; justify-content:space-between; background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:15px 20px; margin-bottom:30px; }
+.student-info div { display:flex; flex-direction:column; gap:4px; }
+.info-label { font-size:10px; text-transform:uppercase; color:#64748b; font-weight:800; letter-spacing:1px; }
+.info-value { font-size:16px; font-weight:800; color:#0f172a; }
+.grid-container { display:grid; grid-template-columns:1fr 1fr; gap:30px; margin-bottom:30px; }
+h3 { font-size:14px; text-transform:uppercase; letter-spacing:1px; color:#1e1b4b; border-bottom:2px solid #1e1b4b; padding-bottom:8px; margin-top:0; margin-bottom:12px; }
+table { width:100%; border-collapse:collapse; font-size:13px; margin-bottom:20px; }
+th { background:#f1f5f9; color:#475569; padding:10px 15px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:1px; border-bottom:2px solid #cbd5e1; }
+th.c { text-align:center; }
+td { border-bottom:1px solid #e2e8f0; padding:10px 15px; color:#334155; }
+.legend { font-size:11px; color:#64748b; font-weight:700; display:flex; justify-content:space-between; background:#f8fafc; padding:8px 12px; border-radius:6px; margin-bottom:15px; }
+.attendance-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:20px; }
+.att-card { background:#f8fafc; border:1px solid #cbd5e1; padding:10px; text-align:center; border-radius:6px; }
+.att-lbl { display:block; font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase; }
+.att-val { font-size:18px; font-weight:900; color:#1e1b4b; }
+.comments-box { border:1px solid #cbd5e1; border-radius:8px; padding:15px; background:#fff; min-height:80px; }
+.comments-label { font-size:11px; font-weight:800; color:#1e1b4b; text-transform:uppercase; margin-bottom:8px; display:block; }
+.footer-sigs { display:grid; grid-template-columns:1fr 1fr; gap:40px; margin-top:50px; }
+.sig-line { border-top:1px solid #000; padding-top:8px; font-size:12px; font-weight:700; text-align:center; color:#1e1b4b; }
+</style>
+</head>
+<body>
+<div class="header-flex">
+    <img src="${session.logo || ''}" alt="${escHtml(schoolName)}" class="logo" onerror="this.style.display='none'">
+    <div class="header-text">
+        <h1>${escHtml(schoolName)}</h1>
+        <h2>OFFICIAL TERM REPORT CARD</h2>
+    </div>
+</div>
+<div class="student-info">
+    <div><span class="info-label">Student Name</span><span class="info-value">${escHtml(student.name)}</span></div>
+    <div><span class="info-label">Class</span><span class="info-value">${escHtml(student.className || 'Unassigned')}</span></div>
+    <div><span class="info-label">Academic Term</span><span class="info-value">${escHtml(semName)}</span></div>
+    <div><span class="info-label">Term Average</span><span class="info-value">${cumulativeAvg}% (${gpaLetter})</span></div>
+</div>
+<div class="grid-container">
+    <div>
+        <h3>Academic Performance</h3>
+        <table>
+            <thead><tr><th>Subject</th><th class="c">Term Avg</th><th class="c">Grade</th></tr></thead>
+            <tbody>${gradesHtml}</tbody>
+        </table>
+    </div>
+    <div>
+        <h3>Behavior &amp; Work Habits</h3>
+        <div class="legend"><span>E — Exceptional</span><span>D — Developing</span><span>B — Beginning</span><span>I — Improvement Needed</span></div>
+        <table>
+            <tbody>
+                <tr><td style="font-weight:700;">Academic Comprehension</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.academicComprehension)}</td></tr>
+                <tr><td style="font-weight:700;">Attitude Towards Work</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.attitudeWork)}</td></tr>
+                <tr><td style="font-weight:700;">Effort &amp; Resilience</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.effortResilience)}</td></tr>
+                <tr><td style="font-weight:700;">Participation &amp; Engagement</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.participation)}</td></tr>
+                <tr><td style="font-weight:700;">Organization &amp; Time Mgt</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.organization)}</td></tr>
+                <tr><td style="font-weight:700;">Classroom Behaviour</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.behavior)}</td></tr>
+                <tr><td style="font-weight:700;">Peer Relations &amp; Respect</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.peerRelations)}</td></tr>
+                <tr><td style="font-weight:700;">Attendance &amp; Punctuality</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.punctualityRating)}</td></tr>
+            </tbody>
+        </table>
+        <div class="attendance-grid">
+            <div class="att-card"><span class="att-lbl">Sessions</span><span class="att-val">${ev.attendance.totalSessions}</span></div>
+            <div class="att-card"><span class="att-lbl">Absent</span><span class="att-val">${ev.attendance.daysAbsent}</span></div>
+            <div class="att-card"><span class="att-lbl">Late</span><span class="att-val">${ev.attendance.daysLate}</span></div>
+        </div>
+        <div class="comments-box">
+            <span class="comments-label">Teacher's Comments</span>
+            <p style="margin:0;font-size:13px;color:#334155;white-space:pre-wrap;">${escHtml(ev.comment || 'No comments recorded.')}</p>
+        </div>
+    </div>
+</div>
+<div class="footer-sigs">
+    <div class="sig-line">Teacher's Signature &amp; Date</div>
+    <div class="sig-line">Principal's Signature &amp; Date</div>
+</div>
+</body>
+</html>`;
+
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+    setTimeout(() => w.print(), 800);
+}
 
 // ── 13. ASSIGNMENT MODAL ──────────────────────────────────────────────────────
 window.openAssignmentModal = function(gradeId) {
     const g = gradeDetailCache[gradeId]; if (!g) return;
-    const pct   = g.max ? Math.round(g.score/g.max*100) : null;
-    const fill  = gradeFill(pct||0);
-    const color = pct>=90?'#065f46':pct>=80?'#1e3a8a':pct>=70?'#134e4a':pct>=65?'#78350f':'#7f1d1d';
-    const bg    = pct>=90?'#dcfce7':pct>=80?'#dbeafe':pct>=70?'#ccfbf1':pct>=65?'#fef3c7':'#fee2e2';
-    const bd    = pct>=90?'#bbf7d0':pct>=80?'#bfdbfe':pct>=70?'#99f6e4':pct>=65?'#fde68a':'#fecaca';
-    const adminNote = g.enteredByAdmin ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:12px;margin-bottom:12px;"><p style="font-size:9.5px;font-weight:700;text-transform:uppercase;color:#2563eb;margin:0 0 4px;">Admin Entry</p><p style="font-size:12px;color:#374f6b;margin:0;">Entered by ${escHtml(g.adminName||'Admin')} (${g.adminRole==='super_admin'?'Super Admin':'Sub-Admin'})</p></div>` : '';
+    const pct      = g.max ? Math.round(g.score/g.max*100) : null;
+    const fill     = gradeFill(pct||0);
+    const color    = pct>=90?'#065f46':pct>=80?'#1e3a8a':pct>=70?'#134e4a':pct>=65?'#78350f':'#7f1d1d';
+    const bg       = pct>=90?'#dcfce7':pct>=80?'#dbeafe':pct>=70?'#ccfbf1':pct>=65?'#fef3c7':'#fee2e2';
+    const bd       = pct>=90?'#bbf7d0':pct>=80?'#bfdbfe':pct>=70?'#99f6e4':pct>=65?'#fde68a':'#fecaca';
+    const adminNote = g.enteredByAdmin ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:12px;margin-bottom:12px;"><p style="font-size:9.5px;font-weight:700;text-transform:uppercase;color:#2563eb;margin:0 0 4px;">Admin Entry</p><p style="font-size:12px;color:#374f6b;margin:0;">Entered by ${escHtml(g.adminName||'Admin')}</p></div>` : '';
     document.getElementById('aModalTitle').textContent = g.title || 'Assessment Detail';
     document.getElementById('aModalBody').innerHTML = `<div style="text-align:center;margin-bottom:20px;"><div style="font-size:42px;font-weight:700;color:${color};font-family:'DM Mono',monospace;line-height:1;">${g.score}<span style="font-size:20px;color:#9ab0c6;"> / ${g.max||'?'}</span></div>${pct!==null?`<div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-top:8px;"><span style="font-size:18px;font-weight:700;color:${color};font-family:'DM Mono',monospace;">${pct}%</span><span style="font-size:14px;font-weight:700;padding:4px 14px;border-radius:3px;background:${bg};border:1px solid ${bd};color:${color};">${letterGrade(pct)}</span></div><div style="margin:12px 20px 0;height:8px;background:#f0f4f8;border-radius:2px;overflow:hidden;"><div style="height:100%;width:${Math.min(pct,100)}%;background:${fill};transition:width 0.5s ease;"></div></div>`:''}</div>${adminNote}<div style="display:flex;flex-direction:column;gap:0;margin-bottom:16px;border:1px solid #e8edf2;border-radius:4px;overflow:hidden;">${[['Subject',g.subject||'—'],['Type',g.type||'—'],['Date',g.date||'—']].map(([l,v],i)=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;${i<2?'border-bottom:1px solid #f0f4f8;':''}background:#fff;"><span style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#9ab0c6;">${l}</span><span style="font-size:13px;font-weight:600;color:#0d1f35;">${escHtml(v)}</span></div>`).join('')}</div>${g.notes?`<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:14px;margin-bottom:14px;"><p style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#1e3a8a;margin:0 0 6px;">Notes</p><p style="font-size:12.5px;color:#374f6b;font-weight:400;margin:0;line-height:1.6;white-space:pre-wrap;">${escHtml(g.notes)}</p></div>`:''}`;
     openOverlay('assignmentModal', 'assignmentModalInner');
@@ -948,79 +1105,66 @@ window.openAssignmentModal = function(gradeId) {
 
 window.closeAssignmentModal = function() { closeOverlay('assignmentModal', 'assignmentModalInner'); };
 
-// ── 14. ARCHIVE / CLOSE ENROLLMENT HYBRID ────────────────────────────────
+// ── 14. ARCHIVE ───────────────────────────────────────────────────────────────
 window.archiveStudent = function() {
     const s = allStudentsCache.find(x => x.id === currentStudentId);
     document.getElementById('archiveStudentName').textContent = s ? s.name : 'this student';
-    
-    // Reset modal UI to default (Internal Archive)
     document.getElementById('optArchive').checked = true;
     window.toggleArchiveType();
-
-    // Reset fields
     document.getElementById('releaseReason').value = '';
     document.getElementById('archiveNotes').value  = '';
-    
     openOverlay('archiveModal', 'archiveModalInner');
 };
 
-window.closeArchiveModal = function() { closeOverlay('archiveModal', 'archiveModalInner'); };
+window.closeArchiveModal  = function() { closeOverlay('archiveModal', 'archiveModalInner'); };
 
 window.toggleArchiveType = function() {
     const isRelease = document.getElementById('optRelease').checked;
-    const releaseFields = document.getElementById('releaseFields');
-    if (isRelease) releaseFields.classList.remove('hidden');
-    else releaseFields.classList.add('hidden');
+    const rf        = document.getElementById('releaseFields');
+    if (isRelease) rf.classList.remove('hidden');
+    else rf.classList.add('hidden');
 };
 
 document.getElementById('confirmArchiveBtn').addEventListener('click', async () => {
-    const isRelease = document.getElementById('optRelease').checked;
+    const isRelease     = document.getElementById('optRelease').checked;
     const releaseReason = document.getElementById('releaseReason').value;
-    const notes = document.getElementById('archiveNotes').value.trim();
-    
-    if (isRelease && !releaseReason) { 
-        alert('Please select a departure reason to close enrollment.'); 
-        return; 
-    }
+    const notes         = document.getElementById('archiveNotes').value.trim();
+
+    if (isRelease && !releaseReason) { alert('Please select a departure reason to close enrollment.'); return; }
 
     const btn = document.getElementById('confirmArchiveBtn');
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Processing…'; 
-    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing…'; btn.disabled = true;
 
     try {
-        const s = allStudentsCache.find(x => x.id === currentStudentId);
+        const s     = allStudentsCache.find(x => x.id === currentStudentId);
         const batch = writeBatch(db);
-        
-        let finalStatus = 'Archived';
-        let leaveSchool = false;
+
+        let finalStatus   = 'Archived';
+        let leaveSchool   = false;
         let historyReason = 'Internally Archived';
 
         if (isRelease) {
-            leaveSchool = true;
+            leaveSchool   = true;
             historyReason = releaseReason;
-            if (releaseReason === 'Transferred') finalStatus = 'Transferred';
+            if (releaseReason === 'Transferred')   finalStatus = 'Transferred';
             else if (releaseReason === 'Graduated') finalStatus = 'Graduated';
             else finalStatus = 'Archived';
         }
 
         const snapshot = {
-            schoolId: session.schoolId, 
-            schoolName: session.schoolName || session.schoolId,
-            teacherId: s?.teacherId || '', 
-            className: s?.className || '',
-            leftAt: new Date().toISOString(), 
-            reason: historyReason,
+            schoolId: session.schoolId, schoolName: session.schoolName || session.schoolId,
+            teacherId: s?.teacherId || '', className: s?.className || '',
+            leftAt: new Date().toISOString(), reason: historyReason,
             ...(notes ? { notes } : {})
         };
 
         batch.update(doc(db, 'students', currentStudentId), {
             enrollmentStatus: finalStatus,
             currentSchoolId:  leaveSchool ? '' : session.schoolId,
-            teacherId: '', 
-            className: '',
+            teacherId: '', className: '',
             academicHistory: arrayUnion(snapshot)
         });
-        
+
         if (leaveSchool) {
             batch.set(doc(collection(db, 'schools', session.schoolId, 'notifications')), {
                 type: 'student_enrollment_closed', studentId: currentStudentId,
@@ -1030,387 +1174,25 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
         }
 
         await batch.commit();
-        
-        window.closeArchiveModal(); 
-        window.closeStudentPanel(); 
+        window.closeArchiveModal();
+        window.closeStudentPanel();
         await loadStudents();
-    } catch (e) { 
-        console.error('[Roster] archive/transfer:', e); 
-        alert('Critical failure. Record preserved.'); 
+    } catch (e) {
+        console.error('[Roster] archive:', e);
+        alert('Critical failure. Record preserved.');
     }
 
-    btn.innerHTML = '<i class="fa-solid fa-box-archive mr-2"></i>Confirm Action'; 
-    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-box-archive"></i> Confirm Action'; btn.disabled = false;
 });
 
-// ── 15. EXPORT & PROFESSIONAL REPORT CARD GENERATION ──────────────────────────
+// ── 15. EXPORT ────────────────────────────────────────────────────────────────
 window.exportRosterCSV = function() {
     const rows = [['Global ID','Name','Class','Parent Phone','Parent PIN']];
     allStudentsCache.forEach(s => rows.push([s.id, s.name, s.className||'', s.parentPhone||'', s.pin]));
     downloadCSV(rows, `${session.schoolId}_roster.csv`);
 };
 
-window.printRoster = function() {
-    window.print();
-};
-
-window.checkAndPrintReport = function() {
-    const semSelect = document.getElementById('activeSemester');
-    const semId = semSelect?.value;
-    
-    if (!semId) {
-        alert("No active grading period is currently set.");
-        return;
-    }
-
-    // Logic gate: Check if teacher has completed the ACADEMIC evaluation (Report Card data)
-    const hasEval = cachedEvaluations.some(e => e.semesterId === semId && e.type === 'academic');
-    if (!hasEval) {
-        alert("Action Blocked: No Academic evaluation found for this term.\n\nPlease click '+ New Evaluation' and complete the 'Academic / Report Card Record' (attendance and behavior) before generating an official report card.");
-        return;
-    }
-
-    window.openPrintStudentModal();
-};
-
-window.openPrintStudentModal = function() {
-    const psSubj = document.getElementById('psSubject');
-    psSubj.innerHTML = '<option value="all">All Subjects</option>' +
-        getActiveSubjects().map(s => `<option value="${escHtml(s.name)}">${escHtml(s.name)}</option>`).join('');
-    openOverlay('printStudentModal', 'printStudentModalInner');
-};
-
-window.closePrintStudentModal = function() { closeOverlay('printStudentModal', 'printStudentModalInner'); };
-
-window.executeStudentPrint = async function() {
-    const mode = document.getElementById('psMode').value;
-    const subjFilter = document.getElementById('psSubject').value;
-    const student = allStudentsCache.find(s => s.id === currentStudentId);
-
-    if (!student) return;
-
-    const semSelect = document.getElementById('activeSemester');
-    const semId = semSelect?.value;
-    const semName = semSelect?.options[semSelect.selectedIndex]?.text || 'Active Term';
-    const schoolName = session.schoolName || 'ConnectUs School';
-
-    let gradesToPrint = currentStudentGradesCache;
-    
-    // Only filter subjects if NOT doing the formal report card
-    if (mode !== 'formal_report' && subjFilter !== 'all') {
-        gradesToPrint = gradesToPrint.filter(g => g.subject === subjFilter);
-    }
-
-    const bySub = {};
-    let totalAssessments = 0;
-    
-    gradesToPrint.forEach(g => {
-        const sub = g.subject || 'Uncategorized';
-        if (!bySub[sub]) bySub[sub] = [];
-        bySub[sub].push(g);
-        if (g.max) totalAssessments++;
-    });
-
-    const cumulativeAvg = gradesToPrint.length ? calculateWeightedAverage(gradesToPrint, session.teacherData.gradeTypes || getGradeTypes()) : 0;
-    const gpaLetter = totalAssessments > 0 ? letterGrade(cumulativeAvg) : 'N/A';
-
-    // ──────────────────────────────────────────────────────────────────────────
-    // ✦ NEW FORMAL REPORT CARD GENERATION (LA ISLA CARIÑOSA STYLE) ✦
-    // ──────────────────────────────────────────────────────────────────────────
-    if (mode === 'formal_report') {
-        
-        let evalData = null;
-        try {
-            const evalSnap = await getDoc(doc(db, 'students', currentStudentId, 'evaluations', `${currentStudentId}_${semId}`));
-            if (evalSnap.exists()) {
-                evalData = evalSnap.data();
-            } else {
-                evalData = cachedEvaluations.find(e => e.semesterId === semId && e.type === 'academic'); 
-            }
-        } catch(e) { console.error(e); }
-
-        const ev = evalData || { ratings: {}, attendance: {}, comment: 'No formal evaluation filed for this term.' };
-        const r2l = (v) => v >= 5 ? 'E' : v === 4 ? 'D' : v === 3 ? 'B' : v > 0 ? 'I' : '—';
-
-        let gradesHtml = Object.keys(bySub).length === 0
-            ? `<tr><td colspan="3" style="text-align:center;padding:30px;color:#64748b;">No grades recorded for this term.</td></tr>`
-            : Object.entries(bySub).sort((a,b) => a[0].localeCompare(b[0])).map(([sub, gList]) => {
-                const subAvg = calculateWeightedAverage(gList, session.teacherData.gradeTypes || getGradeTypes());
-                return `
-                    <tr style="border-bottom:1px solid #e2e8f0;">
-                        <td style="padding:12px 15px; font-weight:700; color:#1e293b;">${escHtml(sub)}</td>
-                        <td style="padding:12px 15px; text-align:center; font-weight:700;">${subAvg}%</td>
-                        <td style="padding:12px 15px; text-align:center; font-weight:800; font-family:monospace;">${letterGrade(subAvg)}</td>
-                    </tr>
-                `;
-            }).join('');
-
-        const html = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Official Report Card — ${escHtml(student.name)}</title>
-            <style>
-                @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
-                body { font-family: 'Nunito', sans-serif; padding: 40px; color: #0f172a; line-height: 1.5; margin: 0 auto; max-width: 8.5in; }
-                .header-flex { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid #1e1b4b; padding-bottom: 20px; margin-bottom: 20px; }
-                .logo { max-height: 80px; max-width: 250px; object-fit: contain; }
-                .header-text { text-align: right; }
-                .header-text h1 { margin: 0 0 5px; font-size: 26px; font-weight: 900; text-transform: uppercase; color: #1e1b4b; }
-                .header-text h2 { margin: 0; font-size: 14px; color: #64748b; font-weight: 700; letter-spacing: 2px; }
-                
-                .student-info { display: flex; justify-content: space-between; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 15px 20px; margin-bottom: 30px; }
-                .student-info div { display: flex; flex-direction: column; gap: 4px; }
-                .info-label { font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: 800; letter-spacing: 1px; }
-                .info-value { font-size: 16px; font-weight: 800; color: #0f172a; }
-
-                .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px; }
-                
-                h3 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: #1e1b4b; border-bottom: 2px solid #1e1b4b; padding-bottom: 8px; margin-top: 0; margin-bottom: 12px; }
-                
-                table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px; }
-                th { background: #f1f5f9; color: #475569; padding: 10px 15px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #cbd5e1; }
-                th.center { text-align: center; }
-                td { border-bottom: 1px solid #e2e8f0; padding: 10px 15px; color: #334155; }
-                
-                .rating-legend { font-size: 11px; color: #64748b; font-weight: 700; display: flex; justify-content: space-between; background: #f8fafc; padding: 8px 12px; border-radius: 6px; margin-bottom: 15px; }
-                
-                .comments-box { border: 1px solid #cbd5e1; border-radius: 8px; padding: 15px; background: #fff; min-height: 80px; }
-                .comments-label { font-size: 11px; font-weight: 800; color: #1e1b4b; text-transform: uppercase; margin-bottom: 8px; display: block; }
-                
-                .footer-sigs { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 50px; page-break-inside: avoid; }
-                .sig-line { border-top: 1px solid #000; padding-top: 8px; font-size: 12px; font-weight: 700; text-align: center; color:#1e1b4b; }
-            </style>
-        </head>
-        <body>
-            <div class="header-flex">
-                <img src="${session.logo || ''}" alt="${escHtml(schoolName)}" class="logo" onerror="this.style.display='none'">
-                <div class="header-text">
-                    <h1>${escHtml(schoolName)}</h1>
-                    <h2>OFFICIAL TERM REPORT CARD</h2>
-                </div>
-            </div>
-
-            <div class="student-info">
-                <div><span class="info-label">Student Name</span><span class="info-value">${escHtml(student.name)}</span></div>
-                <div><span class="info-label">Class</span><span class="info-value">${escHtml(student.className || 'Unassigned')}</span></div>
-                <div><span class="info-label">Academic Term</span><span class="info-value">${escHtml(semName)}</span></div>
-                <div><span class="info-label">Term Average</span><span class="info-value">${cumulativeAvg}% (${gpaLetter})</span></div>
-            </div>
-
-            <div class="grid-container">
-                <div>
-                    <h3>Academic Performance</h3>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Subject</th>
-                                <th class="center">Term Avg</th>
-                                <th class="center">Grade</th>
-                            </tr>
-                        </thead>
-                        <tbody>${gradesHtml}</tbody>
-                    </table>
-                </div>
-                
-                <div>
-                    <h3>Behavior & Work Habits</h3>
-                    <div class="rating-legend">
-                        <span>E - Exceptional</span>
-                        <span>D - Developing</span>
-                        <span>B - Beginning</span>
-                        <span>I - Improvement Needed</span>
-                    </div>
-                    <table>
-                        <tbody>
-                            <tr><td style="font-weight:700; color:#1e293b;">Academic Comprehension</td><td style="text-align:center; font-weight:800; font-size:14px;">${r2l(ev.ratings.academicComprehension)}</td></tr>
-                            <tr><td style="font-weight:700; color:#1e293b;">Attitude Towards Work</td><td style="text-align:center; font-weight:800; font-size:14px;">${r2l(ev.ratings.attitudeWork)}</td></tr>
-                            <tr><td style="font-weight:700; color:#1e293b;">Effort & Resilience</td><td style="text-align:center; font-weight:800; font-size:14px;">${r2l(ev.ratings.effortResilience)}</td></tr>
-                            <tr><td style="font-weight:700; color:#1e293b;">Participation & Engagement</td><td style="text-align:center; font-weight:800; font-size:14px;">${r2l(ev.ratings.participation)}</td></tr>
-                            <tr><td style="font-weight:700; color:#1e293b;">Organization & Time Mgt</td><td style="text-align:center; font-weight:800; font-size:14px;">${r2l(ev.ratings.organization)}</td></tr>
-                            <tr><td style="font-weight:700; color:#1e293b;">Classroom Behaviour</td><td style="text-align:center; font-weight:800; font-size:14px;">${r2l(ev.ratings.behavior)}</td></tr>
-                            <tr><td style="font-weight:700; color:#1e293b;">Peer Relations & Respect</td><td style="text-align:center; font-weight:800; font-size:14px;">${r2l(ev.ratings.peerRelations)}</td></tr>
-                            <tr><td style="font-weight:700; color:#1e293b;">Attendance & Punctuality</td><td style="text-align:center; font-weight:800; font-size:14px;">${r2l(ev.ratings.punctualityRating)}</td></tr>
-                        </tbody>
-                    </table>
-
-                    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px;">
-                        <div style="background:#f8fafc; border:1px solid #cbd5e1; padding:10px; text-align:center; border-radius:6px;">
-                            <span style="display:block; font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase;">Sessions</span>
-                            <span style="font-size:18px; font-weight:900; color:#1e1b4b;">${ev.attendance.totalSessions || 0}</span>
-                        </div>
-                        <div style="background:#f8fafc; border:1px solid #cbd5e1; padding:10px; text-align:center; border-radius:6px;">
-                            <span style="display:block; font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase;">Absent</span>
-                            <span style="font-size:18px; font-weight:900; color:#1e1b4b;">${ev.attendance.daysAbsent || 0}</span>
-                        </div>
-                        <div style="background:#f8fafc; border:1px solid #cbd5e1; padding:10px; text-align:center; border-radius:6px;">
-                            <span style="display:block; font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase;">Late</span>
-                            <span style="font-size:18px; font-weight:900; color:#1e1b4b;">${ev.attendance.daysLate || 0}</span>
-                        </div>
-                    </div>
-
-                    <div class="comments-box">
-                        <span class="comments-label">Teacher's Comments</span>
-                        <p style="margin:0; font-size:13px; color:#334155; white-space:pre-wrap;">${escHtml(ev.comment)}</p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="footer-sigs">
-                <div class="sig-line">Teacher's Signature & Date</div>
-                <div class="sig-line">Principal's Signature & Date</div>
-            </div>
-        </body>
-        </html>
-        `;
-
-        const w = window.open('', '_blank');
-        w.document.write(html);
-        w.document.close();
-        window.closePrintStudentModal();
-        setTimeout(() => w.print(), 800);
-        return;
-    }
-
-    // ──────────────────────────────────────────────────────────────────────────
-    // ✦ OLD UNOFFICIAL REPORT PRINTING (Summary & Detailed) ✦
-    // ──────────────────────────────────────────────────────────────────────────
-    let gradesHtml = Object.keys(bySub).length === 0
-        ? `<tr><td colspan="4" style="text-align:center;color:#64748b;font-style:italic;padding:40px;">No grades recorded for this filter.</td></tr>`
-        : Object.entries(bySub).sort((a,b) => a[0].localeCompare(b[0])).map(([sub, gList]) => {
-            const subAvg = calculateWeightedAverage(gList, session.teacherData.gradeTypes || getGradeTypes());
-            let html = `
-                <tr style="background:#f8fafc; font-weight:800;">
-                    <td style="border-bottom:1px solid #cbd5e1;padding:12px 15px;color:#1e293b;">${escHtml(sub)}</td>
-                    <td style="border-bottom:1px solid #cbd5e1;padding:12px 15px;text-align:center;color:#64748b;">${gList.length}</td>
-                    <td style="border-bottom:1px solid #cbd5e1;padding:12px 15px;text-align:center;color:#0f172a;">${subAvg}%</td>
-                    <td style="border-bottom:1px solid #cbd5e1;padding:12px 15px;text-align:center;color:#0f172a;">${letterGrade(subAvg)}</td>
-                </tr>
-            `;
-
-            if (mode === 'detailed') {
-                gList.sort((a,b) => (b.date||'').localeCompare(a.date||'')).forEach(g => {
-                    const pct = g.max ? Math.round((g.score/g.max)*100) : null;
-                    html += `
-                    <tr style="font-size:11px; background:#fff;">
-                        <td style="border-bottom:1px solid #f1f5f9;padding:8px 15px 8px 30px;color:#475569;">
-                            ${escHtml(g.title)} <span style="color:#94a3b8;margin-left:6px;">${escHtml(g.type)} · ${g.date}</span>
-                        </td>
-                        <td style="border-bottom:1px solid #f1f5f9;padding:8px 15px;text-align:center;color:#64748b;font-family:monospace;">${g.score}/${g.max||'?'}</td>
-                        <td style="border-bottom:1px solid #f1f5f9;padding:8px 15px;text-align:center;color:#475569;font-family:monospace;">${pct!==null?pct+'%':'-'}</td>
-                        <td style="border-bottom:1px solid #f1f5f9;padding:8px 15px;text-align:center;color:#475569;">${pct!==null?letterGrade(pct):'-'}</td>
-                    </tr>`;
-                });
-            }
-            return html;
-        }).join('');
-
-    const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Unofficial Term Report — ${escHtml(student.name)}</title>
-        <style>
-            @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
-            body { font-family: 'Nunito', sans-serif; padding: 40px; color: #0f172a; line-height: 1.5; margin: 0 auto; max-width: 8.5in; }
-            .watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); font-size: 110px; color: rgba(203, 213, 225, 0.25); font-weight: 900; white-space: nowrap; pointer-events: none; z-index: -1; }
-            .header-flex { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid #1e1b4b; padding-bottom: 20px; margin-bottom: 30px; }
-            .logo { max-height: 60px; max-width: 200px; object-fit: contain; }
-            .header-text { text-align: right; }
-            .header-text h1 { margin: 0 0 5px; font-size: 24px; font-weight: 900; text-transform: uppercase; color: #1e1b4b; }
-            .header-text h2 { margin: 0; font-size: 14px; color: #64748b; font-weight: 700; letter-spacing: 2px; }
-            
-            .student-info-box { display: flex; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; margin-bottom: 30px; }
-            .info-col { flex: 1; padding: 15px 20px; border-right: 1px solid #cbd5e1; }
-            .info-col:last-child { border-right: none; background: #f8fafc; }
-            .info-item { margin-bottom: 10px; }
-            .info-item:last-child { margin-bottom: 0; }
-            .info-label { font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: 800; display: block; margin-bottom: 2px; }
-            .info-value { font-size: 15px; font-weight: 800; color: #0f172a; }
-            
-            .analytics-grid { display: flex; gap: 15px; margin-bottom: 30px; }
-            .analytic-card { flex: 1; background: #fff; border: 2px solid #e2e8f0; border-radius: 8px; padding: 15px; text-align: center; }
-            .analytic-val { font-size: 28px; font-weight: 900; color: #4338ca; line-height: 1; margin-bottom: 5px; }
-            .analytic-lbl { font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
-
-            table { width: 100%; border-collapse: collapse; font-size: 13px; border: 1px solid #e2e8f0; }
-            th { background: #1e1b4b; color: #fff; padding: 10px 15px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
-            th.center { text-align: center; }
-
-            .footer { margin-top: 50px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 20px; font-weight: 600; }
-        </style>
-    </head>
-    <body>
-        <div class="watermark">UNOFFICIAL REPORT</div>
-        
-        <div class="header-flex">
-            <img src="${session.logo || ''}" alt="${escHtml(schoolName)}" class="logo" onerror="this.style.display='none'">
-            <div class="header-text">
-                <h1>${escHtml(schoolName)}</h1>
-                <h2>UNOFFICIAL TERM REPORT</h2>
-            </div>
-        </div>
-
-        <div class="student-info-box">
-            <div class="info-col">
-                <div class="info-item"><span class="info-label">Student Name</span><span class="info-value">${escHtml(student.name)}</span></div>
-                <div class="info-item"><span class="info-label">Global ID Number</span><span class="info-value" style="font-family:monospace;letter-spacing:1px;">${student.id}</span></div>
-            </div>
-            <div class="info-col">
-                <div class="info-item"><span class="info-label">Academic Term</span><span class="info-value">${escHtml(semName)}</span></div>
-                <div class="info-item"><span class="info-label">Current Enrollment</span><span class="info-value">${escHtml(student.className || 'Unassigned')}</span></div>
-            </div>
-        </div>
-
-        <div class="analytics-grid">
-            <div class="analytic-card">
-                <div class="analytic-val">${cumulativeAvg}%</div>
-                <div class="analytic-lbl">Term Average</div>
-            </div>
-            <div class="analytic-card">
-                <div class="analytic-val">${gpaLetter}</div>
-                <div class="analytic-lbl">Overall Grade</div>
-            </div>
-            <div class="analytic-card">
-                <div class="analytic-val">${totalAssessments}</div>
-                <div class="analytic-lbl">Total Assessments</div>
-            </div>
-        </div>
-
-        <table>
-            <thead>
-                <tr>
-                    <th>Subject / Assignment</th>
-                    <th class="center">Assessments / Score</th>
-                    <th class="center">Average / Pct</th>
-                    <th class="center">Grade</th>
-                </tr>
-            </thead>
-            <tbody>${gradesHtml}</tbody>
-        </table>
-
-        <div class="footer" style="display:flex; flex-direction:column; justify-content:center; align-items:center; gap:8px;">
-            <span><strong>NOTICE:</strong> This document is an unofficial academic report generated for <strong>${escHtml(schoolName)}</strong>.</span>
-            <span>${mode === 'summary' ? 'This is a summary report. Details omitted for brevity.' : 'This report includes all detailed assignments for the selected filters.'}</span>
-            <span>Date Issued: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
-            
-            <div style="display:flex; justify-content:center; align-items:center; gap:8px; margin-top:10px;">
-                <span>Issued by ${escHtml(schoolName)}</span>
-                <span>·</span>
-                <img src="../../assets/images/logo.png" style="max-height:20px; object-fit:contain; opacity:0.8;">
-                <span style="font-weight:bold; color:#0d1f35;">Powered by ConnectUs</span>
-            </div>
-        </div>
-    </body>
-    </html>`;
-
-    const w = window.open('', '_blank');
-    w.document.write(html);
-    w.document.close();
-    
-    window.closePrintStudentModal();
-    setTimeout(() => w.print(), 800);
-};
+window.printRoster = function() { window.print(); };
 
 // ── 16. XSS PROTECTION ───────────────────────────────────────────────────────
 function escHtml(str) {
