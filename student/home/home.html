@@ -23,101 +23,94 @@
     <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
         <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
 
-        <div class="flex-1 overflow-y-auto p-7">
-            <div id="view-overview" class="view-section max-w-5xl mx-auto space-y-6">
+        <div class="flex-1 overflow-y-auto p-7 md:p-10">
+            <div id="view-overview" class="view-section w-full space-y-8">
 
-                <!-- ── Stat Cards ──────────────────────────────────────── -->
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
-                    <div class="stat-card bg-gradient-to-br from-indigo-600 to-indigo-800 p-6 rounded-3xl shadow-lg shadow-indigo-500/20 text-white border border-indigo-500/30 flex flex-col justify-between">
-                        <div class="flex items-center justify-between mb-2">
-                            <div class="bg-white/20 h-12 w-12 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-graduation-cap"></i></div>
-                            <span class="text-indigo-200 text-[10px] font-black uppercase tracking-wider bg-black/10 px-3 py-1 rounded-full border border-white/10 shadow-inner">Current Avg</span>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div class="stat-card bg-gradient-to-br from-indigo-600 to-indigo-800 p-8 rounded-3xl shadow-lg shadow-indigo-500/20 text-white border border-indigo-500/30 flex flex-col justify-between">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="bg-white/20 h-14 w-14 rounded-xl flex items-center justify-center text-2xl"><i class="fa-solid fa-graduation-cap"></i></div>
+                            <span class="text-indigo-200 text-xs font-black uppercase tracking-wider bg-black/10 px-4 py-1.5 rounded-full border border-white/10 shadow-inner">Current Avg</span>
                         </div>
-                        <h3 class="text-5xl font-black mt-2 flex items-baseline gap-2">
-                            <span id="dashAvg">--</span><span class="text-2xl text-indigo-300 font-bold">%</span>
+                        <h3 class="text-6xl font-black mt-2 flex items-baseline gap-2">
+                            <span id="dashAvg">--</span><span class="text-3xl text-indigo-300 font-bold">%</span>
                         </h3>
                     </div>
 
-                    <div class="stat-card bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-                        <div class="flex items-center gap-3 mb-4">
-                            <div class="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-check-double"></i></div>
-                            <div><h3 class="font-black text-slate-700">Assignments</h3><p class="text-xs text-slate-400 font-bold uppercase tracking-wider">This Period</p></div>
+                    <div class="stat-card bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                        <div class="flex items-center gap-4 mb-6">
+                            <div class="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center text-2xl"><i class="fa-solid fa-check-double"></i></div>
+                            <div><h3 class="font-black text-slate-700 text-lg">Assignments</h3><p class="text-sm text-slate-400 font-bold uppercase tracking-wider">This Period</p></div>
                         </div>
-                        <h3 id="dashTotalGrades" class="text-4xl font-black text-slate-800">0</h3>
+                        <h3 id="dashTotalGrades" class="text-5xl font-black text-slate-800">0</h3>
                     </div>
 
-                    <div class="stat-card bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-                        <div class="flex items-center gap-3 mb-4">
-                            <div class="w-10 h-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-bell"></i></div>
-                            <div><h3 class="font-black text-slate-700">Recent Updates</h3><p class="text-xs text-slate-400 font-bold uppercase tracking-wider">Last 7 Days</p></div>
+                    <div class="stat-card bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                        <div class="flex items-center gap-4 mb-6">
+                            <div class="w-14 h-14 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center text-2xl"><i class="fa-solid fa-bell"></i></div>
+                            <div><h3 class="font-black text-slate-700 text-lg">Recent Updates</h3><p class="text-sm text-slate-400 font-bold uppercase tracking-wider">Last 7 Days</p></div>
                         </div>
-                        <h3 id="dashRecentCount" class="text-4xl font-black text-slate-800">0</h3>
+                        <h3 id="dashRecentCount" class="text-5xl font-black text-slate-800">0</h3>
                     </div>
                 </div>
 
-                <!-- ── Recent Activity Feed ────────────────────────────── -->
                 <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div class="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center gap-3">
-                        <div class="w-8 h-8 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center text-sm"><i class="fa-solid fa-bolt"></i></div>
-                        <h3 class="font-black text-slate-800 text-lg">Recent Activity Feed</h3>
+                    <div class="p-6 md:p-8 border-b border-slate-100 bg-slate-50/50 flex items-center gap-4">
+                        <div class="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-bolt"></i></div>
+                        <h3 class="font-black text-slate-800 text-xl">Recent Activity Feed</h3>
                     </div>
-                    <div class="p-6">
-                        <div id="recentActivityList" class="space-y-4">
-                            <div class="text-center py-8 text-slate-400 font-semibold">
-                                <i class="fa-solid fa-spinner fa-spin text-2xl mb-3 block"></i>Loading activity...
+                    <div class="p-6 md:p-8">
+                        <div id="recentActivityList" class="space-y-5">
+                            <div class="text-center py-10 text-slate-400 font-semibold text-lg">
+                                <i class="fa-solid fa-spinner fa-spin text-3xl mb-4 block"></i>Loading activity...
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- ── Academic Analytics ─────────────────────────────── -->
-                <div id="academicAnalytics" class="hidden space-y-4">
+                <div id="academicAnalytics" class="hidden space-y-8">
 
-                    <!-- Standing banner -->
-                    <div id="standingBanner" class="rounded-3xl p-5 border flex items-center gap-4"></div>
+                    <div id="standingBanner" class="rounded-3xl p-6 md:p-8 border flex items-center gap-6"></div>
 
-                    <!-- 2-col: Subject performance | Grade type breakdown -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
-                            <div class="flex items-center gap-2 mb-4 border-b border-slate-100 pb-3">
-                                <i class="fa-solid fa-book text-indigo-500 text-sm"></i>
-                                <h4 class="font-black text-slate-800 text-sm uppercase tracking-wide">Subject Performance</h4>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-8">
+                            <div class="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4">
+                                <i class="fa-solid fa-book text-indigo-500 text-base"></i>
+                                <h4 class="font-black text-slate-800 text-base uppercase tracking-wide">Subject Performance</h4>
                             </div>
-                            <div id="subjectBars" class="space-y-3"></div>
+                            <div id="subjectBars" class="space-y-5"></div>
                         </div>
-                        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
-                            <div class="flex items-center gap-2 mb-4 border-b border-slate-100 pb-3">
-                                <i class="fa-solid fa-layer-group text-emerald-500 text-sm"></i>
-                                <h4 class="font-black text-slate-800 text-sm uppercase tracking-wide">Performance by Type</h4>
+                        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-8">
+                            <div class="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4">
+                                <i class="fa-solid fa-layer-group text-emerald-500 text-base"></i>
+                                <h4 class="font-black text-slate-800 text-base uppercase tracking-wide">Performance by Type</h4>
                             </div>
-                            <div id="typeBars" class="space-y-3"></div>
+                            <div id="typeBars" class="space-y-5"></div>
                         </div>
                     </div>
 
-                    <!-- Strengths & needs work -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <div class="bg-emerald-50 border border-emerald-100 rounded-3xl p-6">
-                            <div class="flex items-center gap-2 mb-3">
-                                <i class="fa-solid fa-trophy text-emerald-500"></i>
-                                <h4 class="font-black text-emerald-800 text-sm uppercase tracking-wide">Your Strengths</h4>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div class="bg-emerald-50 border border-emerald-100 rounded-3xl p-8">
+                            <div class="flex items-center gap-3 mb-5">
+                                <i class="fa-solid fa-trophy text-emerald-500 text-lg"></i>
+                                <h4 class="font-black text-emerald-800 text-base uppercase tracking-wide">Your Strengths</h4>
                             </div>
-                            <div id="strengthsList" class="space-y-2"></div>
+                            <div id="strengthsList" class="space-y-3"></div>
                         </div>
-                        <div class="bg-red-50 border border-red-100 rounded-3xl p-6">
-                            <div class="flex items-center gap-2 mb-3">
-                                <i class="fa-solid fa-bullseye text-red-400"></i>
-                                <h4 class="font-black text-red-800 text-sm uppercase tracking-wide">Needs Improvement</h4>
+                        <div class="bg-red-50 border border-red-100 rounded-3xl p-8">
+                            <div class="flex items-center gap-3 mb-5">
+                                <i class="fa-solid fa-bullseye text-red-400 text-lg"></i>
+                                <h4 class="font-black text-red-800 text-base uppercase tracking-wide">Needs Improvement</h4>
                             </div>
-                            <div id="improvementList" class="space-y-2"></div>
+                            <div id="improvementList" class="space-y-3"></div>
                         </div>
                     </div>
 
                 </div>
 
-                <!-- Analytics loader -->
-                <div id="analyticsLoader" class="bg-white rounded-3xl border border-slate-200 shadow-sm p-8 text-center">
-                    <i class="fa-solid fa-spinner fa-spin text-2xl text-indigo-400 mb-3 block"></i>
-                    <p class="text-sm font-bold text-slate-400">Loading academic analytics…</p>
+                <div id="analyticsLoader" class="bg-white rounded-3xl border border-slate-200 shadow-sm p-10 text-center">
+                    <i class="fa-solid fa-spinner fa-spin text-3xl text-indigo-400 mb-4 block"></i>
+                    <p class="text-base font-bold text-slate-400">Loading academic analytics…</p>
                 </div>
 
             </div>
