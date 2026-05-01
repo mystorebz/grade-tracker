@@ -12,13 +12,15 @@ export function injectAdminLayout(activePageId, pageTitle, pageSub, showSearch =
 
     // ── Read session ──────────────────────────────────────────────────────────
     const session      = getSessionData('admin') || {};
-    const isSuperAdmin = session.isSuperAdmin === true;
+    
+    // STRICT ROLE CHECK: Prevents the UI from ever confusing a sub_admin for a super_admin
+    const isSuperAdmin = session.role === 'super_admin'; 
     const schoolName   = session.schoolName || 'Your School';
     const schoolId     = session.schoolId   || '—';
 
-    const displayName    = isSuperAdmin ? schoolName : (session.adminName || 'Administrator');
+    const displayName    = isSuperAdmin ? schoolName : (session.adminName || 'Sub-Admin');
     const roleBadgeClass = isSuperAdmin ? 'sidebar-role-badge sidebar-role-super' : 'sidebar-role-badge sidebar-role-admin';
-    const roleBadgeText  = isSuperAdmin ? 'Super Admin' : 'Administrator';
+    const roleBadgeText  = isSuperAdmin ? 'Super Admin' : 'Sub-Admin';
 
     // Initials for avatar fallback
     const initials = displayName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
