@@ -99,7 +99,8 @@ async function launchDashboard(schoolId, schoolData, role, adminId, adminData) {
         : adminData?.securityQuestionsSet;
 
     if (!questionsSet) {
-        window.location.href = '../onboarding/first-time-setup.html?role=admin';
+        // BUG FIX: Dynamically pass the actual role so setup screen knows who they are
+        window.location.href = `../onboarding/first-time-setup.html?role=${role}`;
         return;
     }
 
