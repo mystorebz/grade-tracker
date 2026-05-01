@@ -15,74 +15,139 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
-<body class="flex h-screen overflow-hidden bg-[#f5f3ff]">
+<body class="flex w-full h-screen overflow-hidden bg-[#f5f3ff]">
 
     <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
 
-    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden min-w-0">
         
         <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
 
-        <div class="flex-1 overflow-y-auto p-7">
-            <div class="max-w-4xl mx-auto space-y-6">
+        <div class="flex-1 overflow-y-auto p-8 md:p-10">
+            <div class="w-full space-y-8">
                 
                 <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="p-6 border-b border-slate-100 bg-gradient-to-r from-white to-indigo-50/40 flex items-center gap-3">
-                        <div class="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-file-contract"></i></div>
+                    <div class="p-6 md:p-8 border-b border-slate-100 bg-gradient-to-r from-white to-indigo-50/40 flex items-center gap-4">
+                        <div class="w-14 h-14 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center text-2xl"><i class="fa-solid fa-file-contract"></i></div>
                         <div>
-                            <h3 class="font-black text-xl text-slate-800">Official Reports & Transcripts</h3>
-                            <p class="text-sm text-slate-400 font-semibold">Generate and print official academic documents</p>
+                            <h3 class="font-black text-2xl text-slate-800">Official Reports & Transcripts</h3>
+                            <p class="text-base text-slate-500 font-semibold mt-1">Generate custom academic profiles or print full official transcripts.</p>
                         </div>
                     </div>
                     
-                    <div class="p-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5 text-center shadow-sm">
-                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Cumulative GPA</p>
-                            <p id="cumulativeGpa" class="text-4xl font-black text-slate-800"><i class="fa-solid fa-spinner fa-spin text-slate-300 text-2xl"></i></p>
+                    <div class="p-6 md:p-8 grid grid-cols-1 sm:grid-cols-3 gap-6">
+                        <div class="bg-slate-50 border border-slate-200 rounded-2xl p-6 text-center shadow-sm">
+                            <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Cumulative Average</p>
+                            <p id="cumulativeGpa" class="text-5xl font-black text-slate-800"><i class="fa-solid fa-spinner fa-spin text-slate-300 text-3xl"></i></p>
                         </div>
-                        <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5 text-center shadow-sm">
-                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Total Assignments</p>
-                            <p id="totalAssignments" class="text-4xl font-black text-indigo-600"><i class="fa-solid fa-spinner fa-spin text-indigo-200 text-2xl"></i></p>
+                        <div class="bg-slate-50 border border-slate-200 rounded-2xl p-6 text-center shadow-sm">
+                            <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Total Assignments</p>
+                            <p id="totalAssignments" class="text-5xl font-black text-indigo-600"><i class="fa-solid fa-spinner fa-spin text-indigo-200 text-3xl"></i></p>
                         </div>
-                        <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5 text-center shadow-sm">
-                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Active Status</p>
-                            <p class="text-2xl font-black text-emerald-600 mt-2">Enrolled</p>
+                        <div class="bg-slate-50 border border-slate-200 rounded-2xl p-6 flex flex-col items-center justify-center shadow-sm">
+                            <button id="generateTranscriptBtn" class="w-full h-full bg-slate-800 hover:bg-slate-900 text-white font-black px-6 py-4 rounded-xl shadow-md transition flex flex-col items-center justify-center gap-3">
+                                <i class="fa-solid fa-file-lines text-3xl"></i>
+                                <span class="text-base tracking-wide">Print Full Transcript</span>
+                            </button>
                         </div>
                     </div>
                 </div>
 
-                <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="p-6 border-b border-slate-100 bg-slate-50">
-                        <h4 class="font-black text-slate-700 uppercase tracking-wider text-sm mb-1">Document Generator</h4>
-                        <p class="text-xs text-slate-500 font-semibold">Select a reporting period to generate a printable PDF-style layout.</p>
+                <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden relative">
+                    <div class="h-[4px] bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
+                    
+                    <div class="p-6 md:p-8 border-b border-slate-100 bg-slate-50">
+                        <h4 class="font-black text-slate-800 uppercase tracking-widest text-lg mb-1 flex items-center gap-2">
+                            <i class="fa-solid fa-filter text-indigo-500"></i> Custom Report Builder
+                        </h4>
+                        <p class="text-sm text-slate-500 font-semibold">Select specific parameters to generate a targeted academic profile.</p>
                     </div>
-                    <div class="p-6 space-y-6">
-                        
+                    
+                    <div class="p-6 md:p-8">
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                            
+                            <div class="flex flex-col">
+                                <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
+                                    <label class="text-sm font-black text-slate-700 uppercase tracking-widest flex items-center gap-2"><i class="fa-solid fa-calendar-days text-indigo-500"></i> Periods</label>
+                                    <button onclick="toggleAllCheckboxes('rb-semester-grid', true)" class="text-xs font-black text-indigo-600 hover:underline">Select All</button>
+                                </div>
+                                <div id="rb-semester-grid" class="flex flex-col gap-3 max-h-60 overflow-y-auto pr-2">
+                                    <div class="text-sm text-slate-400 font-bold italic"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading periods...</div>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-col">
+                                <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
+                                    <label class="text-sm font-black text-slate-700 uppercase tracking-widest flex items-center gap-2"><i class="fa-solid fa-layer-group text-emerald-500"></i> Subjects</label>
+                                    <button onclick="toggleAllCheckboxes('rb-subject-grid', true)" class="text-xs font-black text-indigo-600 hover:underline">Select All</button>
+                                </div>
+                                <div id="rb-subject-grid" class="flex flex-col gap-3 max-h-60 overflow-y-auto pr-2">
+                                    <div class="text-sm text-slate-400 font-bold italic"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading subjects...</div>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-col">
+                                <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
+                                    <label class="text-sm font-black text-slate-700 uppercase tracking-widest flex items-center gap-2"><i class="fa-solid fa-tags text-amber-500"></i> Types</label>
+                                    <button onclick="toggleAllCheckboxes('rb-type-grid', true)" class="text-xs font-black text-indigo-600 hover:underline">Select All</button>
+                                </div>
+                                <div id="rb-type-grid" class="flex flex-col gap-3 max-h-60 overflow-y-auto pr-2">
+                                    <div class="text-sm text-slate-400 font-bold italic"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading types...</div>
+                                </div>
+                            </div>
+                            
+                        </div>
+
+                        <div class="mt-8 flex items-center justify-between border-t border-slate-100 pt-6">
+                            <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3 max-w-lg">
+                                <i class="fa-solid fa-circle-info text-amber-500 text-lg"></i>
+                                <p class="text-xs md:text-sm text-amber-800 font-semibold leading-snug m-0">
+                                    Documents are generated from the live gradebook. For an officially sealed copy, contact administration.
+                                </p>
+                            </div>
+                            
+                            <button id="buildReportBtn" class="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-black px-8 py-4 rounded-xl shadow-md transition shadow-indigo-500/20 flex items-center gap-3 text-base">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> Build Report
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="reportResultsArea" class="hidden opacity-0 transition-opacity duration-500 space-y-8">
+                    
+                    <div class="flex flex-wrap gap-5 items-center justify-between bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-200">
                         <div>
-                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2">Select Period</label>
-                            <select id="reportSemesterSelect" class="form-input w-full max-w-md p-3 bg-white text-sm font-bold text-indigo-700 rounded-xl outline-none border border-slate-200">
-                                <option value="">Loading periods...</option>
-                            </select>
+                            <h2 class="text-xl md:text-2xl font-black text-slate-800 m-0">Custom Report Results</h2>
+                            <p id="reportOutputMeta" class="text-sm font-bold text-indigo-600 uppercase tracking-widest mt-2 m-0">—</p>
                         </div>
-
-                        <div class="flex flex-wrap gap-3 pt-2">
-                            <button id="generateReportCardBtn" class="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-black px-6 py-3 rounded-xl shadow-md transition shadow-indigo-500/20 flex items-center gap-2">
-                                <i class="fa-solid fa-print"></i> Generate Report Card
-                            </button>
-                            <button id="generateTranscriptBtn" class="bg-slate-800 hover:bg-slate-900 text-white font-black px-6 py-3 rounded-xl shadow-md transition flex items-center gap-2">
-                                <i class="fa-solid fa-file-lines"></i> Print Full Transcript
+                        <div>
+                            <button id="printCustomReportBtn" class="flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-black px-6 py-3.5 rounded-xl border border-indigo-200 hover:border-indigo-300 transition text-sm">
+                                <i class="fa-solid fa-print text-lg"></i> Print Custom Report
                             </button>
                         </div>
-                        
-                        <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3 mt-4">
-                            <i class="fa-solid fa-circle-info text-amber-500 mt-0.5"></i>
-                            <p class="text-xs text-amber-800 font-semibold leading-relaxed">
-                                <strong>Note:</strong> These documents are generated directly from the real-time gradebook. If you require an officially stamped and signed copy, please contact the school's administration office.
-                            </p>
-                        </div>
-
                     </div>
+
+                    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-base text-slate-700">
+                                <thead class="bg-slate-50 text-slate-500 text-xs md:text-sm uppercase tracking-widest font-black border-b-2 border-slate-200">
+                                    <tr>
+                                        <th class="px-8 py-5">Date</th>
+                                        <th class="px-8 py-5">Subject</th>
+                                        <th class="px-8 py-5">Assignment</th>
+                                        <th class="px-8 py-5">Type</th>
+                                        <th class="px-8 py-5 text-center">Score</th>
+                                        <th class="px-8 py-5 text-center">%</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="reportTableBody" class="divide-y divide-slate-100">
+                                    </tbody>
+                            </table>
+                        </div>
+                    </div>
+
                 </div>
 
             </div>
