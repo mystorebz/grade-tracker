@@ -1,12 +1,15 @@
 import { db, auth } from '../assets/js/firebase-init.js';
 import { collection, query, where, getDocs, getDoc, doc, updateDoc }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { signInWithCustomToken }
+import { signInWithCustomToken, signOut }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { getFunctions, httpsCallable }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
 import { setSessionData } from '../assets/js/auth.js';
 import { openOverlay, closeOverlay } from '../assets/js/utils.js';
+
+// ── WIPE ANY STALE SESSION THE MOMENT THE LOGIN PAGE LOADS ───────────────────
+signOut(auth).catch(() => {});
 
 // ── Functions instance ────────────────────────────────────────────────────────
 const functions        = getFunctions();
@@ -70,7 +73,9 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
                     isGlobalTeacher = true;
                     break;
                 }
-            } catch (e) { /* composite index may not exist yet */ }
+            } catch (e) {
+                console.warn('[Teacher Login] Global query failed for', schoolId, e.message);
+            }
         }
 
         // ── Fall back to legacy siloed path ───────────────────────────────────
@@ -88,10 +93,14 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
                         tData         = legacySnap.docs[0].data();
                         break;
                     }
-                } catch (e) { continue; }
+                } catch (e) {
+                    console.warn('[Teacher Login] Legacy query failed for', schoolId, e.message);
+                    continue;
+                }
             }
         }
 
+        // ── No match found — hard stop ────────────────────────────────────────
         if (!foundSchoolId || !tData) {
             msgEl.textContent = 'Invalid School ID or Teacher Code.';
             msgEl.classList.remove('hidden');
@@ -117,7 +126,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         schoolType  = schoolSnap.data().schoolType || 'Primary';
         tempSession = { schoolId: foundSchoolId, teacherId: tId, teacherData: tData };
 
-        // ── Mint Firebase Auth token FIRST ────────────────────────────────────
+        // ── Mint Firebase Auth token ───────────────────────────────────────────
         try {
             const result = await mintTeacherToken({ schoolId: foundSchoolId, pin: code });
             await signInWithCustomToken(auth, result.data.token);
@@ -126,28 +135,25 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
             msgEl.textContent = 'Authentication service unavailable. Please try again.';
             msgEl.classList.remove('hidden');
             resetLoginBtn(btn);
-            return; 
+            return;
         }
 
         // ── Check if PIN reset is required ────────────────────────────────────
         if (tData.requiresPinReset) {
-            resetLoginBtn(btn); 
-            
-            // Force modal open
+            resetLoginBtn(btn);
             const forceModal = document.getElementById('forceResetModal');
-            if(forceModal) {
+            if (forceModal) {
                 forceModal.classList.add('open');
-                forceModal.style.opacity = '1';
+                forceModal.style.opacity      = '1';
                 forceModal.style.pointerEvents = 'all';
             }
-            openOverlay('forceResetModal', 'forceResetModalInner'); 
+            openOverlay('forceResetModal', 'forceResetModalInner');
         } else {
-            // No PIN reset needed, proceed to routing
             await finalizeLogin();
         }
 
     } catch (e) {
-        console.error('[Teacher Login] Outer Catch Triggered:', e);
+        console.error('[Teacher Login] Outer catch:', e);
         msgEl.textContent = 'Connection error. Please try again.';
         msgEl.classList.remove('hidden');
         resetLoginBtn(btn);
@@ -165,47 +171,56 @@ document.getElementById('saveForceCodeBtn').addEventListener('click', async () =
     const c   = document.getElementById('confirmForceCode').value.trim();
     const msg = document.getElementById('forceResetMsg');
 
-    if (!n || !c)     { msg.textContent = 'Fill both fields.';    msg.classList.remove('hidden'); return; }
-    if (n !== c)      { msg.textContent = 'Codes do not match.';  msg.classList.remove('hidden'); return; }
+    if (!n || !c)     { msg.textContent = 'Fill both fields.';      msg.classList.remove('hidden'); return; }
+    if (n !== c)      { msg.textContent = 'Codes do not match.';    msg.classList.remove('hidden'); return; }
     if (n.length < 5) { msg.textContent = 'Minimum 5 characters.'; msg.classList.remove('hidden'); return; }
 
     const btn = document.getElementById('saveForceCodeBtn');
     btn.disabled  = true;
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
 
-    if (isGlobalTeacher) {
-        await updateDoc(doc(db, 'teachers', tempSession.teacherId), {
-            pin: n, requiresPinReset: false
-        });
-    } else {
-        await updateDoc(doc(db, 'schools', tempSession.schoolId, 'teachers', tempSession.teacherId), {
-            loginCode: n, requiresPinReset: false
-        });
+    try {
+        if (isGlobalTeacher) {
+            await updateDoc(doc(db, 'teachers', tempSession.teacherId), {
+                pin: n, requiresPinReset: false
+            });
+        } else {
+            await updateDoc(doc(db, 'schools', tempSession.schoolId, 'teachers', tempSession.teacherId), {
+                loginCode: n, requiresPinReset: false
+            });
+        }
+    } catch (e) {
+        console.error('[Teacher Login] Force reset save failed:', e);
+        msg.textContent = 'Failed to save new PIN. Please try again.';
+        msg.classList.remove('hidden');
+        btn.innerHTML = `Save & Continue <i class="fa-solid fa-arrow-right"></i>`;
+        btn.disabled  = false;
+        return;
     }
 
     tempSession.teacherData.requiresPinReset = false;
-    
-    const forceModal = document.getElementById('forceResetModal');
-    if(forceModal) { forceModal.classList.remove('open'); forceModal.style.opacity = '0'; forceModal.style.pointerEvents = 'none'; }
-    closeOverlay('forceResetModal', 'forceResetModalInner');
 
-    // Proceed straight to routing
-    setTimeout(async () => {
-        await finalizeLogin();
-    }, 350);
+    const forceModal = document.getElementById('forceResetModal');
+    if (forceModal) {
+        forceModal.classList.remove('open');
+        forceModal.style.opacity      = '0';
+        forceModal.style.pointerEvents = 'none';
+    }
+    closeOverlay('forceResetModal', 'forceResetModalInner');
 
     btn.innerHTML = `Save & Continue <i class="fa-solid fa-arrow-right"></i>`;
     btn.disabled  = false;
+
+    setTimeout(async () => { await finalizeLogin(); }, 350);
 });
 
 // ── 3. FINALIZE LOGIN (Routing) ───────────────────────────────────────────────
 async function finalizeLogin() {
     try {
-        // Cache whatever classes they already have (even if empty)
         const currentClasses = tempSession.teacherData.classes || [];
         localStorage.setItem('connectus_cached_classes', JSON.stringify(currentClasses));
 
-        // Migrate legacy subjects if needed
+        // Migrate legacy string subjects to objects
         if (tempSession.teacherData.subjects?.length && typeof tempSession.teacherData.subjects[0] === 'string') {
             const migrated  = tempSession.teacherData.subjects.map(name =>
                 ({ id: genId(), name, description: '', archived: false, archivedAt: null })
@@ -229,16 +244,15 @@ async function finalizeLogin() {
         console.warn('[Teacher Login] finalizeLogin migration warning:', e.message);
     }
 
-    // Save session locally
     setSessionData('teacher', tempSession);
 
-    // Gate 1: Profile/Address Completion
+    // Gate 1: Profile completion
     if (isGlobalTeacher && tempSession.teacherData.profileComplete === false) {
         window.location.href = 'onboarding/onboarding.html';
         return;
     }
 
-    // Gate 2: Security Questions
+    // Gate 2: Security questions
     if (isGlobalTeacher && !tempSession.teacherData.securityQuestionsSet) {
         window.location.href = '../onboarding/first-time-setup.html?role=teacher';
         return;
