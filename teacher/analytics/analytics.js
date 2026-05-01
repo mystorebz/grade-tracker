@@ -99,15 +99,31 @@ async function loadSemesters() {
         console.warn('[Evaluations] Could not load semesters:', e);
     }
 
+    // Populate page filter dropdown
     const sel = document.getElementById('filterPeriod');
-    if (!sel) return;
-    sel.innerHTML = '<option value="">All Periods</option>';
-    semesters.forEach(s => {
-        const opt = document.createElement('option');
-        opt.value       = s.id;
-        opt.textContent = s.name;
-        sel.appendChild(opt);
-    });
+    if (sel) {
+        sel.innerHTML = '<option value="">All Periods</option>';
+        semesters.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value       = s.id;
+            opt.textContent = s.name;
+            sel.appendChild(opt);
+        });
+    }
+
+    // Populate topbar activeSemester select (same as roster does)
+    const topSel = document.getElementById('activeSemester');
+    if (topSel) {
+        topSel.innerHTML = '';
+        semesters.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value       = s.id;
+            opt.textContent = s.name;
+            topSel.appendChild(opt);
+        });
+        const sbPeriod = document.getElementById('sb-period');
+        if (sbPeriod) sbPeriod.textContent = topSel.options[topSel.selectedIndex]?.text || '—';
+    }
 }
 
 // ── 4. FILTER (called by period dropdown) ────────────────────────────────
