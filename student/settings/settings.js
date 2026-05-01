@@ -8,12 +8,7 @@ import { showMsg } from '../../assets/js/utils.js';
 const session = requireAuth('student', '../login.html');
 
 // Inject layout 
-injectStudentLayout('settings', 'Settings', 'Manage your profile and security');
-
-// Update UI with session data
-document.getElementById('displayStudentName').innerText = session.studentData.name || 'Student';
-document.getElementById('studentAvatar').innerText = (session.studentData.name || 'S').charAt(0).toUpperCase();
-document.getElementById('displayStudentClass').innerText = session.studentData.className ? `Class: ${session.studentData.className}` : 'Unassigned Class';
+injectStudentLayout('settings', 'Settings', 'Manage your personal profile and account security');
 
 // State
 let fullStudentData = null;
@@ -24,9 +19,9 @@ async function loadSettingsData() {
         // Fetch School Data (for Topbar)
         const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
         if (schoolSnap.exists()) {
-            document.getElementById('displaySchoolName').innerText = schoolSnap.data().schoolName;
+            const elSchool = document.getElementById('displaySchoolName');
+            if(elSchool) elSchool.innerText = schoolSnap.data().schoolName;
             
-            // Load active semester name for topbar consistency
             const activeSemId = schoolSnap.data().activeSemesterId;
             if (activeSemId) {
                 const semSnap = await getDoc(doc(db, 'schools', session.schoolId, 'semesters', activeSemId));
@@ -38,12 +33,23 @@ async function loadSettingsData() {
             }
         }
 
-        // Fetch latest Student Data
-        // CHANGED: student doc is now global
+        // Fetch latest Student Data globally
         const studentSnap = await getDoc(doc(db, 'students', session.studentId));
         if (studentSnap.exists()) {
             fullStudentData = studentSnap.data();
-            document.getElementById('parentPhone').value = fullStudentData.parentPhone || '';
+            
+            // Populate Profile Details
+            document.getElementById('sName').value = fullStudentData.name || '';
+            document.getElementById('sEmail').value = fullStudentData.email || '';
+            document.getElementById('sDob').value = fullStudentData.dob || '';
+            document.getElementById('sParentName').value = fullStudentData.parentName || '';
+            document.getElementById('sParentPhone').value = fullStudentData.parentPhone || '';
+
+            // Populate Security Questions if they exist
+            document.getElementById('secQ1').value = fullStudentData.securityQ1 || '';
+            document.getElementById('secA1').value = fullStudentData.securityA1 ? '********' : ''; // Mask existing answer
+            document.getElementById('secQ2').value = fullStudentData.securityQ2 || '';
+            document.getElementById('secA2').value = fullStudentData.securityA2 ? '********' : '';
         }
 
     } catch (e) {
@@ -51,30 +57,99 @@ async function loadSettingsData() {
     }
 }
 
-// ── 3. UPDATE PROFILE (PHONE) ─────────────────────────────────────────────
+// ── 3. UPDATE PROFILE DETAILS ─────────────────────────────────────────────
 document.getElementById('saveProfileBtn').addEventListener('click', async () => {
-    const phone = document.getElementById('parentPhone').value.trim();
+    const name = document.getElementById('sName').value.trim();
+    const email = document.getElementById('sEmail').value.trim();
+    const dob = document.getElementById('sDob').value.trim();
+    const parentName = document.getElementById('sParentName').value.trim();
+    const parentPhone = document.getElementById('sParentPhone').value.trim();
+    
     const btn = document.getElementById('saveProfileBtn');
     
+    if (!name) {
+        showMsg('profileMsg', 'Student Name is required.', true, 'bg-red-50 text-red-700 border border-red-200');
+        return;
+    }
+
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
     btn.disabled = true;
 
     try {
-        // CHANGED: update global student doc
-        await updateDoc(doc(db, 'students', session.studentId), { parentPhone: phone });
-        fullStudentData.parentPhone = phone; // Update local state
+        await updateDoc(doc(db, 'students', session.studentId), { 
+            name, email, dob, parentName, parentPhone 
+        });
         
-        showMsg('profileMsg', 'Contact information updated successfully!', false, 'bg-emerald-50 text-emerald-700 border border-emerald-200');
+        // Update local state
+        fullStudentData.name = name;
+        fullStudentData.email = email;
+        fullStudentData.dob = dob;
+        fullStudentData.parentName = parentName;
+        fullStudentData.parentPhone = parentPhone;
+        
+        // Instantly update the sidebar UI without requiring a reload
+        const elName = document.getElementById('displayStudentName');
+        const elAvatar = document.getElementById('studentAvatar');
+        if (elName) elName.innerText = name;
+        if (elAvatar) elAvatar.innerText = name.charAt(0).toUpperCase();
+
+        showMsg('profileMsg', 'Profile updated successfully!', false, 'bg-emerald-50 text-emerald-700 border border-emerald-200');
     } catch (e) {
         console.error("Error updating profile:", e);
         showMsg('profileMsg', 'Failed to update profile.', true, 'bg-red-50 text-red-700 border border-red-200');
     }
 
-    btn.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Save Details`;
+    btn.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Save Profile Details`;
     btn.disabled = false;
 });
 
-// ── 4. UPDATE SECURITY PIN ────────────────────────────────────────────────
+// ── 4. UPDATE SECURITY QUESTIONS ──────────────────────────────────────────
+document.getElementById('saveSecurityBtn').addEventListener('click', async () => {
+    const q1 = document.getElementById('secQ1').value.trim();
+    const a1 = document.getElementById('secA1').value.trim();
+    const q2 = document.getElementById('secQ2').value.trim();
+    const a2 = document.getElementById('secA2').value.trim();
+    
+    const btn = document.getElementById('saveSecurityBtn');
+    const msgId = 'securityQuestionsMsg';
+
+    if (!q1 || !a1 || !q2 || !a2) {
+        showMsg(msgId, 'All security question and answer fields are required.', true, 'bg-red-50 text-red-700 border border-red-200');
+        return;
+    }
+
+    // Prevent saving literal asterisks if they just clicked save without updating the masked answer
+    const finalA1 = a1 === '********' ? fullStudentData.securityA1 : a1;
+    const finalA2 = a2 === '********' ? fullStudentData.securityA2 : a2;
+
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
+    btn.disabled = true;
+
+    try {
+        await updateDoc(doc(db, 'students', session.studentId), { 
+            securityQ1: q1, 
+            securityA1: finalA1, 
+            securityQ2: q2, 
+            securityA2: finalA2,
+            securityQuestionsSet: true
+        });
+        
+        fullStudentData.securityQ1 = q1;
+        fullStudentData.securityA1 = finalA1;
+        fullStudentData.securityQ2 = q2;
+        fullStudentData.securityA2 = finalA2;
+
+        showMsg(msgId, 'Security questions updated successfully!', false, 'bg-emerald-50 text-emerald-700 border border-emerald-200');
+    } catch (e) {
+        console.error("Error updating security questions:", e);
+        showMsg(msgId, 'Failed to update security questions.', true, 'bg-red-50 text-red-700 border border-red-200');
+    }
+
+    btn.innerHTML = `<i class="fa-solid fa-shield-check"></i> Save Security Questions`;
+    btn.disabled = false;
+});
+
+// ── 5. UPDATE SECURITY PIN ────────────────────────────────────────────────
 document.getElementById('updatePinBtn').addEventListener('click', async () => {
     const curPin = document.getElementById('currentPin').value.trim();
     const newPin = document.getElementById('newPin').value.trim();
@@ -83,11 +158,10 @@ document.getElementById('updatePinBtn').addEventListener('click', async () => {
     const btn = document.getElementById('updatePinBtn');
 
     if (!curPin || !newPin || !confirmPin) {
-        showMsg(msgId, 'All fields are required.', true, 'bg-red-50 text-red-700 border border-red-200');
+        showMsg(msgId, 'All PIN fields are required.', true, 'bg-red-50 text-red-700 border border-red-200');
         return;
     }
 
-    // Verify current PIN (Convert both to strings to be safe against DB type mismatches)
     if (String(curPin) !== String(fullStudentData.pin)) {
         showMsg(msgId, 'Current PIN is incorrect.', true, 'bg-red-50 text-red-700 border border-red-200');
         return;
@@ -107,13 +181,9 @@ document.getElementById('updatePinBtn').addEventListener('click', async () => {
     btn.disabled = true;
 
     try {
-        // Save as string to standardize the data type moving forward
-        // CHANGED: update global student doc
         await updateDoc(doc(db, 'students', session.studentId), { pin: String(newPin) });
+        fullStudentData.pin = String(newPin);
         
-        fullStudentData.pin = String(newPin); // Update local state
-        
-        // Clear fields
         document.getElementById('currentPin').value = '';
         document.getElementById('newPin').value = '';
         document.getElementById('confirmNewPin').value = '';
