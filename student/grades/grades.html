@@ -4,269 +4,250 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Gradebook | ConnectUs</title>
-
     <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
-    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
-
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="../../assets/css/global.css">
     <link rel="stylesheet" href="../../assets/css/student.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'DM Sans', sans-serif; }
+        body { font-family: 'DM Sans', sans-serif; background: #f0f2f8; }
 
-        /* ── Overall header ── */
-        .gb-header {
-            background: linear-gradient(135deg, #1e1b4b 0%, #312e81 60%, #4338ca 100%);
-            border-radius: 16px;
-            padding: 28px 32px;
-            color: #fff;
+        /* ── Page header ── */
+        .gb-topbar {
+            background: linear-gradient(120deg, #1e1b4b 0%, #3730a3 55%, #4f46e5 100%);
+            padding: 32px 40px;
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            gap: 20px;
+            gap: 32px;
             flex-wrap: wrap;
-            box-shadow: 0 8px 32px rgba(67,56,202,0.25);
-            margin-bottom: 24px;
         }
-        .gb-avg-circle {
-            width: 88px; height: 88px;
+        .gb-avg-ring {
+            width: 100px; height: 100px;
             border-radius: 50%;
-            border: 3px solid rgba(255,255,255,0.25);
+            border: 3px solid rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.08);
             display: flex; flex-direction: column;
             align-items: center; justify-content: center;
-            background: rgba(255,255,255,0.1);
             flex-shrink: 0;
         }
-        .gb-avg-num  { font-size: 28px; font-weight: 800; line-height: 1; }
-        .gb-avg-unit { font-size: 11px; color: rgba(255,255,255,0.6); font-weight: 600; }
-        .gb-meta     { flex: 1; }
-        .gb-title    { font-size: 20px; font-weight: 800; letter-spacing: -0.3px; margin: 0 0 4px; }
-        .gb-sub      { font-size: 12px; color: rgba(255,255,255,0.6); font-weight: 500; margin: 0; }
-        .gb-print-btn {
-            display: inline-flex; align-items: center; gap: 7px;
-            padding: 9px 18px; border-radius: 8px;
-            background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25);
-            color: #fff; font-size: 12.5px; font-weight: 700;
-            cursor: pointer; transition: background 0.15s; font-family: inherit;
-            white-space: nowrap;
-        }
-        .gb-print-btn:hover { background: rgba(255,255,255,0.25); }
+        .gb-avg-ring .num { font-size: 30px; font-weight: 800; color: #fff; line-height: 1; font-family: 'DM Mono', monospace; }
+        .gb-avg-ring .unit { font-size: 11px; color: rgba(255,255,255,0.5); font-weight: 600; margin-top: 2px; }
+        .gb-info { flex: 1; min-width: 0; }
+        .gb-info h1 { font-size: 24px; font-weight: 800; color: #fff; margin: 0 0 4px; letter-spacing: -0.4px; }
+        .gb-info p  { font-size: 13px; color: rgba(255,255,255,0.55); margin: 0; font-weight: 500; }
+        .gb-standing { margin-top: 8px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 99px; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2); font-size: 12px; font-weight: 700; color: #fff; }
+        .gb-print-btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); border-radius: 8px; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; transition: background 0.15s; font-family: inherit; white-space: nowrap; }
+        .gb-print-btn:hover { background: rgba(255,255,255,0.22); }
 
-        /* ── Subject card ── */
-        .subj-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
-        .subj-header {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 18px 22px; background: #0f172a; color: #fff;
-        }
-        .subj-icon {
-            width: 38px; height: 38px; border-radius: 8px;
-            background: rgba(255,255,255,0.12); display: flex;
-            align-items: center; justify-content: center;
-            font-size: 15px; font-weight: 800; flex-shrink: 0; margin-right: 14px;
-        }
-        .subj-name  { font-size: 16px; font-weight: 800; letter-spacing: -0.2px; }
-        .subj-count { font-size: 11px; color: rgba(255,255,255,0.5); font-weight: 500; margin-top: 2px; }
-        .subj-avg-badge {
-            display: flex; align-items: center; gap: 10px;
-        }
-        .subj-avg-num  { font-size: 22px; font-weight: 800; font-family: 'DM Mono', monospace; }
-        .subj-ltr {
-            font-size: 13px; font-weight: 800; padding: 3px 10px;
-            border-radius: 6px; font-family: 'DM Mono', monospace;
-        }
+        /* ── Subject table ── */
+        .subj-table { width: 100%; border-collapse: collapse; }
 
-        /* ── Type row (collapsible) ── */
-        .type-row-header {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 13px 22px; border-bottom: 1px solid #f1f5f9;
-            cursor: pointer; user-select: none; transition: background 0.1s;
+        .subj-row {
+            display: grid;
+            grid-template-columns: 1fr 120px 110px 56px;
+            align-items: center;
+            padding: 0 28px;
+            height: 68px;
+            background: #fff;
+            border-bottom: 1px solid #f0f2f8;
+            cursor: pointer;
+            transition: background 0.12s;
+            user-select: none;
         }
-        .type-row-header:hover { background: #f8fafc; }
-        .type-row-header:last-child { border-bottom: none; }
-        .type-pill {
-            font-size: 10px; font-weight: 700; text-transform: uppercase;
-            letter-spacing: 0.08em; padding: 3px 9px; border-radius: 99px;
-            background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;
-            margin-right: 10px; white-space: nowrap;
-        }
-        .type-label  { font-size: 13.5px; font-weight: 700; color: #1e293b; }
-        .type-weight { font-size: 11px; font-weight: 600; color: #94a3b8; margin-left: 6px; }
-        .type-avg    { font-size: 13px; font-weight: 800; font-family: 'DM Mono', monospace; }
-        .type-chevron { font-size: 11px; color: #94a3b8; transition: transform 0.2s; margin-left: 12px; }
-        .type-body   { display: none; background: #f8fafc; border-top: 1px solid #f1f5f9; }
-        .type-body.open { display: block; }
+        .subj-row:hover { background: #f8f9ff; }
+        .subj-row.open  { background: #f3f4ff; border-bottom: none; }
 
-        /* ── Assignment row ── */
-        .assign-row {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 11px 24px 11px 32px; border-bottom: 1px solid #f1f5f9;
-            cursor: pointer; transition: background 0.1s;
-        }
-        .assign-row:hover { background: #f0f4ff; }
-        .assign-row:last-child { border-bottom: none; }
-        .assign-title  { font-size: 13px; font-weight: 700; color: #1e293b; }
-        .assign-meta   { font-size: 11px; color: #94a3b8; font-weight: 500; margin-top: 2px; }
-        .assign-score  { font-size: 13px; font-weight: 800; font-family: 'DM Mono', monospace; text-align: right; }
-        .assign-pct    { font-size: 11px; font-weight: 600; color: #94a3b8; text-align: right; }
-        .new-badge {
-            display: inline-block; font-size: 9px; font-weight: 800;
-            background: #4f46e5; color: #fff; padding: 1px 6px;
-            border-radius: 99px; text-transform: uppercase; letter-spacing: 0.05em;
-            margin-left: 6px; vertical-align: middle;
-        }
+        .subj-row-name { display: flex; align-items: center; gap: 14px; min-width: 0; }
+        .subj-initial  { width: 40px; height: 40px; border-radius: 10px; background: #1e1b4b; color: #fff; font-size: 15px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .subj-label    { font-size: 15px; font-weight: 700; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .subj-cnt      { font-size: 11px; color: #94a3b8; font-weight: 500; margin-top: 2px; }
 
-        /* ── Rubric bar at bottom of subject card ── */
-        .rubric-bar {
-            display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-            padding: 10px 22px; background: #f8fafc; border-top: 1px solid #f1f5f9;
+        .subj-row-avg { font-size: 20px; font-weight: 800; font-family: 'DM Mono', monospace; text-align: center; }
+        .subj-row-ltr { text-align: center; }
+        .ltr-badge { display: inline-block; font-size: 14px; font-weight: 800; padding: 5px 16px; border-radius: 8px; font-family: 'DM Mono', monospace; border: 1px solid; }
+        .subj-row-chev { text-align: center; color: #94a3b8; font-size: 13px; transition: transform 0.2s; }
+        .subj-row.open .subj-row-chev i { transform: rotate(180deg); }
+
+        /* ── Type sub-rows (expanded) ── */
+        .type-section { display: none; background: #f8f9ff; border-bottom: 2px solid #e0e3f5; }
+        .type-section.open { display: block; }
+
+        .type-table-head {
+            display: grid;
+            grid-template-columns: 1fr 130px 110px 100px;
+            padding: 10px 28px 10px 68px;
+            background: #eef0fc;
+            border-bottom: 1px solid #e0e3f5;
         }
-        .rubric-chip {
-            font-size: 10px; font-weight: 700; padding: 2px 8px;
-            border-radius: 99px; background: #e0e7ff; color: #3730a3;
-            border: 1px solid #c7d2fe;
+        .type-table-head span { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #7c83c8; }
+
+        .type-row {
+            display: grid;
+            grid-template-columns: 1fr 130px 110px 100px;
+            align-items: center;
+            padding: 14px 28px 14px 68px;
+            border-bottom: 1px solid #e8eaf5;
+            cursor: pointer;
+            transition: background 0.1s;
         }
+        .type-row:last-child { border-bottom: none; }
+        .type-row:hover { background: #eef0fc; }
+
+        .type-name-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .type-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .type-name { font-size: 13.5px; font-weight: 700; color: #2d3748; }
+        .type-w    { font-size: 11px; color: #94a3b8; font-weight: 500; white-space: nowrap; }
+        .type-cnt-cell { font-size: 12.5px; color: #64748b; font-weight: 600; padding-left: 4px; }
+        .type-avg-cell { font-size: 15px; font-weight: 800; font-family: 'DM Mono', monospace; }
+        .type-action   { display: flex; justify-content: flex-end; }
+        .type-view-btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 13px; border-radius: 6px; background: #ede9fe; color: #5b21b6; font-size: 11.5px; font-weight: 700; border: 1px solid #c4b5fd; transition: all 0.12s; font-family: inherit; cursor: pointer; }
+        .type-view-btn:hover { background: #5b21b6; color: #fff; border-color: #5b21b6; }
+
+        /* ── Rubric footer ── */
+        .rubric-footer { padding: 10px 28px 10px 68px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; background: #f3f4ff; border-top: 1px solid #e0e3f5; }
+        .rubric-chip { font-size: 10px; font-weight: 700; padding: 2px 9px; border-radius: 99px; background: #ede9fe; color: #5b21b6; border: 1px solid #c4b5fd; white-space: nowrap; }
+
+        /* ── Column header bar ── */
+        .col-header {
+            display: grid;
+            grid-template-columns: 1fr 120px 110px 56px;
+            padding: 12px 28px;
+            background: #1e1b4b;
+        }
+        .col-header span { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: rgba(255,255,255,0.45); }
+        .col-header .c { text-align: center; }
 
         /* ── Modal ── */
-        .modal-back { position:fixed;inset:0;background:rgba(15,23,42,0.65);backdrop-filter:blur(4px);z-index:60;display:flex;align-items:center;justify-content:center;padding:16px; }
-        .modal-back.hidden { display:none; }
-        .modal-box  { background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,0.25);width:100%;max-width:500px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden; }
-        .modal-stripe { height:4px; background:linear-gradient(90deg,#4f46e5,#7c3aed); flex-shrink:0; }
-        .modal-hd   { padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-shrink:0; }
-        .modal-body { flex:1;overflow-y:auto;padding:24px; }
-        .modal-close-btn {
-            width:30px;height:30px;display:flex;align-items:center;justify-content:center;
-            border-radius:8px;border:1px solid #e2e8f0;background:#fff;
-            color:#94a3b8;cursor:pointer;transition:all 0.12s;font-size:13px;flex-shrink:0;
-        }
-        .modal-close-btn:hover { background:#fee2e2;border-color:#fecaca;color:#dc2626; }
-        .detail-row {
-            display:flex;align-items:center;justify-content:space-between;
-            padding:10px 0;border-bottom:1px solid #f8fafc;
-        }
-        .detail-row:last-child { border-bottom:none; }
-        .detail-label { font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#94a3b8; }
-        .detail-val   { font-size:13.5px;font-weight:700;color:#1e293b; }
+        .modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.7); backdrop-filter: blur(6px); z-index: 60; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .modal-overlay.hidden { display: none; }
+        .modal-card { background: #fff; border-radius: 16px; width: 100%; max-width: 620px; max-height: 88vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 32px 80px rgba(0,0,0,0.3); }
+        .modal-stripe { height: 4px; background: linear-gradient(90deg, #4f46e5, #7c3aed); flex-shrink: 0; }
+        .modal-head { padding: 22px 28px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: flex-start; justify-content: space-between; flex-shrink: 0; }
+        .modal-head-info h2 { font-size: 18px; font-weight: 800; color: #1e293b; margin: 0 0 4px; }
+        .modal-head-info p  { font-size: 12px; color: #94a3b8; font-weight: 500; margin: 0; }
+        .modal-x { width: 32px; height: 32px; border-radius: 8px; border: 1px solid #e2e8f0; background: #fff; color: #94a3b8; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 13px; transition: all 0.12s; flex-shrink: 0; }
+        .modal-x:hover { background: #fee2e2; border-color: #fecaca; color: #dc2626; }
+        .modal-scroll { flex: 1; overflow-y: auto; }
 
-        /* ── Loader / empty ── */
-        .loader-wrap { display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;gap:12px; }
-        .loader-wrap i { font-size:28px;color:#6366f1; }
-        .loader-wrap p { font-size:13px;color:#94a3b8;font-weight:600;margin:0; }
+        /* Assignment rows inside modal */
+        .assign-item { padding: 16px 28px; border-bottom: 1px solid #f8fafc; cursor: pointer; transition: background 0.1s; }
+        .assign-item:hover { background: #f8f9ff; }
+        .assign-item:last-child { border-bottom: none; }
+        .assign-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+        .assign-title  { font-size: 14px; font-weight: 700; color: #1e293b; }
+        .assign-meta   { font-size: 11.5px; color: #94a3b8; font-weight: 500; margin-top: 3px; }
+        .assign-right  { text-align: right; flex-shrink: 0; }
+        .assign-score  { font-size: 16px; font-weight: 800; font-family: 'DM Mono', monospace; }
+        .assign-pct    { font-size: 11.5px; color: #94a3b8; font-weight: 600; margin-top: 2px; }
+        .assign-bar    { height: 3px; background: #f1f5f9; border-radius: 99px; margin-top: 10px; overflow: hidden; }
+        .assign-bar-fill { height: 100%; border-radius: 99px; }
+        .assign-notes  { margin-top: 10px; padding: 10px 14px; background: #eef2ff; border-left: 3px solid #6366f1; border-radius: 0 6px 6px 0; font-size: 12.5px; color: #3730a3; font-weight: 500; line-height: 1.55; white-space: pre-wrap; }
+        .new-badge { display: inline-block; font-size: 9px; font-weight: 800; background: #4f46e5; color: #fff; padding: 1px 6px; border-radius: 99px; text-transform: uppercase; letter-spacing: 0.05em; margin-left: 6px; vertical-align: middle; }
+        .admin-badge { display: inline-block; font-size: 9px; font-weight: 800; background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; padding: 1px 6px; border-radius: 4px; margin-left: 5px; vertical-align: middle; }
 
-        /* ── Print styles ── */
+        /* Modal summary bar */
+        .modal-summary { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; border-bottom: 1px solid #f1f5f9; flex-shrink: 0; }
+        .modal-summary-cell { padding: 16px 20px; text-align: center; border-right: 1px solid #f1f5f9; }
+        .modal-summary-cell:last-child { border-right: none; }
+        .modal-summary-label { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; margin-bottom: 4px; }
+        .modal-summary-val   { font-size: 20px; font-weight: 800; font-family: 'DM Mono', monospace; }
+
+        /* Loader */
+        .page-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 20px; gap: 14px; }
+        .page-loader i { font-size: 32px; color: #6366f1; }
+        .page-loader p { font-size: 13.5px; color: #94a3b8; font-weight: 600; margin: 0; }
+
         @media print {
-            body { background:#fff!important; }
-            #layout-sidebar-container, #layout-topbar-container, .no-print { display:none!important; }
-            #dashboardMain { display:block!important;height:auto!important;overflow:visible!important; }
-            .flex-1.overflow-y-auto { overflow:visible!important; }
-            .gb-print-btn { display:none!important; }
-            .type-body { display:block!important; }
-            .subj-card { break-inside:avoid;box-shadow:none!important; }
-            .modal-back { display:none!important; }
+            #layout-sidebar-container, #layout-topbar-container { display: none !important; }
+            body { background: #fff !important; }
+            .gb-print-btn { display: none !important; }
+            .type-section { display: block !important; }
+            .modal-overlay { display: none !important; }
         }
     </style>
 </head>
-<body class="flex h-screen overflow-hidden bg-[#f5f7ff]">
+<body class="flex h-screen overflow-hidden">
 
     <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
 
     <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
         <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
 
-        <div class="flex-1 overflow-y-auto p-7">
-            <div class="max-w-4xl mx-auto">
+        <div class="flex-1 overflow-y-auto">
 
-                <!-- Overall header -->
-                <div class="gb-header no-print" id="gbHeader" style="display:none;">
-                    <div class="gb-avg-circle">
-                        <span id="gbAvgNum" class="gb-avg-num">--</span>
-                        <span class="gb-avg-unit">/ 100%</span>
-                    </div>
-                    <div class="gb-meta">
-                        <p class="gb-title">My Gradebook</p>
-                        <p class="gb-sub" id="gbTermLabel">Loading term…</p>
-                        <p class="gb-sub" id="gbStandingLabel" style="margin-top:4px;font-weight:700;"></p>
-                    </div>
-                    <button class="gb-print-btn no-print" onclick="window.print()">
-                        <i class="fa-solid fa-print"></i> Print Gradebook
-                    </button>
+            <!-- Page header -->
+            <div class="gb-topbar" id="gbTopbar" style="display:none;">
+                <div class="gb-avg-ring">
+                    <span id="gbAvg" class="num">--</span>
+                    <span class="unit">OVERALL</span>
                 </div>
-
-                <!-- Loader -->
-                <div id="gradesLoader" class="loader-wrap">
-                    <i class="fa-solid fa-circle-notch fa-spin"></i>
-                    <p>Loading your gradebook…</p>
+                <div class="gb-info">
+                    <h1>My Gradebook</h1>
+                    <p id="gbTerm">Loading…</p>
+                    <div id="gbStanding" class="gb-standing" style="display:none;"></div>
                 </div>
-
-                <!-- Empty state -->
-                <div id="noCurrentGradesMsg" class="hidden loader-wrap" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">
-                    <i class="fa-solid fa-folder-open" style="color:#c7d2fe;"></i>
-                    <p>No grades recorded for this period yet.</p>
-                </div>
-
-                <!-- Subject cards -->
-                <div id="currentSubjectsContainer" class="space-y-5"></div>
-
+                <button class="gb-print-btn" onclick="window.print()">
+                    <i class="fa-solid fa-print"></i> Print Gradebook
+                </button>
             </div>
+
+            <!-- Loader -->
+            <div id="gradesLoader" class="page-loader">
+                <i class="fa-solid fa-circle-notch fa-spin"></i>
+                <p>Loading your gradebook…</p>
+            </div>
+
+            <!-- Empty -->
+            <div id="noCurrentGradesMsg" class="hidden page-loader">
+                <i class="fa-solid fa-folder-open" style="color:#c7d2fe;"></i>
+                <p>No grades recorded for this period yet.</p>
+            </div>
+
+            <!-- Subject table wrapper -->
+            <div id="gradesTable" class="hidden" style="margin: 0; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+                <!-- Column header -->
+                <div class="col-header">
+                    <span>Subject</span>
+                    <span class="c">Average</span>
+                    <span class="c">Grade</span>
+                    <span class="c"></span>
+                </div>
+                <!-- Rows injected here -->
+                <div id="subjectRows"></div>
+            </div>
+
         </div>
     </main>
 
-    <!-- Assignment detail modal -->
-    <div id="assignmentModal" class="modal-back hidden">
-        <div class="modal-box">
+    <!-- Grade Type Modal -->
+    <div id="typeModal" class="modal-overlay hidden">
+        <div class="modal-card">
             <div class="modal-stripe"></div>
-            <div class="modal-hd">
-                <div>
-                    <p id="mdSubject" style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#6366f1;margin:0 0 4px;"></p>
-                    <h3 id="mdTitle" style="font-size:17px;font-weight:800;color:#1e293b;margin:0;"></h3>
+            <div class="modal-head">
+                <div class="modal-head-info">
+                    <h2 id="tmTitle">Grade Type</h2>
+                    <p id="tmMeta">Subject · Weight</p>
                 </div>
-                <button class="modal-close-btn" onclick="window.closeAssignmentModal()"><i class="fa-solid fa-xmark"></i></button>
+                <button class="modal-x" onclick="window.closeTypeModal()"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            <div class="modal-body">
-                <!-- Score row -->
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
-                    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
-                        <span style="display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;margin-bottom:6px;">Score</span>
-                        <span id="mdScore" style="font-size:24px;font-weight:800;color:#1e293b;font-family:'DM Mono',monospace;"></span>
-                    </div>
-                    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
-                        <span style="display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;margin-bottom:6px;">Percentage</span>
-                        <span id="mdPct" style="font-size:28px;font-weight:800;font-family:'DM Mono',monospace;"></span>
-                    </div>
+            <!-- Summary bar -->
+            <div class="modal-summary">
+                <div class="modal-summary-cell">
+                    <div class="modal-summary-label">Type Average</div>
+                    <div id="tmAvg" class="modal-summary-val">—</div>
                 </div>
-                <!-- Progress bar -->
-                <div style="height:6px;background:#f1f5f9;border-radius:99px;overflow:hidden;margin-bottom:20px;">
-                    <div id="mdBar" style="height:100%;border-radius:99px;transition:width 0.4s;"></div>
+                <div class="modal-summary-cell">
+                    <div class="modal-summary-label">Items</div>
+                    <div id="tmCount" class="modal-summary-val">—</div>
                 </div>
-                <!-- Details table -->
-                <div style="border:1px solid #f1f5f9;border-radius:10px;overflow:hidden;margin-bottom:20px;">
-                    <div class="detail-row" style="padding:10px 16px;border-bottom:1px solid #f8fafc;">
-                        <span class="detail-label">Type</span><span id="mdType" class="detail-val"></span>
-                    </div>
-                    <div class="detail-row" style="padding:10px 16px;border-bottom:1px solid #f8fafc;">
-                        <span class="detail-label">Category Weight</span><span id="mdWeight" class="detail-val"></span>
-                    </div>
-                    <div class="detail-row" style="padding:10px 16px;border-bottom:1px solid #f8fafc;">
-                        <span class="detail-label">Date</span><span id="mdDate" class="detail-val"></span>
-                    </div>
-                    <div class="detail-row" style="padding:10px 16px;">
-                        <span class="detail-label">Entered By</span><span id="mdTeacher" class="detail-val"></span>
-                    </div>
-                </div>
-                <!-- Notes -->
-                <div id="mdNotesWrap">
-                    <p style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#6366f1;margin:0 0 8px;">Teacher's Notes</p>
-                    <div id="mdNotes" style="background:#eef2ff;border-left:3px solid #6366f1;padding:14px 16px;border-radius:0 8px 8px 0;font-size:13px;color:#1e293b;line-height:1.6;font-weight:500;white-space:pre-wrap;"></div>
-                </div>
-                <!-- Edit history -->
-                <div id="mdHistoryWrap" class="hidden" style="margin-top:16px;">
-                    <p style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#d97706;margin:0 0 8px;"><i class="fa-solid fa-clock-rotate-left mr-1"></i>Edit History</p>
-                    <div id="mdHistory" class="space-y-2"></div>
+                <div class="modal-summary-cell">
+                    <div class="modal-summary-label">Category Weight</div>
+                    <div id="tmWeight" class="modal-summary-val">—</div>
                 </div>
             </div>
+            <!-- Assignment list -->
+            <div id="tmList" class="modal-scroll"></div>
         </div>
     </div>
 
