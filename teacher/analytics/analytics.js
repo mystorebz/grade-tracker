@@ -39,6 +39,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
         await loadSemesters();
+        populateSidebarStats();
 
         const snap = await getDocs(
             collection(db, 'teachers', session.teacherId, 'evaluations')
@@ -58,6 +59,30 @@ document.addEventListener('DOMContentLoaded', async () => {
             '<p style="padding:24px;color:#e31b4a;font-weight:600;text-align:center">Error loading evaluations. Please try again.</p>';
     }
 });
+
+function populateSidebarStats() {
+    // Period label — use active semester from Firestore cache or first semester
+    try {
+        const schoolSnap = localStorage.getItem(`connectus_school_${session.schoolId}`);
+        let activeId = '';
+        if (schoolSnap) activeId = JSON.parse(schoolSnap).activeSemesterId || '';
+        const activeSem = semesters.find(s => s.id === activeId) || semesters[0];
+        const sbPeriod = document.getElementById('sb-period');
+        if (sbPeriod && activeSem) sbPeriod.textContent = activeSem.name;
+    } catch (e) {}
+
+    // Student count + at-risk from roster's localStorage cache
+    try {
+        const cached = localStorage.getItem('connectus_sidebar_stats');
+        if (cached) {
+            const { students, risk } = JSON.parse(cached);
+            const sbStudents = document.getElementById('sb-students');
+            const sbRisk     = document.getElementById('sb-risk');
+            if (sbStudents) sbStudents.textContent = students ?? '—';
+            if (sbRisk)     { sbRisk.textContent = risk ?? '—'; sbRisk.classList.toggle('is-risk', (risk ?? 0) > 0); }
+        }
+    } catch (e) {}
+}
 
 async function loadSemesters() {
     try {
