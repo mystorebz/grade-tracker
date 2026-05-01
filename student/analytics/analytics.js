@@ -7,8 +7,8 @@ import { calculateWeightedAverage, letterGrade, gradeColorClass } from '../../as
 // ── 1. INIT & AUTH ────────────────────────────────────────────────────────
 const session = requireAuth('student', '../login.html');
 
-// Note: Passing 'evaluations' as the first argument maps to the sidebar ID
-injectStudentLayout('evaluations', 'Evaluations', 'Review official teacher evaluations and performance matrices');
+// FIXED: Passing 'analytics' explicitly highlights the nav-analytics ID in layout-student.js
+injectStudentLayout('analytics', 'Evaluations', 'Review official teacher evaluations and performance matrices');
 
 document.getElementById('displayStudentName').innerText  = session.studentData.name || 'Student';
 document.getElementById('studentAvatar').innerText       = (session.studentData.name || 'S').charAt(0).toUpperCase();
@@ -79,10 +79,11 @@ async function loadAnalyticsData() {
         // Default to active semester if available, else latest
         periodSelect.value = activeSemId || allSemesters[allSemesters.length - 1].id;
 
-        // FIXED: Fetching from the global collections properly
+        // Fetch Academic Grades
         const gSnap = await getDocs(query(collection(db, 'students', studentId, 'grades'), where('schoolId', '==', schoolId)));
         allGrades = gSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
+        // Fetch Official Evaluations
         const eSnap = await getDocs(query(collection(db, 'students', studentId, 'evaluations'), where('schoolId', '==', schoolId)));
         allEvals = eSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
