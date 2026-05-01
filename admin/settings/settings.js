@@ -73,12 +73,17 @@ async function loadSettingsData() {
         }
 
         // ── Sub-admin management (super admin only) ────────────────────────
+        const adminMgmtSection = document.getElementById('adminManagementSection');
+        const dangerZone = document.querySelector('.danger-zone');
+
         if (session.isSuperAdmin) {
-            document.getElementById('adminManagementSection').classList.remove('hidden');
+            if (adminMgmtSection) adminMgmtSection.classList.remove('hidden');
+            if (dangerZone) dangerZone.classList.remove('hidden');
             loadSubAdmins();
         } else {
-            const danger = document.querySelector('.danger-zone');
-            if (danger) danger.classList.add('hidden');
+            // CRITICAL FIX: Hide both sections from Sub-Admins entirely
+            if (adminMgmtSection) adminMgmtSection.classList.add('hidden');
+            if (dangerZone) dangerZone.classList.add('hidden');
         }
 
     } catch (e) {
@@ -279,6 +284,12 @@ async function loadSubAdmins() {
 
 // ── Create Sub-Admin (WITH GLOBAL EMAIL CHECK & CLOUD FN TRIGGER) ──────────
 document.getElementById('createSubAdminBtn').addEventListener('click', async () => {
+    // CRITICAL FIX: Backend verification intercept
+    if (!session.isSuperAdmin) {
+        showMsg('createAdminMsg', 'Unauthorized: Only Super Admins can create new Sub-Admins.', true);
+        return;
+    }
+
     const name  = document.getElementById('newAdminName').value.trim();
     const email = document.getElementById('newAdminEmail').value.trim().toLowerCase();
     const btn   = document.getElementById('createSubAdminBtn');
@@ -307,7 +318,7 @@ document.getElementById('createSubAdminBtn').addEventListener('click', async () 
             getDocs(query(collection(db, 'teachers'), where('email', '==', email))),
             getDocs(query(collection(db, 'students'), where('email', '==', email))),
             getDocs(query(collection(db, 'schools', session.schoolId, 'admins'), where('email', '==', email))),
-            getDocs(query(collection(db, 'schools'), where('contactEmail', '==', email))) // <-- NEW SUPER ADMIN CHECK
+            getDocs(query(collection(db, 'schools'), where('contactEmail', '==', email))) 
         ]);
 
         if (!tSnap.empty || !sSnap.empty || !aSnap.empty || !schoolSnap.empty) {
