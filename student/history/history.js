@@ -2,7 +2,7 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectStudentLayout } from '../../assets/js/layout-student.js';
-import { calculateWeightedAverage } from '../../assets/js/utils.js'; // Added Math Engine
+import { calculateWeightedAverage } from '../../assets/js/utils.js';
 
 // ── 1. INIT & AUTH ────────────────────────────────────────────────────────
 const session = requireAuth('student', '../login.html');
@@ -25,7 +25,7 @@ const historyTeacherName       = document.getElementById('historyTeacherName');
 let teachersMap            = {};
 let currentViewGrades      = [];
 let schoolActiveSemesterId = null;
-let teacherRubricsCache    = {}; // Added: Cache to store different teachers' rubrics
+let teacherRubricsCache    = {};
 
 // ── 2. UI HELPERS ─────────────────────────────────────────────────────────
 function getGradeStyle(p) {
@@ -211,7 +211,7 @@ async function loadHistoricalGrades() {
             }
         });
 
-        // ADDED: Fetch unique teacher rubrics for this historical period
+        // Fetch unique teacher rubrics for this historical period
         const uniqueTeacherIds = [...new Set(currentViewGrades.map(g => g.teacherId).filter(Boolean))];
         for (const tId of uniqueTeacherIds) {
             if (!teacherRubricsCache[tId]) {
@@ -261,13 +261,6 @@ function renderSubjectAccordions(grades) {
         const firstGrade = gList[0];
         const tId = firstGrade?.teacherId;
         const rubric = tId ? (teacherRubricsCache[tId] || []) : [];
-
-        let rubricSubtitle = '';
-        if (rubric && rubric.length > 0) {
-            rubricSubtitle = rubric.map(t => `${t.name} ${t.weight}%`).join(' • ');
-        } else {
-            rubricSubtitle = "Standard Grading (Unweighted)";
-        }
 
         const avgRaw = calculateWeightedAverage(gList, rubric);
         const avg = avgRaw !== null ? avgRaw : 0;
@@ -321,7 +314,6 @@ function renderSubjectAccordions(grades) {
                         <p class="text-xs text-slate-500 font-bold mt-1 uppercase tracking-wider">
                             ${gList.length} Assignment${gList.length !== 1 ? 's' : ''}
                         </p>
-                        <p class="text-[10px] text-indigo-500 font-bold mt-1 tracking-wide">${rubricSubtitle}</p>
                     </div>
                 </div>
                 <div class="flex items-center gap-4">
