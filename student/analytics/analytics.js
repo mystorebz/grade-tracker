@@ -1,43 +1,14 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { collection, getDocs, doc, getDoc, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectStudentLayout } from '../../assets/js/layout-student.js';
 import { calculateWeightedAverage, letterGrade } from '../../assets/js/utils.js';
 
-// ── 1. SAFE INIT & AUTH ───────────────────────────────────────────────────
+// ── 1. AUTH & LAYOUT (Safe Top-Level Execution) ───────────────────────────
 const session = requireAuth('student', '../login.html');
 
-// Bulletproof initialization that handles module deferred loading correctly
-async function initPage() {
-    try {
-        // 1. Inject the layout first
-        injectStudentLayout('analytics', 'Evaluations', 'Review official teacher evaluations and performance matrices');
-
-        // 2. Safely populate the sidebar elements now that they exist
-        const elName = document.getElementById('displayStudentName');
-        if (elName) elName.innerText = session.studentData?.name || 'Student';
-
-        const elAvatar = document.getElementById('studentAvatar');
-        if (elAvatar) elAvatar.innerText = (session.studentData?.name || 'S').charAt(0).toUpperCase();
-
-        const elClass = document.getElementById('displayStudentClass');
-        if (elClass) elClass.innerText = session.studentData?.className ? `Class: ${session.studentData.className}` : 'Unassigned Class';
-
-        // 3. Start fetching data
-        await loadAnalyticsData();
-    } catch (error) {
-        console.error("Critical error during page initialization:", error);
-    }
-}
-
-// Trigger initialization safely based on current document state
-if (session) {
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initPage);
-    } else {
-        initPage();
-    }
-}
+// Inject layout immediately (Matches working home.js structure)
+injectStudentLayout('analytics', 'Performance Evaluations', 'Review official teacher evaluations and matrices');
 
 // State Caches
 let allSemesters = [];
@@ -69,7 +40,7 @@ function generateSkillBar(label, value) {
     </div>`;
 }
 
-// ── 3. FETCH DATA ─────────────────────────────────────────────────────────
+// ── 3. FETCH DATA (Waits for DOM to prevent crashes) ──────────────────────
 async function loadAnalyticsData() {
     const loader = document.getElementById('analyticsLoader');
     const content = document.getElementById('analyticsContent');
@@ -79,7 +50,12 @@ async function loadAnalyticsData() {
         const schoolId = session.schoolId;
         const studentId = session.studentId;
 
-        // Fetch School Data
+        // 1. Update UI Elements safely now that DOM is ready
+        document.getElementById('displayStudentName').innerText  = session.studentData.name || 'Student';
+        document.getElementById('studentAvatar').innerText       = (session.studentData.name || 'S').charAt(0).toUpperCase();
+        document.getElementById('displayStudentClass').innerText = session.studentData.className ? `Class: ${session.studentData.className}` : 'Unassigned Class';
+
+        // 2. Fetch School Data
         const schoolSnap = await getDoc(doc(db, 'schools', schoolId));
         let activeSemId = null;
         if (schoolSnap.exists()) {
@@ -92,7 +68,6 @@ async function loadAnalyticsData() {
         const semSnap = await getDocs(collection(db, 'schools', schoolId, 'semesters'));
         allSemesters = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
 
-        // Populate Dropdown
         if (allSemesters.length === 0) {
             if (periodSelect) periodSelect.innerHTML = '<option value="">No periods available</option>';
             if (loader) loader.classList.add('hidden');
@@ -106,15 +81,15 @@ async function loadAnalyticsData() {
             periodSelect.value = activeSemId || allSemesters[allSemesters.length - 1].id;
         }
 
-        // Fetch Academic Grades
-        const gSnap = await getDocs(query(collection(db, 'students', studentId, 'grades'), where('schoolId', '==', schoolId)));
-        allGrades = gSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // 3. Fetch Grades (Filtered in JS to prevent Firebase Index errors)
+        const gSnap = await getDocs(collection(db, 'students', studentId, 'grades'));
+        allGrades = gSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(g => g.schoolId === schoolId);
 
-        // Fetch Official Evaluations
-        const eSnap = await getDocs(query(collection(db, 'students', studentId, 'evaluations'), where('schoolId', '==', schoolId)));
-        allEvals = eSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // 4. Fetch Official Evaluations (Filtered in JS to prevent Firebase Index errors)
+        const eSnap = await getDocs(collection(db, 'students', studentId, 'evaluations'));
+        allEvals = eSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => e.schoolId === schoolId);
 
-        // Cache Teacher Rubrics
+        // 5. Cache Teacher Rubrics
         const uniqueTeacherIds = [...new Set(allGrades.map(g => g.teacherId).filter(Boolean))];
         for (const tId of uniqueTeacherIds) {
             if (!teacherRubricsCache[tId]) {
@@ -127,7 +102,7 @@ async function loadAnalyticsData() {
             }
         }
 
-        // Setup Listener & Initial Render
+        // 6. Setup Listener & Initial Render
         if (periodSelect) {
             periodSelect.addEventListener('change', () => renderDashboardForPeriod(periodSelect.value));
             renderDashboardForPeriod(periodSelect.value);
@@ -137,8 +112,8 @@ async function loadAnalyticsData() {
         if (content) content.classList.remove('hidden');
 
     } catch (e) {
-        console.error("Error loading evaluation data:", e);
-        if (loader) loader.innerHTML = '<p class="text-red-500 font-bold text-base">Failed to load evaluation data.</p>';
+        console.error("[Evaluations] Critical error loading data:", e);
+        if (loader) loader.innerHTML = `<div class="text-center"><i class="fa-solid fa-triangle-exclamation text-red-500 text-3xl mb-3"></i><p class="text-red-500 font-bold text-base">Failed to load evaluation data.</p><p class="text-xs text-slate-400 mt-2">Check browser console for details.</p></div>`;
     }
 }
 
@@ -510,3 +485,6 @@ window.printEvaluation = function(evalId) {
     w.document.close();
     setTimeout(() => w.print(), 600);
 };
+
+// ── INITIALIZE (Waits for DOM) ────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', loadAnalyticsData);
