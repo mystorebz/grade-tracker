@@ -24,7 +24,6 @@ let cachedEvaluations       = [];
 
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 
-// UPDATED: Global State for Formal Report Card Stars
 window.evalRatings = {
     academicComprehension: 0, attitudeWork: 0, effortResilience: 0,
     participation: 0, organization: 0, behavior: 0,
@@ -980,6 +979,25 @@ window.printRoster = function() {
     window.print();
 };
 
+window.checkAndPrintReport = function() {
+    const semSelect = document.getElementById('activeSemester');
+    const semId = semSelect?.value;
+    
+    if (!semId) {
+        alert("No active grading period is currently set.");
+        return;
+    }
+
+    // Enforce logic gate: Check if teacher has completed the formal evaluation
+    const hasEval = cachedEvaluations.some(e => e.semesterId === semId);
+    if (!hasEval) {
+        alert("Action Blocked: No formal evaluation found.\n\nPlease click '+ New Evaluation' and complete the student's formal term evaluation (attendance and behavior) before generating an official report card.");
+        return;
+    }
+
+    window.openPrintStudentModal();
+};
+
 window.openPrintStudentModal = function() {
     const psSubj = document.getElementById('psSubject');
     psSubj.innerHTML = '<option value="all">All Subjects</option>' +
@@ -1003,7 +1021,6 @@ window.executeStudentPrint = async function() {
 
     let gradesToPrint = currentStudentGradesCache;
     
-    // Only filter subjects if NOT doing the formal report card
     if (mode !== 'formal_report' && subjFilter !== 'all') {
         gradesToPrint = gradesToPrint.filter(g => g.subject === subjFilter);
     }
@@ -1028,19 +1045,15 @@ window.executeStudentPrint = async function() {
         
         let evalData = null;
         try {
-            // Fetch evaluation locked to this specific term
             const evalSnap = await getDoc(doc(db, 'students', currentStudentId, 'evaluations', `${currentStudentId}_${semId}`));
             if (evalSnap.exists()) {
                 evalData = evalSnap.data();
             } else {
-                // Fallback to searching cache if lock ID fails
                 evalData = cachedEvaluations.find(e => e.semesterId === semId); 
             }
         } catch(e) { console.error(e); }
 
         const ev = evalData || { ratings: {}, attendance: {}, comment: 'No formal evaluation filed for this term.' };
-        
-        // Convert 1-5 Stars into Exceptional, Developing, Beginning, Improvement Needed
         const r2l = (v) => v >= 5 ? 'E' : v === 4 ? 'D' : v === 3 ? 'B' : v > 0 ? 'I' : '—';
 
         let gradesHtml = Object.keys(bySub).length === 0
@@ -1182,7 +1195,6 @@ window.executeStudentPrint = async function() {
         setTimeout(() => w.print(), 800);
         return;
     }
-
 
     // ──────────────────────────────────────────────────────────────────────────
     // ✦ OLD UNOFFICIAL REPORT PRINTING (Summary & Detailed) ✦
