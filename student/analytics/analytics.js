@@ -2,21 +2,30 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, getDocs, doc, getDoc, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectStudentLayout } from '../../assets/js/layout-student.js';
-import { calculateWeightedAverage, letterGrade, gradeColorClass } from '../../assets/js/utils.js';
+import { calculateWeightedAverage, letterGrade } from '../../assets/js/utils.js';
 
-// ── 1. INIT & AUTH ────────────────────────────────────────────────────────
+// ── 1. SAFE INIT & AUTH ───────────────────────────────────────────────────
 const session = requireAuth('student', '../login.html');
 
-// FIXED: Passing 'analytics' explicitly highlights the nav-analytics ID in layout-student.js
-injectStudentLayout('analytics', 'Evaluations', 'Review official teacher evaluations and performance matrices');
+if (session) {
+    // 1. Inject the layout first
+    injectStudentLayout('analytics', 'Evaluations', 'Review official teacher evaluations and performance matrices');
 
-document.getElementById('displayStudentName').innerText  = session.studentData.name || 'Student';
-document.getElementById('studentAvatar').innerText       = (session.studentData.name || 'S').charAt(0).toUpperCase();
-document.getElementById('displayStudentClass').innerText = session.studentData.className ? `Class: ${session.studentData.className}` : 'Unassigned Class';
+    // 2. Wrap DOM updates in an event listener or check to ensure elements exist
+    document.addEventListener('DOMContentLoaded', () => {
+        const elName = document.getElementById('displayStudentName');
+        if (elName) elName.innerText = session.studentData?.name || 'Student';
 
-const loader = document.getElementById('analyticsLoader');
-const content = document.getElementById('analyticsContent');
-const periodSelect = document.getElementById('analyticsPeriodSelect');
+        const elAvatar = document.getElementById('studentAvatar');
+        if (elAvatar) elAvatar.innerText = (session.studentData?.name || 'S').charAt(0).toUpperCase();
+
+        const elClass = document.getElementById('displayStudentClass');
+        if (elClass) elClass.innerText = session.studentData?.className ? `Class: ${session.studentData.className}` : 'Unassigned Class';
+
+        // Start loading the actual data
+        loadAnalyticsData();
+    });
+}
 
 // State Caches
 let allSemesters = [];
@@ -33,13 +42,14 @@ function escHtml(str) {
 
 // UI Helpers
 function generateSkillBar(label, value) {
-    const pct = (value / 5) * 100;
-    const colorClass = value >= 4 ? 'bg-emerald-500' : value >= 3 ? 'bg-blue-500' : value >= 2 ? 'bg-amber-500' : 'bg-red-500';
+    const val = Number(value) || 0;
+    const pct = (val / 5) * 100;
+    const colorClass = val >= 4 ? 'bg-emerald-500' : val >= 3 ? 'bg-blue-500' : val >= 2 ? 'bg-amber-500' : 'bg-red-500';
     return `
     <div class="mb-4 last:mb-0">
         <div class="flex justify-between items-center mb-1.5">
             <span class="text-xs font-black text-slate-500 uppercase tracking-wider">${label}</span>
-            <span class="text-xs font-black text-slate-800">${value}/5</span>
+            <span class="text-xs font-black text-slate-800">${val}/5</span>
         </div>
         <div class="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
             <div class="h-full ${colorClass} rounded-full" style="width: ${pct}%"></div>
@@ -49,16 +59,21 @@ function generateSkillBar(label, value) {
 
 // ── 3. FETCH DATA ─────────────────────────────────────────────────────────
 async function loadAnalyticsData() {
+    const loader = document.getElementById('analyticsLoader');
+    const content = document.getElementById('analyticsContent');
+    const periodSelect = document.getElementById('analyticsPeriodSelect');
+
     try {
         const schoolId = session.schoolId;
         const studentId = session.studentId;
 
-        // Fetch School Data (for print headers & logo)
+        // Fetch School Data
         const schoolSnap = await getDoc(doc(db, 'schools', schoolId));
         let activeSemId = null;
         if (schoolSnap.exists()) {
             schoolData = schoolSnap.data();
-            document.getElementById('displaySchoolName').innerText = schoolData.schoolName || 'ConnectUs School';
+            const elSchool = document.getElementById('displaySchoolName');
+            if (elSchool) elSchool.innerText = schoolData.schoolName || 'ConnectUs School';
             activeSemId = schoolData.activeSemesterId;
         }
 
@@ -76,7 +91,6 @@ async function loadAnalyticsData() {
             `<option value="${s.id}">${s.name}${s.id === activeSemId ? ' (Current)' : ''}</option>`
         ).join('');
         
-        // Default to active semester if available, else latest
         periodSelect.value = activeSemId || allSemesters[allSemesters.length - 1].id;
 
         // Fetch Academic Grades
@@ -214,7 +228,7 @@ function renderDashboardForPeriod(semesterId) {
             let evalAvg = 0;
             if (e.ratings) {
                 const vals = Object.values(e.ratings);
-                if (vals.length > 0) evalAvg = (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1);
+                if (vals.length > 0) evalAvg = (vals.reduce((a, b) => Number(a) + Number(b), 0) / vals.length).toFixed(1);
             }
 
             let badgeHtml = '';
@@ -258,6 +272,21 @@ function renderDashboardForPeriod(semesterId) {
                     <div class="mb-4"><p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5">Recommended Interventions</p><p class="text-sm font-semibold text-slate-700">${escHtml(e.written?.interventions || 'None')}</p></div>
                     <div class="p-3 bg-amber-50 border border-amber-100 rounded-xl mt-3"><p class="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">Promotion Status</p><p class="text-sm font-black text-amber-800">${escHtml(e.status || 'N/A')}</p></div>
                 `;
+            } else if (e.type === 'academic_report_card') {
+                badgeHtml = `<span class="px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border text-emerald-700 bg-emerald-50 border-emerald-200"><i class="fa-solid fa-file-contract mr-1"></i> Report Card Eval</span>`;
+                metricsHtml = `
+                    ${generateSkillBar('Comprehension', e.ratings.academicComprehension)}
+                    ${generateSkillBar('Attitude & Work', e.ratings.attitudeWork)}
+                    ${generateSkillBar('Effort', e.ratings.effortResilience)}
+                    ${generateSkillBar('Participation', e.ratings.participation)}
+                    ${generateSkillBar('Organization', e.ratings.organization)}
+                    ${generateSkillBar('Behavior', e.ratings.behavior)}
+                    ${generateSkillBar('Peer Relations', e.ratings.peerRelations)}
+                    ${generateSkillBar('Punctuality', e.ratings.punctualityRating)}
+                `;
+                textHtml = `
+                    <div class="mb-4"><p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5">Teacher Comments</p><p class="text-sm font-semibold text-slate-700 whitespace-pre-wrap">${escHtml(e.comment || 'N/A')}</p></div>
+                `;
             }
 
             return `
@@ -272,7 +301,7 @@ function renderDashboardForPeriod(semesterId) {
                     <div>
                         <div class="flex items-center gap-4 mb-2">
                             <div class="h-10 w-10 bg-slate-100 text-slate-600 rounded-xl flex items-center justify-center font-black text-base">${evalAvg}</div>
-                            <h4 class="font-black text-xl text-slate-800">${e.semesterName || 'Evaluation'}</h4>
+                            <h4 class="font-black text-xl text-slate-800">${escHtml(e.semesterName || 'Evaluation')}</h4>
                         </div>
                         <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">${dateStr} • Prepared By ${escHtml(e.teacherName || 'Teacher')}</p>
                     </div>
@@ -303,7 +332,6 @@ window.printEvaluation = function(evalId) {
     let metricsHtml = "";
     let textHtml = "";
 
-    // Build specific print layout based on eval type
     if (e.type === 'academic') {
         typeLabel = "Academic Matrix Evaluation";
         metricsHtml = `
@@ -367,6 +395,24 @@ window.printEvaluation = function(evalId) {
             </div>
             <div class="status-box">
                 <strong>Promotion Status:</strong> ${escHtml(e.status || 'N/A')}
+            </div>
+        `;
+    } else if (e.type === 'academic_report_card') {
+        typeLabel = "Report Card Evaluation";
+        metricsHtml = `
+            <tr><td>Comprehension</td><td class="tc font-mono">${e.ratings?.academicComprehension || 0} / 5</td></tr>
+            <tr><td>Attitude & Work</td><td class="tc font-mono">${e.ratings?.attitudeWork || 0} / 5</td></tr>
+            <tr><td>Effort</td><td class="tc font-mono">${e.ratings?.effortResilience || 0} / 5</td></tr>
+            <tr><td>Participation</td><td class="tc font-mono">${e.ratings?.participation || 0} / 5</td></tr>
+            <tr><td>Organization</td><td class="tc font-mono">${e.ratings?.organization || 0} / 5</td></tr>
+            <tr><td>Behavior</td><td class="tc font-mono">${e.ratings?.behavior || 0} / 5</td></tr>
+            <tr><td>Peer Relations</td><td class="tc font-mono">${e.ratings?.peerRelations || 0} / 5</td></tr>
+            <tr><td>Punctuality</td><td class="tc font-mono">${e.ratings?.punctualityRating || 0} / 5</td></tr>
+        `;
+        textHtml = `
+            <div class="feedback-section">
+                <h3>Teacher Comments</h3>
+                <p>${escHtml(e.comment || 'No comments recorded.')}</p>
             </div>
         `;
     }
@@ -449,6 +495,3 @@ window.printEvaluation = function(evalId) {
     w.document.close();
     setTimeout(() => w.print(), 600);
 };
-
-// ── INITIALIZE ─────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', loadAnalyticsData);
