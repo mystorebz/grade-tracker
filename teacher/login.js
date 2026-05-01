@@ -57,24 +57,27 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         let tData         = null;
         isGlobalTeacher   = false;
 
-        // ── Try global /teachers first ────────────────────────────────────────
+        // ── Try global /teachers ──────────────────────────────────────────────
+        // Query by schoolId ONLY (no composite index needed), filter PIN client-side
         for (const schoolId of [rawId.toUpperCase(), rawId.toLowerCase(), rawId]) {
             try {
-                const globalQ    = query(
+                const globalSnap = await getDocs(query(
                     collection(db, 'teachers'),
-                    where('currentSchoolId', '==', schoolId),
-                    where('pin', '==', code)
-                );
-                const globalSnap = await getDocs(globalQ);
+                    where('currentSchoolId', '==', schoolId)
+                ));
+
                 if (!globalSnap.empty) {
-                    foundSchoolId   = schoolId;
-                    tId             = globalSnap.docs[0].id;
-                    tData           = globalSnap.docs[0].data();
-                    isGlobalTeacher = true;
-                    break;
+                    const match = globalSnap.docs.find(d => d.data().pin === code);
+                    if (match) {
+                        foundSchoolId   = schoolId;
+                        tId             = match.id;
+                        tData           = match.data();
+                        isGlobalTeacher = true;
+                        break;
+                    }
                 }
             } catch (e) {
-                console.warn('[Teacher Login] Global query failed for', schoolId, e.message);
+                console.warn('[Teacher Login] Global query failed for', schoolId, ':', e.message);
             }
         }
 
@@ -82,11 +85,10 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         if (!foundSchoolId) {
             for (const schoolId of [rawId.toUpperCase(), rawId.toLowerCase(), rawId]) {
                 try {
-                    const legacyQ    = query(
+                    const legacySnap = await getDocs(query(
                         collection(db, 'schools', schoolId, 'teachers'),
                         where('loginCode', '==', code)
-                    );
-                    const legacySnap = await getDocs(legacyQ);
+                    ));
                     if (!legacySnap.empty) {
                         foundSchoolId = schoolId;
                         tId           = legacySnap.docs[0].id;
@@ -94,7 +96,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
                         break;
                     }
                 } catch (e) {
-                    console.warn('[Teacher Login] Legacy query failed for', schoolId, e.message);
+                    console.warn('[Teacher Login] Legacy query failed for', schoolId, ':', e.message);
                     continue;
                 }
             }
