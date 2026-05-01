@@ -4,10 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Roster · Teacher Portal · ConnectUs</title>
-
     <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
-
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="../../assets/css/global.css">
     <link rel="stylesheet" href="../../assets/css/teachers.css">
@@ -15,126 +13,117 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-
     <style>
-        body { display: flex; width: 100%; height: 100vh; overflow: hidden; background: #f0fdf8; margin: 0; font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif; }
-        #dashboardMain { flex: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden; min-width: 0; }
-        .roster-scroll { flex: 1; overflow-y: auto; padding: 24px 28px 48px; background: #f0fdf8; }
-        
-        .roster-page-header { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 20px; padding-bottom: 18px; border-bottom: 2px solid #0d1f35; }
-        .roster-page-title { font-size: 20px; font-weight: 700; color: #0d1f35; letter-spacing: -0.4px; margin: 0 0 3px; }
-        .roster-page-sub { font-size: 12px; color: #6b84a0; font-weight: 400; margin: 0; letter-spacing: 0.01em; }
-        .roster-header-actions { display: flex; align-items: center; gap: 8px; }
-        
-        .btn-sharp { display: inline-flex; align-items: center; gap: 7px; padding: 8px 16px; border-radius: 4px; font-size: 12.5px; font-weight: 600; cursor: pointer; transition: background 0.12s, color 0.12s, border-color 0.12s; font-family: inherit; letter-spacing: 0.01em; white-space: nowrap; }
-        .btn-sharp-outline { background: #fff; border: 1px solid #c5d0db; color: #374f6b; }
-        .btn-sharp-outline:hover { background: #f2f5f8; border-color: #0d1f35; color: #0d1f35; }
-        .btn-sharp-primary { background: #0d1f35; border: 1px solid #0d1f35; color: #ffffff; }
-        .btn-sharp-primary:hover { background: #0ea871; border-color: #0ea871; }
-        .btn-sharp-green { background: #0ea871; border: 1px solid #0ea871; color: #ffffff; }
-        .btn-sharp-green:hover { background: #0b8f5e; border-color: #0b8f5e; }
+        body { display:flex; width:100%; height:100vh; overflow:hidden; background:#f0fdf8; margin:0; font-family:'DM Sans',ui-sans-serif,system-ui,sans-serif; }
+        #dashboardMain { flex:1; display:flex; flex-direction:column; height:100%; overflow:hidden; min-width:0; }
+        .roster-scroll { flex:1; overflow-y:auto; padding:24px 28px 48px; background:#f0fdf8; }
 
-        .roster-controls { display: flex; align-items: center; gap: 10px; margin-bottom: 0; flex-wrap: wrap; }
-        .control-group { display: flex; align-items: center; background: #fff; border: 1px solid #c5d0db; border-radius: 4px; overflow: hidden; }
-        .control-group-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #6b84a0; padding: 0 10px; border-right: 1px solid #e8edf2; height: 36px; display: flex; align-items: center; white-space: nowrap; background: #f8fafb; }
-        .control-select { border: none; outline: none; background: transparent; font-size: 12.5px; font-weight: 600; color: #0d1f35; font-family: inherit; padding: 0 10px; height: 36px; cursor: pointer; min-width: 100px; }
-        .control-search { display: flex; align-items: center; background: #fff; border: 1px solid #c5d0db; border-radius: 4px; overflow: hidden; min-width: 240px; }
-        .control-search-icon { padding: 0 10px; color: #9ab0c6; font-size: 12px; background: #f8fafb; height: 36px; display: flex; align-items: center; border-right: 1px solid #e8edf2; }
-        .control-search-input { flex: 1; border: none; outline: none; font-size: 12.5px; font-family: inherit; color: #0d1f35; font-weight: 500; padding: 0 12px; height: 36px; background: transparent; }
+        .roster-page-header { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:20px; padding-bottom:18px; border-bottom:2px solid #0d1f35; }
+        .roster-page-title  { font-size:20px; font-weight:700; color:#0d1f35; letter-spacing:-0.4px; margin:0 0 3px; }
+        .roster-page-sub    { font-size:12px; color:#6b84a0; font-weight:400; margin:0; }
+        .roster-header-actions { display:flex; align-items:center; gap:8px; }
 
-        .roster-table-wrap { background: #fff; border: 1px solid #c5d0db; border-radius: 4px; overflow: hidden; margin-top: 16px; }
-        .roster-table-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: #0d1f35; border-bottom: 1px solid #1a3050; }
-        .roster-table-header-left { display: flex; align-items: center; gap: 10px; }
-        .roster-count-badge { font-size: 11px; font-weight: 700; background: rgba(14,168,113,0.18); color: #3fffa8; border: 1px solid rgba(14,168,113,0.3); padding: 2px 9px; border-radius: 2px; font-family: 'DM Mono', monospace; }
-        .roster-table-title { font-size: 11.5px; font-weight: 700; color: rgba(255,255,255,0.85); text-transform: uppercase; letter-spacing: 0.12em; }
+        .btn-sharp         { display:inline-flex; align-items:center; gap:7px; padding:8px 16px; border-radius:4px; font-size:12.5px; font-weight:600; cursor:pointer; transition:background 0.12s,color 0.12s,border-color 0.12s; font-family:inherit; letter-spacing:0.01em; white-space:nowrap; }
+        .btn-sharp-outline { background:#fff; border:1px solid #c5d0db; color:#374f6b; }
+        .btn-sharp-outline:hover { background:#f2f5f8; border-color:#0d1f35; color:#0d1f35; }
+        .btn-sharp-primary { background:#0d1f35; border:1px solid #0d1f35; color:#fff; }
+        .btn-sharp-primary:hover { background:#0ea871; border-color:#0ea871; }
+        .btn-sharp-green   { background:#0ea871; border:1px solid #0ea871; color:#fff; }
+        .btn-sharp-green:hover { background:#0b8f5e; border-color:#0b8f5e; }
 
-        .roster-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        .roster-table thead th { padding: 10px 16px; text-align: left; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #6b84a0; background: #f8fafb; border-bottom: 2px solid #e2e8f0; white-space: nowrap; user-select: none; }
-        .roster-table thead th.text-center { text-align: center; }
-        .roster-table thead th.text-right { text-align: right; }
-        .roster-table tbody tr { border-bottom: 1px solid #f0f4f8; transition: background 0.1s; }
-        .roster-table tbody tr:hover { background: #f8fafb; }
-        .roster-table tbody tr:hover td:first-child { border-left: 3px solid #0ea871; }
-        .roster-table tbody td { padding: 12px 16px; color: #374f6b; vertical-align: middle; border-left: 3px solid transparent; }
-        .roster-table tbody td:first-child { padding-left: 13px; }
+        .roster-controls { display:flex; align-items:center; gap:10px; margin-bottom:0; flex-wrap:wrap; }
+        .control-group { display:flex; align-items:center; background:#fff; border:1px solid #c5d0db; border-radius:4px; overflow:hidden; }
+        .control-group-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:#6b84a0; padding:0 10px; border-right:1px solid #e8edf2; height:36px; display:flex; align-items:center; white-space:nowrap; background:#f8fafb; }
+        .control-select { border:none; outline:none; background:transparent; font-size:12.5px; font-weight:600; color:#0d1f35; font-family:inherit; padding:0 10px; height:36px; cursor:pointer; min-width:100px; }
+        .control-search { display:flex; align-items:center; background:#fff; border:1px solid #c5d0db; border-radius:4px; overflow:hidden; min-width:240px; }
+        .control-search-icon { padding:0 10px; color:#9ab0c6; font-size:12px; background:#f8fafb; height:36px; display:flex; align-items:center; border-right:1px solid #e8edf2; }
+        .control-search-input { flex:1; border:none; outline:none; font-size:12.5px; font-family:inherit; color:#0d1f35; font-weight:500; padding:0 12px; height:36px; background:transparent; }
 
-        .student-cell { display: flex; align-items: center; gap: 11px; }
-        .student-initial { width: 32px; height: 32px; border-radius: 4px; background: #0d1f35; color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .student-name { font-size: 13px; font-weight: 700; color: #0d1f35; letter-spacing: -0.1px; }
-        .pin-badge { display: inline-flex; align-items: center; padding: 3px 10px; background: #f2f5f8; border: 1px solid #c5d0db; border-radius: 3px; font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 500; color: #0d1f35; letter-spacing: 0.15em; }
+        .roster-table-wrap   { background:#fff; border:1px solid #c5d0db; border-radius:4px; overflow:hidden; margin-top:16px; }
+        .roster-table-header { display:flex; align-items:center; justify-content:space-between; padding:12px 20px; background:#0d1f35; border-bottom:1px solid #1a3050; }
+        .roster-count-badge  { font-size:11px; font-weight:700; background:rgba(14,168,113,0.18); color:#3fffa8; border:1px solid rgba(14,168,113,0.3); padding:2px 9px; border-radius:2px; font-family:'DM Mono',monospace; }
+        .roster-table-title  { font-size:11.5px; font-weight:700; color:rgba(255,255,255,0.85); text-transform:uppercase; letter-spacing:0.12em; }
 
-        .standing-label { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 3px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
-        .sl-excelling { background: #dcfce7; color: #14532d; border: 1px solid #bbf7d0; }
-        .sl-good { background: #dbeafe; color: #1e3a8a; border: 1px solid #bfdbfe; }
-        .sl-ontrack { background: #ccfbf1; color: #134e4a; border: 1px solid #99f6e4; }
-        .sl-attention { background: #fef3c7; color: #78350f; border: 1px solid #fde68a; }
-        .sl-atrisk { background: #fee2e2; color: #7f1d1d; border: 1px solid #fecaca; }
-        .sl-none { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+        .roster-table { width:100%; border-collapse:collapse; font-size:13px; }
+        .roster-table thead th { padding:10px 16px; text-align:left; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:#6b84a0; background:#f8fafb; border-bottom:2px solid #e2e8f0; white-space:nowrap; user-select:none; }
+        .roster-table thead th.text-center { text-align:center; }
+        .roster-table thead th.text-right  { text-align:right; }
+        .roster-table tbody tr { border-bottom:1px solid #f0f4f8; transition:background 0.1s; }
+        .roster-table tbody tr:hover { background:#f8fafb; }
+        .roster-table tbody tr:hover td:first-child { border-left:3px solid #0ea871; }
+        .roster-table tbody td { padding:12px 16px; color:#374f6b; vertical-align:middle; border-left:3px solid transparent; }
+        .roster-table tbody td:first-child { padding-left:13px; }
 
-        .grade-num { font-family: 'DM Mono', monospace; font-size: 13px; font-weight: 500; }
-        .grade-green { color: #14532d; }
-        .grade-blue { color: #1e3a8a; }
-        .grade-teal { color: #134e4a; }
-        .grade-amber { color: #78350f; }
-        .grade-red { color: #7f1d1d; }
-        .grade-muted { color: #9ab0c6; }
+        .student-cell    { display:flex; align-items:center; gap:11px; }
+        .student-initial { width:32px; height:32px; border-radius:4px; background:#0d1f35; color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+        .student-name    { font-size:13px; font-weight:700; color:#0d1f35; letter-spacing:-0.1px; }
+        .pin-badge       { display:inline-flex; align-items:center; padding:3px 10px; background:#f2f5f8; border:1px solid #c5d0db; border-radius:3px; font-family:'DM Mono',monospace; font-size:12px; font-weight:500; color:#0d1f35; letter-spacing:0.15em; }
+        .subject-count   { display:inline-flex; align-items:center; justify-content:center; min-width:28px; height:22px; padding:0 7px; background:#f2f5f8; border:1px solid #c5d0db; border-radius:3px; font-size:11px; font-weight:700; color:#374f6b; font-family:'DM Mono',monospace; }
 
-        .subject-count { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 22px; padding: 0 7px; background: #f2f5f8; border: 1px solid #c5d0db; border-radius: 3px; font-size: 11px; font-weight: 700; color: #374f6b; font-family: 'DM Mono', monospace; }
+        .standing-label  { display:inline-flex; align-items:center; gap:5px; padding:3px 8px; border-radius:3px; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; white-space:nowrap; }
+        .sl-excelling { background:#dcfce7; color:#14532d; border:1px solid #bbf7d0; }
+        .sl-good      { background:#dbeafe; color:#1e3a8a; border:1px solid #bfdbfe; }
+        .sl-ontrack   { background:#ccfbf1; color:#134e4a; border:1px solid #99f6e4; }
+        .sl-attention { background:#fef3c7; color:#78350f; border:1px solid #fde68a; }
+        .sl-atrisk    { background:#fee2e2; color:#7f1d1d; border:1px solid #fecaca; }
+        .sl-none      { background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; }
 
-        .row-action-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 5px 12px; border-radius: 3px; font-size: 11.5px; font-weight: 600; cursor: pointer; transition: background 0.12s, color 0.12s; border: 1px solid; }
-        .row-btn-grade { background: #edfaf4; border-color: #a7f3d0; color: #065f46; }
-        .row-btn-grade:hover { background: #0ea871; border-color: #0ea871; color: #fff; }
-        .row-btn-view { background: #f8fafb; border-color: #c5d0db; color: #374f6b; }
-        .row-btn-view:hover { background: #0d1f35; border-color: #0d1f35; color: #fff; }
+        .grade-num   { font-family:'DM Mono',monospace; font-size:13px; font-weight:500; }
+        .grade-green { color:#14532d; } .grade-blue { color:#1e3a8a; } .grade-teal { color:#134e4a; } .grade-amber { color:#78350f; } .grade-red { color:#7f1d1d; }
 
-        .modal-overlay { position: fixed; inset: 0; background: rgba(13,31,53,0.65); z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; transition: opacity 0.18s; }
-        .modal-overlay.hidden { display: none; }
-        .modal-overlay.opacity-0 { opacity: 0; pointer-events: none; }
-        .modal-box { background: #fff; border: 1px solid #c5d0db; border-radius: 4px; box-shadow: 0 20px 60px rgba(13,31,53,0.25); overflow: hidden; transform: scale(0.97); transition: transform 0.18s; }
-        .modal-box.modal-open { transform: scale(1); }
-        .modal-stripe { height: 3px; background: linear-gradient(90deg, #0ea871, #0d1f35); }
-        .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid #e8edf2; background: #fafbfc; }
-        .modal-header-left { display: flex; align-items: center; gap: 12px; }
-        .modal-icon { width: 34px; height: 34px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 14px; }
-        .modal-title { font-size: 16px; font-weight: 700; color: #0d1f35; letter-spacing: -0.2px; }
-        .modal-close { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; background: transparent; border: 1px solid transparent; border-radius: 4px; color: #9ab0c6; cursor: pointer; transition: all 0.12s; font-size: 14px; }
-        .modal-close:hover { background: #fee2e2; border-color: #fecaca; color: #dc2626; }
-        .modal-body { padding: 22px 24px; background: #fafbfc; }
+        .row-action-btn { display:inline-flex; align-items:center; justify-content:center; gap:5px; padding:5px 12px; border-radius:3px; font-size:11.5px; font-weight:600; cursor:pointer; transition:background 0.12s,color 0.12s; font-family:inherit; border:1px solid; }
+        .row-btn-grade  { background:#edfaf4; border-color:#a7f3d0; color:#065f46; }
+        .row-btn-grade:hover { background:#0ea871; border-color:#0ea871; color:#fff; }
+        .row-btn-view   { background:#f8fafb; border-color:#c5d0db; color:#374f6b; }
+        .row-btn-view:hover { background:#0d1f35; border-color:#0d1f35; color:#fff; }
 
-        .field-label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #6b84a0; margin-bottom: 6px; }
-        .form-input { width: 100%; padding: 9px 12px; background: #fff; border: 1px solid #c5d0db; border-radius: 3px; font-size: 13px; color: #0d1f35; font-family: inherit; font-weight: 500; outline: none; transition: border-color 0.12s, box-shadow 0.12s; box-sizing: border-box; }
-        .form-input:focus { border-color: #0ea871; box-shadow: 0 0 0 3px rgba(14,168,113,0.15); }
+        .modal-overlay { position:fixed; inset:0; background:rgba(13,31,53,0.65); z-index:50; display:flex; align-items:center; justify-content:center; padding:16px; transition:opacity 0.18s; }
+        .modal-overlay.hidden { display:none; }
+        .modal-overlay.opacity-0 { opacity:0; pointer-events:none; }
+        .modal-box { background:#fff; border:1px solid #c5d0db; border-radius:4px; box-shadow:0 20px 60px rgba(13,31,53,0.25); overflow:hidden; transform:scale(0.97); transition:transform 0.18s; }
+        .modal-box.modal-open { transform:scale(1); }
+        .modal-stripe { height:3px; background:linear-gradient(90deg,#0ea871,#0d1f35); }
+        .modal-header { display:flex; align-items:center; justify-content:space-between; padding:18px 24px; border-bottom:1px solid #e8edf2; background:#fafbfc; }
+        .modal-header-left { display:flex; align-items:center; gap:12px; }
+        .modal-icon  { width:34px; height:34px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:14px; }
+        .modal-title { font-size:16px; font-weight:700; color:#0d1f35; letter-spacing:-0.2px; }
+        .modal-close { width:30px; height:30px; display:flex; align-items:center; justify-content:center; background:transparent; border:1px solid transparent; border-radius:4px; color:#9ab0c6; cursor:pointer; transition:all 0.12s; font-size:14px; }
+        .modal-close:hover { background:#fee2e2; border-color:#fecaca; color:#dc2626; }
+        .modal-body { padding:22px 24px; background:#fafbfc; }
 
-        #studentPanelInner { background: #f2f5f8; width: 100%; max-width: 1100px; height: 92vh; display: flex; flex-direction: column; overflow: hidden; border-radius: 4px; border: 1px solid #c5d0db; box-shadow: 0 24px 64px rgba(13,31,53,0.3); }
-        .panel-top-stripe { height: 3px; background: linear-gradient(90deg, #0ea871 0%, #0d1f35 100%); flex-shrink: 0; }
-        .panel-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid #dce3ed; background: #fff; flex-shrink: 0; flex-wrap: wrap; gap: 10px; }
-        .panel-student-name { font-size: 20px; font-weight: 700; color: #0d1f35; letter-spacing: -0.4px; margin: 0 0 2px; }
-        .panel-student-meta { font-size: 12px; color: #6b84a0; font-weight: 400; margin: 0; }
+        .field-label { display:block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:#6b84a0; margin-bottom:6px; }
+        .form-input  { width:100%; padding:9px 12px; background:#fff; border:1px solid #c5d0db; border-radius:3px; font-size:13px; color:#0d1f35; font-family:inherit; font-weight:500; outline:none; transition:border-color 0.12s,box-shadow 0.12s; box-sizing:border-box; }
+        .form-input:focus { border-color:#0ea871; box-shadow:0 0 0 3px rgba(14,168,113,0.15); }
 
-        .info-row { display: flex; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid #f0f4f8; }
-        .info-row:last-child { border-bottom: none; }
-        .info-row-label { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #9ab0c6; width: 90px; flex-shrink: 0; padding-top: 1px; }
-        .info-row-value { font-size: 13px; font-weight: 600; color: #0d1f35; flex: 1; }
+        #studentPanelInner { background:#f2f5f8; width:100%; max-width:1100px; height:92vh; display:flex; flex-direction:column; overflow:hidden; border-radius:4px; border:1px solid #c5d0db; box-shadow:0 24px 64px rgba(13,31,53,0.3); }
+        .panel-top-stripe  { height:3px; background:linear-gradient(90deg,#0ea871 0%,#0d1f35 100%); flex-shrink:0; }
+        .panel-header      { display:flex; align-items:center; justify-content:space-between; padding:16px 24px; border-bottom:1px solid #dce3ed; background:#fff; flex-shrink:0; flex-wrap:wrap; gap:10px; }
+        .panel-student-name { font-size:20px; font-weight:700; color:#0d1f35; letter-spacing:-0.4px; margin:0 0 2px; }
+        .panel-student-meta { font-size:12px; color:#6b84a0; font-weight:400; margin:0; }
 
-        .subject-body { display: none; }
-        .subject-body.open { display: block; }
+        .info-row        { display:flex; align-items:flex-start; padding:10px 0; border-bottom:1px solid #f0f4f8; }
+        .info-row:last-child { border-bottom:none; }
+        .info-row-label  { font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:#9ab0c6; width:90px; flex-shrink:0; padding-top:1px; }
+        .info-row-value  { font-size:13px; font-weight:600; color:#0d1f35; flex:1; }
 
-        .table-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; gap: 12px; color: #9ab0c6; }
-        .table-loader i { font-size: 24px; color: #0ea871; }
-        .table-loader p { font-size: 13px; margin: 0; }
-        
-        .star-btn { font-size: 22px; color: #dce3ed; background: none; border: none; cursor: pointer; padding: 0 4px; transition: transform 0.1s, color 0.15s; }
-        .star-btn:hover { transform: scale(1.2); }
-        .star-active { color: #f59e0b; }
+        .subject-body      { display:none; }
+        .subject-body.open { display:block; }
+
+        .table-loader { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 20px; gap:12px; color:#9ab0c6; }
+        .table-loader i { font-size:24px; color:#0ea871; }
+        .table-loader p { font-size:13px; margin:0; }
+
+        .star-btn  { font-size:22px; color:#dce3ed; background:none; border:none; cursor:pointer; padding:0 4px; transition:transform 0.1s,color 0.15s; }
+        .star-btn:hover { transform:scale(1.2); }
+        .star-active { color:#f59e0b; }
 
         @media print {
-            .no-print { display: none !important; }
-            body { background: white !important; overflow: visible !important; height: auto !important; }
-            #layout-sidebar-container, #layout-topbar-container, #dashboardMain, .modal-overlay { display: none !important; }
+            .no-print { display:none !important; }
+            body { background:white !important; overflow:visible !important; height:auto !important; }
+            #layout-sidebar-container, #layout-topbar-container, #dashboardMain, .modal-overlay { display:none !important; }
         }
     </style>
 </head>
-
 <body>
     <div id="layout-sidebar-container" style="flex-shrink:0;height:100%;z-index:20;"></div>
 
@@ -148,15 +137,9 @@
                     <p class="roster-page-sub">Active enrolment · academic standing · parent contacts</p>
                 </div>
                 <div class="roster-header-actions no-print">
-                    <button onclick="exportRosterCSV()" class="btn-sharp btn-sharp-outline">
-                        <i class="fa-solid fa-file-csv" style="font-size:11px;"></i> Export CSV
-                    </button>
-                    <button onclick="printRoster()" class="btn-sharp btn-sharp-outline">
-                        <i class="fa-solid fa-print" style="font-size:11px;"></i> Print Roster
-                    </button>
-                    <button onclick="openAddStudentModal()" class="btn-sharp btn-sharp-green">
-                        <i class="fa-solid fa-plus" style="font-size:11px;"></i> Add Student
-                    </button>
+                    <button onclick="exportRosterCSV()" class="btn-sharp btn-sharp-outline"><i class="fa-solid fa-file-csv" style="font-size:11px;"></i> Export CSV</button>
+                    <button onclick="printRoster()" class="btn-sharp btn-sharp-outline"><i class="fa-solid fa-print" style="font-size:11px;"></i> Print Roster</button>
+                    <button onclick="openAddStudentModal()" class="btn-sharp btn-sharp-green"><i class="fa-solid fa-plus" style="font-size:11px;"></i> Add Student</button>
                 </div>
             </div>
 
@@ -167,9 +150,7 @@
                 </div>
                 <div class="control-group" id="classFilterWrap">
                     <span class="control-group-label"><i class="fa-solid fa-chalkboard" style="margin-right:5px;"></i>Class</span>
-                    <select id="rf-class" class="control-select" onchange="applyRosterFilters()">
-                        <option value="">All Classes</option>
-                    </select>
+                    <select id="rf-class" class="control-select" onchange="applyRosterFilters()"><option value="">All Classes</option></select>
                 </div>
                 <div class="control-group">
                     <span class="control-group-label"><i class="fa-solid fa-chart-bar" style="margin-right:5px;"></i>Standing</span>
@@ -187,13 +168,11 @@
 
             <div class="roster-table-wrap">
                 <div class="roster-table-header">
-                    <div class="roster-table-header-left">
+                    <div style="display:flex;align-items:center;gap:10px;">
                         <span class="roster-table-title">Student Records</span>
                         <span class="roster-count-badge" id="rosterCountBadge">0</span>
                     </div>
-                    <div style="font-size:10px;color:rgba(255,255,255,0.4);font-weight:500;letter-spacing:0.06em;">
-                        ACADEMIC YEAR · <span id="rosterPeriodLabel">—</span>
-                    </div>
+                    <div style="font-size:10px;color:rgba(255,255,255,0.4);font-weight:500;letter-spacing:0.06em;">ACADEMIC YEAR · <span id="rosterPeriodLabel">—</span></div>
                 </div>
                 <div style="overflow-x:auto;">
                     <table class="roster-table">
@@ -211,13 +190,7 @@
                             </tr>
                         </thead>
                         <tbody id="studentsTableBody">
-                            <tr>
-                                <td colspan="9">
-                                    <div class="table-loader">
-                                        <i class="fa-solid fa-spinner fa-spin"></i><p>Loading roster…</p>
-                                    </div>
-                                </td>
-                            </tr>
+                            <tr><td colspan="9"><div class="table-loader"><i class="fa-solid fa-spinner fa-spin"></i><p>Loading roster…</p></div></td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -225,14 +198,13 @@
         </div>
     </main>
 
+    <!-- ── ADD STUDENT MODAL ─────────────────────────────────────────────── -->
     <div id="addStudentModal" class="modal-overlay hidden opacity-0">
         <div class="modal-box" id="addStudentModalInner" style="width:100%;max-width:500px;max-height:90vh;overflow-y:auto;">
             <div class="modal-stripe"></div>
             <div class="modal-header" style="position:sticky;top:0;background:#fafbfc;z-index:10;">
                 <div class="modal-header-left">
-                    <div class="modal-icon" style="background:#edfaf4;color:#0ea871;border:1px solid #a7f3d0;">
-                        <i class="fa-solid fa-user-plus"></i>
-                    </div>
+                    <div class="modal-icon" style="background:#edfaf4;color:#0ea871;border:1px solid #a7f3d0;"><i class="fa-solid fa-user-plus"></i></div>
                     <span class="modal-title">Enroll or Claim Student</span>
                 </div>
                 <button onclick="closeAddStudentModal()" class="modal-close"><i class="fa-solid fa-xmark"></i></button>
@@ -241,7 +213,7 @@
                 <div style="background:#edfaf4;border:1px solid #a7f3d0;border-radius:3px;padding:14px;">
                     <label class="field-label" style="color:#065f46;">Search National Registry First</label>
                     <div style="display:flex;gap:8px;">
-                        <input type="text" id="sSearchQuery" placeholder="Student name or S26-XXXXX ID" class="form-input" style="flex:1;">
+                        <input type="text" id="sSearchQuery" placeholder="S26-XXXXX Student ID" class="form-input" style="flex:1;">
                         <button id="sSearchBtn" onclick="window.searchStudentRegistry()" style="padding:9px 16px;background:#0ea871;border:none;border-radius:3px;color:#fff;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap;">Search</button>
                     </div>
                 </div>
@@ -251,14 +223,14 @@
                     <span style="font-size:9.5px;font-weight:700;color:#9ab0c6;text-transform:uppercase;letter-spacing:0.1em;white-space:nowrap;">Or Create New Identity</span>
                     <div style="flex:1;height:1px;background:#e8edf2;"></div>
                 </div>
-                <div id="sNewStudentFields" style="display:flex;flex-direction:column;gap:14px;">
+                <div style="display:flex;flex-direction:column;gap:14px;">
                     <div><label class="field-label">Student Full Name <span style="color:#e31b4a;">*</span></label><input type="text" id="sName" class="form-input"></div>
                     <div><label class="field-label">Date of Birth</label><input type="date" id="sDob" class="form-input"></div>
                     <div style="border-top:1px solid #e8edf2;padding-top:14px;"><label class="field-label">Parent / Guardian Name</label><input type="text" id="sParentName" class="form-input"></div>
                     <div><label class="field-label">Email Address <span style="color:#e31b4a;">*</span></label><input type="email" id="sEmail" class="form-input"></div>
                     <div><label class="field-label">Parent / Guardian Phone</label><input type="tel" id="sParentPhone" class="form-input"></div>
                 </div>
-                <div id="sClassWrap" style="padding-top:14px;border-top:1px solid #e8edf2;">
+                <div style="padding-top:14px;border-top:1px solid #e8edf2;">
                     <label class="field-label">Assign to Class <span style="color:#e31b4a;">*</span></label>
                     <select id="sClass" class="form-input"></select>
                 </div>
@@ -268,6 +240,7 @@
         </div>
     </div>
 
+    <!-- ── ARCHIVE MODAL ─────────────────────────────────────────────────── -->
     <div id="archiveModal" class="modal-overlay hidden opacity-0" style="z-index:70;">
         <div class="modal-box" id="archiveModalInner" style="width:100%;max-width:480px;">
             <div class="modal-stripe" style="background:linear-gradient(90deg,#dc2626,#9f1239);"></div>
@@ -279,13 +252,13 @@
                 <button onclick="window.closeArchiveModal()" class="modal-close"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="modal-body" style="display:flex;flex-direction:column;gap:16px;">
-                <p style="font-size:13px;color:#374f6b;font-weight:400;margin:0;line-height:1.6;">Select how you want to archive <strong id="archiveStudentName" style="color:#0d1f35;"></strong>.</p>
+                <p style="font-size:13px;color:#374f6b;margin:0;line-height:1.6;">Select how you want to archive <strong id="archiveStudentName" style="color:#0d1f35;"></strong>.</p>
                 <div style="display:flex;flex-direction:column;gap:10px;">
                     <label style="display:flex;align-items:flex-start;gap:12px;padding:14px;border:1px solid #c5d0db;border-radius:4px;cursor:pointer;">
                         <input type="radio" name="archiveType" id="optArchive" value="archive" checked onchange="window.toggleArchiveType()">
                         <div>
                             <p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#0d1f35;">Internal Archive (Keep Enrolled)</p>
-                            <p style="margin:0;font-size:11.5px;color:#6b84a0;line-height:1.4;">Student is removed from active class rosters, but remains tied to your school.</p>
+                            <p style="margin:0;font-size:11.5px;color:#6b84a0;line-height:1.4;">Student is removed from active class rosters but remains tied to your school.</p>
                         </div>
                     </label>
                     <label style="display:flex;align-items:flex-start;gap:12px;padding:14px;border:1px solid #c5d0db;border-radius:4px;cursor:pointer;">
@@ -297,8 +270,7 @@
                     </label>
                 </div>
                 <div id="releaseFields" class="hidden" style="display:flex;flex-direction:column;gap:14px;padding-top:8px;">
-                    <div>
-                        <label class="field-label">Departure Reason (Required)</label>
+                    <div><label class="field-label">Departure Reason (Required)</label>
                         <select id="releaseReason" class="form-input">
                             <option value="">Select reason...</option>
                             <option value="Transferred">Transferred to Another School</option>
@@ -308,12 +280,13 @@
                         </select>
                     </div>
                 </div>
-                <div><label class="field-label">Teacher/Admin Notes (Optional)</label><textarea id="archiveNotes" class="form-input" style="height:70px;resize:none;"></textarea></div>
-                <button id="confirmArchiveBtn" style="width:100%;padding:11px;background:#dc2626;border:none;border-radius:3px;color:#fff;font-size:13.5px;font-weight:700;font-family:inherit;cursor:pointer;"><i class="fa-solid fa-box-archive"></i> Confirm Action</button>
+                <div><label class="field-label">Notes (Optional)</label><textarea id="archiveNotes" class="form-input" style="height:70px;resize:none;"></textarea></div>
+                <button id="confirmArchiveBtn" style="width:100%;padding:11px;background:#dc2626;border:none;border-radius:3px;color:#fff;font-size:13.5px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;"><i class="fa-solid fa-box-archive"></i> Confirm Action</button>
             </div>
         </div>
     </div>
 
+    <!-- ── STUDENT PANEL ─────────────────────────────────────────────────── -->
     <div id="studentPanel" class="modal-overlay hidden opacity-0" style="padding:12px;">
         <div id="studentPanelInner">
             <div class="panel-top-stripe"></div>
@@ -323,76 +296,88 @@
                     <p id="sPanelMeta" class="panel-student-meta">—</p>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                    <button id="spQuickGradeBtn2" class="btn-sharp btn-sharp-green"><i class="fa-solid fa-plus"></i> Enter Grade</button>
+                    <button id="spQuickGradeBtn2" class="btn-sharp btn-sharp-green"><i class="fa-solid fa-plus" style="font-size:11px;"></i> Enter Grade</button>
                     <button onclick="window.closeStudentPanel()" class="modal-close"><i class="fa-solid fa-xmark"></i></button>
                 </div>
             </div>
 
             <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;position:relative;">
                 <div id="sPanelLoader" style="position:absolute;inset:0;background:rgba(255,255,255,0.85);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;">
-                    <i class="fa-solid fa-circle-notch fa-spin" style="font-size:28px;color:#0ea871;"></i><span style="font-size:12px;color:#6b84a0;font-weight:500;">Loading student record…</span>
+                    <i class="fa-solid fa-circle-notch fa-spin" style="font-size:28px;color:#0ea871;"></i>
+                    <span style="font-size:12px;color:#6b84a0;font-weight:500;">Loading student record…</span>
                 </div>
 
                 <div id="sViewMode" class="hidden" style="flex:1;display:flex;overflow:hidden;">
+
+                    <!-- ── LEFT SIDEBAR ────────────────────────────────── -->
                     <div style="width:280px;flex-shrink:0;background:#fff;border-right:1px solid #dce3ed;overflow-y:auto;display:flex;flex-direction:column;">
+
+                        <!-- Read-only profile -->
                         <div style="padding:20px 20px 0;">
-                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-                                <span style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#6b84a0;">Profile</span>
-                                <button onclick="window.toggleStudentEdit(true)" style="font-size:11px;font-weight:600;color:#0ea871;background:none;border:none;cursor:pointer;padding:0;">Edit Details</button>
-                            </div>
+                            <span style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#6b84a0;display:block;margin-bottom:12px;">Profile</span>
                             <div id="sInfoGrid" style="border-top:1px solid #f0f4f8;"></div>
                         </div>
 
-                        <div id="sEditForm" class="hidden" style="margin:0 16px 16px;padding:16px;background:#f8fafb;border:1px solid #c5d0db;border-radius:4px;">
-                            <p style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b84a0;margin:0 0 12px;">Edit Profile</p>
-                            <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;">
-                                <div><label class="field-label">Full Name</label><input type="text" id="editSName" class="form-input"></div>
-                                <div><label class="field-label">Date of Birth</label><input type="date" id="editSDob" class="form-input"></div>
-                                <div style="border-top: 1px solid #e8edf2; padding-top: 10px;"><label class="field-label">Class</label><select id="editSClass" class="form-input" onchange="window.checkClassChange()"></select></div>
-                                <div id="editSClassReasonWrap" class="hidden"><label class="field-label" style="color:#e31b4a;">Reason for Class Change *</label><input type="text" id="editSClassReason" class="form-input" style="border-color:#fecaca;"></div>
-                                <div><label class="field-label">Parent Name</label><input type="text" id="editSParentName" class="form-input"></div>
-                                <div><label class="field-label">Parent Phone</label><input type="tel" id="editSPhone" class="form-input"></div>
+                        <!-- Class assignment (only editable field) -->
+                        <div style="margin:12px 16px 0;padding:14px;background:#f8fafb;border:1px solid #c5d0db;border-radius:4px;">
+                            <label class="field-label">Class Assignment</label>
+                            <select id="editSClass" class="form-input" onchange="window.checkClassChange()" style="margin-bottom:8px;"></select>
+                            <div id="editSClassReasonWrap" class="hidden" style="margin-bottom:8px;">
+                                <label class="field-label" style="color:#e31b4a;">Reason for Class Change *</label>
+                                <input type="text" id="editSClassReason" placeholder="Required" class="form-input" style="border-color:#fecaca;">
                             </div>
-                            <div style="display:flex;gap:8px;">
-                                <button id="saveStudentEditBtn" style="flex:1;padding:8px;background:#0ea871;border:none;border-radius:3px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">Save</button>
-                                <button onclick="window.toggleStudentEdit(false)" style="padding:8px 14px;background:#fff;border:1px solid #c5d0db;border-radius:3px;color:#374f6b;font-size:12px;font-weight:600;cursor:pointer;">Cancel</button>
-                            </div>
-                            <p id="editStudentMsg" class="hidden" style="font-size:11px;font-weight:600;padding:8px;border-radius:3px;text-align:center;margin-top:8px;"></p>
+                            <button id="saveClassBtn" onclick="window.saveStudentClass()"
+                                    style="width:100%;padding:7px;background:#0ea871;border:none;border-radius:3px;color:#fff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;">
+                                Save Class
+                            </button>
+                            <p id="editClassMsg" class="hidden" style="font-size:11px;font-weight:600;padding:6px;border-radius:3px;text-align:center;margin-top:6px;"></p>
                         </div>
 
-                        <div style="margin:0 16px 16px;padding:16px;background:#f0f4ff;border:1px solid #c7d2fe;border-radius:4px;text-align:center;">
-                            <p style="font-size:9.5px;font-weight:700;text-transform:uppercase;color:#4f46e5;margin:0 0 10px;"><i class="fa-solid fa-key" style="margin-right:4px;"></i>Parent PIN</p>
-                            <div id="pinDisplayArea">
-                                <p id="spinReadonly" style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:#312e81;letter-spacing:0.22em;margin:0 0 10px;">—</p>
-                                <button onclick="window.togglePinResetUI(true)" style="width:100%;padding:7px;background:#fff;border:1px solid #c7d2fe;border-radius:3px;color:#4f46e5;font-size:11.5px;font-weight:600;cursor:pointer;">Reset PIN</button>
-                            </div>
-                            <div id="pinEditArea" class="hidden" style="display:flex;flex-direction:column;gap:8px;">
-                                <input type="text" id="inlineNewPin" placeholder="4–6 digits" maxlength="6" style="width:100%;padding:8px;border:1px solid #c7d2fe;border-radius:3px;font-family:'DM Mono',monospace;font-size:14px;text-align:center;letter-spacing:0.2em;outline:none;">
-                                <div style="display:flex;gap:6px;">
-                                    <button onclick="window.saveInlinePin()" id="inlinePinSaveBtn" style="flex:1;padding:7px;background:#4f46e5;border:none;border-radius:3px;color:#fff;font-size:11.5px;font-weight:700;cursor:pointer;">Save</button>
-                                    <button onclick="window.togglePinResetUI(false)" style="flex:1;padding:7px;background:#fff;border:1px solid #c5d0db;border-radius:3px;color:#374f6b;font-size:11.5px;font-weight:600;cursor:pointer;">Cancel</button>
-                                </div>
-                                <button onclick="document.getElementById('inlineNewPin').value = Math.floor(1000 + Math.random() * 9000).toString()" style="font-size:10px;color:#4f46e5;font-weight:600;background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;">Auto-Generate</button>
-                            </div>
+                        <!-- PIN — read-only display + email reset -->
+                        <div style="margin:12px 16px 0;padding:16px;background:#f0f4ff;border:1px solid #c7d2fe;border-radius:4px;text-align:center;">
+                            <p style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#4f46e5;margin:0 0 8px;">
+                                <i class="fa-solid fa-key" style="margin-right:4px;"></i>Parent Login PIN
+                            </p>
+                            <p id="spinReadonly" style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:#312e81;letter-spacing:0.22em;margin:0 0 8px;">—</p>
+                            <p style="font-size:10px;color:#6b84a0;margin:0 0 10px;line-height:1.4;">To reset this PIN, send the parent a secure reset link via email.</p>
+                            <button id="pinResetEmailBtn" onclick="window.sendPinResetEmail()"
+                                    style="width:100%;padding:7px;background:#4f46e5;border:none;border-radius:3px;color:#fff;font-size:11.5px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
+                                <i class="fa-solid fa-envelope"></i> Send PIN Reset Email
+                            </button>
                         </div>
 
-                        <div style="margin:auto 16px 16px;padding-top:12px;border-top:1px solid #f0f4f8;">
-                            <button id="archiveStudentBtn" onclick="window.archiveStudent()" style="width:100%;padding:9px;background:#fffbeb;border:1px solid #fde68a;border-radius:3px;color:#78350f;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;"><i class="fa-solid fa-box-archive"></i> Archive This Student</button>
+                        <!-- Archive button -->
+                        <div style="margin:auto 16px 16px;padding-top:12px;border-top:1px solid #f0f4f8;margin-top:16px;">
+                            <button onclick="window.archiveStudent()"
+                                    style="width:100%;padding:9px;background:#fffbeb;border:1px solid #fde68a;border-radius:3px;color:#78350f;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;">
+                                <i class="fa-solid fa-box-archive"></i> Archive This Student
+                            </button>
                         </div>
                     </div>
 
+                    <!-- ── RIGHT PANEL ─────────────────────────────────── -->
                     <div style="flex:1;display:flex;flex-direction:column;background:#f8fafb;overflow:hidden;min-width:0;">
-                        
+
+                        <!-- Tab bar -->
                         <div style="background:#fff;border-bottom:1px solid #dce3ed;display:flex;padding:0 20px;flex-shrink:0;">
-                            <button id="tabBtnGrades" onclick="window.switchStudentTab('grades')" style="padding:14px 16px;font-size:13px;font-weight:700;color:#0d1f35;border-bottom:2px solid #0ea871;background:none;cursor:pointer;">Grades & Assessments</button>
-                            <button id="tabBtnEvaluations" onclick="window.switchStudentTab('evaluations')" style="padding:14px 16px;font-size:13px;font-weight:600;color:#6b84a0;border-bottom:2px solid transparent;background:none;cursor:pointer;transition:color 0.15s;">Formal Evaluations</button>
+                            <button id="tabBtnGrades" onclick="window.switchStudentTab('grades')"
+                                    style="padding:14px 16px;font-size:13px;font-weight:700;color:#0d1f35;border-bottom:2px solid #0ea871;background:none;cursor:pointer;border-top:none;border-left:none;border-right:none;">
+                                Grades &amp; Assessments
+                            </button>
+                            <button id="tabBtnEvaluations" onclick="window.switchStudentTab('evaluations')"
+                                    style="padding:14px 16px;font-size:13px;font-weight:600;color:#6b84a0;border-bottom:2px solid transparent;background:none;cursor:pointer;border-top:none;border-left:none;border-right:none;transition:color 0.15s;">
+                                Formal Evaluations
+                            </button>
                         </div>
 
+                        <!-- GRADES TAB -->
                         <div id="tabContentGrades" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
                             <div style="padding:14px 20px;border-bottom:1px solid #dce3ed;background:#fff;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;flex-shrink:0;">
                                 <div style="display:flex;align-items:center;gap:8px;">
                                     <i class="fa-solid fa-graduation-cap" style="font-size:12px;color:#0ea871;"></i>
-                                    <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;color:#374f6b;">Grade Records — <span id="sPanelSemName" style="color:#0ea871;"></span></span>
+                                    <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#374f6b;">
+                                        Grade Records — <span id="sPanelSemName" style="color:#0ea871;"></span>
+                                    </span>
                                 </div>
                                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
                                     <div class="control-group" style="border-radius:3px;">
@@ -408,30 +393,33 @@
                             <div style="flex:1;overflow-y:auto;padding:16px 20px;">
                                 <div id="subjectAccordions" style="display:flex;flex-direction:column;gap:10px;"></div>
                                 <div id="noGradesMsg" class="hidden" style="padding:48px 20px;text-align:center;color:#9ab0c6;font-size:13px;">
-                                    <i class="fa-solid fa-folder-open" style="font-size:28px;display:block;margin-bottom:10px;color:#c5d0db;"></i> No records match the current filters.
+                                    <i class="fa-solid fa-folder-open" style="font-size:28px;display:block;margin-bottom:10px;color:#c5d0db;"></i>
+                                    No records match the current filters.
                                 </div>
                             </div>
                         </div>
 
+                        <!-- EVALUATIONS TAB -->
                         <div id="tabContentEvaluations" class="hidden" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
-                            <div style="padding:14px 20px;border-bottom:1px solid #dce3ed;background:#fff;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+                            <div style="padding:14px 20px;border-bottom:1px solid #dce3ed;background:#fff;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;flex-wrap:wrap;gap:8px;">
                                 <div style="display:flex;align-items:center;gap:8px;">
                                     <i class="fa-solid fa-clipboard-user" style="font-size:12px;color:#0d1f35;"></i>
-                                    <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;color:#374f6b;">Formal History & Reports</span>
+                                    <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#374f6b;">Formal History &amp; Reports</span>
                                 </div>
                                 <div style="display:flex;gap:8px;">
-                                    <button onclick="window.checkAndPrintReport()" class="btn-sharp btn-sharp-outline">
-                                        <i class="fa-solid fa-file-pdf" style="font-size:11px;"></i> Generate Report Card
+                                    <button onclick="window.openReportCardModal()" class="btn-sharp btn-sharp-outline">
+                                        <i class="fa-solid fa-file-invoice" style="font-size:11px;"></i> Generate Report Card
                                     </button>
                                     <button onclick="window.openEvalModal()" class="btn-sharp btn-sharp-primary">
                                         <i class="fa-solid fa-plus" style="font-size:11px;"></i> New Evaluation
                                     </button>
                                 </div>
                             </div>
-                            <div style="flex:1;overflow-y:auto;padding:16px 20px;" id="evaluationsListContainer">
+                            <div style="flex:1;overflow-y:auto;padding:16px 20px;">
                                 <div id="evaluationsList" style="display:flex;flex-direction:column;gap:12px;"></div>
                                 <div id="noEvaluationsMsg" class="hidden" style="padding:48px 20px;text-align:center;color:#9ab0c6;font-size:13px;">
-                                    <i class="fa-regular fa-file-lines" style="font-size:28px;display:block;margin-bottom:10px;color:#c5d0db;"></i> No formal evaluations have been filed.
+                                    <i class="fa-regular fa-file-lines" style="font-size:28px;display:block;margin-bottom:10px;color:#c5d0db;"></i>
+                                    No formal evaluations have been filed.
                                 </div>
                             </div>
                         </div>
@@ -442,91 +430,114 @@
         </div>
     </div>
 
+    <!-- ── REPORT CARD MODAL ─────────────────────────────────────────────── -->
+    <div id="reportCardModal" class="modal-overlay hidden opacity-0" style="z-index:65;">
+        <div class="modal-box" id="reportCardModalInner" style="width:100%;max-width:650px;max-height:90vh;display:flex;flex-direction:column;">
+            <div class="modal-stripe" style="background:linear-gradient(90deg,#1e1b4b,#4f46e5);"></div>
+            <div class="modal-header" style="flex-shrink:0;">
+                <div class="modal-header-left">
+                    <div class="modal-icon" style="background:#eef2ff;color:#4f46e5;border:1px solid #c7d2fe;"><i class="fa-solid fa-file-invoice"></i></div>
+                    <span class="modal-title">Generate Report Card</span>
+                </div>
+                <button onclick="window.closeReportCardModal()" class="modal-close"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body" style="flex:1;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:20px;">
+                <div>
+                    <label class="field-label">Grading Period</label>
+                    <select id="rcSemester" class="form-input"></select>
+                </div>
+
+                <div>
+                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin:0 0 12px;">Attendance Record</h3>
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+                        <div><label class="field-label">Total Sessions</label><input type="number" id="rcTotalSessions" class="form-input" placeholder="e.g. 130" min="0"></div>
+                        <div><label class="field-label">Days Absent</label><input type="number" id="rcDaysAbsent" class="form-input" placeholder="0" min="0"></div>
+                        <div><label class="field-label">Days Late</label><input type="number" id="rcDaysLate" class="form-input" placeholder="0" min="0"></div>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin:0 0 12px;">Behavior &amp; Work Habits</h3>
+                    <p style="font-size:11px;color:#9ab0c6;margin:0 0 10px;">Rate each area: 1 = Improvement Needed · 3 = Developing · 5 = Exceptional</p>
+                    <div style="background:#fff;border:1px solid #e8edf2;border-radius:4px;padding:12px;display:flex;flex-direction:column;gap:10px;">
+                        <div class="rc-rating-row" data-field="academicComprehension" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Academic Comprehension</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="attitudeWork" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Attitude Towards Work</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="effortResilience" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Effort &amp; Resilience</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="participation" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Participation &amp; Engagement</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="organization" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Organization &amp; Time Management</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="behavior" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Classroom Behaviour</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="peerRelations" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Peer Relations &amp; Respect</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="punctualityRating" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Class Attendance &amp; Punctuality</span><div class="rc-star-group" style="display:flex;"></div></div>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin:0 0 12px;">Teacher's Comments</h3>
+                    <textarea id="rcComment" class="form-input" rows="3" placeholder="Enter formal comments for the report card…"></textarea>
+                </div>
+            </div>
+            <div style="padding:16px 24px;border-top:1px solid #e8edf2;background:#fafbfc;display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;">
+                <button onclick="window.closeReportCardModal()" class="btn-sharp btn-sharp-outline">Cancel</button>
+                <button onclick="window.saveAndGenerateReportCard()" id="btnSaveGenerate" class="btn-sharp btn-sharp-primary">
+                    <i class="fa-solid fa-file-pdf"></i> Save &amp; Generate Report Card
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── EVAL MODAL (NEW EVALUATION — BEHAVIORAL / EOY / ACADEMIC PROGRESS) -->
     <div id="evalModal" class="modal-overlay hidden opacity-0" style="z-index:60;">
         <div class="modal-box" id="evalModalInner" style="width:100%;max-width:650px;max-height:90vh;display:flex;flex-direction:column;">
-            <div class="modal-stripe" style="background:linear-gradient(90deg, #0d1f35, #2563eb);"></div>
+            <div class="modal-stripe" style="background:linear-gradient(90deg,#0d1f35,#2563eb);"></div>
             <div class="modal-header" style="flex-shrink:0;">
                 <div class="modal-header-left">
                     <div class="modal-icon" style="background:#eef4ff;color:#2563eb;border:1px solid #c7d9fd;"><i class="fa-solid fa-file-signature"></i></div>
-                    <span class="modal-title">Student Evaluation Form</span>
+                    <span class="modal-title">Student Evaluation</span>
                 </div>
                 <button onclick="window.closeEvalModal()" class="modal-close"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            
             <div class="modal-body" style="flex:1;overflow-y:auto;padding:24px;">
-                
                 <div style="margin-bottom:20px;background:#fff;border:1px solid #c5d0db;padding:16px;border-radius:4px;">
                     <label class="field-label">Evaluation Type</label>
                     <select id="evalType" class="form-input" style="font-weight:700;color:#0d1f35;" onchange="window.toggleEvalType()">
-                        <option value="academic">Academic / Report Card Record</option>
+                        <option value="academic">Academic Progress (Mid / End of Term)</option>
                         <option value="end_of_year">Comprehensive End-of-Year</option>
-                        <option value="behavioral">Behavioral & Conduct Intervention</option>
+                        <option value="behavioral">Behavioral &amp; Conduct Intervention</option>
                     </select>
                 </div>
-
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
                     <div><label class="field-label">Grading Period</label><select id="evalSemester" class="form-input"></select></div>
                     <div><label class="field-label">Date of Evaluation</label><input type="date" id="evalDate" class="form-input"></div>
                 </div>
 
+                <!-- Academic Progress -->
                 <div id="type-academic" class="eval-section">
-                    
-                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin-bottom:12px;">Attendance Record</h3>
-                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:24px;">
-                        <div><label class="field-label">Total Sessions</label><input type="number" id="evalTotalSessions" class="form-input" placeholder="e.g. 130"></div>
-                        <div><label class="field-label">Days Absent</label><input type="number" id="evalDaysAbsent" class="form-input" placeholder="0"></div>
-                        <div><label class="field-label">Days Late</label><input type="number" id="evalDaysLate" class="form-input" placeholder="0"></div>
-                    </div>
-
-                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin-bottom:12px;">Academic & Work Habits (Report Card)</h3>
+                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin-bottom:12px;">Quantitative Metrics</h3>
                     <div style="background:#fff;border:1px solid #e8edf2;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
-                        <div class="rating-row" data-field="academicComprehension" style="display:flex;justify-content:space-between;align-items:center;">
-                            <span style="font-size:12.5px;font-weight:600;color:#374f6b;">Academic Comprehension</span><div class="star-group" style="display:flex;"></div>
-                        </div>
-                        <div class="rating-row" data-field="attitudeWork" style="display:flex;justify-content:space-between;align-items:center;">
-                            <span style="font-size:12.5px;font-weight:600;color:#374f6b;">Attitude Towards Work</span><div class="star-group" style="display:flex;"></div>
-                        </div>
-                        <div class="rating-row" data-field="effortResilience" style="display:flex;justify-content:space-between;align-items:center;">
-                            <span style="font-size:12.5px;font-weight:600;color:#374f6b;">Effort & Resilience</span><div class="star-group" style="display:flex;"></div>
-                        </div>
-                        <div class="rating-row" data-field="participation" style="display:flex;justify-content:space-between;align-items:center;">
-                            <span style="font-size:12.5px;font-weight:600;color:#374f6b;">Participation & Engagement</span><div class="star-group" style="display:flex;"></div>
-                        </div>
-                        <div class="rating-row" data-field="organization" style="display:flex;justify-content:space-between;align-items:center;">
-                            <span style="font-size:12.5px;font-weight:600;color:#374f6b;">Organization & Time Management</span><div class="star-group" style="display:flex;"></div>
-                        </div>
-                        <div class="rating-row" data-field="behavior" style="display:flex;justify-content:space-between;align-items:center;">
-                            <span style="font-size:12.5px;font-weight:600;color:#374f6b;">Classroom Behaviour</span><div class="star-group" style="display:flex;"></div>
-                        </div>
-                        <div class="rating-row" data-field="peerRelations" style="display:flex;justify-content:space-between;align-items:center;">
-                            <span style="font-size:12.5px;font-weight:600;color:#374f6b;">Peer Relations & Respect</span><div class="star-group" style="display:flex;"></div>
-                        </div>
-                        <div class="rating-row" data-field="punctualityRating" style="display:flex;justify-content:space-between;align-items:center;">
-                            <span style="font-size:12.5px;font-weight:600;color:#374f6b;">Class Attendance & Punctuality</span><div class="star-group" style="display:flex;"></div>
-                        </div>
+                        <div class="rating-row" data-field="academicMastery" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Subject Mastery</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="taskExecution" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Task Execution (Workmanship)</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="engagement" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Classroom Engagement</span><div class="star-group" style="display:flex;"></div></div>
                     </div>
-                    
-                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin-bottom:12px;">Report Card Comments</h3>
-                    <div><textarea id="evalAcadComment" class="form-input" rows="3" placeholder="Enter formal comments summarizing the student's term performance..."></textarea></div>
+                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin-bottom:12px;">Qualitative Assessment</h3>
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <div><label class="field-label">Key Academic Strengths</label><textarea id="evalAcadStrengths" class="form-input" rows="2"></textarea></div>
+                        <div><label class="field-label">Areas for Growth</label><textarea id="evalAcadGrowth" class="form-input" rows="2"></textarea></div>
+                        <div><label class="field-label">Actionable Next Steps</label><textarea id="evalAcadSteps" class="form-input" rows="2"></textarea></div>
+                    </div>
                 </div>
 
+                <!-- End of Year -->
                 <div id="type-eoy" class="eval-section hidden">
                     <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin-bottom:12px;">Summative Metrics</h3>
                     <div style="background:#fff;border:1px solid #e8edf2;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
-                        <div class="rating-row" data-field="academicGrowth" style="display:flex;justify-content:space-between;align-items:center;">
-                            <span style="font-size:12.5px;font-weight:600;color:#374f6b;">Overall Academic Growth</span><div class="star-group" style="display:flex;"></div>
-                        </div>
-                        <div class="rating-row" data-field="socialDynamics" style="display:flex;justify-content:space-between;align-items:center;">
-                            <span style="font-size:12.5px;font-weight:600;color:#374f6b;">Social & Peer Dynamics</span><div class="star-group" style="display:flex;"></div>
-                        </div>
-                        <div class="rating-row" data-field="resilience" style="display:flex;justify-content:space-between;align-items:center;">
-                            <span style="font-size:12.5px;font-weight:600;color:#374f6b;">Resilience & Effort</span><div class="star-group" style="display:flex;"></div>
-                        </div>
+                        <div class="rating-row" data-field="academicGrowth" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Overall Academic Growth</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="socialDynamics" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Social &amp; Peer Dynamics</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="resilience" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Resilience &amp; Effort</span><div class="star-group" style="display:flex;"></div></div>
                     </div>
                     <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin-bottom:12px;">Formal Narrative</h3>
                     <div style="display:flex;flex-direction:column;gap:12px;">
                         <div><label class="field-label">Year-in-Review Narrative</label><textarea id="evalEoyNarrative" class="form-input" rows="3"></textarea></div>
-                        <div><label class="field-label">Recommended Interventions</label><textarea id="evalEoyInterventions" class="form-input" rows="2"></textarea></div>
+                        <div><label class="field-label">Recommended Interventions (Optional)</label><textarea id="evalEoyInterventions" class="form-input" rows="2"></textarea></div>
                         <div style="background:#f8fafb;padding:12px;border:1px solid #c5d0db;border-radius:4px;">
                             <label class="field-label" style="color:#0d1f35;">Promotion Status</label>
                             <select id="evalEoyStatus" class="form-input">
@@ -540,18 +551,13 @@
                     </div>
                 </div>
 
+                <!-- Behavioral -->
                 <div id="type-behavioral" class="eval-section hidden">
                     <h3 style="font-size:13px;font-weight:700;color:#dc2626;border-bottom:1px solid #fecaca;padding-bottom:6px;margin-bottom:12px;">Conduct Metrics</h3>
                     <div style="background:#fff;border:1px solid #fecaca;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
-                        <div class="rating-row" data-field="ruleAdherence" style="display:flex;justify-content:space-between;align-items:center;">
-                            <span style="font-size:12.5px;font-weight:600;color:#7f1d1d;">Rule Adherence</span><div class="star-group" style="display:flex;"></div>
-                        </div>
-                        <div class="rating-row" data-field="conflictResolution" style="display:flex;justify-content:space-between;align-items:center;">
-                            <span style="font-size:12.5px;font-weight:600;color:#7f1d1d;">Conflict Resolution</span><div class="star-group" style="display:flex;"></div>
-                        </div>
-                        <div class="rating-row" data-field="respectAuthority" style="display:flex;justify-content:space-between;align-items:center;">
-                            <span style="font-size:12.5px;font-weight:600;color:#7f1d1d;">Respect for Authority</span><div class="star-group" style="display:flex;"></div>
-                        </div>
+                        <div class="rating-row" data-field="ruleAdherence" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7f1d1d;">Rule Adherence</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="conflictResolution" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7f1d1d;">Conflict Resolution</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="respectAuthority" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7f1d1d;">Respect for Authority</span><div class="star-group" style="display:flex;"></div></div>
                     </div>
                     <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin-bottom:12px;">Incident Documentation</h3>
                     <div style="display:flex;flex-direction:column;gap:12px;">
@@ -570,44 +576,15 @@
                         </div>
                     </div>
                 </div>
-
             </div>
-            
             <div style="padding:16px 24px;border-top:1px solid #e8edf2;background:#fafbfc;display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;">
-                <button type="button" onclick="window.closeEvalModal()" class="btn-sharp btn-sharp-outline">Cancel</button>
-                <button type="button" onclick="window.saveEvaluation()" id="btnSubmitEval" class="btn-sharp btn-sharp-primary">Save Evaluation</button>
+                <button onclick="window.closeEvalModal()" class="btn-sharp btn-sharp-outline">Cancel</button>
+                <button onclick="window.saveEvaluation()" id="btnSubmitEval" class="btn-sharp btn-sharp-primary">Save to Formal Record</button>
             </div>
         </div>
     </div>
 
-    <div id="printStudentModal" class="modal-overlay hidden opacity-0" style="z-index:70;">
-        <div class="modal-box" id="printStudentModalInner" style="width:100%;max-width:400px;">
-            <div class="modal-stripe" style="background:linear-gradient(90deg,#374f6b,#0d1f35);"></div>
-            <div class="modal-header">
-                <div class="modal-header-left">
-                    <div class="modal-icon" style="background:#f2f5f8;color:#374f6b;border:1px solid #c5d0db;"><i class="fa-solid fa-print"></i></div>
-                    <span class="modal-title">Generate Report Document</span>
-                </div>
-                <button onclick="window.closePrintStudentModal()" class="modal-close"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-            <div class="modal-body" style="display:flex;flex-direction:column;gap:16px;">
-                <div>
-                    <label class="field-label">Report Style</label>
-                    <select id="psMode" class="form-input" onchange="document.getElementById('psSubjectWrap').style.display = this.value === 'formal_report' ? 'none' : 'block'">
-                        <option value="formal_report">Official Report Card (Grades + Eval)</option>
-                        <option value="summary">Unofficial Summary Transcript</option>
-                        <option value="detailed">Unofficial Detailed (All Assignments)</option>
-                    </select>
-                </div>
-                <div id="psSubjectWrap" style="display:none;">
-                    <label class="field-label">Filter by Subject</label>
-                    <select id="psSubject" class="form-input"><option value="all">All Subjects</option></select>
-                </div>
-                <button onclick="window.executeStudentPrint()" style="width:100%;padding:11px;background:#0d1f35;border:none;border-radius:3px;color:#fff;font-size:13.5px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;"><i class="fa-solid fa-file-pdf"></i> Generate Document</button>
-            </div>
-        </div>
-    </div>
-
+    <!-- ── ASSIGNMENT DETAIL MODAL ───────────────────────────────────────── -->
     <div id="assignmentModal" class="modal-overlay hidden opacity-0" style="z-index:60;">
         <div class="modal-box" id="assignmentModalInner" style="width:100%;max-width:460px;">
             <div class="modal-stripe"></div>
