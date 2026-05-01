@@ -13,6 +13,36 @@ injectStudentLayout('settings', 'Settings', 'Manage your personal profile and ac
 // State
 let fullStudentData = null;
 
+// Helper to lock/unlock the profile fields via JS
+function toggleProfileEditMode(isEditing) {
+    const profileInputs = ['sName', 'sEmail', 'sDob', 'sParentName', 'sParentPhone'];
+    const btn = document.getElementById('saveProfileBtn');
+
+    profileInputs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.readOnly = !isEditing;
+            if (!isEditing) {
+                // Locked state visuals
+                el.classList.add('opacity-70', 'cursor-not-allowed', 'bg-slate-100');
+                el.classList.remove('bg-slate-50');
+            } else {
+                // Editable state visuals
+                el.classList.remove('opacity-70', 'cursor-not-allowed', 'bg-slate-100');
+                el.classList.add('bg-slate-50');
+            }
+        }
+    });
+
+    if (isEditing) {
+        btn.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Save Profile Details`;
+        btn.dataset.mode = 'save';
+    } else {
+        btn.innerHTML = `<i class="fa-solid fa-pen"></i> Edit Profile Details`;
+        btn.dataset.mode = 'edit';
+    }
+}
+
 // ── 2. LOAD LATEST DATA ───────────────────────────────────────────────────
 async function loadSettingsData() {
     try {
@@ -33,17 +63,20 @@ async function loadSettingsData() {
             }
         }
 
-        // Fetch latest Student Data globally
+        // Fetch latest Student Data globally and populate the fields
         const studentSnap = await getDoc(doc(db, 'students', session.studentId));
         if (studentSnap.exists()) {
             fullStudentData = studentSnap.data();
             
-            // Populate Profile Details
+            // Populate Profile Details with existing database values
             document.getElementById('sName').value = fullStudentData.name || '';
             document.getElementById('sEmail').value = fullStudentData.email || '';
             document.getElementById('sDob').value = fullStudentData.dob || '';
             document.getElementById('sParentName').value = fullStudentData.parentName || '';
             document.getElementById('sParentPhone').value = fullStudentData.parentPhone || '';
+
+            // Lock the fields and turn the button into an "Edit" button by default
+            toggleProfileEditMode(false);
 
             // Populate Security Questions if they exist
             document.getElementById('secQ1').value = fullStudentData.securityQ1 || '';
@@ -58,14 +91,21 @@ async function loadSettingsData() {
 }
 
 // ── 3. UPDATE PROFILE DETAILS ─────────────────────────────────────────────
-document.getElementById('saveProfileBtn').addEventListener('click', async () => {
+document.getElementById('saveProfileBtn').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+
+    // If currently in "Edit" mode, clicking it just unlocks the fields
+    if (btn.dataset.mode === 'edit') {
+        toggleProfileEditMode(true);
+        return;
+    }
+    
+    // If in "Save" mode, process the update
     const name = document.getElementById('sName').value.trim();
     const email = document.getElementById('sEmail').value.trim();
     const dob = document.getElementById('sDob').value.trim();
     const parentName = document.getElementById('sParentName').value.trim();
     const parentPhone = document.getElementById('sParentPhone').value.trim();
-    
-    const btn = document.getElementById('saveProfileBtn');
     
     if (!name) {
         showMsg('profileMsg', 'Student Name is required.', true, 'bg-red-50 text-red-700 border border-red-200');
@@ -94,12 +134,15 @@ document.getElementById('saveProfileBtn').addEventListener('click', async () => 
         if (elAvatar) elAvatar.innerText = name.charAt(0).toUpperCase();
 
         showMsg('profileMsg', 'Profile updated successfully!', false, 'bg-emerald-50 text-emerald-700 border border-emerald-200');
+        
+        // Lock the fields back down
+        toggleProfileEditMode(false);
     } catch (e) {
         console.error("Error updating profile:", e);
         showMsg('profileMsg', 'Failed to update profile.', true, 'bg-red-50 text-red-700 border border-red-200');
+        btn.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Save Profile Details`;
     }
 
-    btn.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Save Profile Details`;
     btn.disabled = false;
 });
 
