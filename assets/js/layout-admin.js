@@ -63,10 +63,6 @@ export function injectAdminLayout(activePageId, pageTitle, pageSub, showSearch =
           <a href="../settings/settings.html"        id="nav-settings"    class="nav-item"><i class="fa-solid fa-gear"></i> Settings</a>
           <a href="../archives/archives.html"        id="nav-archives"    class="nav-item"><i class="fa-solid fa-box-archive"></i> Archives</a>
 
-          ${isSuperAdmin ? `
-          <a href="../settings/settings.html#admins" id="nav-admins"  class="nav-item"><i class="fa-solid fa-user-shield"></i> Manage Admins</a>
-          ` : ''}
-
         </nav>
 
         <div class="sidebar-footer">
