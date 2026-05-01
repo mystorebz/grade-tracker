@@ -27,15 +27,7 @@ let tempAdminRole  = null;
 let tempAdminId    = null;
 let tempAdminData  = null;
 
-// ── SHA-256 ───────────────────────────────────────────────────────────────────
-async function sha256(text) {
-    const normalized  = text.toLowerCase().trim();
-    const encoded     = new TextEncoder().encode(normalized);
-    const hashBuffer  = await crypto.subtle.digest('SHA-256', encoded);
-    return Array.from(new Uint8Array(hashBuffer))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-}
+// NOTE: sha256() HAS BEEN COMPLETELY REMOVED. THE SERVER HANDLES THIS NOW.
 
 // ── Fetch Plan Details ────────────────────────────────────────────────────────
 async function fetchPlanDetails(planId) {
@@ -58,18 +50,6 @@ async function fetchPlanDetails(planId) {
 
 // ── Launch Dashboard ──────────────────────────────────────────────────────────
 async function launchDashboard(schoolId, schoolData, role, adminId, adminData) {
-
-    // ── Mint Firebase Auth token via Cloud Function ───────────────────────────
-    try {
-        const codeInput = document.getElementById('loginAdminCode').value.trim();
-        const result    = await mintAdminToken({ schoolId, adminCode: codeInput });
-        await signInWithCustomToken(auth, result.data.token);
-    } catch (e) {
-        console.error('[Admin Login] mintAdminToken failed:', e);
-        showLoginError('Authentication service error. Please try again.');
-        return;
-    }
-
     const session = {
         schoolId,
         adminId:          adminId || schoolId,
@@ -99,7 +79,6 @@ async function launchDashboard(schoolId, schoolData, role, adminId, adminData) {
         : adminData?.securityQuestionsSet;
 
     if (!questionsSet) {
-        // BUG FIX: Dynamically pass the actual role so setup screen knows who they are
         window.location.href = `../onboarding/first-time-setup.html?role=${role}`;
         return;
     }
@@ -115,8 +94,7 @@ loginBtn.addEventListener('click', async () => {
     loginMsg.classList.remove('show');
 
     if (!rawId || !codeIn) {
-        loginMsg.textContent = 'Please enter both fields.';
-        loginMsg.classList.add('show');
+        showLoginError('Please enter both fields.');
         return;
     }
 
@@ -124,109 +102,71 @@ loginBtn.addEventListener('click', async () => {
     loginBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Authenticating...`;
 
     try {
-        let schoolSnap;
-        for (const id of [rawId.toUpperCase(), rawId.toLowerCase(), rawId]) {
-            schoolSnap = await getDoc(doc(db, 'schools', id));
-            if (schoolSnap.exists()) break;
+        // 1. LET THE CLOUD FUNCTION BE THE GATEKEEPER FIRST
+        let authResult;
+        try {
+            authResult = await mintAdminToken({ schoolId: rawId, adminCode: codeIn });
+            await signInWithCustomToken(auth, authResult.data.token);
+        } catch (authError) {
+            console.error('[Admin Login] Server rejected PIN:', authError);
+            showLoginError('Incorrect Admin Code or School ID.');
+            return; // STOP EXECUTION HERE IF SERVER REJECTS
         }
 
-        if (!schoolSnap || !schoolSnap.exists()) {
-            showLoginError('School ID not found.');
-            return;
-        }
+        // 2. IF WE GET HERE, THE SERVER VERIFIED THE PIN. NOW FETCH DATA.
+        // We use the exact schoolId the server validated (avoids casing issues)
+        const schoolId = authResult.data.schoolId || rawId.toUpperCase(); 
+        const role = authResult.data.role; // CF should return 'super_admin' or 'sub_admin'
+        const adminId = authResult.data.adminId || null;
 
+        const schoolSnap = await getDoc(doc(db, 'schools', schoolId));
         const schoolData = schoolSnap.data();
-        const schoolId   = schoolSnap.id;
 
         if (schoolData.isVerified !== true) {
             showLoginError('Account pending approval. Contact ConnectUs.');
             return;
         }
 
-        const hashedInput = await sha256(codeIn);
-        let superAdminMatch = false;
+        tempSchoolId   = schoolId;
+        tempSchoolData = schoolData;
+        tempAdminRole  = role;
+        
+        const planDetails = await fetchPlanDetails(schoolData.subscriptionPlan);
+        tempSchoolData.planLimit     = planDetails.limit;
+        tempSchoolData.planName      = planDetails.name;
+        tempSchoolData.teacherLimit  = planDetails.teacherLimit;
+        tempSchoolData.adminLimit    = planDetails.adminLimit;
+        tempSchoolData.studentLimit  = planDetails.studentLimit;
 
-        if (hashedInput === schoolData.adminCode) {
-            superAdminMatch = true;
-        } else if (codeIn === (schoolData.adminCode || 'ADMIN2024')) {
-            superAdminMatch = true;
-            await updateDoc(doc(db, 'schools', schoolId), { adminCode: hashedInput });
-            schoolData.adminCode = hashedInput;
-        }
-
-        if (superAdminMatch) {
-            tempSchoolId   = schoolId;
-            tempSchoolData = schoolData;
-            tempAdminRole  = 'super_admin';
-            tempAdminId    = null;
-            tempAdminData  = null;
-
-            const planDetails = await fetchPlanDetails(schoolData.subscriptionPlan);
-            tempSchoolData.planLimit     = planDetails.limit;
-            tempSchoolData.planName      = planDetails.name;
-            tempSchoolData.teacherLimit  = planDetails.teacherLimit;
-            tempSchoolData.adminLimit    = planDetails.adminLimit;
-            tempSchoolData.studentLimit  = planDetails.studentLimit;
+        if (role === 'super_admin') {
+            tempAdminId   = null;
+            tempAdminData = null;
 
             if (schoolData.requiresPinReset) {
                 showForceReset();
             } else {
                 await launchDashboard(tempSchoolId, tempSchoolData, 'super_admin', null, null);
             }
-            return;
-        }
+        } else {
+            // Fetch the sub-admin's specific data
+            const adminSnap = await getDoc(doc(db, 'schools', schoolId, 'admins', adminId));
+            tempAdminData = adminSnap.data();
+            tempAdminId   = adminId;
 
-        // ── Sub-Admin path ────────────────────────────────────────────────────
-        const adminsSnap = await getDocs(
-            query(collection(db, 'schools', schoolId, 'admins'),
-                  where('isArchived', '==', false))
-        );
-
-        let subAdminMatch    = false;
-        let matchedAdminId   = null;
-        let matchedAdminData = null;
-
-        for (const adminDoc of adminsSnap.docs) {
-            const aData = adminDoc.data();
-            if (hashedInput === aData.adminCode) {
-                subAdminMatch    = true;
-                matchedAdminId   = adminDoc.id;
-                matchedAdminData = aData;
-                break;
-            }
-        }
-
-        if (subAdminMatch) {
-            tempSchoolId   = schoolId;
-            tempSchoolData = schoolData;
-            tempAdminRole  = 'sub_admin';
-            tempAdminId    = matchedAdminId;
-            tempAdminData  = matchedAdminData;
-
-            const planDetails = await fetchPlanDetails(schoolData.subscriptionPlan);
-            tempSchoolData.planLimit     = planDetails.limit;
-            tempSchoolData.planName      = planDetails.name;
-            tempSchoolData.teacherLimit  = planDetails.teacherLimit;
-            tempSchoolData.adminLimit    = planDetails.adminLimit;
-            tempSchoolData.studentLimit  = planDetails.studentLimit;
-
-            if (matchedAdminData.requiresPinReset) {
+            if (tempAdminData.requiresPinReset) {
                 showForceReset();
             } else {
-                await launchDashboard(tempSchoolId, tempSchoolData, 'sub_admin', matchedAdminId, matchedAdminData);
+                await launchDashboard(tempSchoolId, tempSchoolData, 'sub_admin', tempAdminId, tempAdminData);
             }
-            return;
         }
 
-        showLoginError('Incorrect Admin Code.');
-
     } catch (e) {
-        console.error('[Admin Login]', e);
+        console.error('[Admin Login] Unexpected error:', e);
         showLoginError('Connection error. Please try again.');
     }
 });
 
-// ── Force Reset Handler ───────────────────────────────────────────────────────
+// ── Force Reset Handler (UX FIXED) ────────────────────────────────────────────
 saveForceCodeBtn.addEventListener('click', async () => {
     const n = document.getElementById('newForceCode').value.trim();
     const c = document.getElementById('confirmForceCode').value.trim();
@@ -238,27 +178,40 @@ saveForceCodeBtn.addEventListener('click', async () => {
     if (n.length < 5) { showForceError('Min. 5 characters.');  return; }
 
     saveForceCodeBtn.disabled  = true;
-    saveForceCodeBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Updating...`;
+    saveForceCodeBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Updating Server...`;
 
     try {
-        const hashedNew = await sha256(n);
+        // Note: The hashing should ideally happen on the server via a Cloud Function for resets too,
+        // but if your updateDoc rules still expect a raw write, we need a lightweight hash here, 
+        // OR better yet, pass the new raw PIN to a 'resetAdminPin' Cloud Function.
+        // Assuming your backend expects a newly generated hash to be written directly for now:
+        
+        // (Temporary recreation of SHA just for the write, though a CF is preferred)
+        const encoded = new TextEncoder().encode(n.toLowerCase().trim());
+        const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
+        const hashedNew = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 
         if (tempAdminRole === 'super_admin') {
             await updateDoc(doc(db, 'schools', tempSchoolId), {
                 adminCode: hashedNew, requiresPinReset: false
             });
-            tempSchoolData.adminCode        = hashedNew;
-            tempSchoolData.requiresPinReset = false;
         } else {
             await updateDoc(doc(db, 'schools', tempSchoolId, 'admins', tempAdminId), {
                 adminCode: hashedNew, requiresPinReset: false
             });
-            tempAdminData.adminCode        = hashedNew;
-            tempAdminData.requiresPinReset = false;
         }
 
+        // UX FIX: DO NOT AUTO LOGIN. Force manual entry to clear DOM state.
+        document.getElementById('newForceCode').value = '';
+        document.getElementById('confirmForceCode').value = '';
+        document.getElementById('loginAdminCode').value = ''; // Clear old PIN
+        
         hideForceReset();
-        await launchDashboard(tempSchoolId, tempSchoolData, tempAdminRole, tempAdminId, tempAdminData);
+        showLoginError('PIN updated successfully. Please log in with your new PIN.');
+        
+        // Reset button state
+        saveForceCodeBtn.disabled  = false;
+        saveForceCodeBtn.innerHTML = `Save & Continue <i class="fa-solid fa-arrow-right"></i>`;
 
     } catch (error) {
         console.error('[Admin Login] force reset:', error);
@@ -272,10 +225,11 @@ saveForceCodeBtn.addEventListener('click', async () => {
 function showLoginError(msg) {
     loginMsg.textContent = msg;
     loginMsg.classList.add('show');
+    loginMsg.classList.remove('hidden');
     loginBtn.disabled  = false;
     loginBtn.innerHTML = `<i class="fa-solid fa-arrow-right-to-bracket"></i> Secure Login`;
 }
 
 function showForceReset()     { forceResetModal.classList.add('open');    }
 function hideForceReset()     { forceResetModal.classList.remove('open'); }
-function showForceError(msg)  { forceResetMsg.textContent = msg; forceResetMsg.classList.add('show'); }
+function showForceError(msg)  { forceResetMsg.textContent = msg; forceResetMsg.classList.add('show'); forceResetMsg.classList.remove('hidden'); }
