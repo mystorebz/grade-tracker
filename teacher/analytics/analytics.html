@@ -47,9 +47,19 @@
 
                 <!-- ── EVALUATION LIST ───────────────────────────────────── -->
                 <div class="bg-white border border-[#dce3ed] rounded-xl shadow-sm overflow-hidden">
-                    <div class="px-6 py-4 border-b border-[#f0f4f8] bg-[#f8fafb] flex items-center justify-between">
-                        <h3 class="text-[13px] font-bold text-[#0d1f35]">Evaluation History</h3>
-                        <span id="evalCountBadge" class="text-[11px] font-bold text-[#6b84a0] bg-[#f4f7fb] border border-[#dce3ed] px-3 py-1 rounded-full"></span>
+                    <div class="px-6 py-4 border-b border-[#f0f4f8] bg-[#f8fafb] flex items-center justify-between flex-wrap gap-3">
+                        <div class="flex items-center gap-3">
+                            <h3 class="text-[13px] font-bold text-[#0d1f35]">Evaluation History</h3>
+                            <span id="evalCountBadge" class="text-[11px] font-bold text-[#6b84a0] bg-[#f4f7fb] border border-[#dce3ed] px-3 py-1 rounded-full"></span>
+                        </div>
+                        <!-- Period filter -->
+                        <div class="flex items-center gap-2">
+                            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#9ab0c6;">Period</span>
+                            <select id="filterPeriod" onchange="window.applyFilters()"
+                                style="border:1px solid #c5d0db;border-radius:4px;background:#fff;font-size:12.5px;font-weight:600;color:#0d1f35;font-family:inherit;padding:5px 10px;outline:none;cursor:pointer;">
+                                <option value="">All Periods</option>
+                            </select>
+                        </div>
                     </div>
                     <div id="evalList" class="divide-y divide-[#f0f4f8]">
                         <div class="flex justify-center py-12">
