@@ -496,9 +496,6 @@ window.openStudentPanel = async function(studentId) {
 
     window.switchStudentTab('grades');
 
-    // Show current PIN (read-only)
-    document.getElementById('spinReadonly').textContent = student?.pin || '—';
-
     document.getElementById('sPanelLoader').style.display = 'flex';
     document.getElementById('sViewMode').classList.add('hidden');
 
