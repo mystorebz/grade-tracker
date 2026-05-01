@@ -24,54 +24,113 @@
         
         <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
 
-        <div class="flex-1 overflow-y-auto p-7">
-            <div class="max-w-2xl mx-auto space-y-6">
+        <div class="flex-1 overflow-y-auto p-8 md:p-10">
+            <div class="w-full max-w-5xl space-y-8">
                 
                 <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="p-6 border-b border-slate-100 bg-gradient-to-r from-white to-indigo-50/40 flex items-center gap-3">
-                        <div class="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-address-book"></i></div>
+                    <div class="p-6 md:p-8 border-b border-slate-100 bg-gradient-to-r from-white to-indigo-50/40 flex items-center gap-4">
+                        <div class="w-14 h-14 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center text-2xl"><i class="fa-solid fa-address-card"></i></div>
                         <div>
-                            <h3 class="font-black text-xl text-slate-800">Contact Information</h3>
-                            <p class="text-sm text-slate-400 font-semibold">Update parent or guardian details</p>
+                            <h3 class="font-black text-2xl text-slate-800">Profile Details</h3>
+                            <p class="text-sm text-slate-500 font-semibold mt-1">Manage your personal and contact information</p>
                         </div>
                     </div>
-                    <div class="p-6 space-y-4">
-                        <div>
-                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Parent / Guardian Phone</label>
-                            <input type="tel" id="parentPhone" placeholder="e.g. 600-0000" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none font-bold text-slate-700">
+                    <div class="p-6 md:p-8">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                            <div>
+                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2">Student Name</label>
+                                <input type="text" id="sName" placeholder="Full Name" class="form-input w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none font-bold text-slate-800">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2">Student Email</label>
+                                <input type="email" id="sEmail" placeholder="student@example.com" class="form-input w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none font-bold text-slate-800">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2">Date of Birth</label>
+                                <input type="date" id="sDob" class="form-input w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none font-bold text-slate-800">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2">Parent / Guardian Name</label>
+                                <input type="text" id="sParentName" placeholder="Parent Name" class="form-input w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none font-bold text-slate-800">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2">Parent / Guardian Phone</label>
+                                <input type="tel" id="sParentPhone" placeholder="e.g. 600-0000" class="form-input w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none font-bold text-slate-800">
+                            </div>
                         </div>
-                        <button id="saveProfileBtn" class="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white px-6 py-3 rounded-xl font-black text-sm shadow-md transition flex items-center gap-2">
-                            <i class="fa-solid fa-floppy-disk"></i> Save Details
-                        </button>
-                        <p id="profileMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
+                        
+                        <div class="flex items-center gap-4">
+                            <button id="saveProfileBtn" class="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white px-8 py-3.5 rounded-xl font-black text-sm shadow-md transition flex items-center gap-2">
+                                <i class="fa-solid fa-floppy-disk"></i> Save Profile Details
+                            </button>
+                            <p id="profileMsg" class="text-sm hidden font-bold p-3 rounded-xl m-0 flex-1"></p>
+                        </div>
                     </div>
                 </div>
 
                 <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="p-6 border-b border-slate-100 bg-gradient-to-r from-white to-rose-50/40 flex items-center gap-3">
-                        <div class="w-12 h-12 bg-rose-100 text-rose-600 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-shield-halved"></i></div>
+                    <div class="p-6 md:p-8 border-b border-slate-100 bg-gradient-to-r from-white to-amber-50/40 flex items-center gap-4">
+                        <div class="w-14 h-14 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center text-2xl"><i class="fa-solid fa-user-lock"></i></div>
                         <div>
-                            <h3 class="font-black text-xl text-slate-800">Security</h3>
-                            <p class="text-sm text-slate-400 font-semibold">Update student login PIN</p>
+                            <h3 class="font-black text-2xl text-slate-800">Security Questions</h3>
+                            <p class="text-sm text-slate-500 font-semibold mt-1">Set up recovery questions to protect your account</p>
                         </div>
                     </div>
-                    <div class="p-6 space-y-4">
-                        <div>
-                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Current PIN</label>
-                            <input type="password" id="currentPin" placeholder="Enter current PIN" maxlength="6" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none font-mono tracking-widest">
+                    <div class="p-6 md:p-8">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                            <div>
+                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2">Security Question 1</label>
+                                <input type="text" id="secQ1" placeholder="e.g., What is your mother's maiden name?" class="form-input w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none font-bold text-slate-800 mb-4">
+                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2">Answer 1</label>
+                                <input type="password" id="secA1" placeholder="Answer" class="form-input w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none font-bold text-slate-800">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2">Security Question 2</label>
+                                <input type="text" id="secQ2" placeholder="e.g., What city were you born in?" class="form-input w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none font-bold text-slate-800 mb-4">
+                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2">Answer 2</label>
+                                <input type="password" id="secA2" placeholder="Answer" class="form-input w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none font-bold text-slate-800">
+                            </div>
                         </div>
-                        <div>
-                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">New PIN</label>
-                            <input type="password" id="newPin" placeholder="4-6 digit PIN" maxlength="6" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none font-mono tracking-widest">
+
+                        <div class="flex items-center gap-4">
+                            <button id="saveSecurityBtn" class="bg-amber-600 hover:bg-amber-700 text-white px-8 py-3.5 rounded-xl font-black text-sm shadow-md transition flex items-center gap-2">
+                                <i class="fa-solid fa-shield-check"></i> Save Security Questions
+                            </button>
+                            <p id="securityQuestionsMsg" class="text-sm hidden font-bold p-3 rounded-xl m-0 flex-1"></p>
                         </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="p-6 md:p-8 border-b border-slate-100 bg-gradient-to-r from-white to-rose-50/40 flex items-center gap-4">
+                        <div class="w-14 h-14 bg-rose-100 text-rose-600 rounded-xl flex items-center justify-center text-2xl"><i class="fa-solid fa-key"></i></div>
                         <div>
-                            <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Confirm New PIN</label>
-                            <input type="password" id="confirmNewPin" placeholder="Type it again" maxlength="6" class="form-input w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none font-mono tracking-widest">
+                            <h3 class="font-black text-2xl text-slate-800">Update Login PIN</h3>
+                            <p class="text-sm text-slate-500 font-semibold mt-1">Change your secure access PIN</p>
                         </div>
-                        <button id="updatePinBtn" class="bg-rose-600 hover:bg-rose-700 text-white px-6 py-3 rounded-xl font-black text-sm shadow-md transition flex items-center gap-2">
-                            <i class="fa-solid fa-lock"></i> Update Security PIN
-                        </button>
-                        <p id="securityMsg" class="text-sm hidden font-bold p-3 rounded-xl"></p>
+                    </div>
+                    <div class="p-6 md:p-8">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                            <div>
+                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2">Current PIN</label>
+                                <input type="password" id="currentPin" placeholder="Enter current PIN" maxlength="6" class="form-input w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-base outline-none font-mono tracking-widest text-center text-slate-800 font-bold">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2">New PIN</label>
+                                <input type="password" id="newPin" placeholder="4-6 digits" maxlength="6" class="form-input w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-base outline-none font-mono tracking-widest text-center text-slate-800 font-bold">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2">Confirm New PIN</label>
+                                <input type="password" id="confirmNewPin" placeholder="Type it again" maxlength="6" class="form-input w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-base outline-none font-mono tracking-widest text-center text-slate-800 font-bold">
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center gap-4">
+                            <button id="updatePinBtn" class="bg-rose-600 hover:bg-rose-700 text-white px-8 py-3.5 rounded-xl font-black text-sm shadow-md transition flex items-center gap-2">
+                                <i class="fa-solid fa-lock"></i> Update Security PIN
+                            </button>
+                            <p id="securityMsg" class="text-sm hidden font-bold p-3 rounded-xl m-0 flex-1"></p>
+                        </div>
                     </div>
                 </div>
 
