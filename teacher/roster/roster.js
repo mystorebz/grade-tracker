@@ -161,7 +161,7 @@ function checkLockStatus() {
 // ── 6. LOAD STUDENTS ──────────────────────────────────────────────────────────
 async function loadStudents() {
     const tbody = document.getElementById('studentsTableBody');
-    tbody.innerHTML = `<tr><td colspan="9"><div class="table-loader"><i class="fa-solid fa-spinner fa-spin"></i><p>Loading roster…</p></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8"><div class="table-loader"><i class="fa-solid fa-spinner fa-spin"></i><p>Loading roster…</p></div></td></tr>`;
 
     try {
         const allActSnap = await getDocs(query(
@@ -182,7 +182,7 @@ async function loadStudents() {
         if (badge) badge.textContent = allStudentsCache.length;
 
         if (!allStudentsCache.length) {
-            tbody.innerHTML = `<tr><td colspan="9"><div class="table-loader"><i class="fa-solid fa-user-plus" style="color:#c5d0db;"></i><p>No students yet — enroll your first student to get started.</p></div></td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="8"><div class="table-loader"><i class="fa-solid fa-user-plus" style="color:#c5d0db;"></i><p>No students yet — enroll your first student to get started.</p></div></td></tr>`;
             const sbRisk0 = document.getElementById('sb-risk');
             if (sbRisk0) { sbRisk0.textContent = '0'; sbRisk0.classList.remove('is-risk'); }
             localStorage.setItem('connectus_sidebar_stats', JSON.stringify({ students: 0, risk: 0 }));
@@ -212,7 +212,6 @@ async function loadStudents() {
                 </div></div></td>
                 <td style="font-size:12.5px;font-weight:500;color:#374f6b;">${escHtml(s.className||'—')}</td>
                 <td style="font-size:12.5px;color:#6b84a0;font-weight:400;">${escHtml(s.parentPhone||'—')}</td>
-                <td><span class="pin-badge">${escHtml(s.pin||'—')}</span></td>
                 <td style="text-align:center;"><span class="subject-count">${subjectCount||'—'}</span></td>
                 <td style="text-align:center;">${avgDisplay}</td>
                 <td>${stdLabel}</td>
@@ -230,7 +229,7 @@ async function loadStudents() {
 
     } catch (e) {
         console.error('[Roster] loadStudents:', e);
-        document.getElementById('studentsTableBody').innerHTML = `<tr><td colspan="9"><div class="table-loader"><i class="fa-solid fa-triangle-exclamation" style="color:#dc2626;"></i><p style="color:#dc2626;">Error loading roster. Please refresh the page.</p></div></td></tr>`;
+        document.getElementById('studentsTableBody').innerHTML = `<tr><td colspan="8"><div class="table-loader"><i class="fa-solid fa-triangle-exclamation" style="color:#dc2626;"></i><p style="color:#dc2626;">Error loading roster. Please refresh the page.</p></div></td></tr>`;
         localStorage.setItem('connectus_sidebar_stats', JSON.stringify({ students: 0, risk: 0 }));
     }
 }
