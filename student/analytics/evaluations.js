@@ -2,329 +2,326 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectStudentLayout } from '../../assets/js/layout-student.js';
-import { calculateWeightedAverage, letterGrade } from '../../assets/js/utils.js';
 
 // ── 1. AUTH & LAYOUT ──────────────────────────────────────────────────────
 const session = requireAuth('student', '../login.html');
-injectStudentLayout('analytics', 'Performance Evaluations', 'Review official teacher evaluations and matrices');
+injectStudentLayout('analytics', 'Performance Evaluations', 'Official evaluations filed by your teacher');
 
 // ── 2. STATE ─────────────────────────────────────────────────────────────
-let allSemesters        = [];
-let allGrades           = [];
-let allEvals            = [];
-let teacherRubricsCache = {};
-let schoolData          = {};
+let allSemesters = [];
+let allEvals     = [];
+let schoolData   = {};
 
 // ── 3. HELPERS ────────────────────────────────────────────────────────────
-function escHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function skillBar(label, value) {
-    const val = Number(value) || 0;
-    const pct = (val / 5) * 100;
-    const col = val >= 4 ? 'bg-emerald-500' : val >= 3 ? 'bg-blue-500' : val >= 2 ? 'bg-amber-500' : 'bg-red-500';
+// Average all numeric ratings in an eval
+function evalAvgRating(e) {
+    if (!e.ratings) return null;
+    const vals = Object.values(e.ratings).map(Number).filter(v => !isNaN(v) && v > 0);
+    if (!vals.length) return null;
+    return (vals.reduce((a,b) => a+b, 0) / vals.length);
+}
+
+// Color from 1-5 rating
+function ratingColor(v) {
+    if (v >= 4.5) return { color:'#059669', bg:'#d1fae5', border:'#6ee7b7' };
+    if (v >= 3.5) return { color:'#2563eb', bg:'#dbeafe', border:'#93c5fd' };
+    if (v >= 2.5) return { color:'#d97706', bg:'#fef3c7', border:'#fcd34d' };
+    return             { color:'#dc2626', bg:'#fee2e2', border:'#fca5a5' };
+}
+
+// Rating bar fill color
+function barColor(v) {
+    if (v >= 4) return '#10b981';
+    if (v >= 3) return '#3b82f6';
+    if (v >= 2) return '#f59e0b';
+    return '#ef4444';
+}
+
+// Type config: label, icon, badge colors
+function typeConfig(type) {
+    const map = {
+        academic:             { label:'Academic Progress',     icon:'fa-book-open',           bg:'#eef2ff', color:'#4338ca', border:'#c7d2fe', ringBg:'#eef2ff', ringColor:'#4338ca' },
+        behavioral:           { label:'Conduct & Behaviour',   icon:'fa-triangle-exclamation', bg:'#fff0f3', color:'#be123c', border:'#fda4af', ringBg:'#fff0f3', ringColor:'#be123c' },
+        end_of_year:          { label:'End-of-Year Summary',   icon:'fa-award',               bg:'#fffbeb', color:'#b45309', border:'#fde68a', ringBg:'#fffbeb', ringColor:'#b45309' },
+        academic_report_card: { label:'Report Card Evaluation',icon:'fa-file-contract',       bg:'#f0fdf4', color:'#15803d', border:'#bbf7d0', ringBg:'#f0fdf4', ringColor:'#15803d' }
+    };
+    return map[type] || { label:'Evaluation', icon:'fa-clipboard', bg:'#f8fafc', color:'#475569', border:'#e2e8f0', ringBg:'#f8fafc', ringColor:'#475569' };
+}
+
+// Build a rating row for the ratings panel
+function ratingRow(label, val) {
+    const v   = Number(val) || 0;
+    const pct = (v / 5) * 100;
+    const col = barColor(v);
     return `
-    <div class="mb-4 last:mb-0">
-        <div class="flex justify-between items-center mb-1.5">
-            <span class="text-xs font-black text-slate-500 uppercase tracking-wider">${escHtml(label)}</span>
-            <span class="text-xs font-black text-slate-800">${val}/5</span>
+    <div class="ev-rating-row">
+        <div class="ev-rating-top">
+            <span class="ev-rating-label">${esc(label)}</span>
+            <span class="ev-rating-val">${v}/5</span>
         </div>
-        <div class="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-            <div class="h-full ${col} rounded-full" style="width:${pct}%"></div>
+        <div class="ev-rating-bar">
+            <div class="ev-rating-fill" style="width:${pct}%;background:${col};"></div>
         </div>
     </div>`;
 }
 
-// ── 4. TOGGLE EVAL CARD ───────────────────────────────────────────────────
-window.toggleEvalCard = function(id) {
-    const body   = document.getElementById(`eval-body-${id}`);
-    const chevron = document.getElementById(`eval-chev-${id}`);
-    if (!body) return;
-    const isOpen = body.style.display !== 'none';
-    body.style.display    = isOpen ? 'none' : 'block';
-    if (chevron) chevron.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
-};
-
-// ── 5. LOAD DATA ──────────────────────────────────────────────────────────
-async function loadAnalyticsData() {
-    const loader       = document.getElementById('analyticsLoader');
-    const content      = document.getElementById('analyticsContent');
-    const periodSelect = document.getElementById('analyticsPeriodSelect');
+// ── 4. LOAD ───────────────────────────────────────────────────────────────
+async function init() {
+    const loader  = document.getElementById('analyticsLoader');
+    const content = document.getElementById('analyticsContent');
 
     try {
-        const { schoolId, studentId } = session;
-
         document.getElementById('displayStudentName').innerText  = session.studentData.name || 'Student';
         document.getElementById('studentAvatar').innerText       = (session.studentData.name || 'S').charAt(0).toUpperCase();
         document.getElementById('displayStudentClass').innerText = session.studentData.className
-            ? `Class: ${session.studentData.className}` : 'Unassigned Class';
+            ? `Class: ${session.studentData.className}` : 'Unassigned';
 
-        // School data
-        const schoolSnap = await getDoc(doc(db, 'schools', schoolId));
-        let activeSemId  = null;
-        if (schoolSnap.exists()) {
-            schoolData = schoolSnap.data();
-            const elSchool = document.getElementById('displaySchoolName');
-            if (elSchool) elSchool.innerText = schoolData.schoolName || 'ConnectUs School';
-            activeSemId = schoolData.activeSemesterId;
-        }
+        // School
+        const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
+        schoolData = schoolSnap.data() || {};
+        const elSchool = document.getElementById('displaySchoolName');
+        if (elSchool) elSchool.innerText = schoolData.schoolName || 'ConnectUs';
+
+        const activeSemId = schoolData.activeSemesterId || '';
 
         // Semesters
-        const semSnap = await getDocs(collection(db, 'schools', schoolId, 'semesters'));
+        const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
         allSemesters  = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.order||0)-(b.order||0));
 
-        if (!allSemesters.length) {
-            if (periodSelect) periodSelect.innerHTML = '<option value="">No periods available</option>';
-            if (loader) loader.classList.add('hidden');
-            return;
-        }
-
-        // ── Populate page period select ──────────────────────────────────
-        if (periodSelect) {
-            periodSelect.innerHTML = allSemesters.map(s =>
-                `<option value="${s.id}">${escHtml(s.name)}${s.id === activeSemId ? ' (Current)' : ''}</option>`
-            ).join('');
-            periodSelect.value = activeSemId || allSemesters[allSemesters.length - 1].id;
-        }
-
-        // ── Populate TOPBAR period display (student layout uses a static span) ──
+        // Topbar period display (student layout uses a static span)
         const activeSemName = allSemesters.find(s => s.id === activeSemId)?.name || '';
         const topDisplay = document.getElementById('activeSemesterDisplay');
         if (topDisplay && activeSemName) topDisplay.textContent = activeSemName;
         const sbPeriod = document.getElementById('sb-period');
         if (sbPeriod && activeSemName) sbPeriod.textContent = activeSemName;
 
-        // Teacher rubrics
-        const tId = session.studentData?.teacherId;
-        if (tId && !teacherRubricsCache[tId]) {
-            const tSnap = await getDoc(doc(db, 'teachers', tId));
-            teacherRubricsCache[tId] = tSnap.exists()
-                ? (tSnap.data().gradeTypes || tSnap.data().customGradeTypes || []) : [];
-        }
-
-        // All teachers at school (for coverage)
-        const tAllSnap = await getDocs(collection(db, 'teachers'));
-        // (we'll cache per grade below)
-
-        // Grades — global student path
-        const gSnap = await getDocs(collection(db, 'students', studentId, 'grades'));
-        allGrades   = gSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(g => g.schoolId === schoolId);
+        // Period selector
+        const sel = document.getElementById('analyticsPeriodSelect');
+        sel.innerHTML = allSemesters.map(s =>
+            `<option value="${s.id}">${esc(s.name)}${s.id === activeSemId ? ' (Current)' : ''}</option>`
+        ).join('');
+        sel.value = activeSemId || (allSemesters[0]?.id || '');
 
         // Evaluations — global student path
-        const eSnap = await getDocs(collection(db, 'students', studentId, 'evaluations'));
-        allEvals    = eSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => e.schoolId === schoolId);
+        const eSnap = await getDocs(collection(db, 'students', session.studentId, 'evaluations'));
+        allEvals    = eSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => e.schoolId === session.schoolId);
 
-        // Cache additional teacher rubrics from grade data
-        const uniqueTeacherIds = [...new Set(allGrades.map(g => g.teacherId).filter(Boolean))];
-        for (const tid of uniqueTeacherIds) {
-            if (!teacherRubricsCache[tid]) {
-                try {
-                    const ts = await getDoc(doc(db, 'teachers', tid));
-                    teacherRubricsCache[tid] = ts.exists()
-                        ? (ts.data().gradeTypes || ts.data().customGradeTypes || []) : [];
-                } catch(e) { teacherRubricsCache[tid] = []; }
-            }
-        }
+        sel.addEventListener('change', () => renderPeriod(sel.value));
+        renderPeriod(sel.value);
 
-        // Setup listener and initial render
-        if (periodSelect) {
-            periodSelect.addEventListener('change', () => renderDashboardForPeriod(periodSelect.value));
-            renderDashboardForPeriod(periodSelect.value);
-        }
-
-        if (loader)   loader.classList.add('hidden');
-        if (content)  content.classList.remove('hidden');
+        loader.style.display = 'none';
+        content.classList.remove('hidden');
 
     } catch(e) {
-        console.error('[Evaluations] Critical error:', e);
-        if (loader) loader.innerHTML = `
-            <div class="text-center">
-                <i class="fa-solid fa-triangle-exclamation text-red-500 text-3xl mb-3"></i>
-                <p class="text-red-500 font-bold">Failed to load evaluation data.</p>
-            </div>`;
+        console.error('[Evaluations] init error:', e);
+        loader.innerHTML = `
+            <i class="fa-solid fa-triangle-exclamation" style="color:#ef4444;font-size:28px;display:block;margin-bottom:10px;"></i>
+            <p style="color:#ef4444;font-weight:600;">Failed to load evaluations. Please refresh.</p>`;
     }
 }
 
-// ── 6. RENDER DASHBOARD ───────────────────────────────────────────────────
-function renderDashboardForPeriod(semesterId) {
-    const periodGrades = allGrades.filter(g => g.semesterId === semesterId);
-    const periodEvals  = allEvals.filter(e => e.semesterId === semesterId)
-                                 .sort((a,b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt));
+// ── 5. RENDER PERIOD ─────────────────────────────────────────────────────
+function renderPeriod(semId) {
+    const evals = allEvals
+        .filter(e => e.semesterId === semId)
+        .sort((a,b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt));
 
-    // Subject averages
-    const bySub = {};
-    let totalAssessments = 0;
-    periodGrades.forEach(g => {
-        const sub = g.subject || 'Uncategorized';
-        if (!bySub[sub]) bySub[sub] = [];
-        bySub[sub].push(g);
-        if (g.max) totalAssessments++;
-    });
+    renderKPIs(evals);
+    renderCards(evals);
+}
 
-    let sumSubjAvgs = 0, subjCount = 0;
-    const subjectStats = [];
+// ── 6. KPIs ───────────────────────────────────────────────────────────────
+function renderKPIs(evals) {
+    // Total
+    document.getElementById('kpiTotal').textContent    = evals.length;
+    document.getElementById('kpiTotalSub').textContent = `evaluation${evals.length !== 1 ? 's' : ''} on record`;
 
-    for (const sub in bySub) {
-        const tid    = bySub[sub][0]?.teacherId;
-        const rubric = tid ? (teacherRubricsCache[tid] || []) : [];
-        const avgRaw = calculateWeightedAverage(bySub[sub], rubric);
-        const avg    = avgRaw !== null ? Math.round(avgRaw) : 0;
-        if (avgRaw !== null) { sumSubjAvgs += avg; subjCount++; }
-        subjectStats.push({ subject: sub, count: bySub[sub].length, average: avg });
-    }
-    subjectStats.sort((a,b) => a.subject.localeCompare(b.subject));
-
-    const termAvg     = subjCount > 0 ? Math.round(sumSubjAvgs / subjCount) : 0;
-    const overallLtr  = subjCount > 0 ? letterGrade(termAvg) : 'N/A';
-    const avgColorCls = termAvg >= 90 ? 'text-emerald-600' : termAvg >= 80 ? 'text-blue-600' :
-                        termAvg >= 70 ? 'text-teal-600'    : termAvg >= 65 ? 'text-amber-600' : 'text-red-600';
-
-    document.getElementById('statTermAvg').textContent  = subjCount > 0 ? `${termAvg}%` : '—';
-    document.getElementById('statLetter').textContent   = overallLtr;
-    document.getElementById('statAssessments').textContent = totalAssessments;
-    document.getElementById('statTotalEvals').textContent  = periodEvals.length;
-    document.getElementById('statTermAvg').className = `text-3xl font-black ${subjCount > 0 ? avgColorCls : 'text-slate-800'}`;
-    document.getElementById('statLetter').className  = `text-3xl font-black ${subjCount > 0 ? avgColorCls : 'text-slate-800'}`;
-
-    // Subject bar chart
-    const chartEl = document.getElementById('subjectChartContainer');
-    if (!subjectStats.length) {
-        chartEl.innerHTML = `<div class="w-full text-center text-slate-400 font-bold text-sm pb-10">No grades recorded for this period.</div>`;
+    // Average rating across all evals in this period
+    const ratings = evals.map(e => evalAvgRating(e)).filter(v => v !== null);
+    if (ratings.length) {
+        const avg = (ratings.reduce((a,b) => a+b, 0) / ratings.length).toFixed(1);
+        const rc  = ratingColor(parseFloat(avg));
+        document.getElementById('kpiAvgRating').textContent = avg;
+        document.getElementById('kpiAvgRating').style.color = rc.color;
     } else {
-        chartEl.innerHTML = subjectStats.map(s => {
-            const h   = Math.max(s.average, 5);
-            const col = s.average >= 90 ? 'bg-emerald-400' : s.average >= 80 ? 'bg-blue-400' :
-                        s.average >= 70 ? 'bg-teal-400'    : s.average >= 65 ? 'bg-amber-400' : 'bg-red-400';
-            return `
-            <div class="flex flex-col items-center group w-full max-w-[70px]">
-                <span class="text-xs font-black text-slate-500 mb-2 opacity-0 group-hover:opacity-100 transition-opacity">${s.average}%</span>
-                <div class="w-full ${col} rounded-t-md transition-all duration-500" style="height:${h}%;"></div>
-                <span class="text-[10px] font-bold text-slate-400 mt-3 truncate w-full text-center block px-1" title="${escHtml(s.subject)}">${s.subject.substring(0,3).toUpperCase()}</span>
-            </div>`;
-        }).join('');
+        document.getElementById('kpiAvgRating').textContent = '—';
+        document.getElementById('kpiAvgRating').style.color = '#94a3b8';
     }
 
-    // Academic details table
-    const tbody = document.getElementById('academicTableBody');
-    if (!subjectStats.length) {
-        tbody.innerHTML = `<tr><td colspan="4" class="py-8 text-center text-sm font-bold text-slate-400">No data available.</td></tr>`;
+    // Most recent eval
+    if (evals.length) {
+        const latest   = evals[0];
+        const tc       = typeConfig(latest.type);
+        const dateStr  = latest.date
+            ? new Date(latest.date).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })
+            : '—';
+        document.getElementById('kpiLatestDate').textContent = dateStr;
+        document.getElementById('kpiLatestType').textContent = tc.label;
     } else {
-        tbody.innerHTML = subjectStats.map(s => {
-            const ltr = letterGrade(s.average);
-            const bc  = s.average >= 90 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' :
-                        s.average >= 80 ? 'text-blue-700 bg-blue-50 border-blue-200' :
-                        s.average >= 70 ? 'text-teal-700 bg-teal-50 border-teal-200' :
-                        s.average >= 65 ? 'text-amber-700 bg-amber-50 border-amber-200' :
-                                          'text-red-700 bg-red-50 border-red-200';
-            return `
-            <tr class="hover:bg-slate-50 transition">
-                <td class="py-4 px-3 text-sm font-black text-slate-800 truncate max-w-[150px]" title="${escHtml(s.subject)}">${escHtml(s.subject)}</td>
-                <td class="py-4 px-3 text-sm font-bold text-slate-500 text-center">${s.count}</td>
-                <td class="py-4 px-3 text-base font-black text-slate-800 text-center">${s.average}%</td>
-                <td class="py-4 px-3 text-center"><span class="px-3 py-1 rounded-md text-xs font-black border ${bc}">${ltr}</span></td>
-            </tr>`;
-        }).join('');
+        document.getElementById('kpiLatestDate').textContent = '—';
+        document.getElementById('kpiLatestType').textContent = 'No evaluations yet';
     }
 
-    // Evaluations
-    const evalsContainer = document.getElementById('evaluationsContainer');
-    const noEvalsMsg     = document.getElementById('noEvalsMsg');
+    // Latest status / promotion
+    const latest = evals[0];
+    if (latest?.status) {
+        document.getElementById('kpiStatus').textContent    = latest.status;
+        document.getElementById('kpiStatusSub').textContent = typeConfig(latest.type).label;
+        document.getElementById('kpiStatus').style.color    = latest.type === 'behavioral' ? '#be123c' : latest.type === 'end_of_year' ? '#b45309' : '#7c3aed';
+    } else {
+        document.getElementById('kpiStatus').textContent    = '—';
+        document.getElementById('kpiStatusSub').textContent = 'No status on record';
+        document.getElementById('kpiStatus').style.color    = '#94a3b8';
+    }
+}
 
-    if (!periodEvals.length) {
-        evalsContainer.innerHTML = '';
-        noEvalsMsg.classList.remove('hidden');
+// ── 7. EVAL CARDS ─────────────────────────────────────────────────────────
+function renderCards(evals) {
+    const container = document.getElementById('evaluationsContainer');
+    const noMsg     = document.getElementById('noEvalsMsg');
+    const badge     = document.getElementById('evCountBadge');
+
+    badge.textContent = `${evals.length} evaluation${evals.length !== 1 ? 's' : ''}`;
+
+    if (!evals.length) {
+        container.innerHTML = '';
+        noMsg.classList.remove('hidden');
         return;
     }
+    noMsg.classList.add('hidden');
 
-    noEvalsMsg.classList.add('hidden');
-
-    evalsContainer.innerHTML = periodEvals.map(e => {
+    container.innerHTML = evals.map(e => {
+        const tc      = typeConfig(e.type);
+        const avgR    = evalAvgRating(e);
+        const avgDisp = avgR !== null ? avgR.toFixed(1) : '—';
+        const rc      = avgR !== null ? ratingColor(avgR) : { color:'#94a3b8', bg:'#f8fafc', border:'#e2e8f0' };
         const dateStr = e.date
             ? new Date(e.date).toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' })
-            : 'Unknown Date';
+            : '—';
 
-        let evalAvg = 0;
-        if (e.ratings) {
-            const vals = Object.values(e.ratings).map(Number).filter(v => !isNaN(v));
-            if (vals.length) evalAvg = (vals.reduce((a,b) => a+b, 0) / vals.length).toFixed(1);
-        }
-
-        // Type config
-        const typeConfig = {
-            academic:             { label: 'Academic Matrix',     icon: 'fa-book-open',        badge: 'text-blue-700 bg-blue-50 border-blue-200'    },
-            behavioral:           { label: 'Conduct Matrix',      icon: 'fa-triangle-exclamation', badge: 'text-red-700 bg-red-50 border-red-200'   },
-            end_of_year:          { label: 'Year-End Summary',    icon: 'fa-award',            badge: 'text-amber-700 bg-amber-50 border-amber-200'  },
-            academic_report_card: { label: 'Report Card Eval',   icon: 'fa-file-contract',    badge: 'text-emerald-700 bg-emerald-50 border-emerald-200' }
-        };
-        const tc = typeConfig[e.type] || { label: 'Evaluation', icon: 'fa-clipboard', badge: 'text-slate-700 bg-slate-50 border-slate-200' };
-
-        // Metrics & written content (for expanded body)
-        let metricsHtml = '';
+        // Build ratings rows
+        let ratingsHtml = '';
         let writtenHtml = '';
+        let extraHtml   = '';
 
         if (e.type === 'academic') {
-            metricsHtml = skillBar('Subject Mastery', e.ratings?.mastery) + skillBar('Task Execution', e.ratings?.execution) + skillBar('Class Engagement', e.ratings?.engagement);
+            ratingsHtml =
+                ratingRow('Subject Mastery',    e.ratings?.mastery)    +
+                ratingRow('Task Execution',     e.ratings?.execution)  +
+                ratingRow('Class Engagement',   e.ratings?.engagement);
             writtenHtml = `
-                <div class="mb-4"><p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5">Key Strengths</p><p class="text-sm font-semibold text-slate-700">${escHtml(e.written?.strengths || 'N/A')}</p></div>
-                <div class="mb-4"><p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5">Areas for Growth</p><p class="text-sm font-semibold text-slate-700">${escHtml(e.written?.growth || 'N/A')}</p></div>
-                <div><p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5">Actionable Steps</p><p class="text-sm font-semibold text-slate-700">${escHtml(e.written?.steps || 'N/A')}</p></div>`;
+                ${e.written?.strengths ? `<div><p class="ev-field-label">Key Strengths</p><p class="ev-field-text">${esc(e.written.strengths)}</p></div>` : ''}
+                ${e.written?.growth    ? `<div><p class="ev-field-label">Areas for Growth</p><p class="ev-field-text">${esc(e.written.growth)}</p></div>` : ''}
+                ${e.written?.steps     ? `<div><p class="ev-field-label">Actionable Steps</p><p class="ev-field-text">${esc(e.written.steps)}</p></div>` : ''}`;
+
         } else if (e.type === 'behavioral') {
-            metricsHtml = skillBar('Rule Adherence', e.ratings?.adherence) + skillBar('Conflict Resolution', e.ratings?.resolution) + skillBar('Respect Authority', e.ratings?.respect);
+            ratingsHtml =
+                ratingRow('Rule Adherence',      e.ratings?.adherence)  +
+                ratingRow('Conflict Resolution', e.ratings?.resolution) +
+                ratingRow('Respect for Authority', e.ratings?.respect);
             writtenHtml = `
-                <div class="mb-4"><p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5">Conduct Description</p><p class="text-sm font-semibold text-slate-700">${escHtml(e.written?.description || 'N/A')}</p></div>
-                <div class="mb-4"><p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5">Prior Interventions</p><p class="text-sm font-semibold text-slate-700">${escHtml(e.written?.prior || 'N/A')}</p></div>
-                <div class="mb-4"><p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5">Action Plan</p><p class="text-sm font-semibold text-slate-700">${escHtml(e.written?.actionPlan || 'N/A')}</p></div>
-                <div class="p-3 bg-red-50 border border-red-100 rounded-xl"><p class="text-[10px] font-black text-red-600 uppercase tracking-widest mb-1">Action Taken</p><p class="text-sm font-black text-red-800">${escHtml(e.status || 'N/A')}</p></div>`;
+                ${e.written?.description ? `<div><p class="ev-field-label">Conduct Description</p><p class="ev-field-text">${esc(e.written.description)}</p></div>` : ''}
+                ${e.written?.prior       ? `<div><p class="ev-field-label">Prior Interventions</p><p class="ev-field-text">${esc(e.written.prior)}</p></div>` : ''}
+                ${e.written?.actionPlan  ? `<div><p class="ev-field-label">Action Plan</p><p class="ev-field-text">${esc(e.written.actionPlan)}</p></div>` : ''}`;
+            if (e.status) extraHtml = `
+                <div style="margin-top:16px;padding:12px 16px;background:#fff0f3;border:1px solid #fda4af;border-radius:8px;display:flex;align-items:center;gap:10px;">
+                    <i class="fa-solid fa-triangle-exclamation" style="color:#be123c;font-size:14px;flex-shrink:0;"></i>
+                    <div><p class="ev-field-label" style="color:#be123c;margin:0 0 2px;">Action Taken</p><p style="font-size:13.5px;font-weight:700;color:#be123c;margin:0;">${esc(e.status)}</p></div>
+                </div>`;
+
         } else if (e.type === 'end_of_year') {
-            metricsHtml = skillBar('Academic Growth', e.ratings?.growth) + skillBar('Social Dynamics', e.ratings?.social) + skillBar('Resilience', e.ratings?.resilience);
+            ratingsHtml =
+                ratingRow('Academic Growth',  e.ratings?.growth)     +
+                ratingRow('Social Dynamics',  e.ratings?.social)     +
+                ratingRow('Resilience',       e.ratings?.resilience);
             writtenHtml = `
-                <div class="mb-4"><p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5">Year-in-Review Narrative</p><p class="text-sm font-semibold text-slate-700">${escHtml(e.written?.narrative || 'N/A')}</p></div>
-                <div class="mb-4"><p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5">Recommended Interventions</p><p class="text-sm font-semibold text-slate-700">${escHtml(e.written?.interventions || 'None')}</p></div>
-                <div class="p-3 bg-amber-50 border border-amber-100 rounded-xl"><p class="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">Promotion Status</p><p class="text-sm font-black text-amber-800">${escHtml(e.status || 'N/A')}</p></div>`;
+                ${e.written?.narrative     ? `<div><p class="ev-field-label">Year-in-Review</p><p class="ev-field-text">${esc(e.written.narrative)}</p></div>` : ''}
+                ${e.written?.interventions ? `<div><p class="ev-field-label">Recommended Interventions</p><p class="ev-field-text">${esc(e.written.interventions)}</p></div>` : ''}`;
+            if (e.status) extraHtml = `
+                <div style="margin-top:16px;padding:12px 16px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;display:flex;align-items:center;gap:10px;">
+                    <i class="fa-solid fa-award" style="color:#b45309;font-size:14px;flex-shrink:0;"></i>
+                    <div><p class="ev-field-label" style="color:#b45309;margin:0 0 2px;">Promotion Status</p><p style="font-size:13.5px;font-weight:700;color:#b45309;margin:0;">${esc(e.status)}</p></div>
+                </div>`;
+
         } else if (e.type === 'academic_report_card') {
-            metricsHtml = ['Comprehension','Attitude & Work','Effort','Participation','Organization','Behavior','Peer Relations','Punctuality']
-                .map((lbl, i) => skillBar(lbl, Object.values(e.ratings || {})[i] || 0)).join('');
-            writtenHtml = `<div><p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5">Teacher Comments</p><p class="text-sm font-semibold text-slate-700 whitespace-pre-wrap">${escHtml(e.comment || 'No comments recorded.')}</p></div>`;
+            const rcRatings = [
+                ['Academic Comprehension', e.ratings?.academicComprehension],
+                ['Attitude Towards Work',  e.ratings?.attitudeWork],
+                ['Effort & Resilience',    e.ratings?.effortResilience],
+                ['Participation',          e.ratings?.participation],
+                ['Organization',           e.ratings?.organization],
+                ['Classroom Behaviour',    e.ratings?.behavior],
+                ['Peer Relations',         e.ratings?.peerRelations],
+                ['Punctuality',            e.ratings?.punctualityRating],
+            ];
+            ratingsHtml = rcRatings.map(([l,v]) => ratingRow(l,v)).join('');
+
+            if (e.attendance) {
+                const att = e.attendance;
+                extraHtml += `
+                <div style="margin-bottom:16px;">
+                    <p class="ev-field-label">Attendance</p>
+                    <div class="ev-attendance-grid">
+                        <div class="ev-att-cell"><div class="ev-att-num">${att.totalSessions || 0}</div><div class="ev-att-lbl">Sessions</div></div>
+                        <div class="ev-att-cell"><div class="ev-att-num">${att.daysAbsent || 0}</div><div class="ev-att-lbl">Absent</div></div>
+                        <div class="ev-att-cell"><div class="ev-att-num">${att.daysLate || 0}</div><div class="ev-att-lbl">Late</div></div>
+                    </div>
+                </div>`;
+            }
+            if (e.comment) writtenHtml = `<div><p class="ev-field-label">Teacher's Comments</p><p class="ev-field-text">${esc(e.comment)}</p></div>`;
         }
 
         return `
-        <div class="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
+        <div class="ev-card">
 
-            <!-- ── Collapsed header (always visible) ── -->
-            <div onclick="window.toggleEvalCard('${e.id}')"
-                 class="flex items-center justify-between p-6 cursor-pointer hover:bg-slate-50 transition select-none">
-                <div class="flex items-center gap-4 min-w-0 flex-1">
-                    <div class="h-12 w-12 bg-slate-100 text-slate-600 rounded-xl flex items-center justify-center font-black text-base flex-shrink-0">${evalAvg}</div>
-                    <div class="min-w-0">
-                        <div class="flex items-center gap-3 flex-wrap">
-                            <span class="font-black text-lg text-slate-800">${escHtml(e.semesterName || 'Evaluation')}</span>
-                            <span class="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${tc.badge}">
-                                <i class="fa-solid ${tc.icon} mr-1"></i>${tc.label}
+            <!-- Collapsed header -->
+            <div class="ev-card-head" onclick="window.toggleEval('${e.id}')">
+                <div class="ev-card-left">
+                    <div class="ev-type-icon" style="background:${tc.bg};color:${tc.color};">
+                        <i class="fa-solid ${tc.icon}"></i>
+                    </div>
+                    <div class="ev-card-meta">
+                        <div class="ev-card-title">
+                            ${esc(tc.label)}
+                            <span class="ev-type-badge" style="background:${tc.bg};color:${tc.color};border-color:${tc.border};">
+                                ${esc(e.semesterName || '—')}
                             </span>
                         </div>
-                        <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">${dateStr} · ${escHtml(e.teacherName || 'Teacher')}</p>
+                        <div class="ev-card-sub">
+                            ${dateStr}
+                            ${e.teacherName ? ` · Filed by <strong style="color:#374f6b;">${esc(e.teacherName)}</strong>` : ''}
+                        </div>
                     </div>
                 </div>
-                <div class="flex items-center gap-3 flex-shrink-0 ml-4">
-                    <button onclick="event.stopPropagation(); window.printEvaluation('${e.id}')"
-                            class="flex items-center gap-2 bg-slate-50 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 font-bold px-4 py-2 rounded-lg border border-slate-200 hover:border-indigo-200 transition text-xs shadow-sm no-print">
+                <div class="ev-card-right">
+                    <!-- Avg rating ring -->
+                    <div class="ev-score-ring" style="border-color:${rc.border};background:${rc.bg};">
+                        <span class="ev-score-num" style="color:${rc.color};">${avgDisp}</span>
+                        <span class="ev-score-denom" style="color:${rc.color};">/5</span>
+                    </div>
+                    <button class="ev-print-btn no-print" onclick="event.stopPropagation();window.printEval('${e.id}')">
                         <i class="fa-solid fa-print"></i> Print
                     </button>
-                    <i id="eval-chev-${e.id}" class="fa-solid fa-chevron-down text-slate-400 text-sm transition-transform duration-200"></i>
+                    <i id="ev-chev-${e.id}" class="fa-solid fa-chevron-down ev-chevron"></i>
                 </div>
             </div>
 
-            <!-- ── Expanded body (hidden by default) ── -->
-            <div id="eval-body-${e.id}" style="display:none;">
-                <div class="border-t border-slate-100 p-6 md:p-8">
-                    <div class="grid grid-cols-1 md:grid-cols-12 gap-8">
-                        <div class="md:col-span-4 bg-slate-50 border border-slate-100 rounded-2xl p-5">
-                            <p class="text-xs font-black text-slate-800 uppercase tracking-widest mb-4 pb-2 border-b border-slate-200">Performance Matrix</p>
-                            ${metricsHtml}
-                        </div>
-                        <div class="md:col-span-8">${writtenHtml}</div>
+            <!-- Expanded body -->
+            <div id="ev-body-${e.id}" class="ev-card-body">
+                <div class="ev-body-grid">
+                    <!-- Ratings panel -->
+                    <div class="ev-ratings-panel">
+                        <p class="ev-ratings-title"><i class="fa-solid fa-chart-simple" style="margin-right:6px;"></i>Performance Matrix</p>
+                        ${ratingsHtml || '<p style="font-size:12px;color:#94a3b8;font-weight:600;">No ratings recorded.</p>'}
+                    </div>
+                    <!-- Written feedback -->
+                    <div class="ev-written-panel">
+                        ${writtenHtml || '<p style="font-size:13px;color:#94a3b8;font-weight:600;">No written feedback provided.</p>'}
+                        ${extraHtml}
                     </div>
                 </div>
             </div>
@@ -333,160 +330,175 @@ function renderDashboardForPeriod(semesterId) {
     }).join('');
 }
 
-// ── 7. PRINT EVALUATION ───────────────────────────────────────────────────
-window.printEvaluation = function(evalId) {
+// ── 8. TOGGLE CARD ────────────────────────────────────────────────────────
+window.toggleEval = function(id) {
+    const body   = document.getElementById(`ev-body-${id}`);
+    const chevron = document.getElementById(`ev-chev-${id}`);
+    if (!body) return;
+    const isOpen = body.classList.contains('open');
+    body.classList.toggle('open', !isOpen);
+    if (chevron) chevron.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
+};
+
+// ── 9. PRINT EVALUATION ───────────────────────────────────────────────────
+window.printEval = function(evalId) {
     const e = allEvals.find(x => x.id === evalId);
     if (!e) return;
 
-    let typeLabel    = 'Evaluation';
-    let metricsHtml  = '';
-    let writtenHtml  = '';
-
-    if (e.type === 'academic') {
-        typeLabel = 'Academic Matrix Evaluation';
-        metricsHtml = `
-            <tr><td>Subject Mastery</td><td class="tc">${e.ratings?.mastery || 0} / 5</td></tr>
-            <tr><td>Task Execution</td><td class="tc">${e.ratings?.execution || 0} / 5</td></tr>
-            <tr><td>Class Engagement</td><td class="tc">${e.ratings?.engagement || 0} / 5</td></tr>`;
-        writtenHtml = `
-            <div class="fb"><h3>Key Strengths</h3><p>${escHtml(e.written?.strengths || 'N/A')}</p></div>
-            <div class="fb"><h3>Areas for Growth</h3><p>${escHtml(e.written?.growth || 'N/A')}</p></div>
-            <div class="fb"><h3>Actionable Steps</h3><p>${escHtml(e.written?.steps || 'N/A')}</p></div>`;
-    } else if (e.type === 'behavioral') {
-        typeLabel = 'Conduct Matrix Evaluation';
-        metricsHtml = `
-            <tr><td>Rule Adherence</td><td class="tc">${e.ratings?.adherence || 0} / 5</td></tr>
-            <tr><td>Conflict Resolution</td><td class="tc">${e.ratings?.resolution || 0} / 5</td></tr>
-            <tr><td>Respect Authority</td><td class="tc">${e.ratings?.respect || 0} / 5</td></tr>`;
-        writtenHtml = `
-            <div class="fb"><h3>Conduct Description</h3><p>${escHtml(e.written?.description || 'N/A')}</p></div>
-            <div class="fb"><h3>Prior Interventions</h3><p>${escHtml(e.written?.prior || 'N/A')}</p></div>
-            <div class="fb"><h3>Action Plan</h3><p>${escHtml(e.written?.actionPlan || 'N/A')}</p></div>
-            <div class="st"><strong>Action Taken:</strong> ${escHtml(e.status || 'N/A')}</div>`;
-    } else if (e.type === 'end_of_year') {
-        typeLabel = 'End-of-Year Summary Evaluation';
-        metricsHtml = `
-            <tr><td>Academic Growth</td><td class="tc">${e.ratings?.growth || 0} / 5</td></tr>
-            <tr><td>Social Dynamics</td><td class="tc">${e.ratings?.social || 0} / 5</td></tr>
-            <tr><td>Resilience</td><td class="tc">${e.ratings?.resilience || 0} / 5</td></tr>`;
-        writtenHtml = `
-            <div class="fb"><h3>Year-in-Review Narrative</h3><p>${escHtml(e.written?.narrative || 'N/A')}</p></div>
-            <div class="fb"><h3>Recommended Interventions</h3><p>${escHtml(e.written?.interventions || 'None')}</p></div>
-            <div class="st"><strong>Promotion Status:</strong> ${escHtml(e.status || 'N/A')}</div>`;
-    } else if (e.type === 'academic_report_card') {
-        typeLabel = 'Report Card Evaluation';
-        const rcLabels = ['Comprehension','Attitude & Work','Effort & Resilience','Participation','Organization','Classroom Behaviour','Peer Relations','Punctuality'];
-        const rcKeys   = ['academicComprehension','attitudeWork','effortResilience','participation','organization','behavior','peerRelations','punctualityRating'];
-        metricsHtml = rcKeys.map((k,i) => `<tr><td>${rcLabels[i]}</td><td class="tc">${e.ratings?.[k] || 0} / 5</td></tr>`).join('');
-        writtenHtml = `<div class="fb"><h3>Teacher Comments</h3><p>${escHtml(e.comment || 'No comments recorded.')}</p></div>`;
-    }
-
+    const tc       = typeConfig(e.type);
+    const avgR     = evalAvgRating(e);
+    const avgDisp  = avgR !== null ? avgR.toFixed(1) : '—';
     const dateStr  = e.date
-        ? new Date(e.date).toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' })
-        : 'Unknown Date';
-    const logoSrc  = schoolData.logo || '../../assets/images/logo.png';
+        ? new Date(e.date).toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' }) : '—';
     const schoolNm = schoolData.schoolName || 'ConnectUs School';
+    const logoSrc  = schoolData.logo || '../../assets/images/logo.png';
+
+    // Ratings table rows
+    const ratingRows = {
+        academic: [
+            ['Subject Mastery', e.ratings?.mastery],
+            ['Task Execution',  e.ratings?.execution],
+            ['Class Engagement',e.ratings?.engagement]
+        ],
+        behavioral: [
+            ['Rule Adherence',       e.ratings?.adherence],
+            ['Conflict Resolution',  e.ratings?.resolution],
+            ['Respect for Authority',e.ratings?.respect]
+        ],
+        end_of_year: [
+            ['Academic Growth', e.ratings?.growth],
+            ['Social Dynamics', e.ratings?.social],
+            ['Resilience',      e.ratings?.resilience]
+        ],
+        academic_report_card: [
+            ['Academic Comprehension', e.ratings?.academicComprehension],
+            ['Attitude Towards Work',  e.ratings?.attitudeWork],
+            ['Effort & Resilience',    e.ratings?.effortResilience],
+            ['Participation',          e.ratings?.participation],
+            ['Organization',           e.ratings?.organization],
+            ['Classroom Behaviour',    e.ratings?.behavior],
+            ['Peer Relations',         e.ratings?.peerRelations],
+            ['Punctuality',            e.ratings?.punctualityRating],
+        ]
+    }[e.type] || [];
+
+    const metricsHtml = ratingRows.map(([lbl, val]) => {
+        const v = Number(val) || 0;
+        return `<tr><td>${esc(lbl)}</td><td style="text-align:center;font-family:monospace;font-weight:700;">${v} / 5</td><td style="width:120px;padding:10px 14px;"><div style="height:6px;background:#f1f5f9;border-radius:99px;overflow:hidden;"><div style="height:100%;width:${(v/5)*100}%;background:${barColor(v)};border-radius:99px;"></div></div></td></tr>`;
+    }).join('');
+
+    let writtenSections = '';
+    if (e.type === 'academic') {
+        writtenSections = [
+            ['Key Strengths',   e.written?.strengths],
+            ['Areas for Growth',e.written?.growth],
+            ['Actionable Steps',e.written?.steps]
+        ].filter(([,v]) => v).map(([l,v]) => `<div class="fb"><h3>${l}</h3><p>${esc(v)}</p></div>`).join('');
+    } else if (e.type === 'behavioral') {
+        writtenSections = [
+            ['Conduct Description',    e.written?.description],
+            ['Prior Interventions',    e.written?.prior],
+            ['Action Plan',            e.written?.actionPlan]
+        ].filter(([,v]) => v).map(([l,v]) => `<div class="fb"><h3>${l}</h3><p>${esc(v)}</p></div>`).join('');
+        if (e.status) writtenSections += `<div class="status-box" style="background:#fff0f3;border-color:#fda4af;color:#be123c;"><strong>Action Taken:</strong> ${esc(e.status)}</div>`;
+    } else if (e.type === 'end_of_year') {
+        writtenSections = [
+            ['Year-in-Review Narrative',   e.written?.narrative],
+            ['Recommended Interventions',  e.written?.interventions]
+        ].filter(([,v]) => v).map(([l,v]) => `<div class="fb"><h3>${l}</h3><p>${esc(v)}</p></div>`).join('');
+        if (e.status) writtenSections += `<div class="status-box" style="background:#fffbeb;border-color:#fde68a;color:#b45309;"><strong>Promotion Status:</strong> ${esc(e.status)}</div>`;
+    } else if (e.type === 'academic_report_card') {
+        if (e.comment) writtenSections = `<div class="fb"><h3>Teacher's Comments</h3><p>${esc(e.comment)}</p></div>`;
+        if (e.attendance) {
+            const att = e.attendance;
+            writtenSections += `<div class="fb"><h3>Attendance Record</h3>
+                <table style="width:100%;"><tr>
+                    <td style="text-align:center;padding:10px;background:#f8fafb;border:1px solid #e2e8f0;border-radius:6px;"><strong style="display:block;font-size:18px;">${att.totalSessions||0}</strong><span style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;">Sessions</span></td>
+                    <td style="text-align:center;padding:10px;background:#f8fafb;border:1px solid #e2e8f0;border-radius:6px;"><strong style="display:block;font-size:18px;">${att.daysAbsent||0}</strong><span style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;">Absent</span></td>
+                    <td style="text-align:center;padding:10px;background:#f8fafb;border:1px solid #e2e8f0;border-radius:6px;"><strong style="display:block;font-size:18px;">${att.daysLate||0}</strong><span style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;">Late</span></td>
+                </tr></table></div>`;
+        }
+    }
 
     const html = `<!DOCTYPE html>
 <html>
 <head>
-<title>Official Performance Evaluation — ${escHtml(session.studentData.name)}</title>
+<title>Official Performance Evaluation — ${esc(session.studentData.name)}</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500;700&display=swap');
-@media print {
-    * { -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; }
-    @page { margin:1.5cm; }
-    body { padding:0; }
-}
-body { font-family:'DM Sans',Helvetica,Arial,sans-serif; padding:40px; color:#0f172a; line-height:1.6; background:#fff; max-width:800px; margin:0 auto; }
-
-.banner { background:#dc2626; color:#fff; text-align:center; font-weight:900; letter-spacing:0.3em; padding:7px; font-size:11px; margin-bottom:24px; border-radius:4px; }
-
-.hd { display:flex; align-items:flex-start; justify-content:space-between; border-bottom:3px solid #1e1b4b; padding-bottom:20px; margin-bottom:24px; }
+@media print { * { -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; } @page { margin:1.5cm; } body { padding:0; } }
+body { font-family:'DM Sans',Helvetica,Arial,sans-serif; padding:40px; color:#0f172a; line-height:1.6; background:#fff; max-width:820px; margin:0 auto; }
+.banner { background:#1e1b4b; color:#fff; text-align:center; font-weight:800; letter-spacing:0.2em; padding:8px; font-size:11px; border-radius:5px; margin-bottom:24px; text-transform:uppercase; }
+.hd { display:flex; align-items:flex-start; justify-content:space-between; border-bottom:3px solid #1e1b4b; padding-bottom:20px; margin-bottom:24px; gap:20px; }
 .logo { max-height:65px; max-width:180px; object-fit:contain; }
-.hd-text h1 { margin:0 0 4px; font-size:20px; font-weight:800; color:#1e1b4b; text-transform:uppercase; letter-spacing:0.04em; }
-.hd-text h2 { margin:0 0 2px; font-size:11px; font-weight:700; color:#6366f1; text-transform:uppercase; letter-spacing:0.12em; }
-.hd-text p  { margin:0; font-size:11px; color:#94a3b8; }
-
-.info-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; background:#f8f9ff; border:1px solid #e0e3f5; border-radius:10px; padding:18px 20px; margin-bottom:28px; }
-.info-grid div strong { display:block; font-size:9.5px; text-transform:uppercase; letter-spacing:0.1em; color:#7c83c8; margin-bottom:3px; font-weight:800; }
-.info-grid div span   { font-size:13.5px; font-weight:700; color:#1e1b4b; }
-
-.sec-title { font-size:11px; font-weight:800; background:#1e1b4b; color:#fff; text-transform:uppercase; letter-spacing:0.12em; padding:10px 16px; border-radius:6px; margin:0 0 20px; }
-
-.grid2 { display:grid; grid-template-columns:1fr 2fr; gap:32px; margin-bottom:32px; }
-
+.hd h1 { margin:0 0 4px; font-size:20px; font-weight:800; color:#1e1b4b; text-transform:uppercase; letter-spacing:0.04em; }
+.hd h2 { margin:0 0 2px; font-size:11px; font-weight:800; color:${tc.color}; text-transform:uppercase; letter-spacing:0.12em; background:${tc.bg}; padding:3px 10px; border-radius:99px; display:inline-block; border:1px solid ${tc.border}; }
+.hd p  { margin:4px 0 0; font-size:11.5px; color:#94a3b8; }
+.info-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; background:#f8f9ff; border:1px solid #e0e3f5; border-radius:10px; padding:16px 20px; margin-bottom:28px; }
+.ig-item strong { display:block; font-size:9.5px; text-transform:uppercase; letter-spacing:0.1em; color:#7c83c8; margin-bottom:2px; font-weight:800; }
+.ig-item span   { font-size:13.5px; font-weight:700; color:#1e1b4b; }
+.sec { font-size:11px; font-weight:800; background:#1e1b4b; color:#fff; text-transform:uppercase; letter-spacing:0.1em; padding:9px 16px; border-radius:6px; margin:0 0 18px; }
+.body-grid { display:grid; grid-template-columns:260px 1fr; gap:28px; margin-bottom:28px; }
 table { width:100%; border-collapse:collapse; }
-th, td { border-bottom:1px solid #f1f5f9; padding:10px 14px; text-align:left; font-size:12.5px; }
-th { background:#f8fafb; color:#64748b; font-weight:800; text-transform:uppercase; font-size:10px; letter-spacing:0.08em; border-bottom:2px solid #e2e8f0; }
-.tc { text-align:center; font-family:'DM Mono',monospace; font-weight:700; }
-
-.fb { margin-bottom:20px; }
-.fb h3 { margin:0 0 7px; font-size:10px; color:#64748b; text-transform:uppercase; letter-spacing:0.1em; font-weight:800; border-bottom:1px solid #e2e8f0; padding-bottom:5px; }
-.fb p  { margin:0; font-size:13px; color:#334155; font-weight:500; white-space:pre-wrap; line-height:1.6; }
-
-.st { background:#f1f5f9; border:1px solid #e2e8f0; padding:14px; border-radius:6px; font-size:13px; color:#1e293b; font-weight:600; margin-top:16px; }
-
+th, td { border-bottom:1px solid #f1f5f9; padding:9px 12px; text-align:left; font-size:12.5px; }
+th { background:#f8fafb; color:#64748b; font-weight:800; text-transform:uppercase; font-size:9.5px; letter-spacing:0.08em; border-bottom:2px solid #e2e8f0; }
+.fb { margin-bottom:18px; }
+.fb h3 { margin:0 0 6px; font-size:10px; color:#64748b; text-transform:uppercase; letter-spacing:0.1em; font-weight:800; border-bottom:1px solid #e2e8f0; padding-bottom:5px; }
+.fb p  { margin:0; font-size:13px; color:#334155; font-weight:500; white-space:pre-wrap; line-height:1.65; }
+.status-box { padding:12px 16px; border-radius:8px; border:1px solid; font-size:13px; font-weight:600; margin-top:14px; }
 .sigs { display:grid; grid-template-columns:1fr 1fr 1fr; gap:40px; margin-top:56px; }
-.sig-line { border-top:1px solid #1e1b4b; padding-top:8px; }
-.sig-line p { margin:0; font-size:10.5px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.08em; }
-
-.footer { margin-top:40px; border-top:1px solid #e2e8f0; padding-top:14px; text-align:center; font-size:10px; color:#94a3b8; font-style:italic; }
+.sig { border-top:1px solid #1e1b4b; padding-top:8px; font-size:10.5px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.08em; }
+.footer { margin-top:40px; border-top:1px solid #e2e8f0; padding-top:14px; text-align:center; font-size:10px; color:#94a3b8; font-style:italic; line-height:1.7; }
 </style>
 </head>
 <body>
-
-<div class="banner">★ OFFICIAL EVALUATION RECORD — ${escHtml(schoolNm)} ★</div>
-
+<div class="banner">Official Performance Evaluation Record · ${esc(schoolNm)}</div>
 <div class="hd">
-    <div style="display:flex;align-items:center;gap:16px;">
-        <img src="${escHtml(logoSrc)}" class="logo" onerror="this.style.display='none'">
-        <div class="hd-text">
-            <h1>${escHtml(schoolNm)}</h1>
-            <h2>Official Performance Evaluation</h2>
-            <p>${escHtml(typeLabel)}</p>
+    <div>
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px;">
+            <img src="${esc(logoSrc)}" class="logo" onerror="this.style.display='none'">
+            <div>
+                <h1>${esc(schoolNm)}</h1>
+                <h2>${esc(tc.label)}</h2>
+                <p>${dateStr}</p>
+            </div>
         </div>
     </div>
-    <div style="text-align:right;">
-        <p style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;margin:0;">Date Filed</p>
-        <p style="font-size:13px;font-weight:700;color:#1e293b;margin:2px 0 0;">${dateStr}</p>
+    <div style="text-align:right;flex-shrink:0;">
+        <p style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;margin:0 0 4px;">Overall Rating</p>
+        <p style="font-size:32px;font-weight:800;font-family:monospace;color:${tc.color};margin:0;">${avgDisp}</p>
+        <p style="font-size:11px;color:#94a3b8;margin:0;">out of 5.0</p>
     </div>
 </div>
-
 <div class="info-grid">
-    <div><strong>Student Name</strong><span>${escHtml(session.studentData.name || 'Unknown')}</span></div>
-    <div><strong>Student ID</strong><span>${escHtml(session.studentId || 'N/A')}</span></div>
-    <div><strong>Class</strong><span>${escHtml(session.studentData.className || 'Unassigned')}</span></div>
-    <div><strong>Academic Period</strong><span>${escHtml(e.semesterName || 'Unknown')}</span></div>
-    <div><strong>Evaluation Type</strong><span>${escHtml(typeLabel)}</span></div>
-    <div><strong>Prepared By</strong><span>${escHtml(e.teacherName || 'Teacher')}</span></div>
+    <div class="ig-item"><strong>Student Name</strong><span>${esc(session.studentData.name||'Unknown')}</span></div>
+    <div class="ig-item"><strong>Student ID</strong><span>${esc(session.studentId||'N/A')}</span></div>
+    <div class="ig-item"><strong>Class</strong><span>${esc(session.studentData.className||'Unassigned')}</span></div>
+    <div class="ig-item"><strong>Academic Period</strong><span>${esc(e.semesterName||'Unknown')}</span></div>
+    <div class="ig-item"><strong>Filed By</strong><span>${esc(e.teacherName||'Teacher')}</span></div>
+    <div class="ig-item"><strong>Date Filed</strong><span>${dateStr}</span></div>
 </div>
-
-<h3 class="sec-title">Evaluation Details</h3>
-
-<div class="grid2">
+<h3 class="sec">Evaluation Details</h3>
+<div class="body-grid">
     <div>
         <table>
-            <thead><tr><th>Criteria</th><th class="tc">Rating</th></tr></thead>
+            <thead><tr><th>Criteria</th><th style="text-align:center;">Rating</th><th>Visual</th></tr></thead>
             <tbody>${metricsHtml}</tbody>
         </table>
     </div>
-    <div>${writtenHtml}</div>
+    <div>${writtenSections}</div>
 </div>
-
 <div class="sigs">
-    <div class="sig-line"><p>Class Teacher &amp; Date</p></div>
-    <div class="sig-line"><p>Principal / Head of School</p></div>
-    <div class="sig-line"><p>Parent / Guardian</p></div>
+    <div class="sig">Class Teacher &amp; Date</div>
+    <div class="sig">Principal / Head of School</div>
+    <div class="sig">Parent / Guardian</div>
 </div>
-
 <div class="footer">
-    This evaluation was filed and generated via the ConnectUs Family Portal for ${escHtml(schoolNm)}.<br>
-    This document is an official record. For a certified copy with school seal, contact the administration office.
+    This evaluation was officially filed via the ConnectUs platform for ${esc(schoolNm)}.<br>
+    This document is a certified performance record. For a copy with official school seal, contact the administration office.<br>
+    <strong style="font-style:normal;color:#1e1b4b;">Powered by ConnectUs · connectusonline.org</strong>
 </div>
-
-</body>
-</html>`;
+</body></html>`;
 
     const w = window.open('', '_blank');
     w.document.write(html);
@@ -495,4 +507,4 @@ th { background:#f8fafb; color:#64748b; font-weight:800; text-transform:uppercas
 };
 
 // ── INITIALIZE ────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', loadAnalyticsData);
+document.addEventListener('DOMContentLoaded', init);
