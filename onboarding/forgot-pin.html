@@ -18,25 +18,28 @@
         <div class="text-center mb-8">
             <img src="../assets/images/logo.png" alt="ConnectUs" class="h-14 w-auto mx-auto mb-4 drop-shadow-md">
             <h1 class="text-2xl font-black text-blue-900 tracking-tight">Forgot Your PIN?</h1>
-            <p class="text-slate-500 font-semibold mt-2 text-sm">We'll verify your identity and send a secure reset link.</p>
+            <p class="text-slate-500 font-semibold mt-2 text-sm">Enter your details and we'll send a secure reset link to your email.</p>
         </div>
 
         <div class="bg-white rounded-3xl shadow-xl border border-blue-100 overflow-hidden relative">
             <div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-600"></div>
 
-            <div id="step1" class="p-8 space-y-5">
+            <!-- ── Find Account ─────────────────────────────────────────── -->
+            <div id="findForm" class="p-8 space-y-5">
+
                 <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl flex items-start gap-3">
-                    <i class="fa-solid fa-magnifying-glass text-blue-500 mt-0.5"></i>
+                    <i class="fa-solid fa-envelope-open-text text-blue-500 mt-0.5"></i>
                     <div>
-                        <h4 class="font-black text-blue-900 text-sm">Step 1 of 2 — Find Your Account</h4>
-                        <p class="text-xs text-slate-500 font-semibold mt-1">Enter your system credentials to locate your record.</p>
+                        <h4 class="font-black text-blue-900 text-sm">Reset Your PIN</h4>
+                        <p class="text-xs text-slate-500 font-semibold mt-1">We'll verify your email address and send a reset link instantly.</p>
                     </div>
                 </div>
 
                 <div>
                     <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">School ID *</label>
                     <input type="text" id="fpSchoolId" placeholder="e.g. SCH-8B2X9"
-                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition uppercase">
+                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition uppercase"
+                        autocomplete="off">
                 </div>
 
                 <div>
@@ -44,21 +47,26 @@
                         User ID <span class="text-slate-400 font-semibold normal-case ml-1">(Leave blank if Super Admin)</span>
                     </label>
                     <input type="text" id="fpUserId" placeholder="e.g. T24-AB3X7 or S24-XK9P2"
-                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition uppercase">
+                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition uppercase"
+                        autocomplete="off">
+                    <p class="text-[10px] text-slate-400 font-semibold mt-1.5 pl-1">
+                        Teachers start with <strong>T</strong> · Students start with <strong>S</strong> · Sub-Admins start with <strong>A</strong>
+                    </p>
                 </div>
 
                 <div>
                     <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Email Address on File *</label>
                     <input type="email" id="fpEmail" placeholder="your@email.com"
-                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
+                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition"
+                        autocomplete="email">
                 </div>
 
-                <p id="step1Error" class="text-xs font-bold text-red-600 bg-red-50 border border-red-100 p-3 rounded-lg text-center hidden"></p>
+                <p id="findError" class="text-xs font-bold text-red-600 bg-red-50 border border-red-100 p-3 rounded-lg text-center hidden"></p>
 
-                <button id="findAccountBtn"
+                <button id="sendLinkBtn"
                     class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl transition shadow-lg shadow-blue-500/30 text-sm tracking-wide"
-                    onclick="findAccount()">
-                    Find My Account →
+                    onclick="window.sendResetLink()">
+                    Send Reset Link →
                 </button>
 
                 <p class="text-center text-xs text-slate-400 font-semibold">
@@ -67,65 +75,22 @@
                 </p>
             </div>
 
-            <div id="step2" class="p-8 space-y-5 hidden">
-                <div id="accountBadge" class="bg-green-50 border border-green-200 p-3 rounded-xl flex items-center gap-3">
-                    <i id="accountBadgeIcon" class="fa-solid text-green-600"></i>
-                    <div>
-                        <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Account Found</p>
-                        <p id="foundAccountName" class="text-sm font-black text-slate-800"></p>
-                        <p id="foundAccountSub"  class="text-[10px] text-slate-500 font-semibold"></p>
-                    </div>
-                </div>
-
-                <div class="bg-amber-50 border border-amber-100 p-4 rounded-xl flex items-start gap-3">
-                    <i class="fa-solid fa-key text-amber-500 mt-0.5"></i>
-                    <div>
-                        <h4 class="font-black text-amber-900 text-sm">Step 2 of 2 — Verify Your Identity</h4>
-                        <p class="text-xs text-slate-500 font-semibold mt-1">Answer both security questions you set during setup.</p>
-                    </div>
-                </div>
-
-                <div>
-                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Question 1</label>
-                    <p id="displayQ1" class="text-sm font-bold text-slate-700 mb-2 bg-slate-50 border border-slate-200 p-3 rounded-xl"></p>
-                    <input type="text" id="fpSecA1" placeholder="Your answer"
-                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
-                </div>
-
-                <div>
-                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Question 2</label>
-                    <p id="displayQ2" class="text-sm font-bold text-slate-700 mb-2 bg-slate-50 border border-slate-200 p-3 rounded-xl"></p>
-                    <input type="text" id="fpSecA2" placeholder="Your answer"
-                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
-                </div>
-
-                <p id="step2Error" class="text-xs font-bold text-red-600 bg-red-50 border border-red-100 p-3 rounded-lg text-center hidden"></p>
-
-                <button id="verifyBtn"
-                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl transition shadow-lg shadow-blue-500/30 text-sm tracking-wide"
-                    onclick="verifyAndSend()">
-                    Verify & Send Reset Link →
-                </button>
-
-                <button onclick="backToStep1()"
-                    class="w-full text-slate-500 hover:text-slate-700 font-bold py-2 text-xs transition">
-                    ← Search with different details
-                </button>
-            </div>
-
+            <!-- ── Success ─────────────────────────────────────────────── -->
             <div id="successScreen" class="p-10 text-center hidden">
                 <div class="w-20 h-20 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-5">
                     <i class="fa-solid fa-envelope-circle-check"></i>
                 </div>
                 <h3 class="font-black text-2xl text-slate-800 mb-2">Reset Link Sent!</h3>
                 <p class="text-sm text-slate-500 font-semibold mb-1">A secure reset link has been emailed to your registered address.</p>
-                <p class="text-xs text-slate-400 font-semibold mb-6">The link expires in <span class="font-black text-slate-600">15 minutes</span>. Check your spam folder if needed.</p>
-                
+                <p class="text-xs text-slate-400 font-semibold mb-6">
+                    The link expires in <span class="font-black text-slate-600">15 minutes</span>. Check your spam folder if needed.
+                </p>
                 <a id="successLoginLink" href="../index.html"
                     class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-black py-3 px-8 rounded-xl transition shadow-lg shadow-blue-500/30 text-sm">
                     Return Home
                 </a>
             </div>
+
         </div>
     </div>
 
@@ -133,26 +98,13 @@
 import { db } from '../assets/js/firebase-init.js';
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-// ── Role Config Reference ─────────────────────────────────────────────────────
+// ── Role Config ───────────────────────────────────────────────────────────────
 const ROLE_CONFIG = {
-    admin:     { label: 'Super Admin', icon: 'fa-user-shield',       emailField: 'contactEmail', nameField: 'schoolName', loginPath: '../admin/login.html' },
-    sub_admin: { label: 'Sub-Admin',   icon: 'fa-user-tie',          emailField: 'email',        nameField: 'name',       loginPath: '../admin/login.html' },
-    teacher:   { label: 'Teacher',     icon: 'fa-chalkboard-user',   emailField: 'email',        nameField: 'name',       loginPath: '../teacher/login.html' },
-    student:   { label: 'Student',     icon: 'fa-graduation-cap',    emailField: 'email',        nameField: 'name',       loginPath: '../student/login.html' }
+    admin:     { label: 'Super Admin', icon: 'fa-user-shield',     emailField: 'contactEmail', nameField: 'schoolName', loginPath: '../admin/login.html'   },
+    sub_admin: { label: 'Sub-Admin',   icon: 'fa-user-tie',        emailField: 'email',        nameField: 'name',       loginPath: '../admin/login.html'   },
+    teacher:   { label: 'Teacher',     icon: 'fa-chalkboard-user', emailField: 'email',        nameField: 'name',       loginPath: '../teacher/login.html' },
+    student:   { label: 'Student',     icon: 'fa-graduation-cap',  emailField: 'email',        nameField: 'name',       loginPath: '../student/login.html' }
 };
-
-// ── State ─────────────────────────────────────────────────────────────────────
-let selectedRole  = null;
-let foundDoc      = null;
-let foundDocId    = null;
-let foundSchoolId = null;
-
-// ── SHA-256 ───────────────────────────────────────────────────────────────────
-async function sha256(text) {
-    const encoded = new TextEncoder().encode(text.toLowerCase().trim());
-    const buffer  = await crypto.subtle.digest('SHA-256', encoded);
-    return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-}
 
 function generateToken() {
     const arr = new Uint8Array(16);
@@ -160,183 +112,146 @@ function generateToken() {
     return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// ── Step 1: Smart Find Account ────────────────────────────────────────────────
-window.findAccount = async function() {
+function showErr(msg) {
+    const el = document.getElementById('findError');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+}
+
+function setLoading(loading) {
+    const btn = document.getElementById('sendLinkBtn');
+    btn.disabled  = loading;
+    btn.innerHTML = loading
+        ? '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Please wait...'
+        : 'Send Reset Link →';
+}
+
+// ── Send Reset Link ───────────────────────────────────────────────────────────
+window.sendResetLink = async function() {
     const schoolId = document.getElementById('fpSchoolId').value.trim().toUpperCase();
     const userId   = document.getElementById('fpUserId').value.trim().toUpperCase();
     const email    = document.getElementById('fpEmail').value.trim().toLowerCase();
-    
-    document.getElementById('step1Error').classList.add('hidden');
 
-    if (!schoolId || !email) { 
-        showErr('step1Error', 'School ID and Email are required.'); 
-        return; 
+    document.getElementById('findError').classList.add('hidden');
+
+    if (!schoolId || !email) {
+        showErr('School ID and Email are required.');
+        return;
     }
 
-    const btn = document.getElementById('findAccountBtn');
-    setLoading(btn, true, 'Find My Account →');
+    // Basic email format check
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        showErr('Please enter a valid email address.');
+        return;
+    }
+
+    setLoading(true);
 
     try {
-        let role = '';
+        let role     = '';
         let targetId = '';
-        let docRef = null;
+        let docRef   = null;
 
-        // Smart Routing Logic based on ID format
+        // Route by ID prefix
         if (!userId) {
-            role = 'admin';
+            role     = 'admin';
             targetId = schoolId;
-            docRef = doc(db, 'schools', schoolId);
+            docRef   = doc(db, 'schools', schoolId);
         } else if (userId.startsWith('A')) {
-            role = 'sub_admin';
+            role     = 'sub_admin';
             targetId = userId;
-            docRef = doc(db, 'schools', schoolId, 'admins', userId);
+            docRef   = doc(db, 'schools', schoolId, 'admins', userId);
         } else if (userId.startsWith('T')) {
-            role = 'teacher';
+            role     = 'teacher';
             targetId = userId;
-            docRef = doc(db, 'teachers', userId);
+            docRef   = doc(db, 'teachers', userId);
         } else if (userId.startsWith('S')) {
-            role = 'student';
+            role     = 'student';
             targetId = userId;
-            docRef = doc(db, 'students', userId);
+            docRef   = doc(db, 'students', userId);
         } else {
-            showErr('step1Error', 'Unrecognized User ID format.');
-            setLoading(btn, false, 'Find My Account →'); 
+            showErr('Unrecognized User ID format. Teachers start with T, Students with S, Sub-Admins with A.');
+            setLoading(false);
             return;
         }
 
         const snap = await getDoc(docRef);
-        
+
         if (!snap.exists()) {
-            showErr('step1Error', 'No account found matching those details.');
-            setLoading(btn, false, 'Find My Account →'); 
+            // Deliberately vague to prevent account enumeration
+            showErr('No account found matching those details. Please check your information and try again.');
+            setLoading(false);
             return;
         }
 
         const data = { id: snap.id, ...snap.data() };
-        
-        // Security check: If it's a teacher or student, verify they belong to the requested School ID
-        if (role === 'teacher' || role === 'student') {
-            if (data.currentSchoolId !== schoolId) {
-                showErr('step1Error', 'No account found matching those details at this school.');
-                setLoading(btn, false, 'Find My Account →'); 
-                return;
-            }
-        }
+        const cfg  = ROLE_CONFIG[role];
 
-        // Email Verification Check
-        const cfg = ROLE_CONFIG[role];
-        if ((data[cfg.emailField] || '').toLowerCase() !== email) {
-            showErr('step1Error', 'No account found matching those details.');
-            setLoading(btn, false, 'Find My Account →'); 
+        // For teachers and students, confirm they belong to the stated school
+        if ((role === 'teacher' || role === 'student') && data.currentSchoolId !== schoolId) {
+            showErr('No account found matching those details. Please check your information and try again.');
+            setLoading(false);
             return;
         }
 
-        if (!data.securityQ1 || !data.securityQ2) {
-            showErr('step1Error', 'Security questions have not been set on this account yet. Please contact your administrator.');
-            setLoading(btn, false, 'Find My Account →'); 
+        // Verify email matches the record
+        const recordEmail = (data[cfg.emailField] || '').toLowerCase();
+        if (!recordEmail || recordEmail !== email) {
+            showErr('No account found matching those details. Please check your information and try again.');
+            setLoading(false);
             return;
         }
 
-        // Lock in the state
-        selectedRole  = role;
-        foundDoc      = data;
-        foundDocId    = targetId;
-        foundSchoolId = schoolId;
-
-        // Populate Step 2 UI
-        document.getElementById('accountBadgeIcon').className = `fa-solid ${cfg.icon} text-green-600`;
-        document.getElementById('foundAccountName').textContent = data[cfg.nameField] || targetId;
-        document.getElementById('foundAccountSub').textContent  = `${cfg.label} · School: ${schoolId}`;
-
-        document.getElementById('displayQ1').textContent = data.securityQ1;
-        document.getElementById('displayQ2').textContent = data.securityQ2;
-        
-        document.getElementById('successLoginLink').href = cfg.loginPath;
-
-        // Transition UI
-        document.getElementById('step1').classList.add('hidden');
-        document.getElementById('step2').classList.remove('hidden');
-
-    } catch (err) {
-        console.error('[ForgotPin] findAccount:', err);
-        showErr('step1Error', 'A connection error occurred. Please refresh and try again.');
-    }
-
-    setLoading(btn, false, 'Find My Account →');
-};
-
-// ── Step 2: Verify & Send ─────────────────────────────────────────────────────
-window.verifyAndSend = async function() {
-    const a1 = document.getElementById('fpSecA1').value.trim();
-    const a2 = document.getElementById('fpSecA2').value.trim();
-    document.getElementById('step2Error').classList.add('hidden');
-
-    if (!a1 || !a2) { showErr('step2Error', 'Please answer both security questions.'); return; }
-
-    const btn = document.getElementById('verifyBtn');
-    setLoading(btn, true, 'Verify & Send Reset Link →');
-
-    try {
-        const [h1, h2] = await Promise.all([sha256(a1), sha256(a2)]);
-
-        if (h1 !== foundDoc.securityA1 || h2 !== foundDoc.securityA2) {
-            showErr('step2Error', 'One or both answers are incorrect. Please try again.');
-            setLoading(btn, false, 'Verify & Send Reset Link →'); return;
+        // Check email exists on the account
+        if (!recordEmail) {
+            showErr('No email address is on file for this account. Please contact your school administrator.');
+            setLoading(false);
+            return;
         }
 
-        const token     = generateToken();
-        const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-        const cfg       = ROLE_CONFIG[selectedRole];
-        const toEmail   = (foundDoc[cfg.emailField] || '').toLowerCase();
-        const userName  = foundDoc[cfg.nameField]   || foundDocId;
+        // All checks passed — create the vault entry
+        const token      = generateToken();
+        const expiresAt  = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+        const userName   = data[cfg.nameField] || targetId;
 
         const vaultEntry = {
-            userType:  selectedRole,
-            targetId:  foundDocId,
-            email:     toEmail,
+            userType:  role,
+            targetId:  targetId,
+            email:     recordEmail,
             name:      userName,
             roleLabel: cfg.label,
             expiresAt,
             createdAt: new Date().toISOString()
         };
-        if (foundSchoolId) vaultEntry.schoolId = foundSchoolId;
+
+        // sub_admin needs schoolId to locate the doc during reset
+        if (role === 'sub_admin' || role === 'teacher' || role === 'student') {
+            vaultEntry.schoolId = schoolId;
+        }
 
         await setDoc(doc(db, 'reset_vault', token), vaultEntry);
 
-        document.getElementById('step2').classList.add('hidden');
+        // Update success link to role-appropriate login
+        document.getElementById('successLoginLink').href = cfg.loginPath;
+
+        // Show success — never reveal whether email was sent or not to the user
+        document.getElementById('findForm').classList.add('hidden');
         document.getElementById('successScreen').classList.remove('hidden');
 
     } catch (err) {
-        console.error('[ForgotPin] verifyAndSend:', err);
-        showErr('step2Error', 'Failed to send reset email. Please try again.');
+        console.error('[ForgotPin] sendResetLink:', err);
+        showErr('A connection error occurred. Please refresh the page and try again.');
     }
 
-    setLoading(btn, false, 'Verify & Send Reset Link →');
+    setLoading(false);
 };
 
-// ── Back to Step 1 ────────────────────────────────────────────────────────────
-window.backToStep1 = function() {
-    foundDoc = foundDocId = foundSchoolId = null;
-    document.getElementById('fpSecA1').value = '';
-    document.getElementById('fpSecA2').value = '';
-    document.getElementById('step2Error').classList.add('hidden');
-    document.getElementById('step2').classList.add('hidden');
-    document.getElementById('step1').classList.remove('hidden');
-};
-
-// ── UI Helpers ────────────────────────────────────────────────────────────────
-function showErr(elId, msg) {
-    const el = document.getElementById(elId);
-    el.textContent = msg;
-    el.classList.remove('hidden');
-}
-
-function setLoading(btn, loading, resetLabel) {
-    btn.disabled  = loading;
-    btn.innerHTML = loading
-        ? '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Please wait...'
-        : resetLabel;
-}
+// Allow Enter key to submit
+['fpSchoolId','fpUserId','fpEmail'].forEach(id => {
+    document.getElementById(id)?.addEventListener('keypress', e => {
+        if (e.key === 'Enter') window.sendResetLink();
+    });
+});
 </script>
 </body>
 </html>
