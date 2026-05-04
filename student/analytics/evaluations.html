@@ -4,121 +4,202 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Evaluations | Family Portal</title>
-    
-   <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
-    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">    
-    
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="../../assets/css/global.css">
     <link rel="stylesheet" href="../../assets/css/student.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'DM Sans', sans-serif; background: #f5f3ff; }
+
+        /* ── Page header ── */
+        .ev-header {
+            background: linear-gradient(120deg, #1e1b4b 0%, #312e81 55%, #4338ca 100%);
+            padding: 28px 36px;
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 20px; flex-wrap: wrap;
+        }
+        .ev-header-left h1 { font-size: 22px; font-weight: 800; color: #fff; margin: 0 0 4px; letter-spacing: -0.3px; }
+        .ev-header-left p  { font-size: 12.5px; color: rgba(255,255,255,0.5); margin: 0; font-weight: 500; }
+        .ev-period-wrap { display: flex; align-items: center; gap: 10px; }
+        .ev-period-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: rgba(255,255,255,0.45); white-space: nowrap; }
+        .ev-period-sel {
+            background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
+            color: #fff; font-size: 13px; font-weight: 700; font-family: inherit;
+            padding: 8px 14px; border-radius: 8px; outline: none; cursor: pointer;
+            min-width: 180px;
+        }
+        .ev-period-sel option { background: #1e1b4b; color: #fff; }
+
+        /* ── KPI strip ── */
+        .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; padding: 20px 36px 0; }
+        @media (max-width: 900px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+
+        .kpi-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 20px 22px; display: flex; align-items: center; gap: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.05); }
+        .kpi-icon { width: 46px; height: 46px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+        .kpi-label { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; margin-bottom: 5px; }
+        .kpi-val   { font-size: 24px; font-weight: 800; color: #1e293b; line-height: 1; font-family: 'DM Mono', monospace; }
+        .kpi-sub   { font-size: 11px; font-weight: 600; color: #94a3b8; margin-top: 3px; }
+
+        /* ── Eval list area ── */
+        .ev-list-wrap { padding: 20px 36px 48px; display: flex; flex-direction: column; gap: 14px; }
+        .ev-list-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+        .ev-list-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #6366f1; }
+        .ev-count-badge { font-size: 11px; font-weight: 700; background: #eef2ff; color: #4f46e5; border: 1px solid #c7d2fe; padding: 3px 10px; border-radius: 99px; }
+
+        /* ── Eval card ── */
+        .ev-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.05); transition: box-shadow 0.15s; }
+        .ev-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.09); }
+
+        .ev-card-head {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 18px 22px; cursor: pointer; user-select: none; transition: background 0.12s;
+        }
+        .ev-card-head:hover { background: #fafafa; }
+
+        .ev-card-left  { display: flex; align-items: center; gap: 16px; flex: 1; min-width: 0; }
+        .ev-type-icon  { width: 46px; height: 46px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+        .ev-card-meta  { min-width: 0; flex: 1; }
+        .ev-card-title { font-size: 15px; font-weight: 800; color: #1e293b; margin: 0 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .ev-card-sub   { font-size: 11.5px; color: #94a3b8; font-weight: 500; }
+        .ev-type-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 99px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; border: 1px solid; margin-left: 10px; vertical-align: middle; white-space: nowrap; }
+
+        .ev-card-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; margin-left: 16px; }
+        .ev-score-ring { width: 46px; height: 46px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 2px solid; flex-shrink: 0; }
+        .ev-score-num  { font-size: 14px; font-weight: 800; font-family: 'DM Mono', monospace; line-height: 1; }
+        .ev-score-denom { font-size: 9px; font-weight: 600; opacity: 0.6; }
+        .ev-chevron    { font-size: 12px; color: #94a3b8; transition: transform 0.2s; }
+        .ev-print-btn  { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 7px; background: #f8fafc; border: 1px solid #e2e8f0; color: #475569; font-size: 11.5px; font-weight: 700; cursor: pointer; transition: all 0.12s; font-family: inherit; white-space: nowrap; }
+        .ev-print-btn:hover { background: #eef2ff; border-color: #c7d2fe; color: #4f46e5; }
+
+        /* ── Eval card body ── */
+        .ev-card-body { border-top: 1px solid #f1f5f9; padding: 24px 22px; display: none; }
+        .ev-card-body.open { display: block; }
+
+        .ev-body-grid { display: grid; grid-template-columns: 220px 1fr; gap: 28px; }
+        @media (max-width: 700px) { .ev-body-grid { grid-template-columns: 1fr; } }
+
+        /* Ratings panel */
+        .ev-ratings-panel { background: #f8f9ff; border: 1px solid #e8eaf5; border-radius: 10px; padding: 18px; }
+        .ev-ratings-title { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #7c83c8; margin: 0 0 14px; padding-bottom: 10px; border-bottom: 1px solid #e8eaf5; }
+        .ev-rating-row { margin-bottom: 12px; }
+        .ev-rating-row:last-child { margin-bottom: 0; }
+        .ev-rating-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+        .ev-rating-label { font-size: 11.5px; font-weight: 700; color: #374f6b; }
+        .ev-rating-val   { font-size: 11px; font-weight: 800; font-family: 'DM Mono', monospace; color: #1e293b; }
+        .ev-rating-bar   { height: 5px; background: #e8eaf5; border-radius: 99px; overflow: hidden; }
+        .ev-rating-fill  { height: 100%; border-radius: 99px; transition: width 0.4s; }
+
+        /* Written panel */
+        .ev-written-panel { display: flex; flex-direction: column; gap: 18px; }
+        .ev-field-label { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; margin: 0 0 6px; }
+        .ev-field-text  { font-size: 13.5px; font-weight: 500; color: #1e293b; line-height: 1.65; margin: 0; white-space: pre-wrap; }
+        .ev-status-box  { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 8px; border: 1px solid; font-size: 13px; font-weight: 700; }
+
+        /* Attendance row for report card type */
+        .ev-attendance-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .ev-att-cell { background: #f8f9ff; border: 1px solid #e8eaf5; border-radius: 8px; padding: 12px; text-align: center; }
+        .ev-att-num { font-size: 20px; font-weight: 800; font-family: 'DM Mono', monospace; color: #1e1b4b; }
+        .ev-att-lbl { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #7c83c8; margin-top: 3px; }
+
+        /* Empty / loader states */
+        .state-box { padding: 64px 20px; text-align: center; }
+        .state-box i { font-size: 32px; margin-bottom: 12px; display: block; }
+        .state-box p { font-size: 13.5px; font-weight: 600; color: #94a3b8; margin: 0; }
+
+        @media print {
+            #layout-sidebar-container, #layout-topbar-container, .no-print { display: none !important; }
+            body { background: #fff !important; }
+            .ev-card-body { display: block !important; }
+        }
+    </style>
 </head>
-<body class="flex h-screen overflow-hidden bg-[#f5f3ff]">
+<body class="flex h-screen overflow-hidden">
 
     <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
 
-    <main class="flex-1 flex flex-col h-full overflow-hidden">
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
         <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
 
-        <div class="flex-1 overflow-y-auto p-8 md:p-10">
-            <div class="w-full space-y-8">
+        <div class="flex-1 overflow-y-auto">
 
-                <div class="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-3xl border border-slate-200 shadow-sm gap-6">
-                    <div class="flex items-center gap-4">
-                        <div class="w-14 h-14 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center text-2xl"><i class="fa-solid fa-clipboard-user"></i></div>
-                        <div>
-                            <h2 class="text-2xl font-black text-slate-800">Performance Evaluations</h2>
-                            <p class="text-sm font-bold text-slate-500 mt-1">Review official teacher evaluations and matrices</p>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <label class="text-xs md:text-sm font-black text-slate-500 uppercase tracking-widest">Select Period</label>
-                        <select id="analyticsPeriodSelect" class="bg-slate-50 border border-slate-200 text-slate-800 text-base font-bold rounded-xl px-4 py-3 outline-none focus:border-indigo-500 transition cursor-pointer min-w-[200px]">
-                            <option value="">Loading periods...</option>
-                        </select>
-                    </div>
+            <!-- Page header -->
+            <div class="ev-header no-print">
+                <div class="ev-header-left">
+                    <h1><i class="fa-solid fa-clipboard-user" style="opacity:0.8;margin-right:10px;"></i>Performance Evaluations</h1>
+                    <p>Official evaluations and performance reviews filed by your teacher</p>
                 </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-6" id="evalStatsGrid">
-                    <div class="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex items-center gap-5">
-                        <div class="h-14 w-14 bg-indigo-50 text-indigo-500 rounded-xl flex items-center justify-center text-2xl"><i class="fa-solid fa-chart-line"></i></div>
-                        <div>
-                            <p class="text-xs font-black text-slate-400 uppercase tracking-widest">Term Average</p>
-                            <p id="statTermAvg" class="text-3xl font-black text-slate-800">—</p>
-                        </div>
-                    </div>
-                    <div class="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex items-center gap-5">
-                        <div class="h-14 w-14 bg-emerald-50 text-emerald-500 rounded-xl flex items-center justify-center text-2xl"><i class="fa-solid fa-award"></i></div>
-                        <div>
-                            <p class="text-xs font-black text-slate-400 uppercase tracking-widest">Overall Grade</p>
-                            <p id="statLetter" class="text-3xl font-black text-slate-800">—</p>
-                        </div>
-                    </div>
-                    <div class="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex items-center gap-5">
-                        <div class="h-14 w-14 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center text-2xl"><i class="fa-solid fa-list-check"></i></div>
-                        <div>
-                            <p class="text-xs font-black text-slate-400 uppercase tracking-widest">Assessments</p>
-                            <p id="statAssessments" class="text-3xl font-black text-slate-800">0</p>
-                        </div>
-                    </div>
-                    <div class="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex items-center gap-5">
-                        <div class="h-14 w-14 bg-amber-50 text-amber-500 rounded-xl flex items-center justify-center text-2xl"><i class="fa-solid fa-file-signature"></i></div>
-                        <div>
-                            <p class="text-xs font-black text-slate-400 uppercase tracking-widest">Evaluations</p>
-                            <p id="statTotalEvals" class="text-3xl font-black text-slate-800">0</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="analyticsLoader" class="flex flex-col items-center justify-center py-24 text-slate-400">
-                    <i class="fa-solid fa-circle-notch fa-spin text-5xl mb-4 text-indigo-400"></i>
-                    <p class="font-bold text-base">Loading evaluation records...</p>
-                </div>
-
-                <div id="analyticsContent" class="hidden space-y-8">
-                    
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        <div class="bg-white border border-slate-200 rounded-3xl p-8 shadow-sm flex flex-col">
-                            <h3 class="text-base font-black text-slate-800 uppercase tracking-widest mb-6"><i class="fa-solid fa-chart-column text-indigo-500 mr-2"></i> Subject Performance</h3>
-                            <div id="subjectChartContainer" class="flex-1 flex items-end justify-around gap-2 mt-auto pt-4 border-b border-slate-100 h-[250px]">
-                                </div>
-                        </div>
-
-                        <div class="bg-white border border-slate-200 rounded-3xl p-8 shadow-sm overflow-hidden flex flex-col">
-                            <h3 class="text-base font-black text-slate-800 uppercase tracking-widest mb-4"><i class="fa-solid fa-table text-indigo-500 mr-2"></i> Academic Details</h3>
-                            <div class="overflow-x-auto flex-1">
-                                <table class="w-full text-left border-collapse">
-                                    <thead>
-                                        <tr class="border-b border-slate-200">
-                                            <th class="py-4 px-3 text-xs font-black text-slate-400 uppercase tracking-widest">Subject</th>
-                                            <th class="py-4 px-3 text-xs font-black text-slate-400 uppercase tracking-widest text-center">Count</th>
-                                            <th class="py-4 px-3 text-xs font-black text-slate-400 uppercase tracking-widest text-center">Average</th>
-                                            <th class="py-4 px-3 text-xs font-black text-slate-400 uppercase tracking-widest text-center">Grade</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="academicTableBody" class="divide-y divide-slate-50">
-                                        </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div>
-                        <h3 class="text-lg font-black text-slate-800 uppercase tracking-widest mb-6"><i class="fa-solid fa-shapes text-indigo-500 mr-2"></i> Official Evaluations</h3>
-                        
-                        <div id="noEvalsMsg" class="hidden text-center py-16 bg-white rounded-3xl border border-slate-200 shadow-sm">
-                            <div class="text-5xl mb-4 text-slate-200"><i class="fa-solid fa-folder-open"></i></div>
-                            <h3 class="text-xl font-black text-slate-700">No Matrix Data</h3>
-                            <p class="text-slate-500 mt-2 text-base font-semibold">No formal evaluations were filed during this period.</p>
-                        </div>
-                        
-                        <div id="evaluationsContainer" class="space-y-6">
-                            </div>
-                    </div>
-
+                <div class="ev-period-wrap">
+                    <span class="ev-period-label"><i class="fa-solid fa-calendar-days" style="margin-right:5px;"></i>Period</span>
+                    <select id="analyticsPeriodSelect" class="ev-period-sel">
+                        <option value="">Loading…</option>
+                    </select>
                 </div>
             </div>
+
+            <!-- KPI cards -->
+            <div class="kpi-grid no-print" id="kpiGrid">
+                <div class="kpi-card">
+                    <div class="kpi-icon" style="background:#eef2ff;color:#4f46e5;"><i class="fa-solid fa-file-signature"></i></div>
+                    <div>
+                        <div class="kpi-label">Evaluations This Term</div>
+                        <div id="kpiTotal" class="kpi-val">—</div>
+                        <div id="kpiTotalSub" class="kpi-sub">this period</div>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon" style="background:#fef3c7;color:#d97706;"><i class="fa-solid fa-star-half-stroke"></i></div>
+                    <div>
+                        <div class="kpi-label">Avg Performance Rating</div>
+                        <div id="kpiAvgRating" class="kpi-val">—</div>
+                        <div class="kpi-sub">out of 5.0</div>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon" style="background:#f0fdf4;color:#16a34a;"><i class="fa-solid fa-calendar-check"></i></div>
+                    <div>
+                        <div class="kpi-label">Most Recent</div>
+                        <div id="kpiLatestDate" class="kpi-val" style="font-size:15px;">—</div>
+                        <div id="kpiLatestType" class="kpi-sub">—</div>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon" style="background:#fdf4ff;color:#9333ea;"><i class="fa-solid fa-award"></i></div>
+                    <div>
+                        <div class="kpi-label">Latest Status</div>
+                        <div id="kpiStatus" class="kpi-val" style="font-size:15px;">—</div>
+                        <div id="kpiStatusSub" class="kpi-sub">—</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loader -->
+            <div id="analyticsLoader" class="state-box" style="margin:20px 36px;">
+                <i class="fa-solid fa-circle-notch fa-spin" style="color:#6366f1;"></i>
+                <p>Loading evaluation records…</p>
+            </div>
+
+            <!-- Eval list -->
+            <div id="analyticsContent" class="hidden ev-list-wrap">
+                <div class="ev-list-header">
+                    <span class="ev-list-title"><i class="fa-solid fa-shapes" style="margin-right:6px;"></i>Evaluation Records</span>
+                    <span id="evCountBadge" class="ev-count-badge">0 evaluations</span>
+                </div>
+
+                <!-- No evals message -->
+                <div id="noEvalsMsg" class="hidden" style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;">
+                    <div class="state-box">
+                        <i class="fa-solid fa-folder-open" style="color:#c7d2fe;"></i>
+                        <p>No formal evaluations were filed for this period.</p>
+                    </div>
+                </div>
+
+                <!-- Cards injected here -->
+                <div id="evaluationsContainer"></div>
+            </div>
+
         </div>
     </main>
 
