@@ -89,23 +89,12 @@ async function loadAnalyticsData() {
             periodSelect.value = activeSemId || allSemesters[allSemesters.length - 1].id;
         }
 
-        // ── Populate TOPBAR activeSemester select ────────────────────────
-        const topSel   = document.getElementById('activeSemester');
+        // ── Populate TOPBAR period display (student layout uses a static span) ──
+        const activeSemName = allSemesters.find(s => s.id === activeSemId)?.name || '';
+        const topDisplay = document.getElementById('activeSemesterDisplay');
+        if (topDisplay && activeSemName) topDisplay.textContent = activeSemName;
         const sbPeriod = document.getElementById('sb-period');
-        if (topSel) {
-            topSel.innerHTML = '';
-            allSemesters.forEach(s => {
-                const opt       = document.createElement('option');
-                opt.value       = s.id;
-                opt.textContent = s.name;
-                if (s.id === activeSemId) opt.selected = true;
-                topSel.appendChild(opt);
-            });
-            if (sbPeriod) sbPeriod.textContent = topSel.options[topSel.selectedIndex]?.text || '—';
-            topSel.addEventListener('change', () => {
-                if (sbPeriod) sbPeriod.textContent = topSel.options[topSel.selectedIndex]?.text || '—';
-            });
-        }
+        if (sbPeriod && activeSemName) sbPeriod.textContent = activeSemName;
 
         // Teacher rubrics
         const tId = session.studentData?.teacherId;
