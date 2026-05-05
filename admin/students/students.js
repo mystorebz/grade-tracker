@@ -516,7 +516,7 @@ window.renderAdminGrades = function () {
                     <i class="fa-solid fa-chevron-down text-slate-400" style="transition:transform 0.2s"></i>
                 </div>
             </div>
-            <div class="subject-body open p-3 bg-slate-100 space-y-2 border-t border-slate-200">${rows}</div>
+            <div class="subject-body p-3 bg-slate-100 space-y-2 border-t border-slate-200">${rows}</div>
         </div>`;
     }).join('');
 };
