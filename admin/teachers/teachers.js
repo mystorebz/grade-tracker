@@ -19,7 +19,7 @@ let currentTeacherId  = null;
 let currentTeacherData = null;
 let claimedTeacherDoc = null;
 let slipData          = { name: '', id: '', pin: '' };
-let dynamicEvalTypes  = new Set(); // Added to harvest custom eval types
+let dynamicEvalTypes  = new Set();
 
 const tbody = document.getElementById('teachersTableBody');
 
@@ -68,66 +68,48 @@ function getClassOptions() {
     } else if (type === 'juniorcollege' || type === 'tertiary') {
         return ['Year 1 — Semester 1', 'Year 1 — Semester 2', 'Year 2 — Semester 1', 'Year 2 — Semester 2'];
     }
-    // Default: primary
     return ['Infant 1', 'Infant 2', 'Standard 1', 'Standard 2', 'Standard 3', 'Standard 4', 'Standard 5', 'Standard 6'];
 }
 
 function blankTeacherDoc(overrides = {}) {
     const now = Date.now();
     return {
-        // ── System ──────────────────────────────────────────────
         pin:                    generatePin(),
         requiresPinReset:       true,
         profileComplete:        false,
         securityQuestionsSet:   false,
         currentSchoolId:        session.schoolId,
         archivedSchoolIds:      [],
+        teachingHistory:        [],
         createdAt:              new Date().toISOString(),
-
-        // ── Basic (admin fills) ──────────────────────────────────
         firstName:              '',
         lastName:               '',
         name:                   '',
         email:                  '',
         phone:                  '',
         phoneSecondary:         '',
-
-        // ── Address ──────────────────────────────────────────────
         address: {
-            line1:    '',
-            line2:    '',
-            city:     '',
-            district: '',
-            country:  'Belize'
+            line1: '', line2: '', city: '', district: '', country: 'Belize'
         },
-
-        // ── Professional Credentials ─────────────────────────────
         teacherLicenseNumber:   '',
-        licenseType:            '',     // Trained | Untrained | Provisional
+        licenseType:            '',
         licenseExpiryDate:      '',
         yearsOfExperience:      null,
-
-        // ── Academic Qualifications ──────────────────────────────
-        highestEducationLevel:  '',     // Associate's | Bachelor's | Master's | Doctorate
+        highestEducationLevel:  '',
         fieldOfStudy:           '',
         institution:            '',
         yearGraduated:          null,
-
-        // ── Teaching Profile ─────────────────────────────────────
-        employmentType:         '',     // Full-time | Part-time | Contract | Substitute
-        gradeLevelSpec:         '',     // Primary | Secondary | Junior College
+        employmentType:         '',
+        gradeLevelSpec:         '',
         subjects: [
             { id: `sub_${now}_1`, name: 'Mathematics',           archived: false, description: '' },
             { id: `sub_${now}_2`, name: 'English Language Arts', archived: false, description: '' },
             { id: `sub_${now}_3`, name: 'Science',               archived: false, description: '' }
         ],
-        classes:                [],
-        className:              '',
-
-        // ── Grade Config ─────────────────────────────────────────
+        classes:            [],
+        className:          '',
         customGradeTypes:   ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'],
         archivedGradeTypes: [],
-
         ...overrides
     };
 }
@@ -157,7 +139,7 @@ async function loadTeachers() {
     try {
         const [tSnap, sSnap] = await Promise.all([
             getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId))),
-            getDocs(query(collection(db, 'students'), where('currentSchoolId', '==', session.schoolId)))
+            getDocs(query(collection(db, 'students'),  where('currentSchoolId', '==', session.schoolId)))
         ]);
 
         const studentCount = {};
@@ -169,8 +151,7 @@ async function loadTeachers() {
         });
 
         allTeachersCache = tSnap.docs.map(d => ({
-            id: d.id,
-            ...d.data(),
+            id: d.id, ...d.data(),
             studentCount: studentCount[d.id] || 0
         }));
 
@@ -247,9 +228,7 @@ function renderTable() {
 
 document.getElementById('searchInput')?.addEventListener('input', renderTable);
 
-
 // ── 6. ADD / CLAIM MODAL ───────────────────────────────────────────────────
-
 function populateClassCheckboxes(containerId = 'classCheckboxGroup', checked = []) {
     const group = document.getElementById(containerId);
     if (!group) return;
@@ -278,17 +257,12 @@ window.closeAddTeacherModal = () => {
     claimedTeacherDoc = null;
 };
 
-// ── Search "Enter" Key Listener ───────────────────────────────────────────
 document.getElementById('teacherSearchInput').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-        e.preventDefault();
-        document.getElementById('searchTeacherBtn').click();
-    }
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('searchTeacherBtn').click(); }
 });
 
-// ── Search Unassigned Teachers ────────────────────────────────────────────
 document.getElementById('searchTeacherBtn').addEventListener('click', async () => {
-    const input    = document.getElementById('teacherSearchInput').value.trim();
+    const input     = document.getElementById('teacherSearchInput').value.trim();
     const resultsEl = document.getElementById('teacherSearchResults');
     const emptyEl   = document.getElementById('claimSearchEmpty');
     const previewEl = document.getElementById('claimTeacherPreview');
@@ -310,7 +284,6 @@ document.getElementById('searchTeacherBtn').addEventListener('click', async () =
         const looksLikeId = input.includes('-');
 
         if (looksLikeId) {
-            // Normalize and try direct ID lookup
             const normalizedId = input.toUpperCase().replace(/\s/g, '');
             const snap = await getDoc(doc(db, 'teachers', normalizedId));
             if (snap.exists()) {
@@ -328,14 +301,13 @@ document.getElementById('searchTeacherBtn').addEventListener('click', async () =
         }
 
         if (!results.length) {
-            // Query all unassigned and filter by name/email/id client-side
             const snap = await getDocs(
                 query(collection(db, 'teachers'), where('currentSchoolId', '==', ''))
             );
             results = snap.docs
                 .map(d => ({ id: d.id, ...d.data() }))
-                .filter(t => 
-                    (t.name || '').toLowerCase().includes(lower) || 
+                .filter(t =>
+                    (t.name || '').toLowerCase().includes(lower) ||
                     (t.email || '').toLowerCase().includes(lower) ||
                     t.id.toLowerCase().includes(lower)
                 );
@@ -365,7 +337,6 @@ document.getElementById('searchTeacherBtn').addEventListener('click', async () =
     btn.disabled  = false;
 });
 
-// ── Select a Teacher from Results ─────────────────────────────────────────
 window.selectTeacherResult = async (teacherId) => {
     document.getElementById('teacherSearchResults').classList.add('hidden');
 
@@ -380,12 +351,12 @@ window.selectTeacherResult = async (teacherId) => {
         document.getElementById('claimPreviewId').textContent   = t.id;
 
         const details = [
-            ['Email',         t.email             || null],
-            ['Phone',         t.phone             || null],
-            ['License No.',   t.teacherLicenseNumber || null],
-            ['License Type',  t.licenseType       || null],
-            ['Education',     t.highestEducationLevel || null],
-            ['Employment',    t.employmentType    || null],
+            ['Email',        t.email              || null],
+            ['Phone',        t.phone              || null],
+            ['License No.',  t.teacherLicenseNumber || null],
+            ['License Type', t.licenseType        || null],
+            ['Education',    t.highestEducationLevel || null],
+            ['Employment',   t.employmentType     || null],
         ];
 
         document.getElementById('claimPreviewDetails').innerHTML = details.map(([label, val]) => `
@@ -419,7 +390,6 @@ window.clearTeacherSelection = () => {
     claimedTeacherDoc = null;
 };
 
-// ── Claim Teacher ─────────────────────────────────────────────────────────
 document.getElementById('claimTeacherBtn').addEventListener('click', async () => {
     if (!claimedTeacherDoc) return;
     const btn = document.getElementById('claimTeacherBtn');
@@ -461,7 +431,6 @@ document.getElementById('claimTeacherBtn').addEventListener('click', async () =>
     btn.innerHTML = '<i class="fa-solid fa-handshake mr-2"></i> Claim This Teacher';
 });
 
-// ── Create New Teacher ────────────────────────────────────────────────────
 document.getElementById('saveTeacherBtn').addEventListener('click', async () => {
     const btn   = document.getElementById('saveTeacherBtn');
     const msgEl = document.getElementById('addTeacherMsg');
@@ -482,20 +451,18 @@ document.getElementById('saveTeacherBtn').addEventListener('click', async () => 
     if (!firstName || !lastName) { showMsg('First and last name are required.'); return; }
     if (!email)                  { showMsg('Email address is required for PIN recovery.'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showMsg('Please enter a valid email address.'); return; }
-    
     if (selectedClasses.length === 0) { showMsg('You must assign the teacher to at least one class.'); return; }
 
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processing...';
     btn.disabled  = true;
 
     try {
-        // Strict Email Validation Check
         const emailCheckQuery = query(collection(db, 'teachers'), where('email', '==', email));
-        const emailCheckSnap = await getDocs(emailCheckQuery);
+        const emailCheckSnap  = await getDocs(emailCheckQuery);
         if (!emailCheckSnap.empty) {
             showMsg('This email is already registered to a teacher.');
             btn.innerHTML = '<i class="fa-solid fa-user-plus mr-2"></i> Register';
-            btn.disabled = false;
+            btn.disabled  = false;
             return;
         }
 
@@ -509,7 +476,7 @@ document.getElementById('saveTeacherBtn').addEventListener('click', async () => 
 
         const newId    = generateTeacherId();
         const fullName = `${firstName} ${lastName}`;
-        const docData = blankTeacherDoc({
+        const docData  = blankTeacherDoc({
             firstName, lastName,
             name:      fullName,
             email, phone,
@@ -532,7 +499,6 @@ document.getElementById('saveTeacherBtn').addEventListener('click', async () => 
     btn.disabled  = false;
     btn.innerHTML = '<i class="fa-solid fa-user-plus mr-2"></i> Register';
 });
-
 
 // ── 7. CREDENTIAL SLIP ────────────────────────────────────────────────────
 window.showCredentialSlip = () => {
@@ -573,7 +539,6 @@ window.printCredentialSlip = () => {
     setTimeout(() => w.print(), 400);
 };
 
-
 // ── 8. TEACHER PANEL ──────────────────────────────────────────────────────
 window.openTeacherPanel = async (teacherId) => {
     currentTeacherId   = teacherId;
@@ -604,7 +569,6 @@ window.openTeacherPanel = async (teacherId) => {
         document.getElementById('tPanelLoader').classList.add('hidden');
         document.getElementById('tPanelTabs').classList.remove('hidden');
 
-        // Activate Overview by default
         switchPanelTab('overview');
 
     } catch (e) {
@@ -616,7 +580,6 @@ window.openTeacherPanel = async (teacherId) => {
 
 window.closeTeacherPanel = () => closeOverlay('teacherPanel', 'teacherPanelInner', true);
 
-// ── Tab Switching ─────────────────────────────────────────────────────────
 document.querySelectorAll('.panel-tab').forEach(btn => {
     btn.addEventListener('click', () => switchPanelTab(btn.dataset.tab));
 });
@@ -635,7 +598,6 @@ function switchPanelTab(tabName) {
     if (tabName === 'archive')     renderArchiveTab();
 }
 
-
 // ── 9. OVERVIEW TAB ───────────────────────────────────────────────────────
 async function renderOverviewTab() {
     const t = currentTeacherData;
@@ -644,9 +606,8 @@ async function renderOverviewTab() {
     const classes  = getTeacherClasses(t);
     const complete = isProfileComplete(t);
 
-    // ── Check for active term and active students per class ───────────────
-    let hasActiveTerm = false;
-    let activeTermName = '';
+    let hasActiveTerm   = false;
+    let activeTermName  = '';
     let studentsByClass = {};
 
     try {
@@ -673,7 +634,6 @@ async function renderOverviewTab() {
         });
     } catch (_) {}
 
-    // ── Build checkboxes — locked if class has active students in active term
     const classCheckboxes = getClassOptions().map(c => {
         const isAssigned   = classes.includes(c);
         const studentCount = studentsByClass[c] || 0;
@@ -700,7 +660,6 @@ async function renderOverviewTab() {
     }).join('');
 
     pane.innerHTML = `
-
         <div class="flex items-center justify-between mb-4">
             <div class="${complete
                 ? 'bg-green-50 border-green-200 text-green-700'
@@ -709,9 +668,7 @@ async function renderOverviewTab() {
                 <div>
                     <p class="font-black text-[12px] leading-tight">${complete ? 'Profile Complete' : 'Profile Incomplete'}</p>
                     <p class="text-[10px] font-semibold opacity-80 mt-0.5">
-                        ${complete
-                            ? 'All required professional information is on file.'
-                            : 'Pending teacher completion on next login.'}
+                        ${complete ? 'All required professional information is on file.' : 'Pending teacher completion on next login.'}
                     </p>
                 </div>
             </div>
@@ -726,9 +683,7 @@ async function renderOverviewTab() {
             <div class="grid grid-cols-2 gap-2">
                 ${infoCell('Global ID', `<span class="font-mono tracking-widest text-[11px]">${t.id}</span>`)}
                 ${infoCell('Full Name', escHtml(t.name) || '—')}
-                ${infoCell('Email', t.email
-                    ? `<a href="mailto:${escHtml(t.email)}" class="text-[#2563eb] hover:underline break-all">${escHtml(t.email)}</a>`
-                    : '<span class="text-amber-500 font-black text-[11px]">⚠ Not set</span>')}
+                ${infoCell('Email', t.email ? `<a href="mailto:${escHtml(t.email)}" class="text-[#2563eb] hover:underline break-all">${escHtml(t.email)}</a>` : '<span class="text-amber-500 font-black text-[11px]">⚠ Not set</span>')}
                 ${infoCell('Phone', escHtml(t.phone) || '—')}
                 ${infoCell('Secondary Phone', escHtml(t.phoneSecondary) || '—')}
                 ${infoCell('District', escHtml(t.address?.district) || '—')}
@@ -779,7 +734,6 @@ window.saveClassAssignment = async () => {
     const msgEl          = document.getElementById('classAssignMsg');
     msgEl.classList.add('hidden');
 
-    // Guard against removal
     const removed = currentClasses.filter(c => !selected.includes(c));
 
     if (removed.length > 0) {
@@ -793,7 +747,7 @@ window.saveClassAssignment = async () => {
             ]);
 
             const activeSemId = schoolSnap.exists() ? schoolSnap.data().activeSemesterId : null;
-            
+
             if (activeSemId) {
                 const semSnap = await getDoc(doc(db, 'schools', session.schoolId, 'semesters', activeSemId));
                 if (semSnap.exists()) {
@@ -806,8 +760,7 @@ window.saveClassAssignment = async () => {
                             msgEl.innerHTML =
                                 `<i class="fa-solid fa-lock mr-1"></i>
                                  Cannot remove <strong>${escHtml(cls)}</strong> —
-                                 ${count} active student${count !== 1 ? 's' : ''} ${count !== 1 ? 'are' : 'is'} assigned to this teacher
-                                 in <strong>${escHtml(termName)}</strong>.
+                                 ${count} active student${count !== 1 ? 's' : ''} assigned in <strong>${escHtml(termName)}</strong>.
                                  Reassign or archive the student${count !== 1 ? 's' : ''} first.`;
                             msgEl.className = 'text-[11px] mt-3 font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg p-3 leading-relaxed';
                             msgEl.classList.remove('hidden');
@@ -842,7 +795,6 @@ window.saveClassAssignment = async () => {
     }
 };
 
-
 // ── 10. STUDENTS TAB ──────────────────────────────────────────────────────
 async function renderStudentsTab() {
     const pane = document.getElementById('tab-students');
@@ -855,9 +807,7 @@ async function renderStudentsTab() {
                 where('teacherId', '==', currentTeacherId),
                 where('currentSchoolId', '==', session.schoolId))
         );
-        const students = snap.docs
-            .map(d => ({ id: d.id, ...d.data() }))
-            .filter(s => s.enrollmentStatus !== 'Archived');
+        const students = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => s.enrollmentStatus !== 'Archived');
 
         if (!students.length) {
             pane.innerHTML = `<div class="text-center py-16 text-[#9ab0c6] italic font-semibold text-[13px]">
@@ -865,7 +815,6 @@ async function renderStudentsTab() {
             return;
         }
 
-        // Group students visually by class name
         const studentsByClass = students.reduce((acc, s) => {
             const cName = s.class || s.className || 'Unassigned';
             if (!acc[cName]) acc[cName] = [];
@@ -875,9 +824,7 @@ async function renderStudentsTab() {
 
         pane.innerHTML = `
             <div class="flex items-center justify-between mb-4">
-                <p class="text-[12px] font-bold text-[#374f6b]">
-                    ${students.length} student${students.length !== 1 ? 's' : ''} assigned
-                </p>
+                <p class="text-[12px] font-bold text-[#374f6b]">${students.length} student${students.length !== 1 ? 's' : ''} assigned</p>
             </div>
             ${Object.keys(studentsByClass).sort().map(cName => `
                 <div class="mb-5">
@@ -894,90 +841,65 @@ async function renderStudentsTab() {
                                         <p class="text-[10px] font-mono text-[#9ab0c6] uppercase mt-0.5">${s.id}</p>
                                     </div>
                                 </div>
-                                <div class="flex items-center gap-3">
-                                    <span class="text-[10px] font-bold bg-[#f8fafb] border border-[#dce3ed] px-2 py-0.5 rounded text-[#374f6b]">
-                                        ${escHtml(cName)}
-                                    </span>
-                                    <button onclick="window.location.href='../students/students.html?viewStudent=${s.id}'"
-                                        class="bg-white hover:bg-[#eef4ff] text-[#2563eb] font-bold px-3 py-1.5 rounded text-[11px] transition border border-[#c7d9fd]">
-                                        View Student
-                                    </button>
-                                </div>
+                                <span class="text-[10px] font-bold bg-[#f8fafb] border border-[#dce3ed] px-2 py-0.5 rounded text-[#374f6b]">${escHtml(cName)}</span>
                             </div>
                         `).join('')}
                     </div>
                 </div>
-            `).join('')}
-        `;
+            `).join('')}`;
     } catch (e) {
         console.error('[Teachers] studentsTab:', e);
         pane.innerHTML = `<div class="text-center py-16 text-[#e31b4a] font-semibold">Error loading students.</div>`;
     }
 }
 
-
 // ── 11. SUBJECTS TAB ──────────────────────────────────────────────────────
 async function renderSubjectsTab() {
     const t = currentTeacherData;
     if (!t) return;
     const pane     = document.getElementById('tab-subjects');
-    const subjects  = t.subjects || [];
+    const subjects = t.subjects || [];
 
     pane.innerHTML = `<div class="flex items-center justify-center py-16"><i class="fa-solid fa-spinner fa-spin text-2xl text-[#2563eb]"></i></div>`;
 
     try {
-        // Fetch active students for this teacher to compute grade stats locally
         const studSnap = await getDocs(
-            query(collection(db, 'students'), 
-                where('teacherId', '==', currentTeacherId), 
-                where('currentSchoolId', '==', session.schoolId), 
+            query(collection(db, 'students'),
+                where('teacherId', '==', currentTeacherId),
+                where('currentSchoolId', '==', session.schoolId),
                 where('enrollmentStatus', '==', 'Active'))
         );
         const studentIds = studSnap.docs.map(d => d.id);
 
         let allGrades = [];
         if (studentIds.length > 0) {
-            // Batch parallel grade queries across all the teacher's active students
-            const gradePromises = studentIds.map(sid => getDocs(collection(db, 'students', sid, 'grades')));
+            const gradePromises    = studentIds.map(sid => getDocs(collection(db, 'students', sid, 'grades')));
             const fallbackPromises = studentIds.map(sid => getDocs(collection(db, 'schools', session.schoolId, 'students', sid, 'grades')));
             const results = await Promise.all([...gradePromises, ...fallbackPromises]);
             results.forEach(snap => snap.forEach(d => allGrades.push(d.data())));
         }
 
-        // Get the teacher's specific rubric
         const gradeTypes = currentTeacherData.gradeTypes || currentTeacherData.customGradeTypes || ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 
-        // Compute median & average natively per subject
         const statsBySubject = {};
         subjects.forEach(s => {
             const sGrades = allGrades.filter(g => g.subject === s.name && g.max);
-            if (sGrades.length === 0) {
-                statsBySubject[s.name] = { avg: '--', med: '--' };
-                return;
-            }
-            
-            const scores = sGrades.map(g => (g.max ? (g.score / g.max) * 100 : 0)).sort((a, b) => a - b);
-            
-            // CHANGED: Use the teacher's rubric instead of session.schoolId
-            const avg = calculateWeightedAverage(sGrades, gradeTypes);
-            
-            const mid = Math.floor(scores.length / 2);
-            const med = scores.length % 2 !== 0 ? scores[mid] : (scores[mid - 1] + scores[mid]) / 2;
-            
+            if (!sGrades.length) { statsBySubject[s.name] = { avg: '--', med: '--' }; return; }
+            const scores  = sGrades.map(g => (g.max ? (g.score / g.max) * 100 : 0)).sort((a, b) => a - b);
+            const avg     = calculateWeightedAverage(sGrades, gradeTypes);
+            const mid     = Math.floor(scores.length / 2);
+            const med     = scores.length % 2 !== 0 ? scores[mid] : (scores[mid - 1] + scores[mid]) / 2;
             statsBySubject[s.name] = { avg: Math.round(avg) + '%', med: Math.round(med) + '%' };
         });
 
         pane.innerHTML = `
             <div class="flex items-center justify-between mb-4">
-                <p class="text-[12px] font-bold text-[#374f6b]">
-                    ${subjects.length} active subject${subjects.length !== 1 ? 's' : ''}
-                </p>
+                <p class="text-[12px] font-bold text-[#374f6b]">${subjects.length} active subject${subjects.length !== 1 ? 's' : ''}</p>
                 <button onclick="window.openAddSubjectModal()"
                     class="flex items-center gap-1.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold px-4 py-2 rounded text-[12px] transition">
                     <i class="fa-solid fa-plus"></i> Add Subject
                 </button>
             </div>
-
             <div class="space-y-2 mb-5">
                 ${subjects.length
                     ? subjects.map(s => subjectRow(s, statsBySubject[s.name])).join('')
@@ -993,11 +915,8 @@ function subjectRow(s, stats = { avg: '--', med: '--' }) {
     return `
         <div class="bg-white border border-[#dce3ed] rounded-xl p-4 flex items-center justify-between">
             <div class="min-w-0 mr-3 w-full">
-                <p class="font-bold text-[13px] text-[#0d1f35]">
-                    ${escHtml(s.name)}
-                </p>
+                <p class="font-bold text-[13px] text-[#0d1f35]">${escHtml(s.name)}</p>
                 ${s.description ? `<p class="text-[11px] text-[#6b84a0] font-semibold mt-0.5">${escHtml(s.description)}</p>` : ''}
-                
                 <div class="flex items-center gap-4 mt-2 border-t border-[#f0f4f8] pt-2">
                     <div class="bg-[#f8fafb] border border-[#f0f4f8] rounded px-2 py-1 flex items-center gap-1.5">
                         <i class="fa-solid fa-chart-pie text-[#9ab0c6] text-[10px]"></i>
@@ -1014,7 +933,6 @@ function subjectRow(s, stats = { avg: '--', med: '--' }) {
         </div>`;
 }
 
-// ── Custom Modal Logic for Subject Adding 
 window.openAddSubjectModal = () => {
     document.getElementById('subjectSelect').value = '';
     document.getElementById('customSubjectName').value = '';
@@ -1026,32 +944,21 @@ window.openAddSubjectModal = () => {
 window.closeAddSubjectModal = () => closeOverlay('addSubjectModal', 'addSubjectModalInner');
 
 document.getElementById('subjectSelect').addEventListener('change', (e) => {
-    const container = document.getElementById('customSubjectContainer');
-    if (e.target.value === 'Custom') {
-        container.classList.remove('hidden');
-    } else {
-        container.classList.add('hidden');
-    }
+    document.getElementById('customSubjectContainer').classList.toggle('hidden', e.target.value !== 'Custom');
 });
 
 document.getElementById('saveSubjectBtn').addEventListener('click', async () => {
     const selectVal = document.getElementById('subjectSelect').value;
-    let name = selectVal;
-    if (name === 'Custom') {
-        name = document.getElementById('customSubjectName').value.trim();
-    }
+    let name = selectVal === 'Custom' ? document.getElementById('customSubjectName').value.trim() : selectVal;
     const desc = document.getElementById('subjectDesc').value.trim();
-
     if (!name) { alert('Subject name is required.'); return; }
 
     const btn = document.getElementById('saveSubjectBtn');
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...';
-    btn.disabled = true;
-
+    btn.disabled  = true;
     await addSubject(name, desc);
-
     btn.innerHTML = 'Save Subject';
-    btn.disabled = false;
+    btn.disabled  = false;
     window.closeAddSubjectModal();
 });
 
@@ -1071,8 +978,7 @@ async function addSubject(name, description = '') {
     }
 }
 
-
-// ── 12. EVALUATIONS TAB (UNIFIED ARCHITECTURE) ────────────────────────────
+// ── 12. EVALUATIONS TAB ───────────────────────────────────────────────────
 async function renderEvaluationsTab() {
     const pane = document.getElementById('tab-evaluations');
     pane.innerHTML = `<div class="flex items-center justify-center py-16">
@@ -1087,7 +993,6 @@ async function renderEvaluationsTab() {
             .map(d => ({ id: d.id, ...d.data() }))
             .sort((a, b) => new Date(b.timestamp || b.date || 0) - new Date(a.timestamp || a.date || 0));
 
-        // Harvest dynamic evaluation types
         dynamicEvalTypes.clear();
         evals.forEach(ev => { if (ev.type) dynamicEvalTypes.add(ev.type); });
 
@@ -1095,12 +1000,9 @@ async function renderEvaluationsTab() {
         const avgNum = count ? evals.reduce((s, e) => s + (e.overallRating || e.performanceScore || 0), 0) / count : null;
         const avg    = avgNum !== null ? avgNum.toFixed(1) : null;
         const stars  = avg
-            ? [1,2,3,4,5].map(n =>
-                `<span style="color:${n <= Math.round(parseFloat(avg)) ? '#f59e0b' : '#dce3ed'};font-size:16px">★</span>`
-              ).join('')
+            ? [1,2,3,4,5].map(n => `<span style="color:${n <= Math.round(parseFloat(avg)) ? '#f59e0b' : '#dce3ed'};font-size:16px">★</span>`).join('')
             : null;
 
-        // Build Dynamic Options
         const standardTypes = ["Classroom Observation", "Term Review", "Peer Review"];
         const allTypes = new Set([...standardTypes, ...Array.from(dynamicEvalTypes)]);
         let typeOptionsHtml = `<option value="">— Select Type —</option>`;
@@ -1117,7 +1019,6 @@ async function renderEvaluationsTab() {
                         <i class="fa-solid fa-xmark text-lg"></i>
                     </button>
                 </div>
-                
                 <div class="grid grid-cols-2 gap-4 mb-4">
                     <div class="col-span-2">
                         <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Evaluation Type <span class="text-[#e31b4a]">*</span></label>
@@ -1125,16 +1026,12 @@ async function renderEvaluationsTab() {
                             ${typeOptionsHtml}
                         </select>
                     </div>
-
                     <div id="inlCustomTypeContainer" class="col-span-2 hidden">
                         <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Custom Evaluation Type <span class="text-[#e31b4a]">*</span></label>
                         <input type="text" id="inlCustomType" placeholder="e.g. Term 2 Walkthrough" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none">
                     </div>
-
                     <div id="inlObservationContainer" class="col-span-2 grid grid-cols-2 gap-4 hidden bg-[#eef4ff] border border-[#c7d9fd] p-4 rounded-lg">
-                        <div class="col-span-2">
-                            <p class="text-[10px] font-bold text-[#2563eb] uppercase tracking-widest mb-1"><i class="fa-solid fa-eye mr-1"></i> Observation Details</p>
-                        </div>
+                        <div class="col-span-2"><p class="text-[10px] font-bold text-[#2563eb] uppercase tracking-widest mb-1"><i class="fa-solid fa-eye mr-1"></i> Observation Details</p></div>
                         <div>
                             <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Subject Observed (Optional)</label>
                             <input type="text" id="inlEvalSubject" placeholder="e.g. Standard 4 Mathematics" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none">
@@ -1144,7 +1041,6 @@ async function renderEvaluationsTab() {
                             <input type="text" id="inlEvalStudent" placeholder="e.g. John Doe / Group B" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[13px] outline-none">
                         </div>
                     </div>
-
                     <div>
                         <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Overall Rating (1–5) <span class="text-[#e31b4a]">*</span></label>
                         <select id="inlEvalRating" class="form-input w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded text-[13px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">
@@ -1161,7 +1057,6 @@ async function renderEvaluationsTab() {
                         <input type="date" id="inlEvalDate" value="${new Date().toISOString().split('T')[0]}" class="form-input w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
                     </div>
                 </div>
-                
                 <div class="space-y-4 mb-5 border-t border-[#f0f4f8] pt-4">
                     <div>
                         <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Strengths</label>
@@ -1186,12 +1081,10 @@ async function renderEvaluationsTab() {
                         </select>
                     </div>
                 </div>
-
                 <button id="inlSaveEvalBtn" onclick="window.saveInlineEval()" class="w-full bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-3 rounded transition text-[12px] uppercase tracking-widest shadow-sm">
                     Submit Evaluation
                 </button>
-            </div>
-        `;
+            </div>`;
 
         pane.innerHTML = `
             <div class="flex items-center justify-between mb-5">
@@ -1213,15 +1106,12 @@ async function renderEvaluationsTab() {
                     <i class="fa-solid fa-plus"></i> Add Evaluation
                 </button>
             </div>
-
             ${inlineFormHtml}
-
             <div class="space-y-3">
                 ${evals.map((e, index) => {
                     const rating  = e.overallRating || e.performanceScore || 0;
                     const eStars  = [1,2,3,4,5].map(n => `<span style="color:${n <= rating ? '#f59e0b' : '#dce3ed'};font-size:14px">★</span>`).join('');
                     const dateStr = (e.timestamp || e.date) ? new Date(e.timestamp || e.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-                    
                     const recColor = e.recommendedAction === 'Commendation' ? 'color:#0ea871;background:#edfaf4;border-color:#c6f0db'
                                    : e.recommendedAction === 'Formal Warning' || e.recommendedAction === 'Performance Plan' ? 'color:#e31b4a;background:#fff0f3;border-color:#ffd6de'
                                    : e.recommendedAction === 'Professional Development' ? 'color:#b45309;background:#fffbeb;border-color:#fef3c7'
@@ -1235,21 +1125,16 @@ async function renderEvaluationsTab() {
                                     <p class="text-[10px] font-semibold text-[#9ab0c6] mt-0.5">${dateStr} · Evaluated by ${escHtml(e.evaluatorName || 'Admin')}</p>
                                 </div>
                                 <div class="flex items-center gap-4 text-right">
-                                    <div>
-                                        <div class="text-[15px] leading-none flex gap-0.5">${eStars}</div>
-                                    </div>
+                                    <div class="text-[15px] leading-none flex gap-0.5">${eStars}</div>
                                     <i class="fa-solid fa-chevron-down text-[#c5d0db] transition-transform ${index === 0 ? 'rotate-180' : ''}"></i>
                                 </div>
                             </div>
                             <div class="eval-body ${index === 0 ? 'block' : 'hidden'} bg-[#fafbfc] border-t border-[#f0f4f8] p-5">
-                                
                                 ${e.subjectObserved || e.studentFocus ? `
                                     <div class="flex flex-wrap gap-2 mb-4 bg-white border border-[#dce3ed] p-2.5 rounded-lg">
                                         ${e.subjectObserved ? `<span class="text-[10px] font-bold text-[#2563eb] bg-[#eef4ff] px-2 py-1 rounded border border-[#c7d9fd]">Subject: ${escHtml(e.subjectObserved)}</span>` : ''}
                                         ${e.studentFocus ? `<span class="text-[10px] font-bold text-[#6b84a0] bg-[#f0f4f8] px-2 py-1 rounded border border-[#dce3ed]">Student Focus: ${escHtml(e.studentFocus)}</span>` : ''}
-                                    </div>
-                                ` : ''}
-
+                                    </div>` : ''}
                                 <div class="grid grid-cols-2 gap-4 mb-4">
                                     ${e.strengths ? `<div>
                                         <p class="text-[10px] font-bold text-[#0ea871] uppercase tracking-widest mb-1.5"><i class="fa-solid fa-arrow-trend-up mr-1"></i> Strengths</p>
@@ -1260,20 +1145,15 @@ async function renderEvaluationsTab() {
                                         <p class="text-[12px] text-[#374f6b] font-medium leading-relaxed">${escHtml(e.areasForImprovement)}</p>
                                     </div>` : ''}
                                 </div>
-
-                                ${e.comments ? `
-                                    <div class="mb-4 border-t border-[#dce3ed] pt-4">
-                                        <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5"><i class="fa-regular fa-comment-dots mr-1"></i> Overall Comments</p>
-                                        <p class="text-[12px] text-[#374f6b] font-medium leading-relaxed">${escHtml(e.comments)}</p>
-                                    </div>
-                                ` : ''}
-                                
+                                ${e.comments ? `<div class="mb-4 border-t border-[#dce3ed] pt-4">
+                                    <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5"><i class="fa-regular fa-comment-dots mr-1"></i> Overall Comments</p>
+                                    <p class="text-[12px] text-[#374f6b] font-medium leading-relaxed">${escHtml(e.comments)}</p>
+                                </div>` : ''}
                                 ${e.recommendedAction && e.recommendedAction !== 'None' ? `
                                     <div class="mt-4 flex items-center gap-2">
                                         <span class="text-[10px] font-bold uppercase tracking-widest text-[#6b84a0]">Action:</span>
                                         <span style="font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:99px;border:1px solid;${recColor}">${e.recommendedAction}</span>
-                                    </div>
-                                ` : ''}
+                                    </div>` : ''}
                             </div>
                         </div>`;
                 }).join('')}
@@ -1285,7 +1165,6 @@ async function renderEvaluationsTab() {
     }
 }
 
-// Handler for the Accordion Dropdown
 window.toggleEvalAccordion = (header) => {
     const body    = header.nextElementSibling;
     const chevron = header.querySelector('.fa-chevron-down');
@@ -1294,32 +1173,21 @@ window.toggleEvalAccordion = (header) => {
     if (chevron) chevron.style.transform = body.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';
 };
 
-// Handler for dynamic input toggling
 window.toggleInlEvalTypeFields = function() {
     const type = document.getElementById('inlEvalType').value;
-    
-    const customContainer = document.getElementById('inlCustomTypeContainer');
-    if (type === 'Custom') {
-        customContainer.classList.remove('hidden');
-    } else {
-        customContainer.classList.add('hidden');
-        document.getElementById('inlCustomType').value = '';
-    }
-
-    const obsContainer = document.getElementById('inlObservationContainer');
-    if (type === 'Classroom Observation') {
-        obsContainer.classList.remove('hidden');
-    } else {
-        obsContainer.classList.add('hidden');
+    document.getElementById('inlCustomTypeContainer').classList.toggle('hidden', type !== 'Custom');
+    if (type !== 'Custom') document.getElementById('inlCustomType').value = '';
+    document.getElementById('inlObservationContainer').classList.toggle('hidden', type !== 'Classroom Observation');
+    if (type !== 'Classroom Observation') {
         document.getElementById('inlEvalSubject').value = '';
         document.getElementById('inlEvalStudent').value = '';
     }
 };
 
 window.saveInlineEval = async () => {
-    let type       = document.getElementById('inlEvalType').value;
+    let type = document.getElementById('inlEvalType').value;
     if (type === 'Custom') type = document.getElementById('inlCustomType').value.trim();
-    
+
     const rating   = document.getElementById('inlEvalRating').value;
     const date     = document.getElementById('inlEvalDate').value;
     const subject  = document.getElementById('inlEvalSubject').value.trim();
@@ -1329,10 +1197,7 @@ window.saveInlineEval = async () => {
     const comments = document.getElementById('inlEvalComments').value.trim();
     const action   = document.getElementById('inlEvalAction').value;
 
-    if (!type || !rating || !date) { 
-        alert('Type, Rating, and Date are required fields.'); 
-        return; 
-    }
+    if (!type || !rating || !date) { alert('Type, Rating, and Date are required fields.'); return; }
 
     const btn = document.getElementById('inlSaveEvalBtn');
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...';
@@ -1341,22 +1206,20 @@ window.saveInlineEval = async () => {
     try {
         await addDoc(collection(db, 'teachers', currentTeacherId, 'evaluations'), {
             type,
-            overallRating:        parseInt(rating),
-            performanceScore:     parseInt(rating), // Backwards compatibility
+            overallRating:       parseInt(rating),
+            performanceScore:    parseInt(rating),
             date,
-            subjectObserved:      subject,
-            studentFocus:         student,
+            subjectObserved:     subject,
+            studentFocus:        student,
             strengths,
-            areasForImprovement:  imprv,
+            areasForImprovement: imprv,
             comments,
-            recommendedAction:    action,
-            schoolId:             session.schoolId,
-            evaluatorId:          session.adminId || 'Admin',
-            evaluatorName:        session.isSuperAdmin ? (session.schoolName || 'Super Admin') : (session.adminName || 'Sub-Admin'),
-            timestamp:            new Date().toISOString()
+            recommendedAction:   action,
+            schoolId:            session.schoolId,
+            evaluatorId:         session.adminId || 'Admin',
+            evaluatorName:       session.isSuperAdmin ? (session.schoolName || 'Super Admin') : (session.adminName || 'Sub-Admin'),
+            timestamp:           new Date().toISOString()
         });
-        
-        // Re-render tab to show new eval and hide form
         renderEvaluationsTab();
     } catch (e) {
         console.error('[Teachers] saveInlineEval:', e);
@@ -1366,9 +1229,7 @@ window.saveInlineEval = async () => {
     }
 };
 
-// We keep the old modal close trigger active just in case it is still registered elsewhere
 window.closeAddEvalModal = () => closeOverlay('addEvalModal', 'addEvalModalInner');
-
 
 // ── 13. ARCHIVE TAB ───────────────────────────────────────────────────────
 function renderArchiveTab() {
@@ -1379,11 +1240,10 @@ function renderArchiveTab() {
                 <i class="fa-solid fa-box-archive text-[#e31b4a] text-3xl mb-3"></i>
                 <h4 class="font-black text-[#be123c] text-[15px] mb-2">Archive This Teacher</h4>
                 <p class="text-[12px] text-[#374f6b] font-semibold leading-relaxed">
-                    Archiving removes <strong>${escHtml(currentTeacherData?.name)}</strong> from your active staff
-                    and files a mandatory exit evaluation in the National Registry.
+                    Archiving removes <strong>${escHtml(currentTeacherData?.name)}</strong> from your active staff,
+                    files a mandatory exit evaluation, and generates a career snapshot for their national passport.
                 </p>
             </div>
-
             <div class="bg-white border border-[#dce3ed] rounded-xl p-5 mb-5 space-y-2">
                 <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-2">Before You Can Archive</p>
                 <div class="flex items-center gap-2 text-[12px] font-semibold text-[#374f6b]">
@@ -1395,7 +1255,6 @@ function renderArchiveTab() {
                     Teacher must have no active students in the current term
                 </div>
             </div>
-
             <button onclick="window.initiateArchive()"
                 class="w-full bg-[#e31b4a] hover:bg-[#be123c] text-white font-bold py-4 rounded-xl transition shadow-md text-[13px] uppercase tracking-widest flex items-center justify-center gap-2">
                 <i class="fa-solid fa-box-archive"></i> Initiate Archive Process
@@ -1410,21 +1269,16 @@ window.initiateArchive = async () => {
                 where('teacherId', '==', currentTeacherId),
                 where('currentSchoolId', '==', session.schoolId))
         );
-        const activeStudents = studentsSnap.docs
-            .map(d => d.data())
-            .filter(s => s.enrollmentStatus !== 'Archived');
+        const activeStudents = studentsSnap.docs.map(d => d.data()).filter(s => s.enrollmentStatus !== 'Archived');
 
         if (activeStudents.length > 0) {
             let termName = 'the current term';
             try {
-                const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
+                const schoolSnap  = await getDoc(doc(db, 'schools', session.schoolId));
                 const activeSemId = schoolSnap.exists() ? schoolSnap.data().activeSemesterId : null;
-
                 if (activeSemId) {
                     const semSnap = await getDoc(doc(db, 'schools', session.schoolId, 'semesters', activeSemId));
-                    if (semSnap.exists()) {
-                        termName = semSnap.data().name || termName;
-                    }
+                    if (semSnap.exists()) termName = semSnap.data().name || termName;
                 }
             } catch (_) {}
 
@@ -1432,14 +1286,12 @@ window.initiateArchive = async () => {
                 `<strong>${escHtml(currentTeacherData?.name)}</strong> currently has
                  <strong>${activeStudents.length} active student${activeStudents.length !== 1 ? 's' : ''}</strong>
                  in <strong>${escHtml(termName)}</strong>.<br><br>
-                 You must go to the main Students tab to reassign these students before you can archive this teacher.`;
+                 You must reassign these students before archiving this teacher.`;
             openOverlay('archiveBlockedModal', 'archiveBlockedModalInner');
             return;
         }
 
-        // Safe to proceed
         window.openExitModal();
-
     } catch (e) {
         console.error('[Teachers] initiateArchive:', e);
         alert('Error checking student data. Please try again.');
@@ -1447,7 +1299,6 @@ window.initiateArchive = async () => {
 };
 
 window.closeArchiveBlockedModal = () => closeOverlay('archiveBlockedModal', 'archiveBlockedModalInner');
-
 
 // ── 14. EXIT EVALUATION MODAL ─────────────────────────────────────────────
 window.openExitModal = () => {
@@ -1473,13 +1324,87 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
     btn.disabled  = true;
 
     try {
+        const t = currentTeacherData;
+
+        // ── Compute teaching history snapshot ─────────────────────────────
+        let semesterId   = '';
+        let semesterName = '';
+        let subjectAverages = {};
+        let studentCount    = 0;
+
+        try {
+            // Get active semester
+            const schoolSnap  = await getDoc(doc(db, 'schools', session.schoolId));
+            const activeSemId = schoolSnap.exists() ? schoolSnap.data().activeSemesterId : null;
+
+            if (activeSemId) {
+                const semSnap = await getDoc(doc(db, 'schools', session.schoolId, 'semesters', activeSemId));
+                if (semSnap.exists()) {
+                    semesterId   = activeSemId;
+                    semesterName = semSnap.data().name || '';
+                }
+            }
+
+            // Get all students this teacher had
+            const studSnap = await getDocs(
+                query(collection(db, 'students'),
+                    where('teacherId', '==', currentTeacherId),
+                    where('currentSchoolId', '==', session.schoolId))
+            );
+            const studentIds = studSnap.docs.map(d => d.id);
+            studentCount     = studentIds.length;
+
+            // Fetch all grades for this term across all students
+            if (studentIds.length && semesterId) {
+                const gradePromises = studentIds.map(sid =>
+                    getDocs(query(
+                        collection(db, 'students', sid, 'grades'),
+                        where('schoolId',   '==', session.schoolId),
+                        where('semesterId', '==', semesterId)
+                    ))
+                );
+                const gradeResults = await Promise.all(gradePromises);
+
+                const allGrades = [];
+                gradeResults.forEach(snap => snap.forEach(d => allGrades.push(d.data())));
+
+                // Group by subject and compute average
+                const gradeTypes = t.gradeTypes || t.customGradeTypes || ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
+                const bySubject  = {};
+                allGrades.forEach(g => {
+                    if (!g.subject || !g.max) return;
+                    if (!bySubject[g.subject]) bySubject[g.subject] = [];
+                    bySubject[g.subject].push(g);
+                });
+
+                Object.entries(bySubject).forEach(([subject, grades]) => {
+                    subjectAverages[subject] = Math.round(calculateWeightedAverage(grades, gradeTypes));
+                });
+            }
+        } catch (snapErr) {
+            console.warn('[Teachers] snapshot computation warning:', snapErr.message);
+        }
+
+        const teachingSnapshot = {
+            schoolId:       session.schoolId,
+            semesterId,
+            semesterName,
+            classes:        getTeacherClasses(t),
+            subjects:       getSubjectNames(t.subjects),
+            studentCount,
+            subjectAverages,  // { Mathematics: 78, Science: 65, ... }
+            snapshotDate:   new Date().toISOString()
+        };
+
+        // ── Batch: archive teacher + file exit eval + append snapshot ─────
         const batch   = writeBatch(db);
         const tRef    = doc(db, 'teachers', currentTeacherId);
         const evalRef = doc(collection(db, 'teachers', currentTeacherId, 'evaluations'));
 
         batch.update(tRef, {
             currentSchoolId:   '',
-            archivedSchoolIds: arrayUnion(session.schoolId)
+            archivedSchoolIds: arrayUnion(session.schoolId),
+            teachingHistory:   arrayUnion(teachingSnapshot)   // ← snapshot appended
         });
 
         batch.set(evalRef, {
@@ -1507,41 +1432,64 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
     btn.disabled  = false;
 });
 
-
 // ── 15. TEACHER PORTFOLIO PRINT ───────────────────────────────────────────
 window.printTeacherPortfolio = async (tId) => {
-    const t = currentTeacherData; 
+    const t = currentTeacherData;
     if (!t || t.id !== tId) return;
 
     const w = window.open('', '_blank');
     w.document.write('<div style="font-family: sans-serif; padding: 40px; color: #64748b;">Generating National Portfolio Data...</div>');
 
     try {
-        // Fetch evaluations
         const evalSnap = await getDocs(query(collection(db, 'teachers', tId, 'evaluations'), where('schoolId', '==', session.schoolId)));
-        const evals = evalSnap.docs.map(d => d.data()).sort((a, b) => new Date(b.timestamp || b.date || 0) - new Date(a.timestamp || a.date || 0));
-        
-        // Fetch Active Students
-        const studSnap = await getDocs(query(collection(db, 'students'), where('teacherId', '==', tId), where('currentSchoolId', '==', session.schoolId), where('enrollmentStatus', '==', 'Active')));
-        const students = studSnap.docs.map(d => d.data());
-        
-        // Setup blocks
-        const schoolName = session.schoolName || session.schoolId || 'ConnectUs School';
+        const evals    = evalSnap.docs.map(d => d.data()).sort((a, b) => new Date(b.timestamp || b.date || 0) - new Date(a.timestamp || a.date || 0));
+
+        const studSnap  = await getDocs(query(collection(db, 'students'), where('teacherId', '==', tId), where('currentSchoolId', '==', session.schoolId), where('enrollmentStatus', '==', 'Active')));
+        const students  = studSnap.docs.map(d => d.data());
+
+        const schoolName      = session.schoolName || session.schoolId || 'ConnectUs School';
         const classesAssigned = getTeacherClasses(t).join(', ') || 'None';
         const subjectsAssigned = getSubjectNames(t.subjects).join(', ') || 'None';
 
-        const evalsHtml = evals.length === 0 
-            ? `<p style="color:#94a3b8; font-style:italic;">No formal evaluations filed at this institution.</p>` 
+        // Teaching history section
+        const history = t.teachingHistory || [];
+        const historyHtml = history.length === 0
+            ? `<p style="color:#94a3b8;font-style:italic;">No prior school history recorded yet.</p>`
+            : history.map(h => {
+                const avgEntries = Object.entries(h.subjectAverages || {});
+                return `
+                <div style="border:1px solid #e2e8f0;border-radius:8px;padding:15px;margin-bottom:12px;background:#f8fafc;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <div style="font-size:13px;font-weight:bold;color:#0f172a;">
+                            ${escHtml(h.schoolId)} · ${escHtml(h.semesterName || '—')}
+                        </div>
+                        <div style="font-size:11px;color:#64748b;font-weight:600;">
+                            ${h.studentCount || 0} students · ${escHtml((h.classes || []).join(', '))}
+                        </div>
+                    </div>
+                    ${avgEntries.length ? `
+                        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
+                            ${avgEntries.map(([subj, avg]) =>
+                                `<span style="font-size:11px;font-weight:700;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:3px 10px;color:#0f172a;">
+                                    ${escHtml(subj)}: ${avg}%
+                                </span>`
+                            ).join('')}
+                        </div>` : ''}
+                </div>`;
+            }).join('');
+
+        const evalsHtml = evals.length === 0
+            ? `<p style="color:#94a3b8;font-style:italic;">No formal evaluations filed at this institution.</p>`
             : evals.map(e => `
-                <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-bottom: 12px; background: #f8fafc;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
-                        <div style="font-size: 13px; font-weight: bold; color: #0f172a;">${escHtml(e.type || 'Evaluation')}</div>
-                        <div style="font-size: 12px; font-weight: bold; color: #2563eb;">Score: ${e.overallRating || e.performanceScore}/5</div>
+                <div style="border:1px solid #e2e8f0;border-radius:8px;padding:15px;margin-bottom:12px;background:#f8fafc;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <div style="font-size:13px;font-weight:bold;color:#0f172a;">${escHtml(e.type || 'Evaluation')}</div>
+                        <div style="font-size:12px;font-weight:bold;color:#2563eb;">Score: ${e.overallRating || e.performanceScore}/5</div>
                     </div>
-                    <div style="font-size: 11px; color: #64748b; margin-bottom: 8px;">
-                        Date: ${e.date || new Date(e.timestamp).toLocaleDateString()} ${e.reason ? `&nbsp; | &nbsp; Reason: ${escHtml(e.reason)}` : ''}
+                    <div style="font-size:11px;color:#64748b;margin-bottom:8px;">
+                        Date: ${e.date || new Date(e.timestamp).toLocaleDateString()} ${e.reason ? `| Reason: ${escHtml(e.reason)}` : ''}
                     </div>
-                    ${e.comments ? `<div style="font-size: 12px; color: #334155; line-height: 1.4; border-top: 1px solid #e2e8f0; padding-top: 8px;">${escHtml(e.comments)}</div>` : ''}
+                    ${e.comments ? `<div style="font-size:12px;color:#334155;line-height:1.4;border-top:1px solid #e2e8f0;padding-top:8px;">${escHtml(e.comments)}</div>` : ''}
                 </div>`).join('');
 
         const studentGroups = students.reduce((acc, s) => {
@@ -1551,79 +1499,66 @@ window.printTeacherPortfolio = async (tId) => {
             return acc;
         }, {});
 
-        const studentsHtml = students.length === 0 
-            ? `<p style="color:#94a3b8; font-style:italic;">No active students assigned to this teacher.</p>`
+        const studentsHtml = students.length === 0
+            ? `<p style="color:#94a3b8;font-style:italic;">No active students assigned.</p>`
             : Object.entries(studentGroups).map(([cName, sList]) => `
-                <h5 style="font-size: 12px; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin: 16px 0 8px;">${escHtml(cName)} (${sList.length} Students)</h5>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px;">
-                    ${sList.map(s => `<div style="font-size: 12px; padding: 8px; background: #fff; border: 1px solid #e2e8f0; border-radius: 4px;"><strong>${escHtml(s.name)}</strong> <span style="color:#94a3b8; font-family: monospace; float: right;">${s.id}</span></div>`).join('')}
-                </div>
-            `).join('');
+                <h5 style="font-size:12px;font-weight:bold;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin:16px 0 8px;">${escHtml(cName)} (${sList.length})</h5>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">
+                    ${sList.map(s => `<div style="font-size:12px;padding:8px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;"><strong>${escHtml(s.name)}</strong> <span style="color:#94a3b8;font-family:monospace;float:right;">${s.id}</span></div>`).join('')}
+                </div>`).join('');
 
-        const html = `<!DOCTYPE html>
-        <html>
-        <head>
-            <title>Teacher Portfolio - ${escHtml(t.name)}</title>
-            <style>
-                * { box-sizing: border-box; margin: 0; padding: 0; }
-                body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 48px 40px; color: #1e293b; line-height: 1.5; font-size: 13px; }
-                .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #0d1f35; padding-bottom: 18px; margin-bottom: 24px; }
-                .school-name { font-size: 20px; font-weight: 900; text-transform: uppercase; color: #0d1f35; }
-                .doc-type { font-size: 11px; font-weight: 700; color: #6b84a0; letter-spacing: 0.12em; text-transform: uppercase; margin-top: 3px; }
-                .section-title { font-size: 13px; font-weight: 900; background: #0d1f35; color: white; padding: 10px 16px; border-radius: 6px; letter-spacing: 0.05em; text-transform: uppercase; margin: 24px 0 14px; }
-                .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 24px; background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; }
-                .info-item label { display: block; font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; font-weight: 700; margin-bottom: 2px; }
-                .info-item span { font-size: 13px; font-weight: 700; color: #0f172a; }
-                .footer { margin-top: 40px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 14px; }
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <div>
-                    <img src="${session.logo || ''}" alt="${escHtml(schoolName)}" style="max-height:60px; object-fit:contain; margin-bottom:15px;" onerror="this.style.display='none'">
-                    <div class="school-name">${escHtml(schoolName)}</div>
-                    <div class="doc-type">Official Educator Portfolio</div>
-                </div>
-                <div style="text-align:right; font-size: 11px; color: #64748b;">
-                    <div style="font-weight: 700;">Printed Data</div>
-                    <div>${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
-                </div>
+        const html = `<!DOCTYPE html><html><head><title>Teacher Portfolio - ${escHtml(t.name)}</title>
+        <style>
+            * { box-sizing:border-box; margin:0; padding:0; }
+            body { font-family:'Helvetica Neue',Arial,sans-serif; padding:48px 40px; color:#1e293b; line-height:1.5; font-size:13px; }
+            .header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #0d1f35; padding-bottom:18px; margin-bottom:24px; }
+            .school-name { font-size:20px; font-weight:900; text-transform:uppercase; color:#0d1f35; }
+            .doc-type { font-size:11px; font-weight:700; color:#6b84a0; letter-spacing:0.12em; text-transform:uppercase; margin-top:3px; }
+            .section-title { font-size:13px; font-weight:900; background:#0d1f35; color:white; padding:10px 16px; border-radius:6px; letter-spacing:0.05em; text-transform:uppercase; margin:24px 0 14px; }
+            .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:24px; background:#f8fafc; padding:16px; border-radius:8px; border:1px solid #e2e8f0; }
+            .info-item label { display:block; font-size:9px; text-transform:uppercase; letter-spacing:0.1em; color:#64748b; font-weight:700; margin-bottom:2px; }
+            .info-item span { font-size:13px; font-weight:700; color:#0f172a; }
+            .footer { margin-top:40px; text-align:center; font-size:10px; color:#94a3b8; border-top:1px solid #e2e8f0; padding-top:14px; }
+        </style></head><body>
+        <div class="header">
+            <div>
+                <img src="${session.logo || ''}" alt="${escHtml(schoolName)}" style="max-height:60px;object-fit:contain;margin-bottom:15px;" onerror="this.style.display='none'">
+                <div class="school-name">${escHtml(schoolName)}</div>
+                <div class="doc-type">Official Educator Portfolio</div>
             </div>
-
-            <div class="info-grid">
-                <div class="info-item"><label>Teacher Name</label><span>${escHtml(t.name)}</span></div>
-                <div class="info-item"><label>Global Teacher ID</label><span style="font-family: monospace;">${escHtml(t.id)}</span></div>
-                <div class="info-item"><label>Email</label><span>${escHtml(t.email) || 'N/A'}</span></div>
-                <div class="info-item"><label>Phone</label><span>${escHtml(t.phone) || 'N/A'}</span></div>
-                <div class="info-item"><label>Employment Type</label><span>${escHtml(t.employmentType) || 'N/A'}</span></div>
-                <div class="info-item"><label>Profile Status</label><span>${isProfileComplete(t) ? 'Complete' : 'Incomplete'}</span></div>
+            <div style="text-align:right;font-size:11px;color:#64748b;">
+                <div style="font-weight:700;">Printed</div>
+                <div>${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
             </div>
-
-            <div class="section-title">Professional & Academic Credentials</div>
-            <div class="info-grid">
-                <div class="info-item"><label>License Number</label><span>${escHtml(t.teacherLicenseNumber) || 'N/A'}</span></div>
-                <div class="info-item"><label>License Type</label><span>${escHtml(t.licenseType) || 'N/A'}</span></div>
-                <div class="info-item"><label>Highest Education</label><span>${escHtml(t.highestEducationLevel) || 'N/A'}</span></div>
-                <div class="info-item"><label>Field of Study</label><span>${escHtml(t.fieldOfStudy) || 'N/A'}</span></div>
-            </div>
-
-            <div class="section-title">Active Assignments</div>
-            <div class="info-grid">
-                <div class="info-item"><label>Assigned Classes</label><span>${escHtml(classesAssigned)}</span></div>
-                <div class="info-item"><label>Active Subjects</label><span>${escHtml(subjectsAssigned)}</span></div>
-            </div>
-
-            <div class="section-title">Evaluation History</div>
-            <div>${evalsHtml}</div>
-
-            <div class="section-title">Active Student Roster</div>
-            <div>${studentsHtml}</div>
-
-            <div class="footer">
-                Issued by ${escHtml(schoolName)} · Powered by ConnectUs
-            </div>
-        </body>
-        </html>`;
+        </div>
+        <div class="info-grid">
+            <div class="info-item"><label>Teacher Name</label><span>${escHtml(t.name)}</span></div>
+            <div class="info-item"><label>Global Teacher ID</label><span style="font-family:monospace;">${escHtml(t.id)}</span></div>
+            <div class="info-item"><label>Email</label><span>${escHtml(t.email) || 'N/A'}</span></div>
+            <div class="info-item"><label>Phone</label><span>${escHtml(t.phone) || 'N/A'}</span></div>
+            <div class="info-item"><label>Employment Type</label><span>${escHtml(t.employmentType) || 'N/A'}</span></div>
+            <div class="info-item"><label>Profile Status</label><span>${isProfileComplete(t) ? 'Complete' : 'Incomplete'}</span></div>
+        </div>
+        <div class="section-title">Professional & Academic Credentials</div>
+        <div class="info-grid">
+            <div class="info-item"><label>License Number</label><span>${escHtml(t.teacherLicenseNumber) || 'N/A'}</span></div>
+            <div class="info-item"><label>License Type</label><span>${escHtml(t.licenseType) || 'N/A'}</span></div>
+            <div class="info-item"><label>Highest Education</label><span>${escHtml(t.highestEducationLevel) || 'N/A'}</span></div>
+            <div class="info-item"><label>Field of Study</label><span>${escHtml(t.fieldOfStudy) || 'N/A'}</span></div>
+        </div>
+        <div class="section-title">Current Assignments</div>
+        <div class="info-grid">
+            <div class="info-item"><label>Assigned Classes</label><span>${escHtml(classesAssigned)}</span></div>
+            <div class="info-item"><label>Active Subjects</label><span>${escHtml(subjectsAssigned)}</span></div>
+        </div>
+        <div class="section-title">Teaching History (Career Passport)</div>
+        <div>${historyHtml}</div>
+        <div class="section-title">Evaluation History</div>
+        <div>${evalsHtml}</div>
+        <div class="section-title">Active Student Roster</div>
+        <div>${studentsHtml}</div>
+        <div class="footer">Issued by ${escHtml(schoolName)} · Powered by ConnectUs</div>
+        </body></html>`;
 
         w.document.open();
         w.document.write(html);
@@ -1632,10 +1567,9 @@ window.printTeacherPortfolio = async (tId) => {
 
     } catch (err) {
         console.error('[Teachers] Portfolio print error:', err);
-        w.document.body.innerHTML = `<p style="color: red; padding: 40px; font-family: sans-serif;">Failed to generate portfolio data.</p>`;
+        w.document.body.innerHTML = `<p style="color:red;padding:40px;font-family:sans-serif;">Failed to generate portfolio data.</p>`;
     }
 };
-
 
 // ── 16. CSV EXPORT ────────────────────────────────────────────────────────
 document.getElementById('exportCsvBtn').addEventListener('click', () => {
@@ -1643,30 +1577,26 @@ document.getElementById('exportCsvBtn').addEventListener('click', () => {
         ['Global ID', 'Name', 'Email', 'Phone', 'Classes', 'Active Subjects', 'Students', 'License #', 'License Type', 'Employment Type', 'Education Level', 'Profile Complete'],
         ...allTeachersCache.map(t => [
             t.id,
-            t.name               || '',
-            t.email              || '',
-            t.phone              || '',
+            t.name                  || '',
+            t.email                 || '',
+            t.phone                 || '',
             getTeacherClasses(t).join(' | '),
             getSubjectNames(t.subjects).join(' | '),
-            t.studentCount       || 0,
-            t.teacherLicenseNumber || '',
-            t.licenseType        || '',
-            t.employmentType     || '',
+            t.studentCount          || 0,
+            t.teacherLicenseNumber  || '',
+            t.licenseType           || '',
+            t.employmentType        || '',
             t.highestEducationLevel || '',
             isProfileComplete(t) ? 'Yes' : 'No'
         ])
     ];
-    const csv = rows.map(r =>
-        r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')
-    ).join('\n');
-
-    const a = Object.assign(document.createElement('a'), {
+    const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const a   = Object.assign(document.createElement('a'), {
         href:     URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
         download: `${session.schoolId}_teachers_${new Date().toISOString().slice(0, 10)}.csv`
     });
     document.body.appendChild(a); a.click(); a.remove();
 });
-
 
 // ── BOOT ──────────────────────────────────────────────────────────────────
 loadTeachers();
