@@ -413,12 +413,27 @@ window.openStudentPanel = async function (studentId) {
         semSelect.innerHTML = rawSemesters.map(s => `<option value="${s.id}" ${s.id === activeId ? 'selected' : ''}>${s.name}</option>`).join('');
         if (!rawSemesters.length) semSelect.innerHTML = '<option value="">No Terms Found</option>';
 
-        // Build class filter from all unique className values across all grades
-        const classSet = [...new Set(currentStudentGradesCache.map(g => g.className).filter(Boolean))].sort();
+        // Build class filter from this student's actual enrollment history
+        const classSet = new Set();
+
+        // Current class
+        if (student?.className) classSet.add(student.className);
+
+        // Past classes from classHistory array
+        (student?.classHistory || []).forEach(h => {
+            if (h.fromClass) classSet.add(h.fromClass);
+            if (h.toClass)   classSet.add(h.toClass);
+        });
+
+        // Classes stamped on grade documents
+        currentStudentGradesCache.forEach(g => {
+            if (g.className) classSet.add(g.className);
+        });
+
         const classFilter = document.getElementById('sPanelFilterClass');
         if (classFilter) {
             classFilter.innerHTML = '<option value="">All Classes</option>' +
-                classSet.map(c => `<option value="${c}">${c}</option>`).join('');
+                [...classSet].sort().map(c => `<option value="${c}">${c}</option>`).join('');
             classFilter.value = '';
         }
 
