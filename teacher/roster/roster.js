@@ -24,14 +24,12 @@ let cachedEvaluations       = [];
 
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 
-// Star ratings for the regular eval modal (behavioral, end-of-year, academic progress)
 window.evalRatings = {
     academicMastery: 0, taskExecution: 0, engagement: 0,
     academicGrowth: 0, socialDynamics: 0, resilience: 0,
     ruleAdherence: 0, conflictResolution: 0, respectAuthority: 0
 };
 
-// Star ratings for the report card modal (separate from evalModal)
 window.rcRatings = {
     academicComprehension: 0, attitudeWork: 0, effortResilience: 0,
     participation: 0, organization: 0, behavior: 0, peerRelations: 0, punctualityRating: 0
@@ -382,8 +380,12 @@ window.searchStudentRegistry = async function() {
         </div>`;
 
     } catch (e) {
-        console.error('[Roster] searchStudentRegistry:', e);
-        resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;">Search failed. Try again.</div>`;
+        if (e.code === 'permission-denied') {
+            resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#9ab0c6;font-size:12px;font-weight:600;">No student found with that ID. Fill in the form below to create a new identity.</div>`;
+        } else {
+            console.error('[Roster] searchStudentRegistry:', e);
+            resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;">Search failed. Try again.</div>`;
+        }
     }
 
     btn.textContent = 'Search'; btn.disabled = false;
@@ -452,7 +454,7 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
             currentSchoolId: session.schoolId,
             enrollmentStatus: 'Active',
             securityQuestionsSet: false,
-            medicalNotes: '', academicHistory: [],
+            medicalNotes: '', academicHistory: [], classHistory: [],
             createdAt:    new Date().toISOString()
         });
 
@@ -509,7 +511,6 @@ window.openStudentPanel = async function(studentId) {
 
     openOverlay('studentPanel', 'studentPanelInner');
 
-    // Populate class selector (only editable field)
     const classSel = document.getElementById('editSClass');
     const classes  = getClasses().filter(Boolean);
     classSel.innerHTML = classes.map(c =>
@@ -520,7 +521,6 @@ window.openStudentPanel = async function(studentId) {
     document.getElementById('editSClassReason').value = '';
     document.getElementById('editClassMsg').classList.add('hidden');
 
-    // Build read-only profile info
     document.getElementById('sInfoGrid').innerHTML = [
         ['Name',         student?.name         || '—'],
         ['Global ID',    student?.id           || '—'],
@@ -599,7 +599,6 @@ window.renderStudentGrades = function() {
         const hdBg    = avgR >= 90 ? '#dcfce7' : avgR >= 80 ? '#dbeafe' : avgR >= 70 ? '#ccfbf1' : avgR >= 65 ? '#fef3c7' : '#fee2e2';
         const hdBd    = avgR >= 90 ? '#bbf7d0' : avgR >= 80 ? '#bfdbfe' : avgR >= 70 ? '#99f6e4' : avgR >= 65 ? '#fde68a' : '#fecaca';
 
-        // Accordions start COLLAPSED (no 'open' class)
         return `<div style="border:1px solid #dce3ed;border-radius:4px;overflow:hidden;background:#fff;">
             <div onclick="window.toggleAccordion(this)" style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;cursor:pointer;background:#fff;" onmouseover="this.style.background='#f8fafb'" onmouseout="this.style.background='#fff'">
                 <div style="display:flex;align-items:center;gap:12px;"><div style="width:32px;height:32px;border-radius:4px;background:#0d1f35;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;">${escHtml(subject.charAt(0))}</div><div><p style="font-size:13px;font-weight:700;color:#0d1f35;margin:0;">${escHtml(subject)}</p><p style="font-size:10.5px;color:#9ab0c6;font-weight:400;margin:0;">${grades.length} assessment${grades.length!==1?'s':''}</p></div></div>
@@ -626,23 +625,36 @@ window.checkClassChange = function() {
 };
 
 window.saveStudentClass = async function() {
-    const btn        = document.getElementById('saveClassBtn');
-    const newClass   = document.getElementById('editSClass').value;
-    const origClass  = document.getElementById('editSClass').dataset.original;
-    const reason     = document.getElementById('editSClassReason').value.trim();
+    const btn       = document.getElementById('saveClassBtn');
+    const newClass  = document.getElementById('editSClass').value;
+    const origClass = document.getElementById('editSClass').dataset.original;
+    const reason    = document.getElementById('editSClassReason').value.trim();
 
     if (newClass !== origClass && origClass !== '' && !reason) {
         showMsg('editClassMsg', 'Please provide a reason for the class change.', true); return;
     }
 
     btn.textContent = 'Saving…'; btn.disabled = true;
+
     try {
         const u = { className: newClass };
+
         if (newClass !== origClass && origClass !== '') {
             u.lastClassChangeReason = reason;
             u.lastClassChangeDate   = new Date().toISOString();
+
+            // ── Append to classHistory for passport tracking ───────────────
+            u.classHistory = arrayUnion({
+                fromClass: origClass,
+                toClass:   newClass,
+                changedAt: new Date().toISOString(),
+                reason,
+                schoolId:  session.schoolId
+            });
         }
+
         await updateDoc(doc(db, 'students', currentStudentId), u);
+
         const idx = allStudentsCache.findIndex(s => s.id === currentStudentId);
         if (idx !== -1) allStudentsCache[idx].className = newClass;
         document.getElementById('editSClass').dataset.original = newClass;
@@ -656,6 +668,7 @@ window.saveStudentClass = async function() {
         console.error('[Roster] saveStudentClass:', e);
         showMsg('editClassMsg', 'Error saving. Please try again.', true);
     }
+
     btn.textContent = 'Save Class'; btn.disabled = false;
 };
 
@@ -692,7 +705,7 @@ window.sendPinResetEmail = async function() {
     }
 };
 
-// ── 11. EVALUATIONS — REGULAR (BEHAVIORAL / EOY / ACADEMIC PROGRESS) ─────────
+// ── 11. EVALUATIONS ───────────────────────────────────────────────────────────
 window.buildStarGroups = function() {
     document.querySelectorAll('.rating-row').forEach(row => {
         const field = row.dataset.field;
@@ -851,7 +864,7 @@ window.loadStudentEvaluations = async function(studentId) {
     }
 };
 
-// ── 12. REPORT CARD MODAL (GENERATE REPORT CARD FLOW) ────────────────────────
+// ── 12. REPORT CARD ───────────────────────────────────────────────────────────
 window.buildRcStarGroups = function() {
     document.querySelectorAll('.rc-rating-row').forEach(row => {
         const field = row.dataset.field;
@@ -885,18 +898,14 @@ window.setRcRating = function(field, val) {
 };
 
 window.openReportCardModal = function() {
-    // Reset ratings
     Object.keys(window.rcRatings).forEach(k => { window.rcRatings[k] = 0; });
-    
-    // Reset fields
     ['rcTotalSessions','rcDaysAbsent','rcDaysLate','rcComment'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
     });
 
-    // Populate semester dropdown from rawSemesters
-    const rcSem     = document.getElementById('rcSemester');
+    const rcSem        = document.getElementById('rcSemester');
     const activeSemVal = document.getElementById('activeSemester')?.value;
-    rcSem.innerHTML = '';
+    rcSem.innerHTML    = '';
     rawSemesters.forEach(s => {
         const opt = document.createElement('option');
         opt.value = s.id; opt.textContent = s.name;
@@ -905,8 +914,6 @@ window.openReportCardModal = function() {
     });
 
     openOverlay('reportCardModal', 'reportCardModalInner');
-
-    // Build stars after modal is visible
     window.buildRcStarGroups();
 };
 
@@ -918,8 +925,6 @@ window.saveAndGenerateReportCard = async function() {
     const btn     = document.getElementById('btnSaveGenerate');
 
     if (!semId) { alert('Please select a grading period.'); return; }
-
-    // Validate all 8 ratings
     if (Object.values(window.rcRatings).some(v => !v)) {
         alert('Please complete all 8 Behavior & Work Habit ratings before generating the report card.');
         return;
@@ -929,14 +934,14 @@ window.saveAndGenerateReportCard = async function() {
     btn.disabled  = true;
 
     const payload = {
-        type:        'academic_report_card',
-        schoolId:    session.schoolId,
-        teacherId:   session.teacherId,
-        teacherName: session.teacherData.name,
-        semesterId:  semId,
+        type:         'academic_report_card',
+        schoolId:     session.schoolId,
+        teacherId:    session.teacherId,
+        teacherName:  session.teacherData.name,
+        semesterId:   semId,
         semesterName: semName,
-        date:        new Date().toISOString().split('T')[0],
-        createdAt:   new Date().toISOString(),
+        date:         new Date().toISOString().split('T')[0],
+        createdAt:    new Date().toISOString(),
         attendance: {
             totalSessions: parseInt(document.getElementById('rcTotalSessions').value) || 0,
             daysAbsent:    parseInt(document.getElementById('rcDaysAbsent').value)    || 0,
@@ -947,7 +952,6 @@ window.saveAndGenerateReportCard = async function() {
     };
 
     try {
-        // 1 per term — overwrite if regenerated
         await setDoc(doc(db, 'students', currentStudentId, 'evaluations', `${currentStudentId}_${semId}_rc`), payload);
         await window.loadStudentEvaluations(currentStudentId);
         window.closeReportCardModal();
@@ -977,7 +981,6 @@ function generateFormalReportCardPDF(ev, semName) {
         ? calculateWeightedAverage(currentStudentGradesCache, session.teacherData.gradeTypes || getGradeTypes())
         : 0;
     const gpaLetter = cumulativeAvg > 0 ? letterGrade(cumulativeAvg) : 'N/A';
-
     const r2l = v => v >= 5 ? 'E' : v === 4 ? 'D' : v === 3 ? 'B' : v > 0 ? 'I' : '—';
 
     const gradesHtml = Object.keys(bySub).length === 0
@@ -991,93 +994,67 @@ function generateFormalReportCardPDF(ev, semName) {
             </tr>`;
         }).join('');
 
-    const html = `<!DOCTYPE html>
-<html>
-<head>
-<title>Official Report Card — ${escHtml(student.name)}</title>
+    const html = `<!DOCTYPE html><html><head><title>Report Card — ${escHtml(student.name)}</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
-body { font-family:'Nunito',sans-serif; padding:40px; color:#0f172a; line-height:1.5; margin:0 auto; max-width:8.5in; }
-.header-flex { display:flex; justify-content:space-between; align-items:flex-end; border-bottom:3px solid #1e1b4b; padding-bottom:20px; margin-bottom:20px; }
-.logo { max-height:80px; max-width:250px; object-fit:contain; }
-.header-text { text-align:right; }
-.header-text h1 { margin:0 0 5px; font-size:26px; font-weight:900; text-transform:uppercase; color:#1e1b4b; }
-.header-text h2 { margin:0; font-size:14px; color:#64748b; font-weight:700; letter-spacing:2px; }
-.student-info { display:flex; justify-content:space-between; background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:15px 20px; margin-bottom:30px; }
-.student-info div { display:flex; flex-direction:column; gap:4px; }
-.info-label { font-size:10px; text-transform:uppercase; color:#64748b; font-weight:800; letter-spacing:1px; }
-.info-value { font-size:16px; font-weight:800; color:#0f172a; }
-.grid-container { display:grid; grid-template-columns:1fr 1fr; gap:30px; margin-bottom:30px; }
-h3 { font-size:14px; text-transform:uppercase; letter-spacing:1px; color:#1e1b4b; border-bottom:2px solid #1e1b4b; padding-bottom:8px; margin-top:0; margin-bottom:12px; }
-table { width:100%; border-collapse:collapse; font-size:13px; margin-bottom:20px; }
-th { background:#f1f5f9; color:#475569; padding:10px 15px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:1px; border-bottom:2px solid #cbd5e1; }
-th.c { text-align:center; }
-td { border-bottom:1px solid #e2e8f0; padding:10px 15px; color:#334155; }
-.legend { font-size:11px; color:#64748b; font-weight:700; display:flex; justify-content:space-between; background:#f8fafc; padding:8px 12px; border-radius:6px; margin-bottom:15px; }
-.attendance-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:20px; }
-.att-card { background:#f8fafc; border:1px solid #cbd5e1; padding:10px; text-align:center; border-radius:6px; }
-.att-lbl { display:block; font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase; }
-.att-val { font-size:18px; font-weight:900; color:#1e1b4b; }
-.comments-box { border:1px solid #cbd5e1; border-radius:8px; padding:15px; background:#fff; min-height:80px; }
-.comments-label { font-size:11px; font-weight:800; color:#1e1b4b; text-transform:uppercase; margin-bottom:8px; display:block; }
-.footer-sigs { display:grid; grid-template-columns:1fr 1fr; gap:40px; margin-top:50px; }
-.sig-line { border-top:1px solid #000; padding-top:8px; font-size:12px; font-weight:700; text-align:center; color:#1e1b4b; }
-</style>
-</head>
-<body>
-<div class="header-flex">
-    <img src="${session.logo || ''}" alt="${escHtml(schoolName)}" class="logo" onerror="this.style.display='none'">
-    <div class="header-text">
-        <h1>${escHtml(schoolName)}</h1>
-        <h2>OFFICIAL TERM REPORT CARD</h2>
-    </div>
+body{font-family:'Nunito',sans-serif;padding:40px;color:#0f172a;line-height:1.5;margin:0 auto;max-width:8.5in;}
+.hf{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #1e1b4b;padding-bottom:20px;margin-bottom:20px;}
+.logo{max-height:80px;max-width:250px;object-fit:contain;}.ht{text-align:right;}
+.ht h1{margin:0 0 5px;font-size:26px;font-weight:900;text-transform:uppercase;color:#1e1b4b;}
+.ht h2{margin:0;font-size:14px;color:#64748b;font-weight:700;letter-spacing:2px;}
+.si{display:flex;justify-content:space-between;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:15px 20px;margin-bottom:30px;}
+.si div{display:flex;flex-direction:column;gap:4px;}
+.il{font-size:10px;text-transform:uppercase;color:#64748b;font-weight:800;letter-spacing:1px;}
+.iv{font-size:16px;font-weight:800;color:#0f172a;}
+.gc{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-bottom:30px;}
+h3{font-size:14px;text-transform:uppercase;letter-spacing:1px;color:#1e1b4b;border-bottom:2px solid #1e1b4b;padding-bottom:8px;margin-top:0;margin-bottom:12px;}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px;}
+th{background:#f1f5f9;color:#475569;padding:10px 15px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:1px;border-bottom:2px solid #cbd5e1;}
+th.c{text-align:center;}td{border-bottom:1px solid #e2e8f0;padding:10px 15px;color:#334155;}
+.lg{font-size:11px;color:#64748b;font-weight:700;display:flex;justify-content:space-between;background:#f8fafc;padding:8px 12px;border-radius:6px;margin-bottom:15px;}
+.ag{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px;}
+.ac{background:#f8fafc;border:1px solid #cbd5e1;padding:10px;text-align:center;border-radius:6px;}
+.al{display:block;font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;}
+.av{font-size:18px;font-weight:900;color:#1e1b4b;}
+.cb{border:1px solid #cbd5e1;border-radius:8px;padding:15px;background:#fff;min-height:80px;}
+.cl{font-size:11px;font-weight:800;color:#1e1b4b;text-transform:uppercase;margin-bottom:8px;display:block;}
+.fs{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:50px;}
+.sl{border-top:1px solid #000;padding-top:8px;font-size:12px;font-weight:700;text-align:center;color:#1e1b4b;}
+</style></head><body>
+<div class="hf"><img src="${session.logo||''}" alt="${escHtml(schoolName)}" class="logo" onerror="this.style.display='none'">
+<div class="ht"><h1>${escHtml(schoolName)}</h1><h2>OFFICIAL TERM REPORT CARD</h2></div></div>
+<div class="si">
+<div><span class="il">Student Name</span><span class="iv">${escHtml(student.name)}</span></div>
+<div><span class="il">Class</span><span class="iv">${escHtml(student.className||'Unassigned')}</span></div>
+<div><span class="il">Academic Term</span><span class="iv">${escHtml(semName)}</span></div>
+<div><span class="il">Term Average</span><span class="iv">${cumulativeAvg}% (${gpaLetter})</span></div>
 </div>
-<div class="student-info">
-    <div><span class="info-label">Student Name</span><span class="info-value">${escHtml(student.name)}</span></div>
-    <div><span class="info-label">Class</span><span class="info-value">${escHtml(student.className || 'Unassigned')}</span></div>
-    <div><span class="info-label">Academic Term</span><span class="info-value">${escHtml(semName)}</span></div>
-    <div><span class="info-label">Term Average</span><span class="info-value">${cumulativeAvg}% (${gpaLetter})</span></div>
+<div class="gc">
+<div><h3>Academic Performance</h3>
+<table><thead><tr><th>Subject</th><th class="c">Term Avg</th><th class="c">Grade</th></tr></thead>
+<tbody>${gradesHtml}</tbody></table></div>
+<div><h3>Behavior &amp; Work Habits</h3>
+<div class="lg"><span>E—Exceptional</span><span>D—Developing</span><span>B—Beginning</span><span>I—Improvement</span></div>
+<table><tbody>
+<tr><td style="font-weight:700;">Academic Comprehension</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.academicComprehension)}</td></tr>
+<tr><td style="font-weight:700;">Attitude Towards Work</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.attitudeWork)}</td></tr>
+<tr><td style="font-weight:700;">Effort &amp; Resilience</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.effortResilience)}</td></tr>
+<tr><td style="font-weight:700;">Participation &amp; Engagement</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.participation)}</td></tr>
+<tr><td style="font-weight:700;">Organization &amp; Time Mgt</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.organization)}</td></tr>
+<tr><td style="font-weight:700;">Classroom Behaviour</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.behavior)}</td></tr>
+<tr><td style="font-weight:700;">Peer Relations &amp; Respect</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.peerRelations)}</td></tr>
+<tr><td style="font-weight:700;">Attendance &amp; Punctuality</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.punctualityRating)}</td></tr>
+</tbody></table>
+<div class="ag">
+<div class="ac"><span class="al">Sessions</span><span class="av">${ev.attendance.totalSessions}</span></div>
+<div class="ac"><span class="al">Absent</span><span class="av">${ev.attendance.daysAbsent}</span></div>
+<div class="ac"><span class="al">Late</span><span class="av">${ev.attendance.daysLate}</span></div>
 </div>
-<div class="grid-container">
-    <div>
-        <h3>Academic Performance</h3>
-        <table>
-            <thead><tr><th>Subject</th><th class="c">Term Avg</th><th class="c">Grade</th></tr></thead>
-            <tbody>${gradesHtml}</tbody>
-        </table>
-    </div>
-    <div>
-        <h3>Behavior &amp; Work Habits</h3>
-        <div class="legend"><span>E — Exceptional</span><span>D — Developing</span><span>B — Beginning</span><span>I — Improvement Needed</span></div>
-        <table>
-            <tbody>
-                <tr><td style="font-weight:700;">Academic Comprehension</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.academicComprehension)}</td></tr>
-                <tr><td style="font-weight:700;">Attitude Towards Work</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.attitudeWork)}</td></tr>
-                <tr><td style="font-weight:700;">Effort &amp; Resilience</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.effortResilience)}</td></tr>
-                <tr><td style="font-weight:700;">Participation &amp; Engagement</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.participation)}</td></tr>
-                <tr><td style="font-weight:700;">Organization &amp; Time Mgt</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.organization)}</td></tr>
-                <tr><td style="font-weight:700;">Classroom Behaviour</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.behavior)}</td></tr>
-                <tr><td style="font-weight:700;">Peer Relations &amp; Respect</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.peerRelations)}</td></tr>
-                <tr><td style="font-weight:700;">Attendance &amp; Punctuality</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.punctualityRating)}</td></tr>
-            </tbody>
-        </table>
-        <div class="attendance-grid">
-            <div class="att-card"><span class="att-lbl">Sessions</span><span class="att-val">${ev.attendance.totalSessions}</span></div>
-            <div class="att-card"><span class="att-lbl">Absent</span><span class="att-val">${ev.attendance.daysAbsent}</span></div>
-            <div class="att-card"><span class="att-lbl">Late</span><span class="att-val">${ev.attendance.daysLate}</span></div>
-        </div>
-        <div class="comments-box">
-            <span class="comments-label">Teacher's Comments</span>
-            <p style="margin:0;font-size:13px;color:#334155;white-space:pre-wrap;">${escHtml(ev.comment || 'No comments recorded.')}</p>
-        </div>
-    </div>
-</div>
-<div class="footer-sigs">
-    <div class="sig-line">Teacher's Signature &amp; Date</div>
-    <div class="sig-line">Principal's Signature &amp; Date</div>
-</div>
-</body>
-</html>`;
+<div class="cb"><span class="cl">Teacher's Comments</span>
+<p style="margin:0;font-size:13px;color:#334155;white-space:pre-wrap;">${escHtml(ev.comment||'No comments recorded.')}</p></div>
+</div></div>
+<div class="fs"><div class="sl">Teacher's Signature &amp; Date</div><div class="sl">Principal's Signature &amp; Date</div></div>
+</body></html>`;
 
     const w = window.open('', '_blank');
     w.document.write(html);
@@ -1088,14 +1065,14 @@ td { border-bottom:1px solid #e2e8f0; padding:10px 15px; color:#334155; }
 // ── 13. ASSIGNMENT MODAL ──────────────────────────────────────────────────────
 window.openAssignmentModal = function(gradeId) {
     const g = gradeDetailCache[gradeId]; if (!g) return;
-    const pct      = g.max ? Math.round(g.score/g.max*100) : null;
-    const fill     = gradeFill(pct||0);
-    const color    = pct>=90?'#065f46':pct>=80?'#1e3a8a':pct>=70?'#134e4a':pct>=65?'#78350f':'#7f1d1d';
-    const bg       = pct>=90?'#dcfce7':pct>=80?'#dbeafe':pct>=70?'#ccfbf1':pct>=65?'#fef3c7':'#fee2e2';
-    const bd       = pct>=90?'#bbf7d0':pct>=80?'#bfdbfe':pct>=70?'#99f6e4':pct>=65?'#fde68a':'#fecaca';
+    const pct       = g.max ? Math.round(g.score/g.max*100) : null;
+    const fill      = gradeFill(pct||0);
+    const color     = pct>=90?'#065f46':pct>=80?'#1e3a8a':pct>=70?'#134e4a':pct>=65?'#78350f':'#7f1d1d';
+    const bg        = pct>=90?'#dcfce7':pct>=80?'#dbeafe':pct>=70?'#ccfbf1':pct>=65?'#fef3c7':'#fee2e2';
+    const bd        = pct>=90?'#bbf7d0':pct>=80?'#bfdbfe':pct>=70?'#99f6e4':pct>=65?'#fde68a':'#fecaca';
     const adminNote = g.enteredByAdmin ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:12px;margin-bottom:12px;"><p style="font-size:9.5px;font-weight:700;text-transform:uppercase;color:#2563eb;margin:0 0 4px;">Admin Entry</p><p style="font-size:12px;color:#374f6b;margin:0;">Entered by ${escHtml(g.adminName||'Admin')}</p></div>` : '';
     document.getElementById('aModalTitle').textContent = g.title || 'Assessment Detail';
-    document.getElementById('aModalBody').innerHTML = `<div style="text-align:center;margin-bottom:20px;"><div style="font-size:42px;font-weight:700;color:${color};font-family:'DM Mono',monospace;line-height:1;">${g.score}<span style="font-size:20px;color:#9ab0c6;"> / ${g.max||'?'}</span></div>${pct!==null?`<div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-top:8px;"><span style="font-size:18px;font-weight:700;color:${color};font-family:'DM Mono',monospace;">${pct}%</span><span style="font-size:14px;font-weight:700;padding:4px 14px;border-radius:3px;background:${bg};border:1px solid ${bd};color:${color};">${letterGrade(pct)}</span></div><div style="margin:12px 20px 0;height:8px;background:#f0f4f8;border-radius:2px;overflow:hidden;"><div style="height:100%;width:${Math.min(pct,100)}%;background:${fill};transition:width 0.5s ease;"></div></div>`:''}</div>${adminNote}<div style="display:flex;flex-direction:column;gap:0;margin-bottom:16px;border:1px solid #e8edf2;border-radius:4px;overflow:hidden;">${[['Subject',g.subject||'—'],['Type',g.type||'—'],['Date',g.date||'—']].map(([l,v],i)=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;${i<2?'border-bottom:1px solid #f0f4f8;':''}background:#fff;"><span style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#9ab0c6;">${l}</span><span style="font-size:13px;font-weight:600;color:#0d1f35;">${escHtml(v)}</span></div>`).join('')}</div>${g.notes?`<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:14px;margin-bottom:14px;"><p style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#1e3a8a;margin:0 0 6px;">Notes</p><p style="font-size:12.5px;color:#374f6b;font-weight:400;margin:0;line-height:1.6;white-space:pre-wrap;">${escHtml(g.notes)}</p></div>`:''}`;
+    document.getElementById('aModalBody').innerHTML = `<div style="text-align:center;margin-bottom:20px;"><div style="font-size:42px;font-weight:700;color:${color};font-family:'DM Mono',monospace;line-height:1;">${g.score}<span style="font-size:20px;color:#9ab0c6;"> / ${g.max||'?'}</span></div>${pct!==null?`<div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-top:8px;"><span style="font-size:18px;font-weight:700;color:${color};font-family:'DM Mono',monospace;">${pct}%</span><span style="font-size:14px;font-weight:700;padding:4px 14px;border-radius:3px;background:${bg};border:1px solid ${bd};color:${color};">${letterGrade(pct)}</span></div><div style="margin:12px 20px 0;height:8px;background:#f0f4f8;border-radius:2px;overflow:hidden;"><div style="height:100%;width:${Math.min(pct,100)}%;background:${fill};transition:width 0.5s ease;"></div></div>`:''}</div>${adminNote}<div style="display:flex;flex-direction:column;gap:0;margin-bottom:16px;border:1px solid #e8edf2;border-radius:4px;overflow:hidden;">${[['Subject',g.subject||'—'],['Type',g.type||'—'],['Class',g.className||'—'],['Date',g.date||'—']].map(([l,v],i)=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;${i<3?'border-bottom:1px solid #f0f4f8;':''}background:#fff;"><span style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#9ab0c6;">${l}</span><span style="font-size:13px;font-weight:600;color:#0d1f35;">${escHtml(v)}</span></div>`).join('')}</div>${g.notes?`<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:14px;margin-bottom:14px;"><p style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#1e3a8a;margin:0 0 6px;">Notes</p><p style="font-size:12.5px;color:#374f6b;font-weight:400;margin:0;line-height:1.6;white-space:pre-wrap;">${escHtml(g.notes)}</p></div>`:''}`;
     openOverlay('assignmentModal', 'assignmentModalInner');
 };
 
@@ -1112,7 +1089,7 @@ window.archiveStudent = function() {
     openOverlay('archiveModal', 'archiveModalInner');
 };
 
-window.closeArchiveModal  = function() { closeOverlay('archiveModal', 'archiveModalInner'); };
+window.closeArchiveModal = function() { closeOverlay('archiveModal', 'archiveModalInner'); };
 
 window.toggleArchiveType = function() {
     const isRelease = document.getElementById('optRelease').checked;
@@ -1148,9 +1125,12 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
         }
 
         const snapshot = {
-            schoolId: session.schoolId, schoolName: session.schoolName || session.schoolId,
-            teacherId: s?.teacherId || '', className: s?.className || '',
-            leftAt: new Date().toISOString(), reason: historyReason,
+            schoolId:  session.schoolId,
+            schoolName: session.schoolName || session.schoolId,
+            teacherId:  s?.teacherId  || '',
+            className:  s?.className  || '',
+            leftAt:     new Date().toISOString(),
+            reason:     historyReason,
             ...(notes ? { notes } : {})
         };
 
@@ -1163,9 +1143,12 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
 
         if (leaveSchool) {
             batch.set(doc(collection(db, 'schools', session.schoolId, 'notifications')), {
-                type: 'student_enrollment_closed', studentId: currentStudentId,
-                studentName: s?.name || '', reason: historyReason,
-                closedBy: session.teacherData?.name || 'Teacher', closedAt: new Date().toISOString()
+                type:        'student_enrollment_closed',
+                studentId:   currentStudentId,
+                studentName: s?.name || '',
+                reason:      historyReason,
+                closedBy:    session.teacherData?.name || 'Teacher',
+                closedAt:    new Date().toISOString()
             });
         }
 
