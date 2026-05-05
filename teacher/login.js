@@ -1,5 +1,5 @@
 import { db, auth } from '../assets/js/firebase-init.js';
-import { collection, query, where, getDocs, getDoc, doc, updateDoc }
+import { doc, getDoc, updateDoc }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { signInWithCustomToken, signOut }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
@@ -33,16 +33,25 @@ const DEFAULT_SUBJECTS = [
 
 function genId() { return 'sub_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 5); }
 
+// ── SHA-256 (trim only — matches sha256Trim on the server) ────────────────────
+async function sha256Trim(text) {
+    const encoded    = new TextEncoder().encode(String(text).trim());
+    const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
+    return Array.from(new Uint8Array(hashBuffer))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+}
+
 // ── 1. MAIN LOGIN ─────────────────────────────────────────────────────────────
 document.getElementById('loginBtn').addEventListener('click', async () => {
     const rawId = document.getElementById('loginSchoolId').value.trim();
-    const code  = document.getElementById('loginTeacherCode').value.trim().toUpperCase();
+    const pin   = document.getElementById('loginTeacherCode').value.trim(); // raw — no casing, no hashing
     const msgEl = document.getElementById('loginMsg');
     const btn   = document.getElementById('loginBtn');
 
     msgEl.classList.add('hidden');
 
-    if (!rawId || !code) {
+    if (!rawId || !pin) {
         msgEl.textContent = 'Please enter both fields.';
         msgEl.classList.remove('hidden');
         return;
@@ -52,59 +61,35 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Authenticating...`;
 
     try {
-        let foundSchoolId = null;
-        let tId           = null;
-        let tData         = null;
-        isGlobalTeacher   = false;
-
-        // ── Try global /teachers ──────────────────────────────────────────────
-        // Query by schoolId ONLY (no composite index needed), filter PIN client-side
-        for (const schoolId of [rawId.toUpperCase(), rawId.toLowerCase(), rawId]) {
-            try {
-                const globalSnap = await getDocs(query(
-                    collection(db, 'teachers'),
-                    where('currentSchoolId', '==', schoolId)
-                ));
-
-                if (!globalSnap.empty) {
-                    const match = globalSnap.docs.find(d => d.data().pin === code);
-                    if (match) {
-                        foundSchoolId   = schoolId;
-                        tId             = match.id;
-                        tData           = match.data();
-                        isGlobalTeacher = true;
-                        break;
-                    }
-                }
-            } catch (e) {
-                console.warn('[Teacher Login] Global query failed for', schoolId, ':', e.message);
-            }
-        }
-
-        // ── Fall back to legacy siloed path ───────────────────────────────────
-        if (!foundSchoolId) {
-            for (const schoolId of [rawId.toUpperCase(), rawId.toLowerCase(), rawId]) {
-                try {
-                    const legacySnap = await getDocs(query(
-                        collection(db, 'schools', schoolId, 'teachers'),
-                        where('loginCode', '==', code)
-                    ));
-                    if (!legacySnap.empty) {
-                        foundSchoolId = schoolId;
-                        tId           = legacySnap.docs[0].id;
-                        tData         = legacySnap.docs[0].data();
-                        break;
-                    }
-                } catch (e) {
-                    console.warn('[Teacher Login] Legacy query failed for', schoolId, ':', e.message);
-                    continue;
-                }
-            }
-        }
-
-        // ── No match found — hard stop ────────────────────────────────────────
-        if (!foundSchoolId || !tData) {
+        // ── 1. CF IS THE GATEKEEPER — send raw PIN, server hashes and verifies ──
+        let authResult;
+        try {
+            authResult = await mintTeacherToken({ schoolId: rawId, pin });
+            await signInWithCustomToken(auth, authResult.data.token);
+        } catch (authError) {
+            console.error('[Teacher Login] Server rejected credentials:', authError);
             msgEl.textContent = 'Invalid School ID or Teacher Code.';
+            msgEl.classList.remove('hidden');
+            resetLoginBtn(btn);
+            return;
+        }
+
+        // ── 2. SERVER VERIFIED — now fetch teacher data ───────────────────────
+        const teacherId = authResult.data.teacherId;
+        const schoolId  = authResult.data.schoolId || rawId.toUpperCase();
+        isGlobalTeacher = !authResult.data.legacy;
+
+        let tData = null;
+        if (isGlobalTeacher) {
+            const tSnap = await getDoc(doc(db, 'teachers', teacherId));
+            tData = tSnap.exists() ? tSnap.data() : null;
+        } else {
+            const tSnap = await getDoc(doc(db, 'schools', schoolId, 'teachers', teacherId));
+            tData = tSnap.exists() ? tSnap.data() : null;
+        }
+
+        if (!tData) {
+            msgEl.textContent = 'Could not load teacher profile. Please try again.';
             msgEl.classList.remove('hidden');
             resetLoginBtn(btn);
             return;
@@ -117,38 +102,13 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
             return;
         }
 
-        const schoolSnap = await getDoc(doc(db, 'schools', foundSchoolId));
-        if (!schoolSnap.exists() || schoolSnap.data().isVerified !== true) {
-            msgEl.textContent = 'School account is pending approval.';
-            msgEl.classList.remove('hidden');
-            resetLoginBtn(btn);
-            return;
-        }
-
-        schoolType  = schoolSnap.data().schoolType || 'Primary';
-        tempSession = { schoolId: foundSchoolId, teacherId: tId, teacherData: tData };
-
-        // ── Mint Firebase Auth token ───────────────────────────────────────────
-        try {
-            const result = await mintTeacherToken({ schoolId: foundSchoolId, pin: code });
-            await signInWithCustomToken(auth, result.data.token);
-        } catch (e) {
-            console.error('[Teacher Login] mintTeacherToken failed:', e);
-            msgEl.textContent = 'Authentication service unavailable. Please try again.';
-            msgEl.classList.remove('hidden');
-            resetLoginBtn(btn);
-            return;
-        }
+        const schoolSnap = await getDoc(doc(db, 'schools', schoolId));
+        schoolType  = schoolSnap.data()?.schoolType || 'Primary';
+        tempSession = { schoolId, teacherId, teacherData: tData };
 
         // ── Check if PIN reset is required ────────────────────────────────────
         if (tData.requiresPinReset) {
             resetLoginBtn(btn);
-            const forceModal = document.getElementById('forceResetModal');
-            if (forceModal) {
-                forceModal.classList.add('open');
-                forceModal.style.opacity      = '1';
-                forceModal.style.pointerEvents = 'all';
-            }
             openOverlay('forceResetModal', 'forceResetModalInner');
         } else {
             await finalizeLogin();
@@ -182,13 +142,16 @@ document.getElementById('saveForceCodeBtn').addEventListener('click', async () =
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
 
     try {
+        // Hash before writing — plain text never touches Firestore
+        const hashedNew = await sha256Trim(n);
+
         if (isGlobalTeacher) {
             await updateDoc(doc(db, 'teachers', tempSession.teacherId), {
-                pin: n, requiresPinReset: false
+                pin: hashedNew, requiresPinReset: false
             });
         } else {
             await updateDoc(doc(db, 'schools', tempSession.schoolId, 'teachers', tempSession.teacherId), {
-                loginCode: n, requiresPinReset: false
+                loginCode: hashedNew, requiresPinReset: false
             });
         }
     } catch (e) {
@@ -202,18 +165,20 @@ document.getElementById('saveForceCodeBtn').addEventListener('click', async () =
 
     tempSession.teacherData.requiresPinReset = false;
 
-    const forceModal = document.getElementById('forceResetModal');
-    if (forceModal) {
-        forceModal.classList.remove('open');
-        forceModal.style.opacity      = '0';
-        forceModal.style.pointerEvents = 'none';
-    }
+    // UX: clear fields, close modal, prompt fresh login like admin does
+    document.getElementById('newForceCode').value    = '';
+    document.getElementById('confirmForceCode').value = '';
+    document.getElementById('loginTeacherCode').value = '';
+
     closeOverlay('forceResetModal', 'forceResetModalInner');
 
     btn.innerHTML = `Save & Continue <i class="fa-solid fa-arrow-right"></i>`;
     btn.disabled  = false;
 
-    setTimeout(async () => { await finalizeLogin(); }, 350);
+    // Show success and let them log in fresh with new PIN
+    const msgEl = document.getElementById('loginMsg');
+    msgEl.textContent = 'PIN updated successfully. Please log in with your new PIN.';
+    msgEl.classList.remove('hidden');
 });
 
 // ── 3. FINALIZE LOGIN (Routing) ───────────────────────────────────────────────
