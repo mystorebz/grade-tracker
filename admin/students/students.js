@@ -304,8 +304,13 @@ document.getElementById('saveAddStudentBtn')?.addEventListener('click', async ()
         let attempts = 0;
         do {
             studentId = generateStudentId();
-            const existing = await getDoc(doc(db, 'students', studentId));
-            if (!existing.exists()) break;
+            try {
+                const existing = await getDoc(doc(db, 'students', studentId));
+                if (!existing.exists()) break;
+            } catch (e) {
+                // permission-denied means doc doesn't exist — safe to use this ID
+                break;
+            }
             attempts++;
         } while (attempts < 5);
 
