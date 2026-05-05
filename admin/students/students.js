@@ -243,11 +243,17 @@ window.searchStudentRegistry = async function () {
         </div>`;
 
     } catch (e) {
-        console.error('[Search Registry]', e);
-        resultsEl.innerHTML = `<div class="py-3 px-4 text-xs font-bold text-red-500">Search failed. Please try again.</div>`;
+        if (e.code === 'permission-denied') {
+            resultsEl.innerHTML = `
+                <div class="py-3 px-4 text-xs font-semibold text-slate-500">
+                    No student found with that ID. Fill in the form below to create a new identity.
+                </div>`;
+        } else {
+            console.error('[Search Registry]', e);
+            resultsEl.innerHTML = `<div class="py-3 px-4 text-xs font-bold text-red-500">Search failed. Please try again.</div>`;
+        }
+        searchBtn.disabled = false;
     }
-
-    searchBtn.disabled = false;
 };
 
 // ── Claim an existing student ─────────────────────────────────────────────
