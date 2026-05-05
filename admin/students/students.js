@@ -22,10 +22,10 @@ const CLASSES = {
     'Junior College': ['Year 1', 'Year 2']
 };
 
-const tbody             = document.getElementById('studentsTableBody');
-const filterClassSelect = document.getElementById('filterStudentClass');
+const tbody              = document.getElementById('studentsTableBody');
+const filterClassSelect  = document.getElementById('filterStudentClass');
 const filterTeacherSelect = document.getElementById('filterStudentTeacher');
-const searchInput       = document.getElementById('searchInput');
+const searchInput        = document.getElementById('searchInput');
 
 // ── 3. HELPERS ────────────────────────────────────────────────────────────
 function generateStudentId() {
@@ -57,7 +57,7 @@ async function loadData() {
     try {
         const [sSnap, tSnap] = await Promise.all([
             getDocs(query(collection(db, 'students'), where('currentSchoolId', '==', session.schoolId))),
-            getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId)))
+            getDocs(query(collection(db, 'teachers'),  where('currentSchoolId', '==', session.schoolId)))
         ]);
 
         const tm = {};
@@ -108,7 +108,9 @@ function renderTable() {
     }
 
     tbody.innerHTML = filtered.map(s => {
-        const classBadge   = s.className ? s.className : '<span class="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase">Unassigned</span>';
+        const classBadge   = s.className
+            ? s.className
+            : '<span class="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase">Unassigned</span>';
         const displayStyle = (s.name || '').toLowerCase().includes(term) || s.id.toLowerCase().includes(term) ? '' : 'display:none;';
 
         return `
@@ -138,15 +140,24 @@ filterClassSelect?.addEventListener('change', renderTable);
 filterTeacherSelect?.addEventListener('change', renderTable);
 searchInput?.addEventListener('input', renderTable);
 
-// ── 6. ADD STUDENT (Identity Only — no class/teacher) ─────────────────────
+// ── 6. ADD STUDENT MODAL (Search + Create combined) ───────────────────────
 window.openAddStudentModal = function () {
     const limit = session.studentLimit || 50;
     if (allStudentsCache.length >= limit) {
         alert(`You have reached your student limit of ${limit}. Please contact ConnectUs to upgrade your plan.`);
         return;
     }
+
+    // Reset search
+    document.getElementById('sSearchQuery').value = '';
+    document.getElementById('sSearchResults').innerHTML = '';
+    document.getElementById('sSearchResults').classList.add('hidden');
+
+    // Reset create form
     document.getElementById('asForm').reset();
     document.getElementById('asMsg').classList.add('hidden');
+    document.getElementById('asCreateSection').classList.add('hidden');
+
     openOverlay('addStudentModal', 'addStudentModalInner');
 };
 
@@ -154,6 +165,115 @@ window.closeAddStudentModal = function () {
     closeOverlay('addStudentModal', 'addStudentModalInner');
 };
 
+// Allow Enter key in search
+document.getElementById('sSearchQuery')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') window.searchStudentRegistry();
+});
+
+// ── Search the national registry ──────────────────────────────────────────
+window.searchStudentRegistry = async function () {
+    const rawId     = (document.getElementById('sSearchQuery').value || '').trim().toUpperCase();
+    const resultsEl = document.getElementById('sSearchResults');
+
+    resultsEl.classList.remove('hidden');
+
+    if (!rawId) {
+        resultsEl.innerHTML = `<div class="py-3 px-4 text-xs font-bold text-red-500">Please enter a Student ID.</div>`;
+        return;
+    }
+
+    if (!/^S\d{2}-[A-Z0-9]{5}$/.test(rawId)) {
+        resultsEl.innerHTML = `<div class="py-3 px-4 text-xs font-bold text-red-500">Invalid format. Should look like S26-XXXXX.</div>`;
+        return;
+    }
+
+    resultsEl.innerHTML = `<div class="py-3 px-4 text-xs font-semibold text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Searching national registry...</div>`;
+
+    const searchBtn    = document.getElementById('sSearchBtn');
+    searchBtn.disabled = true;
+
+    try {
+        const snap = await getDoc(doc(db, 'students', rawId));
+
+        if (!snap.exists()) {
+            // Not found — prompt to create new
+            resultsEl.innerHTML = `
+                <div class="py-3 px-4 text-xs font-semibold text-slate-500">
+                    No student found with that ID. Fill in the form below to create a new identity.
+                </div>`;
+            document.getElementById('asCreateSection').classList.remove('hidden');
+            searchBtn.disabled = false;
+            return;
+        }
+
+        const s = { id: snap.id, ...snap.data() };
+
+        // Already at this school
+        if (s.currentSchoolId === session.schoolId) {
+            resultsEl.innerHTML = `<div class="py-3 px-4 text-xs font-bold text-blue-600"><i class="fa-solid fa-circle-check mr-2"></i>This student is already enrolled at your school.</div>`;
+            searchBtn.disabled = false;
+            return;
+        }
+
+        // At another school — blocked
+        if (s.currentSchoolId && s.currentSchoolId !== '') {
+            resultsEl.innerHTML = `<div class="py-3 px-4 text-xs font-bold text-red-500"><i class="fa-solid fa-lock mr-2"></i>This student is currently enrolled at another school. Their current school must close enrollment first.</div>`;
+            searchBtn.disabled = false;
+            return;
+        }
+
+        // Unassigned — show profile with claim button
+        const lastSchool  = s.academicHistory?.length
+            ? `Last school: ${s.academicHistory[s.academicHistory.length - 1].schoolName || s.academicHistory[s.academicHistory.length - 1].schoolId}`
+            : 'No prior enrollment on record';
+        const emailStatus = s.email
+            ? `<span class="text-emerald-600 font-bold">✓ Email on file</span>`
+            : `<span class="text-amber-600 font-bold">⚠ No email on file</span>`;
+
+        resultsEl.innerHTML = `
+        <div class="p-4 flex items-start justify-between gap-4">
+            <div class="flex-1 min-w-0">
+                <p class="font-black text-slate-800 text-sm mb-0.5">${escHtml(s.name)}</p>
+                <p class="font-mono text-[10px] text-slate-400 mb-1">${s.id}</p>
+                <p class="text-[11px] font-semibold text-slate-500 mb-1">${escHtml(s.dob ? 'DOB: ' + s.dob + ' · ' : '')}${escHtml(lastSchool)}</p>
+                <p class="text-[11px]">${emailStatus}</p>
+            </div>
+            <button onclick="window.claimSearchedStudent('${s.id}')"
+                class="flex-shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-lg text-xs transition flex items-center gap-2">
+                <i class="fa-solid fa-user-check"></i> Claim Student
+            </button>
+        </div>`;
+
+    } catch (e) {
+        console.error('[Search Registry]', e);
+        resultsEl.innerHTML = `<div class="py-3 px-4 text-xs font-bold text-red-500">Search failed. Please try again.</div>`;
+    }
+
+    searchBtn.disabled = false;
+};
+
+// ── Claim an existing student ─────────────────────────────────────────────
+window.claimSearchedStudent = async function (studentId) {
+    const btn = document.querySelector(`button[onclick="window.claimSearchedStudent('${studentId}')"]`);
+    if (btn) { btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Enrolling...`; btn.disabled = true; }
+
+    try {
+        await updateDoc(doc(db, 'students', studentId), {
+            currentSchoolId:  session.schoolId,
+            enrollmentStatus: 'Active',
+            teacherId:        '',
+            className:        ''
+        });
+        window.closeAddStudentModal();
+        await loadData();
+    } catch (e) {
+        console.error('[Claim Student]', e);
+        alert('Failed to enroll student. Please try again.');
+        if (btn) { btn.innerHTML = `<i class="fa-solid fa-user-check"></i> Claim Student`; btn.disabled = false; }
+    }
+};
+
+// ── Create a brand new student identity ───────────────────────────────────
 document.getElementById('saveAddStudentBtn')?.addEventListener('click', async () => {
     const btn   = document.getElementById('saveAddStudentBtn');
     const msgEl = document.getElementById('asMsg');
@@ -212,195 +332,16 @@ document.getElementById('saveAddStudentBtn')?.addEventListener('click', async ()
         await loadData();
 
     } catch (e) {
-        console.error('[Add Student]', e);
+        console.error('[Create Student]', e);
         msgEl.textContent = 'Failed to create student. Please try again.';
         msgEl.classList.remove('hidden');
     }
 
     btn.disabled  = false;
-    btn.innerHTML = `<i class="fa-solid fa-user-plus mr-2"></i> Create Student`;
+    btn.innerHTML = `<i class="fa-solid fa-user-plus mr-2"></i> Create New Student Identity`;
 });
 
-// ── 7. SEARCH REGISTRY ────────────────────────────────────────────────────
-window.openSearchRegistryModal = function () {
-    document.getElementById('regSearchQuery').value = '';
-    document.getElementById('regSearchResults').innerHTML  = '';
-    document.getElementById('regSearchResults').classList.add('hidden');
-    document.getElementById('regFullProfile').classList.add('hidden');
-    openOverlay('searchRegistryModal', 'searchRegistryModalInner');
-};
-
-window.closeSearchRegistryModal = function () {
-    closeOverlay('searchRegistryModal', 'searchRegistryModalInner');
-};
-
-// Allow Enter key in search input
-document.getElementById('regSearchQuery')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') window.searchRegistry();
-});
-
-window.searchRegistry = async function () {
-    const rawId     = (document.getElementById('regSearchQuery').value || '').trim().toUpperCase();
-    const resultsEl = document.getElementById('regSearchResults');
-    const profileEl = document.getElementById('regFullProfile');
-
-    profileEl.classList.add('hidden');
-    resultsEl.classList.remove('hidden');
-
-    if (!rawId) {
-        resultsEl.innerHTML = `<p class="text-xs font-bold text-red-500 text-center py-4">Please enter a Student ID.</p>`;
-        return;
-    }
-
-    if (!/^S\d{2}-[A-Z0-9]{5}$/.test(rawId)) {
-        resultsEl.innerHTML = `<p class="text-xs font-bold text-red-500 text-center py-4">Invalid format. Student ID should look like S26-XXXXX.</p>`;
-        return;
-    }
-
-    resultsEl.innerHTML = `<p class="text-xs font-semibold text-slate-400 text-center py-4"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Searching national registry...</p>`;
-
-    const searchBtn     = document.getElementById('regSearchBtn');
-    searchBtn.disabled  = true;
-
-    try {
-        const snap = await getDoc(doc(db, 'students', rawId));
-
-        if (!snap.exists()) {
-            resultsEl.innerHTML = `<p class="text-xs font-bold text-slate-400 text-center py-4">No student found with that ID in the ConnectUs platform.</p>`;
-            searchBtn.disabled  = false;
-            return;
-        }
-
-        const s = { id: snap.id, ...snap.data() };
-
-        // Already at this school
-        if (s.currentSchoolId === session.schoolId) {
-            resultsEl.innerHTML = `<p class="text-xs font-bold text-blue-600 text-center py-4"><i class="fa-solid fa-circle-check mr-2"></i>This student is already enrolled at your school.</p>`;
-            searchBtn.disabled  = false;
-            return;
-        }
-
-        // At another school — blocked
-        if (s.currentSchoolId && s.currentSchoolId !== '') {
-            resultsEl.innerHTML = `<p class="text-xs font-bold text-red-500 text-center py-4"><i class="fa-solid fa-lock mr-2"></i>This student is currently enrolled at another school. Their current school must close enrollment first.</p>`;
-            searchBtn.disabled  = false;
-            return;
-        }
-
-        // Unassigned — show full global passport
-        resultsEl.classList.add('hidden');
-        await renderRegistryProfile(s);
-
-    } catch (e) {
-        console.error('[Search Registry]', e);
-        resultsEl.innerHTML = `<p class="text-xs font-bold text-red-500 text-center py-4">Search failed. Please try again.</p>`;
-    }
-
-    searchBtn.disabled = false;
-};
-
-async function renderRegistryProfile(s) {
-    const profileEl = document.getElementById('regFullProfile');
-    profileEl.classList.remove('hidden');
-
-    document.getElementById('regProfileName').textContent = s.name || 'Unknown';
-    document.getElementById('regProfileId').textContent   = s.id;
-
-    // Identity
-    document.getElementById('regIdentityGrid').innerHTML = [
-        ['Date of Birth',     s.dob         || '—'],
-        ['Email',             s.email        || '—'],
-        ['Parent / Guardian', s.parentName   || '—'],
-        ['Parent Phone',      s.parentPhone  || '—'],
-    ].map(([label, value]) => `
-        <div class="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
-            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">${label}</span>
-            <span class="text-sm font-semibold text-slate-700">${escHtml(value)}</span>
-        </div>
-    `).join('');
-
-    // Academic History
-    const history = s.academicHistory || [];
-    const histEl  = document.getElementById('regAcademicHistory');
-    histEl.innerHTML = !history.length
-        ? `<p class="text-xs text-slate-400 font-semibold italic text-center py-3">No prior school history on record.</p>`
-        : history.map(h => `
-            <div class="flex justify-between items-start py-2 border-b border-slate-100 last:border-0">
-                <div>
-                    <p class="text-sm font-bold text-slate-700">${escHtml(h.schoolName || h.schoolId || '—')}</p>
-                    <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">${escHtml(h.className || '—')} · Left: ${h.leftAt ? new Date(h.leftAt).toLocaleDateString() : '—'}</p>
-                </div>
-                <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded flex-shrink-0 ml-3">${escHtml(h.reason || '—')}</span>
-            </div>`).join('');
-
-    // All grades — no school filter (full global passport view)
-    const gradesEl = document.getElementById('regGradesList');
-    gradesEl.innerHTML = `<p class="text-xs text-slate-400 text-center py-4"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading academic records...</p>`;
-
-    try {
-        const gradesSnap = await getDocs(collection(db, 'students', s.id, 'grades'));
-        const allGrades  = [];
-        gradesSnap.forEach(d => allGrades.push({ id: d.id, ...d.data() }));
-
-        if (!allGrades.length) {
-            gradesEl.innerHTML = `<p class="text-xs text-slate-400 font-semibold italic text-center py-4">No academic grades on record.</p>`;
-        } else {
-            const bySubj = {};
-            allGrades.forEach(g => {
-                const subj = g.subject || 'Uncategorized';
-                if (!bySubj[subj]) bySubj[subj] = [];
-                bySubj[subj].push(g);
-            });
-
-            gradesEl.innerHTML = Object.entries(bySubj).map(([subject, grades]) => {
-                const avg = Math.round(grades.reduce((a, g) => a + (g.max ? (g.score / g.max) * 100 : 0), 0) / grades.length);
-                const ac  = avg >= 75 ? 'text-green-700 bg-green-50 border-green-200' : avg >= 60 ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-red-700 bg-red-50 border-red-200';
-                return `
-                <div class="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
-                    <div class="flex items-center gap-2">
-                        <div class="w-7 h-7 bg-slate-800 text-white rounded flex items-center justify-center font-black text-[10px]">${subject.charAt(0)}</div>
-                        <div>
-                            <p class="text-sm font-bold text-slate-700">${escHtml(subject)}</p>
-                            <p class="text-[10px] text-slate-400 font-semibold">${grades.length} assessments</p>
-                        </div>
-                    </div>
-                    <span class="${ac} border font-black text-xs px-2 py-1 rounded">${avg}% · ${letterGrade(avg)}</span>
-                </div>`;
-            }).join('');
-        }
-    } catch (e) {
-        gradesEl.innerHTML = `<p class="text-xs text-red-500 font-bold text-center py-4">Could not load grades.</p>`;
-    }
-
-    document.getElementById('regClaimBtn').dataset.studentId = s.id;
-}
-
-window.claimRegistryStudent = async function () {
-    const btn       = document.getElementById('regClaimBtn');
-    const studentId = btn.dataset.studentId;
-    if (!studentId) return;
-
-    btn.disabled  = true;
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Enrolling...`;
-
-    try {
-        await updateDoc(doc(db, 'students', studentId), {
-            currentSchoolId:  session.schoolId,
-            enrollmentStatus: 'Active',
-            teacherId:        '',
-            className:        ''
-        });
-        window.closeSearchRegistryModal();
-        await loadData();
-    } catch (e) {
-        console.error('[Claim Registry Student]', e);
-        alert('Failed to enroll student. Please try again.');
-        btn.disabled  = false;
-        btn.innerHTML = `<i class="fa-solid fa-user-check mr-2"></i> Claim & Enrol into School`;
-    }
-};
-
-// ── 8. STUDENT PANEL & TABS ───────────────────────────────────────────────
+// ── 7. STUDENT PANEL & TABS ───────────────────────────────────────────────
 window.switchStudentTab = function (tabId) {
     document.querySelectorAll('.tab-pane').forEach(p => p.classList.add('hidden'));
     document.getElementById(`tab-${tabId}`)?.classList.remove('hidden');
@@ -476,7 +417,7 @@ window.openStudentPanel = async function (studentId) {
 
 window.closeStudentPanel = function () { closeOverlay('studentPanel', 'studentPanelInner', true); };
 
-// ── 9. RENDER ADMIN GRADES ────────────────────────────────────────────────
+// ── 8. RENDER ADMIN GRADES ────────────────────────────────────────────────
 window.renderAdminGrades = function () {
     const container  = document.getElementById('subjectAccordions');
     if (!container) return;
@@ -554,7 +495,7 @@ window.toggleSubjectAccordion = function (header) {
     if (chevron) chevron.style.transform = body.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0deg)';
 };
 
-// ── 10. PRINT RECORDS ─────────────────────────────────────────────────────
+// ── 9. PRINT RECORDS ─────────────────────────────────────────────────────
 window.openPrintStudentModal = function () {
     const termId     = document.getElementById('sPanelSemester')?.value;
     const termGrades = currentStudentGradesCache.filter(g => g.semesterId === termId);
@@ -638,7 +579,7 @@ window.executeStudentPrint = function () {
     .ft{margin-top:50px;text-align:center;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:20px;font-weight:600;}</style>
     </head><body>
     <div class="hf">
-        <img src="${session.logo || ''}" alt="${escHtml(schoolName)}" class="logo" onerror="this.style.display='none'">
+        <img src="${session.logo||''}" alt="${escHtml(schoolName)}" class="logo" onerror="this.style.display='none'">
         <div class="ht"><h1>${escHtml(schoolName)}</h1><h2>OFFICIAL TERM REPORT</h2></div>
     </div>
     <div class="sib">
@@ -650,9 +591,9 @@ window.executeStudentPrint = function () {
     <div class="ag">
         <div class="ac"><div class="av">${cumulativeAvg}%</div><div class="al">Term Average</div></div>
         <div class="ac"><div class="av">${gpaLetter}</div><div class="al">Overall Grade</div></div>
-        <div class="ac"><div class="av">${totalAssessments}</div><div class="al">Total Assessments</div></div>
+        <div class="ac"><div class="av">${totalAssessments}</div><div class="al">Assessments</div></div>
     </div>
-    <table><thead><tr><th>Subject / Assignment</th><th class="c">Count / Score</th><th class="c">Average</th><th class="c">Grade</th></tr></thead>
+    <table><thead><tr><th>Subject / Assignment</th><th class="c">Count</th><th class="c">Average</th><th class="c">Grade</th></tr></thead>
     <tbody>${gradesHtml}</tbody></table>
     <div class="ft">Official report for <strong>${escHtml(schoolName)}</strong> · Issued ${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</div>
     </body></html>`;
@@ -664,7 +605,7 @@ window.executeStudentPrint = function () {
     setTimeout(() => w.print(), 800);
 };
 
-// ── 11. ARCHIVE & REASSIGN ────────────────────────────────────────────────
+// ── 10. ARCHIVE & REASSIGN ────────────────────────────────────────────────
 window.openReassignModal = function () {
     document.getElementById('sEnrollDropdown')?.classList.add('hidden');
     const s = allStudentsCache.find(x => x.id === currentStudentId);
@@ -752,7 +693,7 @@ document.getElementById('confirmArchiveBtn')?.addEventListener('click', async ()
     btn.disabled  = false;
 });
 
-// ── 12. CSV EXPORT ────────────────────────────────────────────────────────
+// ── 11. CSV EXPORT ────────────────────────────────────────────────────────
 document.getElementById('exportCsvBtn')?.addEventListener('click', () => {
     const rows = [['Name', 'Class', 'Teacher', 'Parent Phone'],
         ...allStudentsCache.map(s => [s.name || '', s.className || '', s.teacherName || '', s.parentPhone || ''])];
