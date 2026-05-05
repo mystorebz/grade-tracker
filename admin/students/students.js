@@ -401,10 +401,7 @@ window.openStudentPanel = async function (studentId) {
             if (tDoc.exists() && tDoc.data().gradeTypes) currentTeacherWeights = tDoc.data().gradeTypes;
         }
 
-        const gradesSnap = await getDocs(query(
-            collection(db, 'students', studentId, 'grades'),
-            where('schoolId', '==', session.schoolId)
-        ));
+        const gradesSnap = await getDocs(collection(db, 'students', studentId, 'grades'));
         currentStudentGradesCache = [];
         gradesSnap.forEach(d => currentStudentGradesCache.push({ id: d.id, ...d.data() }));
 
@@ -415,6 +412,15 @@ window.openStudentPanel = async function (studentId) {
 
         semSelect.innerHTML = rawSemesters.map(s => `<option value="${s.id}" ${s.id === activeId ? 'selected' : ''}>${s.name}</option>`).join('');
         if (!rawSemesters.length) semSelect.innerHTML = '<option value="">No Terms Found</option>';
+
+        // Build class filter from all unique className values across all grades
+        const classSet = [...new Set(currentStudentGradesCache.map(g => g.className).filter(Boolean))].sort();
+        const classFilter = document.getElementById('sPanelFilterClass');
+        if (classFilter) {
+            classFilter.innerHTML = '<option value="">All Classes</option>' +
+                classSet.map(c => `<option value="${c}">${c}</option>`).join('');
+            classFilter.value = '';
+        }
 
         window.renderAdminGrades();
     } catch (e) {
@@ -428,14 +434,17 @@ window.closeStudentPanel = function () { closeOverlay('studentPanel', 'studentPa
 
 // ── 8. RENDER ADMIN GRADES ────────────────────────────────────────────────
 window.renderAdminGrades = function () {
-    const container  = document.getElementById('subjectAccordions');
+    const container   = document.getElementById('subjectAccordions');
     if (!container) return;
 
-    const termId     = document.getElementById('sPanelSemester').value;
-    const filterSubj = document.getElementById('sPanelFilterSubject').value;
-    const filterType = document.getElementById('sPanelFilterType').value;
+    const termId      = document.getElementById('sPanelSemester').value;
+    const filterSubj  = document.getElementById('sPanelFilterSubject').value;
+    const filterType  = document.getElementById('sPanelFilterType').value;
+    const filterClass = document.getElementById('sPanelFilterClass')?.value || '';
 
+    // Filter by term first, then by class if selected
     let filteredGrades = currentStudentGradesCache.filter(g => g.semesterId === termId);
+    if (filterClass) filteredGrades = filteredGrades.filter(g => g.className === filterClass);
 
     const subjSet = [...new Set(filteredGrades.map(g => g.subject || 'Uncategorized'))].sort();
     const typeSet = [...new Set(filteredGrades.map(g => g.type    || 'Uncategorized'))].sort();
