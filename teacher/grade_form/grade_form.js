@@ -9,7 +9,9 @@ const session = requireAuth('teacher', '../login.html');
 injectTeacherLayout('grade-entry', 'Enter Grade', 'Log a new assignment or assessment into the system', false);
 
 // ── 2. STATE ──────────────────────────────────────────────────────────────
-let rawSemesters = [];
+let rawSemesters    = [];
+let teacherStudents = []; // ← module-level so saveGrade can access className
+
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 
 // ── 3. INIT ───────────────────────────────────────────────────────────────
@@ -18,19 +20,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (dateInput) dateInput.valueAsDate = new Date();
 
     const scoreInput = document.getElementById('agScore');
-    const maxInput = document.getElementById('agMax');
+    const maxInput   = document.getElementById('agMax');
     if (scoreInput) scoreInput.addEventListener('input', updatePreview);
-    if (maxInput) maxInput.addEventListener('input', updatePreview);
+    if (maxInput)   maxInput.addEventListener('input', updatePreview);
 
     const commitBtn = document.getElementById('saveGradeBtn');
     if (commitBtn) commitBtn.addEventListener('click', saveGrade);
 
     await loadSemesters();
-    loadGradeTypesAndSubjects(); 
+    loadGradeTypesAndSubjects();
     await loadStudents();
 });
 
-// ── 4. SEARCHABLE DROPDOWN ENGINE (NO HTML CHANGES REQUIRED) ──────────────
+// ── 4. SEARCHABLE DROPDOWN ENGINE ─────────────────────────────────────────
 function makeSearchable(selectId) {
     const select = document.getElementById(selectId);
     if (!select) return;
@@ -39,7 +41,6 @@ function makeSearchable(selectId) {
     let wrapper, input, list;
 
     if (!isWrapped) {
-        // Hide native select and build the searchable UI dynamically
         select.style.display = 'none';
         wrapper = document.createElement('div');
         wrapper.className = 'searchable-wrapper relative w-full';
@@ -48,30 +49,27 @@ function makeSearchable(selectId) {
 
         input = document.createElement('input');
         input.type = 'text';
-        // Copy original Tailwind styles so it looks identical to your design
         input.className = select.className.replace('appearance-none', '').replace('form-select', '') + ' form-input pr-8';
         input.placeholder = select.options[0]?.text || 'Select...';
-        
+
         const icon = document.createElement('div');
         icon.className = 'absolute right-2.5 top-2.5 text-[#9ab0c6] pointer-events-none';
         icon.innerHTML = '<i class="fa-solid fa-caret-down text-[10px]"></i>';
 
         list = document.createElement('ul');
         list.className = 'absolute z-50 w-full mt-1 bg-white border border-[#dce3ed] rounded-sm shadow-lg max-h-52 overflow-y-auto hidden';
-        
+
         wrapper.appendChild(input);
         wrapper.appendChild(icon);
         wrapper.appendChild(list);
 
-        // UI Interactions
         input.addEventListener('focus', () => {
-            input.value = ''; // Clear text to show all options
+            input.value = '';
             updateList('');
             list.classList.remove('hidden');
         });
 
         input.addEventListener('blur', () => {
-            // Slight delay so the click event on the list registers before hiding
             setTimeout(() => {
                 list.classList.add('hidden');
                 const selectedOpt = select.options[select.selectedIndex];
@@ -84,29 +82,28 @@ function makeSearchable(selectId) {
             list.classList.remove('hidden');
         });
 
-        select.wrapperRef = { input, list }; // Save reference for resetting the form later
+        select.wrapperRef = { input, list };
     } else {
         wrapper = select.parentNode;
-        input = select.wrapperRef.input;
-        list = select.wrapperRef.list;
+        input   = select.wrapperRef.input;
+        list    = select.wrapperRef.list;
         input.placeholder = select.options[0]?.text || 'Select...';
     }
 
-    // Filter Logic
     function updateList(filter) {
         list.innerHTML = '';
         let hasResults = false;
         Array.from(select.options).forEach(opt => {
-            if (opt.value === '') return; // Skip placeholder
+            if (opt.value === '') return;
             if (opt.text.toLowerCase().includes(filter.toLowerCase())) {
                 hasResults = true;
                 const li = document.createElement('li');
                 li.className = 'p-2 hover:bg-slate-100 cursor-pointer text-[13px] text-[#0d1f35] border-b border-[#f0f4f8] last:border-0';
                 li.textContent = opt.text;
                 li.onmousedown = (e) => {
-                    e.preventDefault(); 
-                    input.value = opt.text;
-                    select.value = opt.value;
+                    e.preventDefault();
+                    input.value   = opt.text;
+                    select.value  = opt.value;
                     list.classList.add('hidden');
                 };
                 list.appendChild(li);
@@ -117,7 +114,6 @@ function makeSearchable(selectId) {
         }
     }
 
-    // Set initial load value
     const selectedOpt = select.options[select.selectedIndex];
     input.value = (selectedOpt && selectedOpt.value) ? selectedOpt.text : '';
 }
@@ -127,7 +123,6 @@ async function loadSemesters() {
     try {
         const cacheKey = `connectus_semesters_${session.schoolId}`;
         const cached   = localStorage.getItem(cacheKey);
-
         if (cached) {
             rawSemesters = JSON.parse(cached);
         } else {
@@ -136,14 +131,14 @@ async function loadSemesters() {
             localStorage.setItem(cacheKey, JSON.stringify(rawSemesters));
         }
 
-        let activeId = '';
+        let activeId   = '';
         let activeName = 'Period';
         try {
             const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
             activeId = schoolSnap.data()?.activeSemesterId || '';
             const activeSem = rawSemesters.find(s => s.id === activeId);
             if (activeSem) activeName = activeSem.name;
-        } catch(e) {}
+        } catch (e) {}
 
         const activeSemesterSelect = document.getElementById('activeSemester');
         if (activeSemesterSelect) {
@@ -168,26 +163,26 @@ async function loadStudents() {
     if (!studentSelect) return;
 
     try {
-        const q = query(
+        const q    = query(
             collection(db, 'students'),
             where('currentSchoolId', '==', session.schoolId),
             where('enrollmentStatus', '==', 'Active')
         );
         const snap = await getDocs(q);
-        
-        const teacherStudents = snap.docs
+
+        // Store at module level so saveGrade can look up className
+        teacherStudents = snap.docs
             .map(d => ({ id: d.id, ...d.data() }))
             .filter(s => s.teacherId === session.teacherId);
-        
+
         studentSelect.innerHTML = '<option value="">Select student...</option>';
         teacherStudents.forEach(s => {
             const opt = document.createElement('option');
-            opt.value = s.id;
+            opt.value   = s.id;
             opt.textContent = `${s.name} (${s.id})`;
             studentSelect.appendChild(opt);
         });
 
-        // Trigger the searchable UI
         makeSearchable('agStudent');
 
     } catch (e) {
@@ -205,8 +200,6 @@ function loadGradeTypesAndSubjects() {
             const name = t.name || (typeof t === 'string' ? t : 'Uncategorized');
             return `<option value="${name}">${name}</option>`;
         }).join('');
-        
-        // Trigger the searchable UI
         makeSearchable('agType');
     }
 
@@ -218,12 +211,9 @@ function loadGradeTypesAndSubjects() {
         } else {
             subjects = session.teacherData.classes || [session.teacherData.className || 'General'];
         }
-
         subjectSelect.innerHTML = '<option value="">Select subject...</option>' + subjects.filter(Boolean).map(sub => {
             return `<option value="${sub}">${sub}</option>`;
         }).join('');
-        
-        // Trigger the searchable UI
         makeSearchable('agSubject');
     }
 }
@@ -231,28 +221,27 @@ function loadGradeTypesAndSubjects() {
 // ── 8. LIVE PREVIEW ───────────────────────────────────────────────────────
 function updatePreview() {
     const scoreEl = document.getElementById('agScore');
-    const maxEl = document.getElementById('agMax');
+    const maxEl   = document.getElementById('agMax');
     if (!scoreEl || !maxEl) return;
 
     const score = parseFloat(scoreEl.value);
     const max   = parseFloat(maxEl.value);
+    const prev  = document.getElementById('gradePreview');
 
-    const prev = document.getElementById('gradePreview');
     if (prev && !isNaN(score) && !isNaN(max) && max > 0 && score >= 0) {
         const pct = Math.round((score / max) * 100);
-        
         prev.classList.remove('hidden');
-        
+
         const prevPct = document.getElementById('prevPct');
         if (prevPct) prevPct.textContent = `${pct}%`;
-        
+
         const prevLetter = document.getElementById('prevLetter');
         if (prevLetter) prevLetter.textContent = letterGrade(pct);
-        
+
         const prevBar = document.getElementById('prevBar');
         if (prevBar) {
             prevBar.style.width = `${pct}%`;
-            prevBar.className = `h-full rounded-none transition-all duration-300 ${pct >= 90 ? 'bg-emerald-500' : pct >= 80 ? 'bg-blue-500' : pct >= 70 ? 'bg-teal-500' : pct >= 65 ? 'bg-amber-500' : 'bg-red-500'}`;
+            prevBar.className   = `h-full rounded-none transition-all duration-300 ${pct >= 90 ? 'bg-emerald-500' : pct >= 80 ? 'bg-blue-500' : pct >= 70 ? 'bg-teal-500' : pct >= 65 ? 'bg-amber-500' : 'bg-red-500'}`;
         }
     } else if (prev) {
         prev.classList.add('hidden');
@@ -265,17 +254,17 @@ async function saveGrade() {
     if (!studentId) { alert('Please select a student from the dropdown.'); return; }
 
     const subject = document.getElementById('agSubject')?.value || '';
-    const type    = document.getElementById('agType')?.value || '';
+    const type    = document.getElementById('agType')?.value    || '';
     const title   = document.getElementById('agTitle')?.value.trim() || 'Untitled Assessment';
-    
+
     const scoreEl = document.getElementById('agScore');
     const maxEl   = document.getElementById('agMax');
     const score   = scoreEl ? parseFloat(scoreEl.value) : NaN;
-    const max     = maxEl ? parseFloat(maxEl.value) : NaN;
-    
-    const dateEl  = document.getElementById('agDate');
-    const date    = dateEl ? dateEl.value : new Date().toISOString().split('T')[0];
-    
+    const max     = maxEl   ? parseFloat(maxEl.value)   : NaN;
+
+    const dateEl = document.getElementById('agDate');
+    const date   = dateEl ? dateEl.value : new Date().toISOString().split('T')[0];
+
     const notesEl = document.getElementById('agNotes');
     const notes   = notesEl ? notesEl.value.trim() : '';
 
@@ -283,19 +272,26 @@ async function saveGrade() {
     const semId   = semIdEl ? semIdEl.value : (rawSemesters[0]?.id || '');
 
     if (!subject || !type || !title) { alert('Subject, grade type, and title are required.'); return; }
-    if (isNaN(score) || isNaN(max) || max <= 0 || score < 0 || score > max) { alert('Please enter valid score and max values.'); return; }
+    if (isNaN(score) || isNaN(max) || max <= 0 || score < 0 || score > max) {
+        alert('Please enter valid score and max values.'); return;
+    }
+
+    // ── Look up student's current className for passport stamping ──────────
+    const student  = teacherStudents.find(s => s.id === studentId);
+    const className = student?.className || '';
 
     const btn = document.getElementById('saveGradeBtn');
     if (btn) {
-        btn.disabled = true; 
+        btn.disabled  = true;
         btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Committing...';
     }
 
     try {
         await addDoc(collection(db, 'students', studentId, 'grades'), {
-            schoolId:        session.schoolId,
-            teacherId:       session.teacherId,  
-            semesterId:      semId,
+            schoolId:    session.schoolId,
+            teacherId:   session.teacherId,
+            semesterId:  semId,
+            className,               // ← passport stamp
             subject,
             type,
             date,
@@ -303,16 +299,15 @@ async function saveGrade() {
             score,
             max,
             notes,
-            historyLogs:     [],
-            createdAt:       new Date().toISOString()
+            historyLogs: [],
+            createdAt:   new Date().toISOString()
         });
 
-        // Clear regular inputs
+        // Reset inputs
         if (scoreEl) scoreEl.value = '';
         if (notesEl) notesEl.value = '';
         document.getElementById('agTitle').value = '';
-        
-        // Reset Searchable Dropdowns back to placeholder empty state
+
         ['agStudent', 'agSubject', 'agType'].forEach(id => {
             const el = document.getElementById(id);
             if (el) {
@@ -320,7 +315,7 @@ async function saveGrade() {
                 if (el.wrapperRef) el.wrapperRef.input.value = '';
             }
         });
-        
+
         const prev = document.getElementById('gradePreview');
         if (prev) prev.classList.add('hidden');
 
@@ -328,12 +323,12 @@ async function saveGrade() {
         if (banner) banner.classList.remove('hidden');
 
     } catch (e) {
-        console.error("Save Error:", e);
+        console.error('Save Error:', e);
         alert('System error. Could not commit record.');
     }
 
     if (btn) {
-        btn.disabled = false; 
+        btn.disabled  = false;
         btn.innerHTML = '<i class="fa-solid fa-database mr-2 text-xs"></i> COMMIT RECORD';
     }
 }
