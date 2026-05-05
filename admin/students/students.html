@@ -35,9 +35,6 @@
                         <button id="exportCsvBtn" class="flex items-center gap-2 bg-white hover:bg-[#f8fafb] text-[#374f6b] font-bold px-4 py-2.5 rounded shadow-sm border border-[#c5d0db] transition text-[12px]">
                             <i class="fa-solid fa-file-csv"></i> Export Data
                         </button>
-                        <button onclick="window.openSearchRegistryModal()" class="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 font-bold px-4 py-2.5 rounded shadow-sm border border-[#c5d0db] transition text-[12px]">
-                            <i class="fa-solid fa-magnifying-glass"></i> Search Registry
-                        </button>
                         <button onclick="window.openAddStudentModal()" class="flex items-center gap-2 bg-[#2563eb] hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded shadow-sm transition text-[12px]">
                             <i class="fa-solid fa-user-plus"></i> Add Student
                         </button>
@@ -85,129 +82,91 @@
         </div>
     </main>
 
-    <!-- ── ADD STUDENT MODAL (Identity Only) ──────────────────────────── -->
+    <!-- ── ADD STUDENT MODAL (Search + Create combined) ───────────────── -->
     <div id="addStudentModal" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0 transition-opacity">
-        <div id="addStudentModalInner" class="bg-white rounded-xl shadow-2xl max-w-lg w-full m-4 overflow-hidden">
-            <div class="h-1 bg-[#2563eb]"></div>
-            <div class="px-6 py-4 border-b border-[#f0f4f8] bg-blue-50 flex justify-between items-center">
+        <div id="addStudentModalInner" class="bg-white rounded-xl shadow-2xl max-w-lg w-full m-4 overflow-hidden max-h-[90vh] flex flex-col">
+            <div class="h-1 bg-[#2563eb] flex-shrink-0"></div>
+
+            <!-- Header -->
+            <div class="px-6 py-4 border-b border-[#f0f4f8] bg-blue-50 flex justify-between items-center flex-shrink-0">
                 <div class="flex items-center gap-3">
                     <div class="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center"><i class="fa-solid fa-user-plus text-sm"></i></div>
-                    <h3 class="font-bold text-blue-900 text-sm">Enrol New Student</h3>
+                    <h3 class="font-bold text-blue-900 text-sm">Add Student</h3>
                 </div>
                 <button onclick="window.closeAddStudentModal()"><i class="fa-solid fa-xmark text-slate-400 hover:text-red-500 transition"></i></button>
             </div>
-            <form id="asForm" class="p-6 space-y-4" onsubmit="return false;">
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">First Name <span class="text-red-500">*</span></label>
-                        <input id="asFirstName" type="text" placeholder="e.g. Marie" class="w-full p-2.5 border border-slate-300 rounded-lg text-sm font-semibold outline-none focus:border-blue-400">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Last Name <span class="text-red-500">*</span></label>
-                        <input id="asLastName" type="text" placeholder="e.g. Torres" class="w-full p-2.5 border border-slate-300 rounded-lg text-sm font-semibold outline-none focus:border-blue-400">
-                    </div>
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Date of Birth</label>
-                        <input id="asDob" type="date" class="w-full p-2.5 border border-slate-300 rounded-lg text-sm font-semibold outline-none focus:border-blue-400">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Student Email</label>
-                        <input id="asEmail" type="email" placeholder="For credential slip" class="w-full p-2.5 border border-slate-300 rounded-lg text-sm font-semibold outline-none focus:border-blue-400">
-                    </div>
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Parent / Guardian</label>
-                        <input id="asParentName" type="text" placeholder="e.g. John Torres" class="w-full p-2.5 border border-slate-300 rounded-lg text-sm font-semibold outline-none focus:border-blue-400">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Parent Phone</label>
-                        <input id="asParentPhone" type="tel" placeholder="e.g. 600-1234" class="w-full p-2.5 border border-slate-300 rounded-lg text-sm font-semibold outline-none focus:border-blue-400">
-                    </div>
-                </div>
-                <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 flex items-start gap-2">
-                    <i class="fa-solid fa-circle-info text-slate-400 mt-0.5 text-sm flex-shrink-0"></i>
-                    <p class="text-[11px] text-slate-500 font-semibold leading-relaxed">A Student ID and temporary PIN are generated automatically. A teacher will claim and assign this student to a class. If an email is provided, a credential slip is sent instantly.</p>
-                </div>
-                <p id="asMsg" class="text-xs font-bold text-red-500 hidden"></p>
-                <button id="saveAddStudentBtn" type="button" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition text-sm flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-user-plus"></i> Create Student
-                </button>
-            </form>
-        </div>
-    </div>
 
-    <!-- ── SEARCH REGISTRY MODAL ───────────────────────────────────────── -->
-    <div id="searchRegistryModal" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0 transition-opacity">
-        <div id="searchRegistryModalInner" class="bg-white rounded-xl shadow-2xl max-w-2xl w-full m-4 overflow-hidden flex flex-col max-h-[90vh]">
-            <div class="h-1 bg-emerald-500"></div>
-            <div class="px-6 py-4 border-b border-[#f0f4f8] bg-emerald-50 flex justify-between items-center flex-shrink-0">
-                <div class="flex items-center gap-3">
-                    <div class="w-8 h-8 bg-emerald-600 text-white rounded-lg flex items-center justify-center"><i class="fa-solid fa-magnifying-glass text-sm"></i></div>
-                    <div>
-                        <h3 class="font-bold text-emerald-900 text-sm">National Student Registry</h3>
-                        <p class="text-[10px] text-emerald-700 font-semibold">Search by Student ID to find and enrol a transferring student</p>
-                    </div>
-                </div>
-                <button onclick="window.closeSearchRegistryModal()"><i class="fa-solid fa-xmark text-slate-400 hover:text-red-500 transition"></i></button>
-            </div>
+            <div class="overflow-y-auto flex-1">
 
-            <!-- Search Bar -->
-            <div class="px-6 py-4 border-b border-slate-100 flex-shrink-0">
-                <div class="flex gap-3">
-                    <input id="regSearchQuery" type="text" placeholder="Enter Student ID (e.g. S26-XXXXX)" class="flex-1 p-2.5 border border-slate-300 rounded-lg text-sm font-semibold outline-none focus:border-emerald-400 font-mono uppercase">
-                    <button id="regSearchBtn" onclick="window.searchRegistry()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2.5 rounded-lg text-sm transition flex items-center gap-2 flex-shrink-0">
-                        <i class="fa-solid fa-magnifying-glass"></i> Search
-                    </button>
-                </div>
-                <!-- Status messages -->
-                <div id="regSearchResults" class="mt-3 hidden"></div>
-            </div>
-
-            <!-- Full Profile (shown when unassigned student found) -->
-            <div id="regFullProfile" class="hidden flex-1 overflow-y-auto">
-
-                <!-- Profile Header -->
-                <div class="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center gap-4">
-                    <div class="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-xl flex items-center justify-center font-black text-lg flex-shrink-0" id="regProfileAvatar">?</div>
-                    <div>
-                        <h4 id="regProfileName" class="font-black text-slate-800 text-base">—</h4>
-                        <p id="regProfileId" class="font-mono text-[11px] text-slate-400 font-bold">—</p>
+                <!-- ── Search Section ────────────────────────────────── -->
+                <div class="p-6 border-b border-slate-100">
+                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Search National Registry First</p>
+                    <p class="text-xs text-slate-500 font-semibold mb-3">If the student was previously enrolled in another school on ConnectUs, search their Student ID to find and claim them.</p>
+                    <div class="flex gap-2">
+                        <input id="sSearchQuery" type="text" placeholder="Student ID (e.g. S26-XXXXX)"
+                            class="flex-1 p-2.5 border border-slate-300 rounded-lg text-sm font-semibold outline-none focus:border-blue-400 font-mono uppercase">
+                        <button id="sSearchBtn" onclick="window.searchStudentRegistry()"
+                            class="bg-slate-800 hover:bg-black text-white font-bold px-4 py-2.5 rounded-lg text-xs transition flex-shrink-0 flex items-center gap-2">
+                            <i class="fa-solid fa-magnifying-glass"></i> Search
+                        </button>
                     </div>
-                    <div class="ml-auto flex-shrink-0">
-                        <span class="bg-emerald-100 text-emerald-700 text-[10px] font-black px-3 py-1.5 rounded-full uppercase tracking-wider"><i class="fa-solid fa-circle-check mr-1"></i>Available for Enrollment</span>
-                    </div>
+
+                    <!-- Search Results -->
+                    <div id="sSearchResults" class="hidden mt-3 bg-slate-50 border border-slate-200 rounded-lg overflow-hidden text-sm"></div>
                 </div>
 
-                <div class="p-6 space-y-5">
-
-                    <!-- Identity -->
-                    <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                        <h5 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Identity Details</h5>
-                        <div id="regIdentityGrid"></div>
-                    </div>
-
-                    <!-- Academic History -->
-                    <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                        <h5 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">School History</h5>
-                        <div id="regAcademicHistory"></div>
-                    </div>
-
-                    <!-- Grades -->
-                    <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                        <h5 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Academic Record (All Schools)</h5>
-                        <div id="regGradesList"></div>
-                    </div>
-
-                    <!-- Claim Button -->
-                    <button id="regClaimBtn" onclick="window.claimRegistryStudent()" data-student-id="" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl transition text-sm flex items-center justify-center gap-2 shadow-sm">
-                        <i class="fa-solid fa-user-check"></i> Claim & Enrol into School
-                    </button>
-                    <p class="text-[10px] text-slate-400 font-semibold text-center -mt-3">Student will appear as unassigned. A teacher will claim and assign them to a class.</p>
-
+                <!-- ── Divider ────────────────────────────────────────── -->
+                <div class="px-6 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-3">
+                    <div class="flex-1 h-px bg-slate-200"></div>
+                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Or Create a New Identity</span>
+                    <div class="flex-1 h-px bg-slate-200"></div>
                 </div>
+
+                <!-- ── Create Section (hidden until search returns no result) ── -->
+                <div id="asCreateSection" class="hidden p-6">
+                    <p class="text-xs text-slate-500 font-semibold mb-4">This student is not in the ConnectUs platform yet. Fill in their details to create a new student identity.</p>
+                    <form id="asForm" class="space-y-4" onsubmit="return false;">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">First Name <span class="text-red-500">*</span></label>
+                                <input id="asFirstName" type="text" placeholder="e.g. Marie" class="w-full p-2.5 border border-slate-300 rounded-lg text-sm font-semibold outline-none focus:border-blue-400">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Last Name <span class="text-red-500">*</span></label>
+                                <input id="asLastName" type="text" placeholder="e.g. Torres" class="w-full p-2.5 border border-slate-300 rounded-lg text-sm font-semibold outline-none focus:border-blue-400">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Date of Birth</label>
+                                <input id="asDob" type="date" class="w-full p-2.5 border border-slate-300 rounded-lg text-sm font-semibold outline-none focus:border-blue-400">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Student Email</label>
+                                <input id="asEmail" type="email" placeholder="For credential slip" class="w-full p-2.5 border border-slate-300 rounded-lg text-sm font-semibold outline-none focus:border-blue-400">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Parent / Guardian</label>
+                                <input id="asParentName" type="text" placeholder="e.g. John Torres" class="w-full p-2.5 border border-slate-300 rounded-lg text-sm font-semibold outline-none focus:border-blue-400">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Parent Phone</label>
+                                <input id="asParentPhone" type="tel" placeholder="e.g. 600-1234" class="w-full p-2.5 border border-slate-300 rounded-lg text-sm font-semibold outline-none focus:border-blue-400">
+                            </div>
+                        </div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 flex items-start gap-2">
+                            <i class="fa-solid fa-circle-info text-slate-400 mt-0.5 text-sm flex-shrink-0"></i>
+                            <p class="text-[11px] text-slate-500 font-semibold leading-relaxed">A Student ID and temporary PIN are generated automatically. A teacher will claim and assign this student to a class. If an email is provided, a credential slip is sent instantly.</p>
+                        </div>
+                        <p id="asMsg" class="text-xs font-bold text-red-500 hidden"></p>
+                        <button id="saveAddStudentBtn" type="button" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition text-sm flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-user-plus"></i> Create New Student Identity
+                        </button>
+                    </form>
+                </div>
+
             </div>
         </div>
     </div>
