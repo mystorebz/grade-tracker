@@ -14,31 +14,33 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { font-family: 'Nunito', sans-serif; }
-        .legal-content h2 { color: #1e3a8a; font-weight: 900; font-size: 1.25rem; margin-top: 2rem; margin-bottom: 1rem; }
+        .legal-content h2 { color: #1e3a8a; font-weight: 900; font-size: 1.25rem; margin-top: 2.5rem; margin-bottom: 1rem; }
         .legal-content p, .legal-content ul { color: #475569; font-weight: 600; font-size: 0.95rem; line-height: 1.7; margin-bottom: 1rem; }
         .legal-content ul { list-style-type: disc; padding-left: 1.5rem; }
         .legal-content li { margin-bottom: 0.5rem; }
         .legal-content strong { color: #1e293b; font-weight: 800; }
     </style>
 </head>
-<body class="min-h-screen flex flex-col bg-slate-50 antialiased">
+<body class="min-h-screen flex flex-col bg-[#f8faff] text-slate-800 antialiased">
 
-    <nav class="bg-white border-b border-slate-200">
+    <nav class="border-b border-blue-100 bg-[#f8faff]">
         <div class="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
             <a href="../index.html" class="flex items-center gap-3">
-                <img src="../assets/images/logo.png" alt="ConnectUs Logo" class="h-8 w-auto">
+                <img src="../assets/images/logo.png" alt="ConnectUs Logo" class="h-9 w-auto">
                 <span class="font-black text-blue-900 text-xl tracking-tight">ConnectUs</span>
             </a>
-            <a href="../index.html" class="text-sm font-bold text-blue-600 hover:text-blue-800 transition">
+            <a href="../index.html" class="text-sm font-black text-blue-600 hover:text-blue-800 transition bg-blue-50 px-4 py-2 rounded-full border border-blue-100 hover:bg-blue-100">
                 &larr; Back to Home
             </a>
         </div>
     </nav>
 
     <main class="flex-grow py-12 px-4">
-        <div class="max-w-4xl mx-auto bg-white rounded-3xl shadow-sm border border-slate-100 p-8 md:p-12">
+        <div class="max-w-4xl mx-auto bg-white rounded-3xl shadow-xl border border-blue-100 p-8 md:p-12 relative overflow-hidden">
             
-            <div class="border-b border-slate-100 pb-8 mb-8">
+            <div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-600 rounded-t-3xl"></div>
+            
+            <div class="border-b border-slate-100 pb-8 mb-8 mt-2">
                 <span class="text-xs font-black text-blue-500 uppercase tracking-widest">Legal</span>
                 <h1 class="text-3xl md:text-4xl font-black text-blue-900 mt-2">Terms of Service</h1>
                 <p class="text-slate-500 font-semibold mt-3">Last Updated: May 2026</p>
