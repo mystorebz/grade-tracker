@@ -156,7 +156,6 @@ window.openAddStudentModal = function () {
     // Reset create form
     document.getElementById('asForm').reset();
     document.getElementById('asMsg').classList.add('hidden');
-    document.getElementById('asCreateSection').classList.add('hidden');
 
     openOverlay('addStudentModal', 'addStudentModalInner');
 };
@@ -201,7 +200,6 @@ window.searchStudentRegistry = async function () {
                 <div class="py-3 px-4 text-xs font-semibold text-slate-500">
                     No student found with that ID. Fill in the form below to create a new identity.
                 </div>`;
-            document.getElementById('asCreateSection').classList.remove('hidden');
             searchBtn.disabled = false;
             return;
         }
