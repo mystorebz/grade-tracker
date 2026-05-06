@@ -1,5 +1,5 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where, arrayUnion } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"; // ── FIX: added arrayUnion
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
 import { openOverlay, closeOverlay, letterGrade, calculateWeightedAverage } from '../../assets/js/utils.js';
@@ -330,6 +330,7 @@ document.getElementById('saveAddStudentBtn')?.addEventListener('click', async ()
             archived:             false,
             archivedAt:           null,
             archiveReason:        null,
+            archivedSchoolIds:    [],          // ── FIX: ensure field exists from creation
             requiresPinReset:     true,
             securityQuestionsSet: false,
             profileComplete:      false,
@@ -707,12 +708,17 @@ document.getElementById('confirmArchiveBtn')?.addEventListener('click', async ()
     btn.disabled  = true;
 
     try {
+        // ── FIX: grab student from cache so we can save lastClassName before clearing it
+        const studentToArchive = allStudentsCache.find(s => s.id === currentStudentId);
+
         await updateDoc(doc(db, 'students', currentStudentId), {
-            archived:      true,
-            archivedAt:    new Date().toISOString(),
-            archiveReason: reason || 'Not specified',
-            teacherId:     '',
-            className:     ''
+            archived:             true,
+            archivedAt:           new Date().toISOString(),
+            archiveReason:        reason || 'Not specified',
+            teacherId:            '',
+            className:            '',
+            lastClassName:        studentToArchive?.className || '',  // ── FIX: preserve last class for archives display
+            archivedSchoolIds:    arrayUnion(session.schoolId)        // ── FIX: this is what makes the student appear in archives
         });
         closeArchiveReasonModal();
         closeStudentPanel();
