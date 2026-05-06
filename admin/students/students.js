@@ -1,5 +1,5 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where, arrayUnion } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"; // ── FIX: added arrayUnion
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where, arrayUnion, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"; // ── FIX: added writeBatch
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
 import { openOverlay, closeOverlay, letterGrade, calculateWeightedAverage } from '../../assets/js/utils.js';
@@ -300,6 +300,19 @@ document.getElementById('saveAddStudentBtn')?.addEventListener('click', async ()
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Creating Student...`;
 
     try {
+        // ── GLOBAL EMAIL CHECK ──
+        const targetEmail = email ? email.toLowerCase() : null;
+        if (targetEmail) {
+            const regSnap = await getDoc(doc(db, 'registered_emails', targetEmail));
+            if (regSnap.exists()) {
+                msgEl.textContent = 'This email is already registered to another account in our system.';
+                msgEl.classList.remove('hidden');
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-user-plus mr-2"></i> Create New Student Identity`;
+                return;
+            }
+        }
+
         let studentId;
         let attempts = 0;
         do {
@@ -314,7 +327,11 @@ document.getElementById('saveAddStudentBtn')?.addEventListener('click', async ()
             attempts++;
         } while (attempts < 5);
 
-        await setDoc(doc(db, 'students', studentId), {
+        // ── BATCH WRITE: Create Student & Register Email ──
+        const batch = writeBatch(db);
+
+        const studentRef = doc(db, 'students', studentId);
+        batch.set(studentRef, {
             firstName,
             lastName,
             name:                 `${firstName} ${lastName}`.trim(),
@@ -337,6 +354,19 @@ document.getElementById('saveAddStudentBtn')?.addEventListener('click', async ()
             academicHistory:      [],
             createdAt:            new Date().toISOString()
         });
+
+        if (targetEmail) {
+            const emailRef = doc(db, 'registered_emails', targetEmail);
+            batch.set(emailRef, {
+                email: targetEmail,
+                name: `${firstName} ${lastName}`.trim(),
+                role: 'student',
+                referenceId: studentId,
+                createdAt: new Date().toISOString()
+            });
+        }
+
+        await batch.commit();
 
         window.closeAddStudentModal();
         await loadData();
@@ -738,7 +768,7 @@ document.getElementById('confirmArchiveBtn')?.addEventListener('click', async ()
             ));
             const evaluations = [];
             evalSnap.forEach(d => evaluations.push({ id: d.id, ...d.data() }));
-            evaluations.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
+            evalSnap.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
 
             // Group grades by semester name → subject, compute weighted averages
             const bySemester = {};
@@ -783,7 +813,7 @@ document.getElementById('confirmArchiveBtn')?.addEventListener('click', async ()
             className:            '',
             lastClassName:        studentToArchive?.className || '',  // ── FIX: preserve last class for archives display
             archivedSchoolIds:    arrayUnion(session.schoolId),       // ── FIX: this is what makes the student appear in archives
-            academicSnapshot                                           // ── FIX: snapshot saved at archive time
+            academicSnapshot                                          // ── FIX: snapshot saved at archive time
         });
         closeArchiveReasonModal();
         closeStudentPanel();
