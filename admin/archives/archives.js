@@ -185,16 +185,54 @@ window.restoreStudent = async function(id) {
 };
 
 // ── 7. PRINT RECORDS ──────────────────────────────────────────────────────
+
+// ── FIX: printTeacherRecord now renders from the teachingHistory snapshot,
+//         which includes all evaluations saved at archive time.
 window.printTeacherRecord = async function(teacherId) {
-    // ── FIX: use cached data instead of getDoc to avoid permission-denied
-    //         on teacher documents where currentSchoolId is blank.
     const t = cachedTeachers[teacherId];
     if (!t) {
         alert('Teacher data not found. Please refresh the page and try again.');
         return;
     }
 
-    const dateStr = t.archivedAt ? new Date(t.archivedAt).toLocaleDateString() : 'Unknown Date';
+    // Find this school's most recent snapshot from teachingHistory
+    const snapshots = (t.teachingHistory || [])
+        .filter(h => h.schoolId === session.schoolId)
+        .sort((a, b) => new Date(b.snapshotDate || 0) - new Date(a.snapshotDate || 0));
+    const snapshot   = snapshots[0] || {};
+
+    const dateStr      = t.archivedAt ? new Date(t.archivedAt).toLocaleDateString() : 'Unknown Date';
+    const evaluations  = snapshot.evaluations || [];
+    const subjectAvgs  = snapshot.subjectAverages || {};
+    const avgEntries   = Object.entries(subjectAvgs);
+
+    const evalsHtml = evaluations.length === 0
+        ? `<tr><td colspan="3" style="text-align:center;color:#94a3b8;font-style:italic;padding:20px;">No evaluations on file.</td></tr>`
+        : evaluations.map(ev => {
+            const rating  = ev.overallRating || ev.performanceScore || 0;
+            const dateStr = ev.timestamp || ev.date ? new Date(ev.timestamp || ev.date).toLocaleDateString() : '—';
+            return `<tr>
+                <td style="border-bottom:1px solid #f1f5f9;padding:10px 14px;font-weight:600;color:#334155;">${escHtml(ev.type || 'Evaluation')}</td>
+                <td style="border-bottom:1px solid #f1f5f9;padding:10px 14px;text-align:center;font-weight:700;color:#64748b;">${dateStr}</td>
+                <td style="border-bottom:1px solid #f1f5f9;padding:10px 14px;text-align:center;font-weight:800;color:#2563eb;">${rating}/5</td>
+            </tr>
+            ${ev.strengths || ev.areasForImprovement || ev.comments ? `
+            <tr style="background:#f8fafc;">
+                <td colspan="3" style="padding:8px 14px 12px;font-size:11px;color:#475569;line-height:1.5;">
+                    ${ev.strengths ? `<strong>Strengths:</strong> ${escHtml(ev.strengths)}<br>` : ''}
+                    ${ev.areasForImprovement ? `<strong>Improvements:</strong> ${escHtml(ev.areasForImprovement)}<br>` : ''}
+                    ${ev.comments ? `<strong>Comments:</strong> ${escHtml(ev.comments)}` : ''}
+                    ${ev.reason ? `<br><strong>Reason:</strong> ${escHtml(ev.reason)}` : ''}
+                </td>
+            </tr>` : ''}`;
+        }).join('');
+
+    const avgRowsHtml = avgEntries.length === 0
+        ? `<tr><td colspan="2" style="text-align:center;color:#94a3b8;font-style:italic;padding:16px;">No grade data recorded.</td></tr>`
+        : avgEntries.map(([subj, avg]) => `<tr>
+            <td style="border-bottom:1px solid #f1f5f9;padding:10px 14px;font-weight:600;color:#334155;">${escHtml(subj)}</td>
+            <td style="border-bottom:1px solid #f1f5f9;padding:10px 14px;text-align:center;font-weight:800;color:#2563eb;">${avg}%</td>
+          </tr>`).join('');
 
     const html = `<!DOCTYPE html>
     <html><head><title>Archived Teacher — ${escHtml(t.name)}</title>
@@ -206,10 +244,13 @@ window.printTeacherRecord = async function(teacherId) {
         .header-text { text-align: right; }
         .header-text h1 { margin: 0 0 5px; font-size: 24px; font-weight: 900; text-transform: uppercase; color: #0f172a; }
         .header-text h2 { margin: 0; font-size: 14px; color: #64748b; font-weight: 700; letter-spacing: 2px; }
-        table { width: 100%; border-collapse: collapse; margin-top:20px; }
+        .section-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; margin: 24px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #e2e8f0; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
         td { padding: 12px 15px; border-bottom: 1px solid #e2e8f0; }
         .lbl { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 800; letter-spacing: 1px; width: 30%; background:#f8fafc; }
         .val { font-size: 15px; font-weight: 700; color: #0f172a; }
+        th { background: #0f172a; color: #fff; padding: 9px 14px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
+        th.c { text-align: center; }
     </style></head><body>
     <div class="header-flex">
         <img src="${session.logo || ''}" class="logo" onerror="this.style.display='none'">
@@ -218,13 +259,33 @@ window.printTeacherRecord = async function(teacherId) {
             <h2>ARCHIVED TEACHER RECORD</h2>
         </div>
     </div>
+
+    <div class="section-title">Identity</div>
     <table>
         <tr><td class="lbl">Teacher Name</td><td class="val">${escHtml(t.name)}</td></tr>
         <tr><td class="lbl">Global ID</td><td class="val" style="font-family:monospace;">${teacherId}</td></tr>
         <tr><td class="lbl">Email Address</td><td class="val">${escHtml(t.email || 'N/A')}</td></tr>
         <tr><td class="lbl">Phone Number</td><td class="val">${escHtml(t.phone || 'N/A')}</td></tr>
         <tr><td class="lbl">Archive Date</td><td class="val">${dateStr}</td></tr>
+        <tr><td class="lbl">Term</td><td class="val">${escHtml(snapshot.semesterName || '—')}</td></tr>
+        <tr><td class="lbl">Classes</td><td class="val">${escHtml((snapshot.classes || []).join(', ') || '—')}</td></tr>
+        <tr><td class="lbl">Subjects</td><td class="val">${escHtml((snapshot.subjects || []).join(', ') || '—')}</td></tr>
+        <tr><td class="lbl">Student Count</td><td class="val">${snapshot.studentCount || 0}</td></tr>
     </table>
+
+    ${avgEntries.length > 0 ? `
+    <div class="section-title">Student Performance by Subject</div>
+    <table>
+        <thead><tr><th>Subject</th><th class="c">Class Average</th></tr></thead>
+        <tbody>${avgRowsHtml}</tbody>
+    </table>` : ''}
+
+    <div class="section-title">Evaluation History (${evaluations.length} record${evaluations.length !== 1 ? 's' : ''})</div>
+    <table>
+        <thead><tr><th>Type</th><th class="c">Date</th><th class="c">Score</th></tr></thead>
+        <tbody>${evalsHtml}</tbody>
+    </table>
+
     <div style="margin-top:50px;text-align:center;font-size:11px;color:#94a3b8;font-weight:600;">Printed on ${new Date().toLocaleDateString()} · Powered by ConnectUs</div>
     </body></html>`;
 
@@ -232,15 +293,65 @@ window.printTeacherRecord = async function(teacherId) {
     setTimeout(() => w.print(), 500);
 };
 
+// ── FIX: printStudentRecord now renders from the academicSnapshot,
+//         which includes grades by semester/subject and evaluations saved at archive time.
 window.printStudentRecord = async function(studentId) {
-    // ── FIX: use cached data instead of getDoc for consistency
     const s = cachedStudents[studentId];
     if (!s) {
         alert('Student data not found. Please refresh the page and try again.');
         return;
     }
 
-    const dateStr = s.archivedAt ? new Date(s.archivedAt).toLocaleDateString() : 'Unknown Date';
+    const dateStr     = s.archivedAt ? new Date(s.archivedAt).toLocaleDateString() : 'Unknown Date';
+    const snapshot    = s.academicSnapshot || {};
+    const semesters   = snapshot.semesters  || {};
+    const evaluations = snapshot.evaluations || [];
+    const className   = snapshot.className  || s.lastClassName || s.className || 'Unassigned';
+
+    // Build academic record rows — one block per semester
+    const semesterNames = Object.keys(semesters);
+    const academicHtml  = semesterNames.length === 0
+        ? `<tr><td colspan="3" style="text-align:center;color:#94a3b8;font-style:italic;padding:20px;">No academic records captured.</td></tr>`
+        : semesterNames.flatMap(semName => {
+            const semData  = semesters[semName];
+            const overall  = semData._overall;
+            const subjects = Object.entries(semData).filter(([k]) => k !== '_overall');
+            return [
+                `<tr style="background:#f0f4f8;">
+                    <td colspan="2" style="padding:8px 14px;font-size:11px;font-weight:800;color:#0f172a;text-transform:uppercase;letter-spacing:0.05em;">${escHtml(semName)}</td>
+                    <td style="padding:8px 14px;text-align:center;font-size:11px;font-weight:800;color:#2563eb;">${overall !== undefined ? `Overall: ${overall}%` : ''}</td>
+                </tr>`,
+                ...subjects.map(([subj, avg]) => `<tr>
+                    <td style="border-bottom:1px solid #f1f5f9;padding:9px 14px 9px 24px;font-weight:600;color:#334155;">${escHtml(subj)}</td>
+                    <td style="border-bottom:1px solid #f1f5f9;padding:9px 14px;text-align:center;font-weight:800;color:#2563eb;">${avg}%</td>
+                    <td style="border-bottom:1px solid #f1f5f9;padding:9px 14px;text-align:center;font-weight:700;color:#64748b;">${avg >= 90 ? 'A' : avg >= 80 ? 'B' : avg >= 70 ? 'C' : avg >= 60 ? 'D' : 'F'}</td>
+                </tr>`)
+            ];
+        }).join('');
+
+    const evalsHtml = evaluations.length === 0
+        ? `<tr><td colspan="2" style="text-align:center;color:#94a3b8;font-style:italic;padding:20px;">No evaluations on file.</td></tr>`
+        : evaluations.map(ev => {
+            const evDate = ev.date || ev.createdAt ? new Date(ev.date || ev.createdAt).toLocaleDateString() : '—';
+            const typeLabel = ev.type === 'academic_report_card' ? 'Report Card Evaluation'
+                            : ev.type === 'end_of_year' ? 'End-of-Year Evaluation'
+                            : ev.type === 'behavioral' ? 'Behavioral Evaluation'
+                            : ev.type === 'academic' ? 'Academic Progress Evaluation'
+                            : escHtml(ev.type || 'Evaluation');
+            const writtenParts = [
+                ev.narrative          ? `<strong>Narrative:</strong> ${escHtml(ev.narrative)}` : '',
+                ev.strengths          ? `<strong>Strengths:</strong> ${escHtml(ev.strengths)}` : '',
+                ev.areasForImprovement? `<strong>Improvements:</strong> ${escHtml(ev.areasForImprovement)}` : '',
+                ev.comment            ? `<strong>Comment:</strong> ${escHtml(ev.comment)}` : '',
+                ev.comments           ? `<strong>Comments:</strong> ${escHtml(ev.comments)}` : '',
+                ev.actionPlan         ? `<strong>Action Plan:</strong> ${escHtml(ev.actionPlan)}` : '',
+                ev.description        ? `<strong>Description:</strong> ${escHtml(ev.description)}` : '',
+            ].filter(Boolean).join('<br>');
+            return `<tr>
+                <td style="border-bottom:1px solid #f1f5f9;padding:10px 14px;font-weight:700;color:#334155;">${typeLabel}<br><span style="font-size:10px;color:#94a3b8;font-weight:600;">${evDate}${ev.status ? ' · ' + escHtml(ev.status) : ''}</span></td>
+                <td style="border-bottom:1px solid #f1f5f9;padding:10px 14px;font-size:11px;color:#475569;line-height:1.5;">${writtenParts || '—'}</td>
+            </tr>`;
+        }).join('');
 
     const html = `<!DOCTYPE html>
     <html><head><title>Archived Student — ${escHtml(s.name)}</title>
@@ -252,10 +363,12 @@ window.printStudentRecord = async function(studentId) {
         .header-text { text-align: right; }
         .header-text h1 { margin: 0 0 5px; font-size: 24px; font-weight: 900; text-transform: uppercase; color: #0f172a; }
         .header-text h2 { margin: 0; font-size: 14px; color: #64748b; font-weight: 700; letter-spacing: 2px; }
-        table { width: 100%; border-collapse: collapse; margin-top:20px; }
+        .section-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; margin: 24px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #e2e8f0; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
         td { padding: 12px 15px; border-bottom: 1px solid #e2e8f0; }
         .lbl { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 800; letter-spacing: 1px; width: 30%; background:#f8fafc; }
         .val { font-size: 15px; font-weight: 700; color: #0f172a; }
+        th { background: #0f172a; color: #fff; padding: 9px 14px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
     </style></head><body>
     <div class="header-flex">
         <img src="${session.logo || ''}" class="logo" onerror="this.style.display='none'">
@@ -264,13 +377,28 @@ window.printStudentRecord = async function(studentId) {
             <h2>ARCHIVED STUDENT RECORD</h2>
         </div>
     </div>
+
+    <div class="section-title">Identity</div>
     <table>
         <tr><td class="lbl">Student Name</td><td class="val">${escHtml(s.name)}</td></tr>
         <tr><td class="lbl">Global ID</td><td class="val" style="font-family:monospace;">${studentId}</td></tr>
-        <tr><td class="lbl">Last Known Class</td><td class="val">${escHtml(s.lastClassName || s.className || 'Unassigned')}</td></tr>
+        <tr><td class="lbl">Last Known Class</td><td class="val">${escHtml(className)}</td></tr>
         <tr><td class="lbl">Reason for Leaving</td><td class="val" style="color:#e11d48;">${escHtml(s.archiveReason || 'N/A')}</td></tr>
         <tr><td class="lbl">Archive Date</td><td class="val">${dateStr}</td></tr>
     </table>
+
+    <div class="section-title">Academic Record (${semesterNames.length} Term${semesterNames.length !== 1 ? 's' : ''})</div>
+    <table>
+        <thead><tr><th>Subject</th><th style="text-align:center;">Average</th><th style="text-align:center;">Grade</th></tr></thead>
+        <tbody>${academicHtml}</tbody>
+    </table>
+
+    <div class="section-title">Evaluation History (${evaluations.length} record${evaluations.length !== 1 ? 's' : ''})</div>
+    <table>
+        <thead><tr><th>Evaluation</th><th>Notes</th></tr></thead>
+        <tbody>${evalsHtml}</tbody>
+    </table>
+
     <div style="margin-top:50px;text-align:center;font-size:11px;color:#94a3b8;font-weight:600;">Printed on ${new Date().toLocaleDateString()} · Powered by ConnectUs</div>
     </body></html>`;
 
