@@ -711,6 +711,70 @@ document.getElementById('confirmArchiveBtn')?.addEventListener('click', async ()
         // ── FIX: grab student from cache so we can save lastClassName before clearing it
         const studentToArchive = allStudentsCache.find(s => s.id === currentStudentId);
 
+        // ── FIX: build academic snapshot at archive time ───────────────────
+        let academicSnapshot = {};
+        try {
+            // Get teacher's gradeTypes before teacherId is cleared
+            let gradeTypes = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
+            if (studentToArchive?.teacherId) {
+                const tDoc = await getDoc(doc(db, 'teachers', studentToArchive.teacherId));
+                if (tDoc.exists()) {
+                    gradeTypes = tDoc.data().gradeTypes || tDoc.data().customGradeTypes || gradeTypes;
+                }
+            }
+
+            // Fetch all grades and keep only those from the current class
+            const gradesSnap = await getDocs(collection(db, 'students', currentStudentId, 'grades'));
+            const classGrades = [];
+            gradesSnap.forEach(d => {
+                const g = { id: d.id, ...d.data() };
+                if (g.className === studentToArchive?.className) classGrades.push(g);
+            });
+
+            // Fetch all evaluations for this school
+            const evalSnap = await getDocs(query(
+                collection(db, 'students', currentStudentId, 'evaluations'),
+                where('schoolId', '==', session.schoolId)
+            ));
+            const evaluations = [];
+            evalSnap.forEach(d => evaluations.push({ id: d.id, ...d.data() }));
+            evaluations.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
+
+            // Group grades by semester name → subject, compute weighted averages
+            const bySemester = {};
+            classGrades.forEach(g => {
+                if (!g.semesterId) return;
+                const sem     = rawSemesters.find(s => s.id === g.semesterId);
+                const semName = sem?.name || g.semesterId;
+                if (!bySemester[semName]) bySemester[semName] = {};
+                const subj = g.subject || 'Uncategorized';
+                if (!bySemester[semName][subj]) bySemester[semName][subj] = [];
+                bySemester[semName][subj].push(g);
+            });
+
+            const semesters = {};
+            Object.entries(bySemester).forEach(([semName, subjects]) => {
+                semesters[semName] = {};
+                const allSemGrades = [];
+                Object.entries(subjects).forEach(([subj, grades]) => {
+                    semesters[semName][subj] = Math.round(calculateWeightedAverage(grades, gradeTypes));
+                    allSemGrades.push(...grades);
+                });
+                if (allSemGrades.length) {
+                    semesters[semName]._overall = Math.round(calculateWeightedAverage(allSemGrades, gradeTypes));
+                }
+            });
+
+            academicSnapshot = {
+                className:    studentToArchive?.className || '',
+                semesters,
+                evaluations,
+                snapshotDate: new Date().toISOString()
+            };
+        } catch (snapErr) {
+            console.warn('[Archive] academic snapshot warning:', snapErr.message);
+        }
+
         await updateDoc(doc(db, 'students', currentStudentId), {
             archived:             true,
             archivedAt:           new Date().toISOString(),
@@ -718,7 +782,8 @@ document.getElementById('confirmArchiveBtn')?.addEventListener('click', async ()
             teacherId:            '',
             className:            '',
             lastClassName:        studentToArchive?.className || '',  // ── FIX: preserve last class for archives display
-            archivedSchoolIds:    arrayUnion(session.schoolId)        // ── FIX: this is what makes the student appear in archives
+            archivedSchoolIds:    arrayUnion(session.schoolId),       // ── FIX: this is what makes the student appear in archives
+            academicSnapshot                                           // ── FIX: snapshot saved at archive time
         });
         closeArchiveReasonModal();
         closeStudentPanel();
