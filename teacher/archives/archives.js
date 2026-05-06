@@ -266,112 +266,204 @@ window.printStudentRecord = function(studentId) {
     openOverlay('printStudentModal', 'printStudentModalInner');
 };
 
+// ── FIX: executeStudentPrint reads from academicSnapshot when available
+//         (zero additional Firestore reads, reflects data as captured at archive time).
+//         Falls back to live grade fetch for older records without a snapshot.
 window.executeStudentPrint = async function() {
-    const mode = document.getElementById('psMode').value;
+    const mode       = document.getElementById('psMode').value;
     const subjFilter = document.getElementById('psSubject').value;
-    const studentId = currentStudentId;
+    const studentId  = currentStudentId;
     
     try {
-        // CHANGED: student doc from global /students
         const sDoc = await getDoc(doc(db, 'students', studentId));
         if (!sDoc.exists()) { alert('Student not found.'); return; }
         
-        const s = sDoc.data();
-        const gradesSnap = await getDocs(collection(db, 'students', studentId, 'grades'));
-        
-        let grades = [];
-        gradesSnap.forEach(d => grades.push(d.data()));
-        
-        const bySem = {};
-        grades.forEach(g => {
-            if (subjFilter !== 'all' && g.subject !== subjFilter) return;
-            const sem = rawSemesters.find(sm => sm.id === g.semesterId)?.name || 'Unknown Period';
-            const sub = g.subject || 'Uncategorized';
-            
-            if (!bySem[sem]) bySem[sem] = {};
-            if (!bySem[sem][sub]) bySem[sem][sub] = [];
-            bySem[sem][sub].push(g);
-        });
-        
-        let html = `<html><head><title>Student Record - ${escHtml(s.name)}</title>
-        <style>
-            @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
-            body { font-family: 'DM Sans', sans-serif; padding: 40px; color: #0d1f35; line-height: 1.5; background: white; }
-            .header { display: flex; flex-direction: column; align-items: center; border-bottom: 2px solid #0d1f35; padding-bottom: 20px; margin-bottom: 24px; }
-            .logo { max-height: 50px; max-width: 180px; object-fit: contain; margin-bottom: 12px; }
-            .header h1 { margin: 0 0 5px 0; font-size: 22px; color: #0d1f35; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
-            .header h2 { margin: 0; font-size: 11px; color: #6b84a0; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; }
-            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 40px; background: #f8fafb; padding: 20px; border-radius: 4px; border: 1px solid #dce3ed; }
-            .info-item label { display: block; font-size: 10px; text-transform: uppercase; color: #6b84a0; font-weight: 700; letter-spacing: 1px; margin-bottom: 4px; }
-            .info-item span { font-size: 14px; font-weight: 700; color: #0d1f35; }
-            .sem-block { margin-bottom: 40px; page-break-inside: avoid; }
-            .sem-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; background: #0d1f35; color: white; padding: 8px 14px; margin: 0 0 15px 0; border-radius: 2px; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 13px; }
-            th, td { border: 1px solid #dce3ed; padding: 10px 14px; text-align: left; }
-            th { background: #f8fafb; color: #6b84a0; font-weight: 700; text-transform: uppercase; font-size: 10px; letter-spacing: 0.05em; }
-            .tc { text-align: center; } .tr { text-align: right; }
-            .avg-row { background: #f0f4f8; font-weight: 700; }
-        </style></head><body>
+        const s        = sDoc.data();
+        const snapshot = s.academicSnapshot;
+
+        const schoolName = session.schoolName || session.schoolId || 'ConnectUs School';
+
+        // ── Shared header + info grid ───────────────────────────────────────
+        const headerHtml = `
         <div class="header">
-            <img src="${session.logo || ''}" alt="${escHtml(session.schoolName || session.schoolId)}" class="logo" onerror="this.style.display='none'">
+            <img src="${session.logo || ''}" alt="${escHtml(schoolName)}" class="logo" onerror="this.style.display='none'">
             <h1>Official Academic Record</h1>
-            <h2>${mode === 'summary' ? 'REPORT CARD SUMMARY' : 'DETAILED TRANSCRIPT'}</h2>
+            <h2>ARCHIVED STUDENT RECORD</h2>
         </div>
         <div class="info-grid">
             <div class="info-item"><label>Student Name</label><span>${escHtml(s.name)}</span></div>
             <div class="info-item"><label>Status</label><span style="color:#e31b4a;">${s.archived ? 'Archived / Transferred' : 'Active'}</span></div>
-            <div class="info-item"><label>Last Known Class</label><span>${escHtml(s.className) || 'Unassigned'}</span></div>
+            <div class="info-item"><label>Last Known Class</label><span>${escHtml(s.lastClassName || s.className || 'Unassigned')}</span></div>
             <div class="info-item"><label>Teacher</label><span>${escHtml(session.teacherData.name)}</span></div>
         </div>`;
-        
-        if (!Object.keys(bySem).length) {
-            html += `<p style="text-align:center;color:#6b84a0;font-style:italic;padding:40px;">No grades recorded matching filters.</p>`;
-        } else {
-            for (let sem in bySem) {
-                html += `<div class="sem-block"><h3 class="sem-title">${escHtml(sem)}</h3><table>`;
-                if (mode === 'summary') {
-                    html += `<thead><tr><th>Subject</th><th class="tc">Assignments</th><th class="tc">Average (%)</th><th class="tc">Letter Grade</th></tr></thead><tbody>`;
-                    let semTotalPct = 0; let semSubjCount = 0;
-                    for (let sub in bySem[sem]) {
-                        const sGrades = bySem[sem][sub];
-                        // UPDATED: Using Teacher-Specific Grade Types
-                        const avg = calculateWeightedAverage(sGrades, getGradeTypes());
-                        if (avg !== null) {
-                            semTotalPct += avg; semSubjCount++;
-                            html += `<tr><td>${escHtml(sub)}</td><td class="tc">${sGrades.length}</td><td class="tc font-mono font-bold">${avg}%</td><td class="tc font-bold">${letterGrade(avg)}</td></tr>`;
-                        }
-                    }
-                    if (semSubjCount > 0) {
-                        const semAvg = Math.round(semTotalPct / semSubjCount);
-                        html += `<tr class="avg-row"><td colspan="2" class="tr text-[10px] text-[#6b84a0] uppercase tracking-wider">Period Average</td><td class="tc font-mono font-bold text-[#0d1f35]">${semAvg}%</td><td class="tc font-bold text-[#0d1f35]">${letterGrade(semAvg)}</td></tr>`;
-                    }
-                    html += `</tbody></table></div>`;
-                } else {
-                    html += `<thead><tr><th>Subject</th><th>Assignment</th><th>Type</th><th class="tc">Score</th><th class="tc">%</th></tr></thead><tbody>`;
-                    for (let sub in bySem[sem]) {
-                        const sGrades = bySem[sem][sub].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-                        sGrades.forEach(g => {
-                            const pct = g.max ? Math.round(g.score / g.max * 100) : null;
-                            html += `<tr><td>${escHtml(sub)}</td><td>${escHtml(g.title)}<br><span style="font-size:10px;color:#9ab0c6">${escHtml(g.date) || ''}</span></td><td>${escHtml(g.type)}</td><td class="tc font-mono">${g.score}/${g.max}</td><td class="tc font-bold">${pct !== null ? pct + '%' : '—'}</td></tr>`;
-                        });
-                    }
-                    html += `</tbody></table></div>`;
-                }
-            }
-        }
-        
-        // UPDATED: Branded Footer Disclaimer
-        const printDisclaimer = `
+
+        const css = `
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+        body { font-family: 'DM Sans', sans-serif; padding: 40px; color: #0d1f35; line-height: 1.5; background: white; }
+        .header { display: flex; flex-direction: column; align-items: center; border-bottom: 2px solid #0d1f35; padding-bottom: 20px; margin-bottom: 24px; }
+        .logo { max-height: 50px; max-width: 180px; object-fit: contain; margin-bottom: 12px; }
+        .header h1 { margin: 0 0 5px 0; font-size: 22px; color: #0d1f35; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+        .header h2 { margin: 0; font-size: 11px; color: #6b84a0; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 40px; background: #f8fafb; padding: 20px; border-radius: 4px; border: 1px solid #dce3ed; }
+        .info-item label { display: block; font-size: 10px; text-transform: uppercase; color: #6b84a0; font-weight: 700; letter-spacing: 1px; margin-bottom: 4px; }
+        .info-item span { font-size: 14px; font-weight: 700; color: #0d1f35; }
+        .sem-block { margin-bottom: 40px; page-break-inside: avoid; }
+        .sem-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; background: #0d1f35; color: white; padding: 8px 14px; margin: 0 0 15px 0; border-radius: 2px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 13px; }
+        th, td { border: 1px solid #dce3ed; padding: 10px 14px; text-align: left; }
+        th { background: #f8fafb; color: #6b84a0; font-weight: 700; text-transform: uppercase; font-size: 10px; letter-spacing: 0.05em; }
+        .tc { text-align: center; } .tr { text-align: right; }
+        .avg-row { background: #f0f4f8; font-weight: 700; }
+        .eval-block { margin-bottom: 12px; border: 1px solid #dce3ed; border-radius: 4px; padding: 14px; background: #fafafa; }
+        .eval-type { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #6b84a0; margin-bottom: 4px; }
+        .eval-note { font-size: 12px; color: #374f6b; line-height: 1.5; margin: 4px 0 0; }`;
+
+        const footer = `
         <div style='font-size:10px;color:#9ab0c6;margin-top:40px;text-align:center;border-top:1px solid #dce3ed;padding-top:14px;font-style:italic;'>
-            <p style="margin:0 0 10px 0;">Generated by the ConnectUs Analytical Engine for ${escHtml(session.schoolName || session.schoolId)}. This document does not constitute a certified administrative transcript unless signed and stamped by school administration.</p>
+            <p style="margin:0 0 10px 0;">Generated by the ConnectUs Analytical Engine for ${escHtml(schoolName)}. This document does not constitute a certified administrative transcript unless signed and stamped by school administration.</p>
             <div style="display:flex; justify-content:center; align-items:center; gap:8px;">
                 <img src="../../assets/images/logo.png" style="max-height:16px; object-fit:contain; opacity:0.8;">
                 <span style="font-weight:bold; color:#0d1f35; font-style:normal;">Powered by ConnectUs</span>
             </div>
         </div>`;
-        
-        html += printDisclaimer + `</body></html>`;
-        
+
+        let bodyHtml = '';
+
+        if (snapshot) {
+            // ── FIX: render from snapshot — zero additional reads ─────────
+            const semesters   = snapshot.semesters  || {};
+            const evaluations = snapshot.evaluations || [];
+            const semNames    = Object.keys(semesters);
+
+            if (!semNames.length) {
+                bodyHtml += `<p style="text-align:center;color:#6b84a0;font-style:italic;padding:40px;">No academic records captured at time of archive.</p>`;
+            } else {
+                semNames.forEach(semName => {
+                    const semData  = semesters[semName];
+                    const overall  = semData._overall;
+                    const subjects = Object.entries(semData).filter(([k]) => k !== '_overall');
+
+                    if (subjFilter !== 'all') {
+                        const match = subjects.filter(([subj]) => subj === subjFilter);
+                        if (!match.length) return;
+                    }
+
+                    const filteredSubjects = subjFilter !== 'all'
+                        ? subjects.filter(([subj]) => subj === subjFilter)
+                        : subjects;
+
+                    const rows = filteredSubjects.map(([subj, avg]) => {
+                        const grade = avg >= 90 ? 'A' : avg >= 80 ? 'B' : avg >= 70 ? 'C' : avg >= 60 ? 'D' : 'F';
+                        return `<tr>
+                            <td style="font-weight:600;">${escHtml(subj)}</td>
+                            <td class="tc" style="font-family:monospace;font-weight:700;">${avg}%</td>
+                            <td class="tc" style="font-weight:800;">${grade}</td>
+                        </tr>`;
+                    }).join('');
+
+                    const overallRow = overall !== undefined ? `
+                        <tr class="avg-row">
+                            <td class="tr" style="font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#6b84a0;">Period Average</td>
+                            <td class="tc" style="font-family:monospace;">${overall}%</td>
+                            <td class="tc">${overall >= 90 ? 'A' : overall >= 80 ? 'B' : overall >= 70 ? 'C' : overall >= 60 ? 'D' : 'F'}</td>
+                        </tr>` : '';
+
+                    bodyHtml += `
+                    <div class="sem-block">
+                        <h3 class="sem-title">${escHtml(semName)}</h3>
+                        <table>
+                            <thead><tr><th>Subject</th><th class="tc">Average (%)</th><th class="tc">Grade</th></tr></thead>
+                            <tbody>${rows}${overallRow}</tbody>
+                        </table>
+                    </div>`;
+                });
+            }
+
+            // Evaluations section
+            if (evaluations.length) {
+                bodyHtml += `<h3 class="sem-title" style="margin-top:30px;">Evaluations (${evaluations.length})</h3>`;
+                evaluations.forEach(ev => {
+                    const typeLabel = ev.type === 'academic_report_card' ? 'Report Card Evaluation'
+                                    : ev.type === 'end_of_year' ? 'End-of-Year Evaluation'
+                                    : ev.type === 'behavioral'  ? 'Behavioral Evaluation'
+                                    : ev.type === 'academic'    ? 'Academic Progress Evaluation'
+                                    : escHtml(ev.type || 'Evaluation');
+                    const dateStr = ev.date || (ev.createdAt ? new Date(ev.createdAt).toLocaleDateString() : '—');
+
+                    const writtenParts = [
+                        ev.written?.narrative          ? `<strong>Narrative:</strong> ${escHtml(ev.written.narrative)}` : '',
+                        ev.written?.strengths          ? `<strong>Strengths:</strong> ${escHtml(ev.written.strengths)}` : '',
+                        ev.written?.growth             ? `<strong>Areas for Growth:</strong> ${escHtml(ev.written.growth)}` : '',
+                        ev.written?.steps              ? `<strong>Next Steps:</strong> ${escHtml(ev.written.steps)}` : '',
+                        ev.written?.interventions      ? `<strong>Interventions:</strong> ${escHtml(ev.written.interventions)}` : '',
+                        ev.written?.description        ? `<strong>Description:</strong> ${escHtml(ev.written.description)}` : '',
+                        ev.written?.actionPlan         ? `<strong>Action Plan:</strong> ${escHtml(ev.written.actionPlan)}` : '',
+                        ev.status                      ? `<strong>Status/Action:</strong> ${escHtml(ev.status)}` : '',
+                        ev.comment                     ? `<strong>Comment:</strong> ${escHtml(ev.comment)}` : '',
+                    ].filter(Boolean).join('<br>');
+
+                    bodyHtml += `
+                    <div class="eval-block">
+                        <div class="eval-type">${typeLabel} · ${escHtml(dateStr)}</div>
+                        ${writtenParts ? `<div class="eval-note">${writtenParts}</div>` : ''}
+                    </div>`;
+                });
+            }
+
+        } else {
+            // ── Fallback: fetch grades live (for records archived before snapshot was introduced)
+            const gradesSnap = await getDocs(collection(db, 'students', studentId, 'grades'));
+            let grades = [];
+            gradesSnap.forEach(d => grades.push(d.data()));
+
+            const bySem = {};
+            grades.forEach(g => {
+                if (subjFilter !== 'all' && g.subject !== subjFilter) return;
+                const sem = rawSemesters.find(sm => sm.id === g.semesterId)?.name || 'Unknown Period';
+                const sub = g.subject || 'Uncategorized';
+                if (!bySem[sem]) bySem[sem] = {};
+                if (!bySem[sem][sub]) bySem[sem][sub] = [];
+                bySem[sem][sub].push(g);
+            });
+
+            if (!Object.keys(bySem).length) {
+                bodyHtml += `<p style="text-align:center;color:#6b84a0;font-style:italic;padding:40px;">No grades recorded matching filters.</p>`;
+            } else {
+                for (let sem in bySem) {
+                    bodyHtml += `<div class="sem-block"><h3 class="sem-title">${escHtml(sem)}</h3><table>`;
+                    if (mode === 'summary') {
+                        bodyHtml += `<thead><tr><th>Subject</th><th class="tc">Assignments</th><th class="tc">Average (%)</th><th class="tc">Letter Grade</th></tr></thead><tbody>`;
+                        let semTotalPct = 0; let semSubjCount = 0;
+                        for (let sub in bySem[sem]) {
+                            const sGrades = bySem[sem][sub];
+                            const avg = calculateWeightedAverage(sGrades, getGradeTypes());
+                            if (avg !== null) {
+                                semTotalPct += avg; semSubjCount++;
+                                bodyHtml += `<tr><td>${escHtml(sub)}</td><td class="tc">${sGrades.length}</td><td class="tc" style="font-family:monospace;font-weight:700;">${avg}%</td><td class="tc" style="font-weight:800;">${letterGrade(avg)}</td></tr>`;
+                            }
+                        }
+                        if (semSubjCount > 0) {
+                            const semAvg = Math.round(semTotalPct / semSubjCount);
+                            bodyHtml += `<tr class="avg-row"><td colspan="2" class="tr" style="font-size:10px;color:#6b84a0;text-transform:uppercase;letter-spacing:0.05em;">Period Average</td><td class="tc" style="font-family:monospace;">${semAvg}%</td><td class="tc" style="font-weight:800;">${letterGrade(semAvg)}</td></tr>`;
+                        }
+                        bodyHtml += `</tbody></table></div>`;
+                    } else {
+                        bodyHtml += `<thead><tr><th>Subject</th><th>Assignment</th><th>Type</th><th class="tc">Score</th><th class="tc">%</th></tr></thead><tbody>`;
+                        for (let sub in bySem[sem]) {
+                            const sGrades = bySem[sem][sub].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+                            sGrades.forEach(g => {
+                                const pct = g.max ? Math.round(g.score / g.max * 100) : null;
+                                bodyHtml += `<tr><td>${escHtml(sub)}</td><td>${escHtml(g.title)}<br><span style="font-size:10px;color:#9ab0c6">${escHtml(g.date) || ''}</span></td><td>${escHtml(g.type)}</td><td class="tc" style="font-family:monospace;">${g.score}/${g.max}</td><td class="tc" style="font-weight:bold;">${pct !== null ? pct + '%' : '—'}</td></tr>`;
+                            });
+                        }
+                        bodyHtml += `</tbody></table></div>`;
+                    }
+                }
+            }
+        }
+
+        const html = `<html><head><title>Student Record - ${escHtml(s.name)}</title><style>${css}</style></head><body>${headerHtml}${bodyHtml}${footer}</body></html>`;
+
         const w = window.open('', '_blank');
         w.document.write(html);
         w.document.close();
@@ -383,7 +475,7 @@ window.executeStudentPrint = async function() {
         console.error('[Archives] Error generating print:', e);
         alert('Error generating print.');
     }
-}
+};
 
 // Fire it up
 init();
