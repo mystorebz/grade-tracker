@@ -45,19 +45,11 @@ async function isEmailInUse(email, currentReqId) {
     if (!email) return false;
     const targetEmail = email.toLowerCase().trim();
 
-    // 1. Check Teachers
-    const tSnap = await getDocs(query(collection(db, 'teachers'), where('email', '==', targetEmail)));
-    if (!tSnap.empty) return true;
+    // 1. Check Global Registered Emails Collection (Fast ID Lookup)
+    const regSnap = await getDoc(doc(db, 'registered_emails', targetEmail));
+    if (regSnap.exists()) return true;
 
-    // 2. Check Students
-    const sSnap = await getDocs(query(collection(db, 'students'), where('email', '==', targetEmail)));
-    if (!sSnap.empty) return true;
-
-    // 3. Check Active Schools (Admins)
-    const schSnap = await getDocs(query(collection(db, 'schools'), where('contactEmail', '==', targetEmail)));
-    if (!schSnap.empty) return true;
-
-    // 4. Check Pending Quote Requests (excluding the one we are currently approving)
+    // 2. Check Pending Quote Requests (excluding the one we are currently approving)
     const qSnap = await getDocs(query(collection(db, 'quote_requests'), where('workEmail', '==', targetEmail)));
     let inUseInQuotes = false;
     qSnap.forEach(doc => {
@@ -176,12 +168,12 @@ initializeBtn.addEventListener('click', async () => {
             logo:                 '', // Added placeholder for the school logo
             superAdminId:         newSuperAdminId, 
             adminCode:            hashedCode,      
-            securityQ1:           secQ1,            
-            securityA1:           hashedA1,         
-            securityQ2:           secQ2,            
-            securityA2:           hashedA2,         
-            securityQuestionsSet: true,             
-            isSuperAdmin:         true,             
+            securityQ1:           secQ1,             
+            securityA1:           hashedA1,          
+            securityQ2:           secQ2,             
+            securityA2:           hashedA2,          
+            securityQuestionsSet: true,              
+            isSuperAdmin:         true,              
             isVerified:           true,
             isActive:             true,
             requiresPinReset:     false,
@@ -232,6 +224,18 @@ initializeBtn.addEventListener('click', async () => {
         // C. Mark the original request as fulfilled
         const reqRef = doc(db, 'quote_requests', reqId);
         batch.update(reqRef, { fulfilled: true, generatedSchoolId: newSchoolId });
+
+        // D. Register the email globally to prevent future duplicates
+        if (emailToCheck) {
+            const registeredEmailRef = doc(db, 'registered_emails', emailToCheck.toLowerCase().trim());
+            batch.set(registeredEmailRef, {
+                email: emailToCheck.toLowerCase().trim(),
+                name: `${requestData.firstName || ''} ${requestData.lastName || ''}`.trim(),
+                role: 'admin',
+                referenceId: newSchoolId,
+                createdAt: new Date().toISOString()
+            });
+        }
 
         await batch.commit();
 
