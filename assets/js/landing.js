@@ -1,5 +1,5 @@
 import { db } from './firebase-init.js';
-import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { doc, setDoc, getDoc, getDocs, collection, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // ── NAVBAR SCROLL EFFECT ──
 const nav = document.getElementById('navbar');
@@ -67,16 +67,37 @@ if (registerBtn) {
 
         btnLoadingState(true);
 
-        const timestamp = new Date().toISOString();
-        const fullName  = `${firstName} ${lastName}`;
-
-        // Build a readable contract term string for emails
-        let contractSummary = contractTerm;
-        if (contractTerm === '6 Months') contractSummary = '6 Month Contract';
-        if (contractTerm === 'Annual') contractSummary = 'Annual Contract (1 Year)';
-        if (contractTerm === 'Multi-Year') contractSummary = `Multi-Year Contract (${contractYears} Years)`;
+        const targetEmail = workEmail.toLowerCase().trim();
 
         try {
+            // ── GLOBAL EMAIL CHECK ──
+            // 1. Check Global Registered Emails
+            const regSnap = await getDoc(doc(db, 'registered_emails', targetEmail));
+            if (regSnap.exists()) {
+                msgEl.textContent = "This email is already registered to an account in our system.";
+                msgEl.className = "text-sm text-center font-bold mt-2 text-red-600 block";
+                btnLoadingState(false);
+                return;
+            }
+
+            // 2. Check Pending Quote Requests
+            const qSnap = await getDocs(query(collection(db, 'quote_requests'), where('workEmail', '==', targetEmail)));
+            if (!qSnap.empty) {
+                msgEl.textContent = "A quote request with this email is already pending.";
+                msgEl.className = "text-sm text-center font-bold mt-2 text-red-600 block";
+                btnLoadingState(false);
+                return;
+            }
+
+            const timestamp = new Date().toISOString();
+            const fullName  = `${firstName} ${lastName}`;
+
+            // Build a readable contract term string for emails
+            let contractSummary = contractTerm;
+            if (contractTerm === '6 Months') contractSummary = '6 Month Contract';
+            if (contractTerm === 'Annual') contractSummary = 'Annual Contract (1 Year)';
+            if (contractTerm === 'Multi-Year') contractSummary = `Multi-Year Contract (${contractYears} Years)`;
+
             // Generate Request ID (e.g. REQ-9A2B4) to match the onboarding flow
             const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
             let rand = '';
@@ -90,7 +111,7 @@ if (registerBtn) {
                 lastName,
                 fullName,
                 jobTitle,
-                workEmail,
+                workEmail:      targetEmail, // Ensure lowercase is saved
                 phone,
                 schoolName,
                 schoolType,
