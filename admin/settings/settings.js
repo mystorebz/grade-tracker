@@ -153,7 +153,7 @@ document.getElementById('updateCodeBtn').addEventListener('click', async () => {
     const btn = document.getElementById('updateCodeBtn');
 
     if (!cur || !nw || !cf) { showMsg(mid, 'All three fields are required.', true); return; }
-    if (nw !== cf)            { showMsg(mid, 'New codes do not match.', true);        return; }
+    if (nw !== cf)          { showMsg(mid, 'New codes do not match.', true);        return; }
     if (nw.length < 6)        { showMsg(mid, 'Min. 6 characters required.', true);    return; }
 
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Updating...`;
@@ -196,7 +196,7 @@ document.getElementById('saveProfileBtn').addEventListener('click', async () => 
     const btn = document.getElementById('saveProfileBtn');
     const u = {
         schoolName:    document.getElementById('profileSchoolName').value.trim(),
-        contactEmail:  document.getElementById('profileContactEmail').value.trim(),
+        contactEmail:  document.getElementById('profileContactEmail').value.trim().toLowerCase(), // Lowercase for safety
         district:      document.getElementById('profileDistrict').value,
         phone:         document.getElementById('profilePhone').value.trim(),
         contactName:   document.getElementById('profileContactName').value.trim(),
@@ -207,7 +207,40 @@ document.getElementById('saveProfileBtn').addEventListener('click', async () => 
     btn.disabled  = true;
 
     try {
-        await updateDoc(doc(db, 'schools', session.schoolId), u);
+        const currentEmail = (fullSchoolData.contactEmail || '').toLowerCase().trim();
+        const newEmail     = u.contactEmail;
+        const batch        = writeBatch(db);
+
+        // ── EMAIL CHANGE LOGIC ──
+        if (newEmail !== currentEmail) {
+            // Check if new email is taken globally
+            const regSnap = await getDoc(doc(db, 'registered_emails', newEmail));
+            if (regSnap.exists()) {
+                showMsg('settingsProfileMsg', 'This contact email is already registered to another account.', true);
+                btn.innerHTML = 'Save Profile';
+                btn.disabled  = false;
+                return;
+            }
+
+            // Reserve the new email
+            batch.set(doc(db, 'registered_emails', newEmail), {
+                email: newEmail,
+                name: u.schoolName || u.contactName,
+                role: 'admin',
+                referenceId: session.schoolId,
+                createdAt: new Date().toISOString()
+            });
+
+            // Free up the old email if they had one
+            if (currentEmail) {
+                batch.delete(doc(db, 'registered_emails', currentEmail));
+            }
+        }
+
+        // Update the main school profile
+        batch.update(doc(db, 'schools', session.schoolId), u);
+        
+        await batch.commit();
         Object.assign(fullSchoolData, u);
 
         session.schoolName   = u.schoolName;
@@ -314,15 +347,9 @@ document.getElementById('createSubAdminBtn').addEventListener('click', async () 
         }
 
         // 2. STRICT GLOBAL EMAIL UNIQUENESS CHECK
-        const [tSnap, sSnap, aSnap, schoolSnap] = await Promise.all([
-            getDocs(query(collection(db, 'teachers'), where('email', '==', email))),
-            getDocs(query(collection(db, 'students'), where('email', '==', email))),
-            getDocs(query(collection(db, 'schools', session.schoolId, 'admins'), where('email', '==', email))),
-            getDocs(query(collection(db, 'schools'), where('contactEmail', '==', email))) 
-        ]);
-
-        if (!tSnap.empty || !sSnap.empty || !aSnap.empty || !schoolSnap.empty) {
-            showMsg('createAdminMsg', 'This email is already in use by an existing user or Super Admin.', true);
+        const regSnap = await getDoc(doc(db, 'registered_emails', email));
+        if (regSnap.exists()) {
+            showMsg('createAdminMsg', 'This email is already registered to an account in our system.', true);
             btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-user-plus mr-1.5"></i>Create Sub-Admin';
             return;
         }
@@ -332,8 +359,11 @@ document.getElementById('createSubAdminBtn').addEventListener('click', async () 
         const tempPin = generateTempPin();
         const hashedPin = await sha256(tempPin);
 
-        // 4. Save to Database (including tempPin for the Cloud Function trigger)
-        await setDoc(doc(db, 'schools', session.schoolId, 'admins', newId), {
+        // 4. BATCH WRITE: Save Sub-Admin & Register Email
+        const batch = writeBatch(db);
+
+        const adminRef = doc(db, 'schools', session.schoolId, 'admins', newId);
+        batch.set(adminRef, {
             name,
             email:                email,
             adminCode:            hashedPin,   // SHA-256 hashed for login
@@ -345,6 +375,17 @@ document.getElementById('createSubAdminBtn').addEventListener('click', async () 
             securityQuestionsSet: false,       // Must complete setup on first login
             createdAt:            new Date().toISOString()
         });
+
+        const emailRef = doc(db, 'registered_emails', email);
+        batch.set(emailRef, {
+            email: email,
+            name: name,
+            role: 'sub_admin',
+            referenceId: newId,
+            createdAt: new Date().toISOString()
+        });
+
+        await batch.commit();
 
         // 5. Show credentials slip on screen
         document.getElementById('newAdminIdDisplay').textContent  = newId;
