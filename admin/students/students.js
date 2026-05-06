@@ -670,6 +670,24 @@ window.executeStudentPrint = function () {
 };
 
 // ── 10. ARCHIVE & REASSIGN ────────────────────────────────────────────────
+
+// ── FIX: filter teacher dropdown to only teachers assigned to the selected class
+function updateReassignTeacherDropdown(selectedClass, currentTeacherId = '') {
+    const tSelect = document.getElementById('rsTeacher');
+    if (!tSelect) return;
+
+    const teachersForClass = selectedClass
+        ? allTeachersCache.filter(t => (t.classes || []).includes(selectedClass))
+        : [];
+
+    if (!teachersForClass.length) {
+        tSelect.innerHTML = `<option value="">— No teacher assigned to ${escHtml(selectedClass) || 'this class'} —</option>`;
+    } else {
+        tSelect.innerHTML = '<option value="">-- Unassigned --</option>' +
+            teachersForClass.map(t => `<option value="${t.id}" ${t.id === currentTeacherId ? 'selected' : ''}>${escHtml(t.name)}</option>`).join('');
+    }
+}
+
 window.openReassignModal = function () {
     document.getElementById('sEnrollDropdown')?.classList.add('hidden');
     const s = allStudentsCache.find(x => x.id === currentStudentId);
@@ -682,14 +700,16 @@ window.openReassignModal = function () {
             classList.map(c => `<option value="${c}" ${s.className === c ? 'selected' : ''}>${c}</option>`).join('');
     }
 
-    const tSelect = document.getElementById('rsTeacher');
-    if (tSelect) {
-        tSelect.innerHTML = '<option value="">-- Unassigned --</option>' +
-            allTeachersCache.map(t => `<option value="${t.id}" ${s.teacherId === t.id ? 'selected' : ''}>${t.name}</option>`).join('');
-    }
+    // ── FIX: populate teacher dropdown filtered to the student's current class
+    updateReassignTeacherDropdown(s.className || '', s.teacherId || '');
 
     openOverlay('reassignStudentModal', 'reassignStudentModalInner');
 };
+
+// ── FIX: re-filter teachers whenever the class selection changes
+document.getElementById('rsClass')?.addEventListener('change', function () {
+    updateReassignTeacherDropdown(this.value);
+});
 
 window.closeReassignModal = function () { closeOverlay('reassignStudentModal', 'reassignStudentModalInner'); };
 
