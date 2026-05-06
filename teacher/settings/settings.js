@@ -1,5 +1,5 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { doc, getDoc, updateDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { doc, getDoc, updateDoc, collection, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 
@@ -130,7 +130,41 @@ document.getElementById('saveProfileBtn')?.addEventListener('click', async () =>
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...';
 
     try {
-        await updateDoc(doc(db, 'teachers', session.teacherId), { name, email, phone });
+        const currentEmail = (session.teacherData.email || '').toLowerCase().trim();
+        const newEmail     = email.toLowerCase().trim();
+        const batch        = writeBatch(db);
+
+        // ── EMAIL CHANGE LOGIC ──
+        if (newEmail !== currentEmail) {
+            // Check if new email is taken globally
+            const regSnap = await getDoc(doc(db, 'registered_emails', newEmail));
+            if (regSnap.exists()) {
+                showMsg('profileMsg', 'This email is already registered to another account.', true);
+                btn.disabled  = false;
+                btn.innerHTML = 'Save Profile';
+                return;
+            }
+
+            // Reserve the new email
+            batch.set(doc(db, 'registered_emails', newEmail), {
+                email: newEmail,
+                name: name,
+                role: 'teacher',
+                referenceId: session.teacherId,
+                createdAt: new Date().toISOString()
+            });
+
+            // Free up the old email if they had one
+            if (currentEmail) {
+                batch.delete(doc(db, 'registered_emails', currentEmail));
+            }
+        }
+
+        // Update the main teacher profile
+        batch.update(doc(db, 'teachers', session.teacherId), { name, email, phone });
+        
+        await batch.commit();
+
         session.teacherData.name  = name;
         session.teacherData.email = email;
         session.teacherData.phone = phone;
@@ -140,7 +174,10 @@ document.getElementById('saveProfileBtn')?.addEventListener('click', async () =>
         document.getElementById('profileDisplayName').textContent = name;
 
         showMsg('profileMsg', 'Profile saved successfully!', false);
-    } catch (e) { showMsg('profileMsg', 'Failed to save profile. Please try again.', true); }
+    } catch (e) { 
+        console.error('[TeacherSettings] Save profile error:', e);
+        showMsg('profileMsg', 'Failed to save profile. Please try again.', true); 
+    }
 
     btn.disabled  = false;
     btn.innerHTML = 'Save Profile';
