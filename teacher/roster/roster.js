@@ -425,11 +425,14 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
     btn.textContent = 'Saving…'; btn.disabled = true;
 
     try {
-        const emailCheckQ    = query(collection(db, 'students'), where('email', '==', email));
-        const emailCheckSnap = await getDocs(emailCheckQ);
-        if (!emailCheckSnap.empty) {
-            showMsg('addStudentMsg', 'This email address is already in use by another student.', true);
-            btn.textContent = 'Create New Student Identity'; btn.disabled = false; return;
+        // ── GLOBAL EMAIL CHECK ──
+        const targetEmail = email ? email.toLowerCase() : null;
+        if (targetEmail) {
+            const regSnap = await getDoc(doc(db, 'registered_emails', targetEmail));
+            if (regSnap.exists()) {
+                showMsg('addStudentMsg', 'This email address is already in use by another account.', true);
+                btn.textContent = 'Create New Student Identity'; btn.disabled = false; return;
+            }
         }
 
         const countSnap = await getDocs(query(
@@ -443,7 +446,12 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
         }
 
         const newId = generateStudentId();
-        await setDoc(doc(db, 'students', newId), {
+        
+        // ── BATCH WRITE: Create Student & Register Email ──
+        const batch = writeBatch(db);
+        
+        const studentRef = doc(db, 'students', newId);
+        batch.set(studentRef, {
             studentIdNum: newId, name, email,
             dob:          document.getElementById('sDob').value,
             parentName:   document.getElementById('sParentName').value.trim(),
@@ -457,6 +465,19 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
             medicalNotes: '', academicHistory: [], classHistory: [],
             createdAt:    new Date().toISOString()
         });
+
+        if (targetEmail) {
+            const emailRef = doc(db, 'registered_emails', targetEmail);
+            batch.set(emailRef, {
+                email: targetEmail,
+                name: name,
+                role: 'student',
+                referenceId: newId,
+                createdAt: new Date().toISOString()
+            });
+        }
+
+        await batch.commit();
 
         window.closeAddStudentModal();
         await loadStudents();
