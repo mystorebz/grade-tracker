@@ -1,5 +1,5 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { doc, getDoc, updateDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectStudentLayout } from '../../assets/js/layout-student.js';
 import { showMsg } from '../../assets/js/utils.js';
@@ -116,9 +116,44 @@ document.getElementById('saveProfileBtn').addEventListener('click', async (e) =>
     btn.disabled = true;
 
     try {
-        await updateDoc(doc(db, 'students', session.studentId), { 
+        const currentEmail = (fullStudentData.email || '').toLowerCase().trim();
+        const newEmail     = email.toLowerCase().trim();
+        const batch        = writeBatch(db);
+
+        // ── EMAIL CHANGE LOGIC ──
+        if (newEmail !== currentEmail) {
+            if (newEmail) {
+                // Check if new email is taken globally
+                const regSnap = await getDoc(doc(db, 'registered_emails', newEmail));
+                if (regSnap.exists()) {
+                    showMsg('profileMsg', 'This email is already registered to another account.', true, 'bg-red-50 text-red-700 border border-red-200');
+                    btn.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Save Profile Details`;
+                    btn.disabled = false;
+                    return;
+                }
+
+                // Reserve the new email
+                batch.set(doc(db, 'registered_emails', newEmail), {
+                    email: newEmail,
+                    name: name,
+                    role: 'student',
+                    referenceId: session.studentId,
+                    createdAt: new Date().toISOString()
+                });
+            }
+
+            // Free up the old email if they had one
+            if (currentEmail) {
+                batch.delete(doc(db, 'registered_emails', currentEmail));
+            }
+        }
+
+        // Update the main student profile
+        batch.update(doc(db, 'students', session.studentId), { 
             name, email, dob, parentName, parentPhone 
         });
+        
+        await batch.commit();
         
         // Update local state
         fullStudentData.name = name;
