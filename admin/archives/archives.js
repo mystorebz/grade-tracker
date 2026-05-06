@@ -1,5 +1,7 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { collection, doc, getDoc, getDocs, updateDoc, query, where, arrayRemove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, query, where,
+         getDocs, getDoc, doc,
+         updateDoc, arrayRemove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
 
@@ -7,7 +9,13 @@ import { injectAdminLayout } from '../../assets/js/layout-admin.js';
 const session = requireAuth('admin', '../login.html');
 injectAdminLayout('archives', 'Archives', 'Archived teachers and students', false, false);
 
-// ── 2. TAB SWITCHING ──────────────────────────────────────────────────────
+// ── 2. CACHE ──────────────────────────────────────────────────────────────
+// ── FIX: store loaded records in memory so print functions never need a
+//         separate getDoc call (which fails when currentSchoolId is blank).
+const cachedTeachers = {};
+const cachedStudents = {};
+
+// ── 3. TAB SWITCHING ──────────────────────────────────────────────────────
 window.switchArchiveTab = function(tab) {
     document.getElementById('archiveTeachersList').classList.toggle('hidden', tab !== 'teachers');
     document.getElementById('archiveStudentsList').classList.toggle('hidden',  tab !== 'students');
@@ -15,7 +23,7 @@ window.switchArchiveTab = function(tab) {
     document.getElementById('archiveTabStudents').classList.toggle('active',  tab === 'students');
 };
 
-// ── 3. RENDER HELPERS ─────────────────────────────────────────────────────
+// ── 4. RENDER HELPERS ─────────────────────────────────────────────────────
 function renderTeacher(d) {
     const t = d.data();
     const dateStr = t.archivedAt ? new Date(t.archivedAt).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : 'Unknown date';
@@ -84,7 +92,7 @@ function emptyState(message) {
     </div>`;
 }
 
-// ── 4. LOAD RECORDS ───────────────────────────────────────────────────────
+// ── 5. LOAD RECORDS ───────────────────────────────────────────────────────
 async function loadArchivedRecords() {
     const teacherEl = document.getElementById('archiveTeachersList');
     const studentEl = document.getElementById('archiveStudentsList');
@@ -97,15 +105,21 @@ async function loadArchivedRecords() {
         const tSnap = await getDocs(query(collection(db, 'teachers'), where('archivedSchoolIds', 'array-contains', session.schoolId)));
         const visibleTeachers = tSnap.docs;
 
+        // ── FIX: populate teacher cache from list results so print never needs a separate getDoc
+        visibleTeachers.forEach(d => { cachedTeachers[d.id] = d.data(); });
+
         teacherEl.innerHTML = visibleTeachers.length
             ? `<div style="display:flex;flex-direction:column;gap:8px">${visibleTeachers.map(renderTeacher).join('')}</div>`
             : emptyState('No archived teachers found.');
 
         // ── Students ───────────────────────────────────
         const sSnap = await getDocs(query(collection(db, 'students'), where('archivedSchoolIds', 'array-contains', session.schoolId)));
-        
-        // Ensure we don't show students who were archived previously but have since been restored to Active status at THIS school.
+
+        // Exclude students who were archived previously but have since been restored to Active at THIS school.
         const visibleStudents = sSnap.docs.filter(d => d.data().currentSchoolId !== session.schoolId || d.data().archived === true);
+
+        // ── FIX: populate student cache from list results so print never needs a separate getDoc
+        visibleStudents.forEach(d => { cachedStudents[d.id] = d.data(); });
 
         studentEl.innerHTML = visibleStudents.length
             ? `<div style="display:flex;flex-direction:column;gap:8px">${visibleStudents.map(renderStudent).join('')}</div>`
@@ -118,44 +132,68 @@ async function loadArchivedRecords() {
     }
 }
 
-// ── 5. RESTORE LOGIC ─────────────────────────────────────────────────────
+// ── 6. RESTORE LOGIC ─────────────────────────────────────────────────────
 window.restoreTeacher = async function(id) {
-    if (!confirm('Restore this teacher to active duty at your school?')) return;
+    // ── NOTE: This updateDoc requires a Firestore rules update to work.
+    //    Your rules must allow write access to teacher documents when
+    //    request.auth.token.schoolId is in resource.data.archivedSchoolIds,
+    //    not just when resource.data.currentSchoolId matches.
+    //    Teacher is restored as unassigned — admin must reassign class and students manually.
+    if (!confirm('Restore this teacher? They will be returned as unassigned and will need to be given a class.')) return;
     try {
         await updateDoc(doc(db, 'teachers', id), {
-            currentSchoolId: session.schoolId,
+            currentSchoolId:   session.schoolId,
             archivedSchoolIds: arrayRemove(session.schoolId),
-            archived: false,
-            archivedAt: null
+            archived:          false,
+            archivedAt:        null,
+            classes:           [],   // ── restored unassigned — admin reassigns fresh
+            className:         ''
         });
+        delete cachedTeachers[id];
         loadArchivedRecords();
     } catch (e) {
-        alert('Failed to restore teacher.');
+        console.error('restoreTeacher:', e);
+        if (e.code === 'permission-denied') {
+            alert('Permission denied. Your Firestore rules need to allow writes to archived teacher records. See code comment in restoreTeacher.');
+        } else {
+            alert('Failed to restore teacher.');
+        }
     }
 };
 
 window.restoreStudent = async function(id) {
+    // Student currentSchoolId was NOT cleared on archive (by design), so this
+    // updateDoc is permitted under existing rules. Student is restored unassigned.
     if (!confirm('Restore this student to Active status? They will need to be reassigned to a class.')) return;
     try {
         await updateDoc(doc(db, 'students', id), {
-            enrollmentStatus: 'Active',
-            currentSchoolId: session.schoolId,
-            archived: false,
-            archivedAt: null,
-            archivedSchoolIds: arrayRemove(session.schoolId),
-            archiveReason: ''
+            enrollmentStatus:  'Active',
+            currentSchoolId:   session.schoolId,
+            archived:          false,
+            archivedAt:        null,
+            archiveReason:     '',
+            teacherId:         '',
+            className:         '',
+            archivedSchoolIds: arrayRemove(session.schoolId)
         });
+        delete cachedStudents[id];
         loadArchivedRecords();
     } catch (e) {
+        console.error('restoreStudent:', e);
         alert('Failed to restore student. They may be enrolled at another school.');
     }
 };
 
-// ── 6. PRINT RECORDS ──────────────────────────────────────────────────────
+// ── 7. PRINT RECORDS ──────────────────────────────────────────────────────
 window.printTeacherRecord = async function(teacherId) {
-    const tDoc = await getDoc(doc(db, 'teachers', teacherId));
-    if (!tDoc.exists()) return;
-    const t = tDoc.data();
+    // ── FIX: use cached data instead of getDoc to avoid permission-denied
+    //         on teacher documents where currentSchoolId is blank.
+    const t = cachedTeachers[teacherId];
+    if (!t) {
+        alert('Teacher data not found. Please refresh the page and try again.');
+        return;
+    }
+
     const dateStr = t.archivedAt ? new Date(t.archivedAt).toLocaleDateString() : 'Unknown Date';
 
     const html = `<!DOCTYPE html>
@@ -195,9 +233,13 @@ window.printTeacherRecord = async function(teacherId) {
 };
 
 window.printStudentRecord = async function(studentId) {
-    const sDoc = await getDoc(doc(db, 'students', studentId));
-    if (!sDoc.exists()) return;
-    const s = sDoc.data();
+    // ── FIX: use cached data instead of getDoc for consistency
+    const s = cachedStudents[studentId];
+    if (!s) {
+        alert('Student data not found. Please refresh the page and try again.');
+        return;
+    }
+
     const dateStr = s.archivedAt ? new Date(s.archivedAt).toLocaleDateString() : 'Unknown Date';
 
     const html = `<!DOCTYPE html>
