@@ -1327,10 +1327,11 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
         const t = currentTeacherData;
 
         // ── Compute teaching history snapshot ─────────────────────────────
-        let semesterId   = '';
-        let semesterName = '';
-        let subjectAverages = {};
-        let studentCount    = 0;
+        let semesterId          = '';
+        let semesterName        = '';
+        let subjectAverages     = {};
+        let studentCount        = 0;
+        let snapshotEvaluations = []; // ── FIX: collect existing evaluations for snapshot
 
         try {
             // Get active semester
@@ -1381,9 +1382,33 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
                     subjectAverages[subject] = Math.round(calculateWeightedAverage(grades, gradeTypes));
                 });
             }
+
+            // ── FIX: fetch all existing evaluations for this school into snapshot
+            const evalSnap = await getDocs(query(
+                collection(db, 'teachers', currentTeacherId, 'evaluations'),
+                where('schoolId', '==', session.schoolId)
+            ));
+            evalSnap.forEach(d => snapshotEvaluations.push({ id: d.id, ...d.data() }));
+            snapshotEvaluations.sort((a, b) => new Date(b.timestamp || b.date || 0) - new Date(a.timestamp || a.date || 0));
+
         } catch (snapErr) {
             console.warn('[Teachers] snapshot computation warning:', snapErr.message);
         }
+
+        // ── FIX: build exit eval as named object so it can be included in snapshot
+        const exitEvalData = {
+            evaluatorId:      session.adminId || 'Admin',
+            schoolId:         session.schoolId,
+            type:             'Exit Review',
+            reason,
+            overallRating:    parseInt(score),
+            performanceScore: parseInt(score),
+            comments,
+            timestamp:        new Date().toISOString()
+        };
+
+        // ── FIX: prepend exit eval to snapshot so it's included even before batch commits
+        snapshotEvaluations.unshift(exitEvalData);
 
         const teachingSnapshot = {
             schoolId:       session.schoolId,
@@ -1393,6 +1418,7 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
             subjects:       getSubjectNames(t.subjects),
             studentCount,
             subjectAverages,  // { Mathematics: 78, Science: 65, ... }
+            evaluations:    snapshotEvaluations, // ── FIX: evaluations saved in snapshot
             snapshotDate:   new Date().toISOString()
         };
 
@@ -1407,16 +1433,8 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
             teachingHistory:   arrayUnion(teachingSnapshot)   // ← snapshot appended
         });
 
-        batch.set(evalRef, {
-            evaluatorId:      session.adminId || 'Admin',
-            schoolId:         session.schoolId,
-            type:             'Exit Review',
-            reason,
-            overallRating:    parseInt(score),
-            performanceScore: parseInt(score),
-            comments,
-            timestamp:        new Date().toISOString()
-        });
+        // ── FIX: reuse exitEvalData for the subcollection write
+        batch.set(evalRef, exitEvalData);
 
         await batch.commit();
         window.closeExitModal();
