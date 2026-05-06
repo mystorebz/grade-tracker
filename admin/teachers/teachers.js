@@ -457,13 +457,16 @@ document.getElementById('saveTeacherBtn').addEventListener('click', async () => 
     btn.disabled  = true;
 
     try {
-        const emailCheckQuery = query(collection(db, 'teachers'), where('email', '==', email));
-        const emailCheckSnap  = await getDocs(emailCheckQuery);
-        if (!emailCheckSnap.empty) {
-            showMsg('This email is already registered to a teacher.');
-            btn.innerHTML = '<i class="fa-solid fa-user-plus mr-2"></i> Register';
-            btn.disabled  = false;
-            return;
+        // ── GLOBAL EMAIL CHECK ──
+        const targetEmail = email ? email.toLowerCase() : null;
+        if (targetEmail) {
+            const regSnap = await getDoc(doc(db, 'registered_emails', targetEmail));
+            if (regSnap.exists()) {
+                showMsg('This email is already registered to an account in our system.');
+                btn.innerHTML = '<i class="fa-solid fa-user-plus mr-2"></i> Register';
+                btn.disabled  = false;
+                return;
+            }
         }
 
         const limitCheck = await isTeacherLimitReached();
@@ -484,7 +487,24 @@ document.getElementById('saveTeacherBtn').addEventListener('click', async () => 
             className: selectedClasses[0] || ''
         });
 
-        await setDoc(doc(db, 'teachers', newId), docData);
+        // ── BATCH WRITE: Create Teacher & Register Email ──
+        const batch = writeBatch(db);
+        
+        const teacherRef = doc(db, 'teachers', newId);
+        batch.set(teacherRef, docData);
+
+        if (targetEmail) {
+            const emailRef = doc(db, 'registered_emails', targetEmail);
+            batch.set(emailRef, {
+                email: targetEmail,
+                name: fullName,
+                role: 'teacher',
+                referenceId: newId,
+                createdAt: new Date().toISOString()
+            });
+        }
+
+        await batch.commit();
 
         slipData = { name: fullName, id: newId, pin: docData.pin };
         window.closeAddTeacherModal();
