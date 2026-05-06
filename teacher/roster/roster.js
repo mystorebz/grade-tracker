@@ -1145,6 +1145,66 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
             else finalStatus = 'Archived';
         }
 
+        // ── FIX: compute academic snapshot before batch commits ───────────
+        let academicSnapshot = {};
+        try {
+            const gradeTypes = session.teacherData.gradeTypes || session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES;
+
+            // Fetch grades for this student's current class only
+            const gradesSnap = await getDocs(query(
+                collection(db, 'students', currentStudentId, 'grades'),
+                where('schoolId', '==', session.schoolId)
+            ));
+            const classGrades = [];
+            gradesSnap.forEach(d => {
+                const g = { id: d.id, ...d.data() };
+                if (g.className === (s?.className || '')) classGrades.push(g);
+            });
+
+            // Fetch evaluations for this school
+            const evalSnap = await getDocs(query(
+                collection(db, 'students', currentStudentId, 'evaluations'),
+                where('schoolId', '==', session.schoolId)
+            ));
+            const evaluations = [];
+            evalSnap.forEach(d => evaluations.push({ id: d.id, ...d.data() }));
+            evaluations.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
+
+            // Group grades by semester name → subject, compute weighted averages
+            const bySemester = {};
+            classGrades.forEach(g => {
+                if (!g.semesterId) return;
+                const sem     = rawSemesters.find(rs => rs.id === g.semesterId);
+                const semName = sem?.name || g.semesterId;
+                if (!bySemester[semName]) bySemester[semName] = {};
+                const subj = g.subject || 'Uncategorized';
+                if (!bySemester[semName][subj]) bySemester[semName][subj] = [];
+                bySemester[semName][subj].push(g);
+            });
+
+            const semesters = {};
+            Object.entries(bySemester).forEach(([semName, subjects]) => {
+                semesters[semName] = {};
+                const allSemGrades = [];
+                Object.entries(subjects).forEach(([subj, grades]) => {
+                    semesters[semName][subj] = Math.round(calculateWeightedAverage(grades, gradeTypes));
+                    allSemGrades.push(...grades);
+                });
+                if (allSemGrades.length) {
+                    semesters[semName]._overall = Math.round(calculateWeightedAverage(allSemGrades, gradeTypes));
+                }
+            });
+
+            academicSnapshot = {
+                className:    s?.className || '',
+                semesters,
+                evaluations,
+                snapshotDate: new Date().toISOString()
+            };
+        } catch (snapErr) {
+            console.warn('[Roster] academicSnapshot warning:', snapErr.message);
+        }
+
         const snapshot = {
             schoolId:  session.schoolId,
             schoolName: session.schoolName || session.schoolId,
@@ -1158,8 +1218,12 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
         batch.update(doc(db, 'students', currentStudentId), {
             enrollmentStatus: finalStatus,
             currentSchoolId:  leaveSchool ? '' : session.schoolId,
-            teacherId: '', className: '',
-            academicHistory: arrayUnion(snapshot)
+            teacherId:        '',
+            className:        '',
+            academicHistory:  arrayUnion(snapshot),
+            lastClassName:    s?.className || '',          // ── FIX: preserve for archives display
+            academicSnapshot,                              // ── FIX: snapshot saved at archive time
+            ...(leaveSchool ? { archivedSchoolIds: arrayUnion(session.schoolId) } : {})  // ── FIX: release path only
         });
 
         if (leaveSchool) {
