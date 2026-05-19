@@ -103,22 +103,30 @@ loginBtn.addEventListener('click', async () => {
 
     try {
         // 1. LET THE CLOUD FUNCTION BE THE GATEKEEPER FIRST
-        let authResult;
+        let userCredential;
         try {
-            authResult = await mintAdminToken({ schoolId: rawId, adminCode: codeIn });
-            await signInWithCustomToken(auth, authResult.data.token);
+            const authResult = await mintAdminToken({ schoolId: rawId, adminCode: codeIn });
+            userCredential = await signInWithCustomToken(auth, authResult.data.token);
         } catch (authError) {
             console.error('[Admin Login] Server rejected PIN:', authError);
             showLoginError('Incorrect Admin Code or School ID.');
-            return; // STOP EXECUTION HERE IF SERVER REJECTS
+            return;
         }
 
-        // 2. IF WE GET HERE, THE SERVER VERIFIED THE PIN. NOW FETCH DATA.
-        // We use the exact schoolId the server validated (avoids casing issues)
-        const schoolId = authResult.data.schoolId || rawId.toUpperCase(); 
-        const role = authResult.data.role; // CF should return 'super_admin' or 'sub_admin'
-        const adminId = authResult.data.adminId || null;
+        // 2. READ CLAIMS FROM THE SIGNED TOKEN — NOT FROM THE FUNCTION RESPONSE
+        const idTokenResult = await userCredential.user.getIdTokenResult();
+        const claims        = idTokenResult.claims;
 
+        const schoolId = claims.schoolId;
+        const role     = claims.role;
+        const adminId  = claims.adminId || null;
+
+        if (!schoolId || !role) {
+            showLoginError('Authentication error. Please try again.');
+            return;
+        }
+
+        // 3. FETCH SCHOOL DATA
         const schoolSnap = await getDoc(doc(db, 'schools', schoolId));
         const schoolData = schoolSnap.data();
 
@@ -130,7 +138,7 @@ loginBtn.addEventListener('click', async () => {
         tempSchoolId   = schoolId;
         tempSchoolData = schoolData;
         tempAdminRole  = role;
-        
+
         const planDetails = await fetchPlanDetails(schoolData.subscriptionPlan);
         tempSchoolData.planLimit     = planDetails.limit;
         tempSchoolData.planName      = planDetails.name;
@@ -148,7 +156,6 @@ loginBtn.addEventListener('click', async () => {
                 await launchDashboard(tempSchoolId, tempSchoolData, 'super_admin', null, null);
             }
         } else {
-            // Fetch the sub-admin's specific data
             const adminSnap = await getDoc(doc(db, 'schools', schoolId, 'admins', adminId));
             tempAdminData = adminSnap.data();
             tempAdminId   = adminId;
@@ -202,14 +209,13 @@ saveForceCodeBtn.addEventListener('click', async () => {
         }
 
         // UX FIX: DO NOT AUTO LOGIN. Force manual entry to clear DOM state.
-        document.getElementById('newForceCode').value = '';
+        document.getElementById('newForceCode').value    = '';
         document.getElementById('confirmForceCode').value = '';
-        document.getElementById('loginAdminCode').value = ''; // Clear old PIN
-        
+        document.getElementById('loginAdminCode').value  = '';
+
         hideForceReset();
         showLoginError('PIN updated successfully. Please log in with your new PIN.');
-        
-        // Reset button state
+
         saveForceCodeBtn.disabled  = false;
         saveForceCodeBtn.innerHTML = `Save & Continue <i class="fa-solid fa-arrow-right"></i>`;
 
