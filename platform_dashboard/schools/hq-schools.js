@@ -914,20 +914,16 @@ document.getElementById('confirmRenewalBtn').addEventListener('click', async () 
 
 // ── Manual Deploy Logic ────────────────────────────────────────────────────
 document.getElementById('openDeployModalBtn').addEventListener('click', () => {
-    document.getElementById('depSchoolName').value = '';
-    document.getElementById('depDistrict').value   = 'Belize';
-    document.getElementById('depSchoolType').value = 'Primary';
-    document.getElementById('depEmail').value      = '';
-    document.getElementById('depPin').value        = '';
-
-    document.getElementById('depPlan').value = '';
-    document.getElementById('depPlanLimitsDisplay').classList.add('hidden');
-    document.getElementById('depAmount').value           = '';
-    document.getElementById('depCycle').value            = '6 Months';
-    document.getElementById('depCustomCycleWrap').classList.add('hidden');
-    document.getElementById('depCustomCycle').value      = '';
-    document.getElementById('depNotes').value            = '';
-    document.getElementById('depReceipt').value          = '';
+    document.getElementById('depFirstName').value    = '';
+    document.getElementById('depLastName').value     = '';
+    document.getElementById('depPhone').value        = '';
+    document.getElementById('depSchoolName').value   = '';
+    document.getElementById('depDistrict').value     = 'Belize';
+    document.getElementById('depSchoolType').value   = 'Primary';
+    document.getElementById('depEmail').value        = '';
+    document.getElementById('depContractTerm').value = 'Annual';
+    document.getElementById('depCity').value         = '';
+    document.getElementById('depNotes').value        = '';
     document.getElementById('deployErrorMsg').classList.add('hidden');
 
     const modal = document.getElementById('deployModal');
@@ -945,158 +941,98 @@ const closeDeployModal = () => {
 document.getElementById('closeDeployBtnDesktop').addEventListener('click', closeDeployModal);
 document.getElementById('closeDeployBtnMobile').addEventListener('click', closeDeployModal);
 
-document.getElementById('depCycle').addEventListener('change', (e) => {
-    const customWrap = document.getElementById('depCustomCycleWrap');
-    if (e.target.value === 'Other') customWrap.classList.remove('hidden');
-    else customWrap.classList.add('hidden');
-});
-
 document.getElementById('executeDeployBtn').addEventListener('click', async () => {
+    const firstName    = document.getElementById('depFirstName').value.trim();
+    const lastName     = document.getElementById('depLastName').value.trim();
+    const phone        = document.getElementById('depPhone').value.trim();
     const schoolName   = document.getElementById('depSchoolName').value.trim();
     const district     = document.getElementById('depDistrict').value;
     const schoolType   = document.getElementById('depSchoolType').value;
-    const email        = document.getElementById('depEmail').value.trim();
-    const pin          = document.getElementById('depPin').value;
-
-    const planId       = document.getElementById('depPlan').value;
-    const amount       = document.getElementById('depAmount').value;
-    const cycleSelect  = document.getElementById('depCycle').value;
-    const customCycle  = document.getElementById('depCustomCycle').value;
-    const internalNote = document.getElementById('depNotes').value.trim();
-    const receiptFile  = document.getElementById('depReceipt').files[0];
+    const email        = document.getElementById('depEmail').value.trim().toLowerCase();
+    const contractTerm = document.getElementById('depContractTerm').value;
+    const city         = document.getElementById('depCity').value.trim();
+    const notes        = document.getElementById('depNotes').value.trim();
     const errorMsg     = document.getElementById('deployErrorMsg');
 
-    if (!schoolName || !email || !pin || !planId || !amount) {
+    if (!firstName || !lastName || !schoolName || !email || !contractTerm) {
         errorMsg.textContent = "Please fill in all required fields (*).";
         errorMsg.classList.remove('hidden'); return;
     }
-    if (pin.length < 6) {
-        errorMsg.textContent = "Admin PIN must be at least 6 characters.";
-        errorMsg.classList.remove('hidden'); return;
-    }
 
-    const selectedPlan = availablePlans.find(p => p.id === planId);
-    const actualCycle  = cycleSelect === 'Other' ? (customCycle || 'Custom') : cycleSelect;
-    const btn          = document.getElementById('executeDeployBtn');
+    const btn = document.getElementById('executeDeployBtn');
     btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Checking email...';
 
     try {
-        const timestamp       = new Date().toISOString();
-        const hashedPin       = await sha256(pin);
-        const newSchoolId     = generateSchoolId();
-        const newSuperAdminId = generateAdminId();
-        const paymentId       = `PAY-${Date.now()}`;
-
-        let receiptUrl = null;
-
-        if (receiptFile) {
-            btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up fa-spin mr-2"></i> Uploading Receipt...';
-            const storageRef = ref(storage, `receipts/${paymentId}_${receiptFile.name}`);
-            await uploadBytes(storageRef, receiptFile);
-            receiptUrl = await getDownloadURL(storageRef);
+        // Duplicate email checks
+        const regSnap = await getDoc(doc(db, 'registered_emails', email));
+        if (regSnap.exists()) {
+            errorMsg.textContent = "This email is already registered to an existing account.";
+            errorMsg.classList.remove('hidden');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i> Submit to Approvals →';
+            return;
         }
 
-        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Deploying Infrastructure...';
+        const qSnap = await getDocs(query(collection(db, 'quote_requests'), where('workEmail', '==', email)));
+        if (!qSnap.empty) {
+            errorMsg.textContent = "A quote for this email is already in the pipeline.";
+            errorMsg.classList.remove('hidden');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i> Submit to Approvals →';
+            return;
+        }
 
-        const notesArray = internalNote ? [{
-            note:         internalNote,
-            timestamp:    timestamp,
-            loggedBy:     session.id,
-            loggedByName: session.name
-        }] : [];
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Creating quote...';
 
-        let nextRenewalDate = new Date();
-        if (cycleSelect === '6 Months')   nextRenewalDate.setMonth(nextRenewalDate.getMonth() + 6);
-        else if (cycleSelect === 'Annual') nextRenewalDate.setFullYear(nextRenewalDate.getFullYear() + 1);
-        else if (cycleSelect === 'Multi-Year') nextRenewalDate.setFullYear(nextRenewalDate.getFullYear() + 2);
-        else nextRenewalDate.setFullYear(nextRenewalDate.getFullYear() + 1);
+        // Generate REQ ID
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        let rand = '';
+        for (let i = 0; i < 5; i++) rand += chars.charAt(Math.floor(Math.random() * chars.length));
+        const reqId = `REQ-${rand}`;
 
-        const batch = writeBatch(db);
-
-        const paymentRef = doc(db, 'payments', paymentId);
-        batch.set(paymentRef, {
-            schoolId:           newSchoolId,
-            schoolName:         schoolName,
-            paymentType:        'Manual Deployment Setup',
-            amount:             parseFloat(amount),
-            billingCycle:       actualCycle,
-            subscriptionPlanId: selectedPlan.id,
-            receiptUrl:         receiptUrl,
-            internalNotes:      notesArray,
-            loggedBy:           session.id,
-            timestamp:          timestamp
-        });
-
-        const schoolRef = doc(db, 'schools', newSchoolId);
-        batch.set(schoolRef, {
+        await setDoc(doc(db, 'quote_requests', reqId), {
+            requestId:     reqId,
+            firstName,
+            lastName,
+            fullName:      `${firstName} ${lastName}`,
+            jobTitle:      'Manual HQ Entry',
+            workEmail:     email,
+            phone,
             schoolName,
-            district,
             schoolType,
-            superAdminId:            newSuperAdminId,
-            adminCode:               hashedPin,
-            securityQuestionsSet:    false,
-            isSuperAdmin:            true,
-            isVerified:              true,
-            isActive:                true,
-            requiresPinReset:        false,
-
-            subscriptionPlanId:      selectedPlan.id,
-            subscriptionName:        selectedPlan.name,
-            billingCycle:            actualCycle,
-            nextRenewalDate:         nextRenewalDate.toISOString(),
-
-            subscriptionStatus:      'Active',
-            subscriptionActivatedAt: timestamp,
-            subscriptionEndedAt:     null,
-            statusReason:            null,
-            adminNotes:              [],
-
-            limits: {
-                adminLimit:   selectedPlan.adminLimit,
-                studentLimit: selectedPlan.studentLimit,
-                teacherLimit: selectedPlan.teacherLimit
-            },
-
-            activeSemesterId: 'sem_1',
-            contactEmail:     email,
-            contactName:      'System Admin',
-            phone:            '',
-            createdAt:        timestamp
+            district,
+            city,
+            country:       'Belize',
+            stateProvince: district,
+            studentsCount: 0,
+            teachersCount: 0,
+            contractTerm,
+            contractYears: null,
+            hearAboutUs:   'Manual HQ Entry',
+            message:       notes || '',
+            status:        'Pending',
+            fulfilled:     false,
+            manualEntry:   true,
+            createdBy:     session.id,
+            createdAt:     new Date().toISOString()
         });
-
-        const sems = [
-            { id: 'sem_1', name: 'Term 1', order: 1 },
-            { id: 'sem_2', name: 'Term 2', order: 2 },
-            { id: 'sem_3', name: 'Term 3', order: 3 }
-        ];
-
-        sems.forEach(sem => {
-            const semRef = doc(collection(db, 'schools', newSchoolId, 'semesters'), sem.id);
-            batch.set(semRef, {
-                name:      sem.name,
-                order:     sem.order,
-                startDate: '',
-                endDate:   '',
-                archived:  false,
-                isLocked:  false
-            });
-        });
-
-        await batch.commit();
 
         closeDeployModal();
-        loadSchools();
-
-        alert(`Deployment Successful!\n\nSchool Name: ${schoolName}\nSchool ID: ${newSchoolId}\nAdmin ID: ${newSuperAdminId}\n\nMake sure to provide these credentials to the school administrator.`);
+        window.showToast(
+            'Quote Created',
+            `<strong class="text-white">${schoolName}</strong> is now in the Approvals pipeline as <strong class="text-white">${reqId}</strong>.`,
+            'warning'
+        );
 
     } catch (e) {
-        console.error("Manual Deploy Failed:", e);
-        errorMsg.textContent = "Failed to deploy infrastructure. Check console.";
+        console.error("Manual Quote Failed:", e);
+        errorMsg.textContent = "Failed to create quote entry. Check console.";
         errorMsg.classList.remove('hidden');
     }
 
     btn.disabled  = false;
-    btn.innerHTML = '<i class="fa-solid fa-server mr-2"></i> Deploy Infrastructure';
+    btn.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i> Submit to Approvals →';
 });
 
 // Init Data
