@@ -183,11 +183,8 @@
             backdrop-filter: blur(4px);
             z-index: 60;
             display: flex; align-items: center; justify-content: center;
-            opacity: 0; pointer-events: none;
             transition: opacity 0.2s;
         }
-
-        .modal-backdrop.open { opacity: 1; pointer-events: all; }
 
         .modal-card {
             background: #fff; border: 1px solid #dce3ed;
@@ -195,11 +192,9 @@
             margin: 16px;
             box-shadow: 0 24px 64px rgba(13,31,53,0.22);
             overflow: hidden;
-            transform: scale(0.97) translateY(8px);
             transition: transform 0.2s;
         }
 
-        .modal-backdrop.open .modal-card { transform: scale(1) translateY(0); }
         .modal-header { padding: 22px 26px 18px; border-bottom: 1px solid #f0f4f8; }
         .modal-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; margin-bottom: 14px; }
         .modal-title { font-size: 17px; font-weight: 700; color: #0d1f35; margin: 0 0 4px; letter-spacing: -0.3px; }
@@ -326,8 +321,8 @@
 
 </div>
 
-<div id="forceResetModal" class="modal-backdrop overlay">
-    <div class="modal-card scale-95" id="forceResetModalInner">
+<div id="forceResetModal" class="modal-backdrop hidden opacity-0">
+    <div class="modal-card scale-95 transition-all duration-200" id="forceResetModalInner">
         <div class="modal-header">
             <div class="modal-icon" style="background:#edfaf4;color:#0b8f5e"><i class="fa-solid fa-shield-halved"></i></div>
             <h3 class="modal-title">Set your login code</h3>
@@ -356,8 +351,8 @@
     </div>
 </div>
 
-<div id="onboardModal" class="modal-backdrop overlay">
-    <div class="modal-card scale-95" id="onboardModalInner" style="max-width:480px">
+<div id="onboardModal" class="modal-backdrop hidden opacity-0">
+    <div class="modal-card scale-95 transition-all duration-200" id="onboardModalInner" style="max-width:480px">
         <div class="modal-header">
             <div class="modal-icon" style="background:#edfaf4;color:#0b8f5e"><i class="fa-solid fa-school"></i></div>
             <h3 class="modal-title">Select your class(es)</h3>
