@@ -72,19 +72,26 @@ async function handleLogin() {
 
         // ── Mint Firebase Auth token via Cloud Function ────────────────────────
         try {
-            const result = await mintStudentToken({ studentId: rawId, pin });
-            await signInWithCustomToken(auth, result.data.token);
+            const result         = await mintStudentToken({ studentId: rawId, pin });
+            const userCredential = await signInWithCustomToken(auth, result.data.token);
+            const idTokenResult  = await userCredential.user.getIdTokenResult();
+            const claims         = idTokenResult.claims;
+
+            // ── Save session using verified claims ─────────────────────────────
+            setSessionData('student', {
+                studentId:   claims.studentId  || studentData.id,
+                schoolId:    claims.schoolId   || studentData.currentSchoolId || '',
+                studentData: studentData
+            });
         } catch (e) {
             console.error('[Student Login] mintStudentToken failed:', e);
-            // Non-fatal during migration — log but continue
+            // Non-fatal during migration — log but continue with studentData
+            setSessionData('student', {
+                studentId:   studentData.id,
+                schoolId:    studentData.currentSchoolId || '',
+                studentData: studentData
+            });
         }
-
-        // ── Save session ───────────────────────────────────────────────────────
-        setSessionData('student', {
-            studentId:   studentData.id,
-            schoolId:    studentData.currentSchoolId || '',
-            studentData: studentData
-        });
 
         // ── Gate: Security questions ───────────────────────────────────────────
         if (!studentData.securityQuestionsSet) {
