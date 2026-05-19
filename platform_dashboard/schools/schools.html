@@ -348,7 +348,6 @@
 
 
     <!-- ── Secondary Action Modals (Limits, Renewal, Deploy) ── -->
-    <!-- (Retained your exact structural logic for these, just sharpened the UI to match the new aesthetic) -->
 
     <div id="limitsModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[80] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
         <div class="bg-slate-800 border border-slate-700 max-w-md w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden" id="limitsModalInner">
@@ -427,7 +426,6 @@
                         </div>
                         <div>
                             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Renewal Term</label>
-                            <!-- UPDATED: Fixed 3-tier dropdown -->
                             <select id="renCycle" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-emerald-500 transition">
                                 <option value="6 Months">6 Months</option>
                                 <option value="Annual">1 Year</option>
@@ -456,20 +454,28 @@
         </div>
     </div>
 
-    <!-- The Deploy Modal Remains the Same Structural Setup but with Sharp Borders -->
+    <!-- ── Deploy Modal (Updated: Creates quote instead of direct deploy) ── -->
     <div id="deployModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-sm z-[80] flex items-center justify-center hidden opacity-0 transition-opacity duration-300 overflow-y-auto">
-        <!-- Kept functional deploy modal layout... Ensure border-radius classes like rounded-xl are changed to rounded-none if you strictly want sharp edges everywhere! -->
         <div class="bg-slate-800 border border-slate-700 max-w-2xl w-full m-4 transform scale-95 transition-transform duration-300 overflow-hidden flex flex-col md:flex-row" id="deployModalInner">
             <div class="md:w-1/2 p-8 border-b md:border-b-0 md:border-r border-slate-700 bg-slate-800/50">
                 <div class="flex justify-between items-start mb-6">
                     <div>
                         <h3 class="font-black text-xl text-white">Manual Deployment</h3>
-                        <p class="text-xs font-bold text-teal-400 mt-1 uppercase tracking-widest">Bypass Quote System</p>
+                        <p class="text-xs font-bold text-teal-400 mt-1 uppercase tracking-widest">Enters Approvals Pipeline</p>
                     </div>
                     <button id="closeDeployBtnMobile" class="md:hidden text-slate-500 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
                 </div>
-                <!-- ... Inputs ... -->
                 <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">First Name *</label>
+                            <input type="text" id="depFirstName" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-teal-500 transition">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Last Name *</label>
+                            <input type="text" id="depLastName" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-teal-500 transition">
+                        </div>
+                    </div>
                     <div>
                         <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">School Name *</label>
                         <input type="text" id="depSchoolName" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-teal-500 transition">
@@ -493,8 +499,8 @@
                         <input type="email" id="depEmail" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-teal-500 transition">
                     </div>
                     <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Admin PIN *</label>
-                        <input type="password" id="depPin" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-teal-500 transition">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Phone</label>
+                        <input type="text" id="depPhone" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-teal-500 transition">
                     </div>
                 </div>
             </div>
@@ -503,39 +509,30 @@
                 <button id="closeDeployBtnDesktop" class="hidden md:block absolute top-6 right-6 text-slate-500 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
                 <div class="space-y-4 mt-8 md:mt-0">
                     <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 text-indigo-400">Subscription Tier *</label>
-                        <select id="depPlan" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-indigo-500 transition"></select>
-                        <p id="depPlanLimitsDisplay" class="text-[10px] font-bold text-indigo-400 mt-2 hidden"></p>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Contract Term *</label>
+                        <select id="depContractTerm" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-teal-500 transition">
+                            <option value="6 Months">6 Months</option>
+                            <option value="Annual" selected>1 Year (Annual)</option>
+                            <option value="Multi-Year">Multi-Year</option>
+                        </select>
                     </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Amount *</label>
-                            <input type="number" id="depAmount" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-teal-500 transition">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Term</label>
-                            <!-- UPDATED: Fixed 3-tier dropdown -->
-                            <select id="depCycle" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-teal-500 transition">
-                                <option value="6 Months">6 Months</option>
-                                <option value="Annual">1 Year</option>
-                                <option value="Multi-Year">Multi-Year</option>
-                            </select>
-                        </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">City</label>
+                        <input type="text" id="depCity" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-teal-500 transition">
                     </div>
-                    
                     <div>
                         <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Notes</label>
-                        <textarea id="depNotes" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-teal-500 transition resize-none h-10"></textarea>
+                        <textarea id="depNotes" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-teal-500 transition resize-none h-28"></textarea>
                     </div>
-                    <div class="pt-2 border-t border-slate-800">
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Attach Receipt</label>
-                        <input type="file" id="depReceipt" accept="image/*,.pdf" class="w-full p-2 bg-slate-900 border border-slate-700 text-sm text-slate-400 file:mr-4 file:py-1.5 file:px-3 file:border-0 file:text-[10px] file:font-black file:uppercase file:tracking-wider file:bg-teal-900/30 file:text-teal-400 cursor-pointer">
+                    <div class="bg-slate-900/50 border border-slate-700 p-4 text-xs text-slate-500 leading-relaxed">
+                        <i class="fa-solid fa-circle-info mr-1 text-teal-500"></i>
+                        Subscription plan, payment, and receipt are handled in <strong class="text-slate-300">Approvals</strong> after submission.
                     </div>
                 </div>
                 <div class="mt-6">
                     <p id="deployErrorMsg" class="text-xs font-bold text-red-400 bg-red-900/30 border border-red-800/50 p-3 text-center hidden mb-4"></p>
                     <button id="executeDeployBtn" class="w-full bg-teal-600 hover:bg-teal-500 text-white font-black py-4 transition shadow-lg text-sm tracking-wide uppercase">
-                        <i class="fa-solid fa-server mr-2"></i> Deploy
+                        <i class="fa-solid fa-paper-plane mr-2"></i> Submit to Approvals →
                     </button>
                 </div>
             </div>
