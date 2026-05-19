@@ -45,7 +45,7 @@ async function sha256Trim(text) {
 // ── 1. MAIN LOGIN ─────────────────────────────────────────────────────────────
 document.getElementById('loginBtn').addEventListener('click', async () => {
     const rawId = document.getElementById('loginSchoolId').value.trim();
-    const pin   = document.getElementById('loginTeacherCode').value.trim(); // raw — no casing, no hashing
+    const pin   = document.getElementById('loginTeacherCode').value.trim();
     const msgEl = document.getElementById('loginMsg');
     const btn   = document.getElementById('loginBtn');
 
@@ -62,10 +62,12 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
 
     try {
         // ── 1. CF IS THE GATEKEEPER — send raw PIN, server hashes and verifies ──
-        let authResult;
+        let claims;
         try {
-            authResult = await mintTeacherToken({ schoolId: rawId, pin });
-            await signInWithCustomToken(auth, authResult.data.token);
+            const authResult     = await mintTeacherToken({ schoolId: rawId, pin });
+            const userCredential = await signInWithCustomToken(auth, authResult.data.token);
+            const idTokenResult  = await userCredential.user.getIdTokenResult();
+            claims               = idTokenResult.claims;
         } catch (authError) {
             console.error('[Teacher Login] Server rejected credentials:', authError);
             msgEl.textContent = 'Invalid School ID or Teacher Code.';
@@ -74,10 +76,10 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
             return;
         }
 
-        // ── 2. SERVER VERIFIED — now fetch teacher data ───────────────────────
-        const teacherId = authResult.data.teacherId;
-        const schoolId  = authResult.data.schoolId || rawId.toUpperCase();
-        isGlobalTeacher = !authResult.data.legacy;
+        // ── 2. SERVER VERIFIED — read from signed token claims ────────────────
+        const teacherId = claims.teacherId;
+        const schoolId  = claims.schoolId;
+        isGlobalTeacher = !claims.legacy;
 
         let tData = null;
         if (isGlobalTeacher) {
@@ -142,7 +144,6 @@ document.getElementById('saveForceCodeBtn').addEventListener('click', async () =
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
 
     try {
-        // Hash before writing — plain text never touches Firestore
         const hashedNew = await sha256Trim(n);
 
         if (isGlobalTeacher) {
@@ -165,8 +166,7 @@ document.getElementById('saveForceCodeBtn').addEventListener('click', async () =
 
     tempSession.teacherData.requiresPinReset = false;
 
-    // UX: clear fields, close modal, prompt fresh login like admin does
-    document.getElementById('newForceCode').value    = '';
+    document.getElementById('newForceCode').value     = '';
     document.getElementById('confirmForceCode').value = '';
     document.getElementById('loginTeacherCode').value = '';
 
@@ -175,7 +175,6 @@ document.getElementById('saveForceCodeBtn').addEventListener('click', async () =
     btn.innerHTML = `Save & Continue <i class="fa-solid fa-arrow-right"></i>`;
     btn.disabled  = false;
 
-    // Show success and let them log in fresh with new PIN
     const msgEl = document.getElementById('loginMsg');
     msgEl.textContent = 'PIN updated successfully. Please log in with your new PIN.';
     msgEl.classList.remove('hidden');
@@ -187,7 +186,6 @@ async function finalizeLogin() {
         const currentClasses = tempSession.teacherData.classes || [];
         localStorage.setItem('connectus_cached_classes', JSON.stringify(currentClasses));
 
-        // Migrate legacy string subjects to objects
         if (tempSession.teacherData.subjects?.length && typeof tempSession.teacherData.subjects[0] === 'string') {
             const migrated  = tempSession.teacherData.subjects.map(name =>
                 ({ id: genId(), name, description: '', archived: false, archivedAt: null })
@@ -199,7 +197,6 @@ async function finalizeLogin() {
             tempSession.teacherData.subjects = migrated;
         }
 
-        // Apply default subjects if totally empty
         if (!tempSession.teacherData.subjects || !tempSession.teacherData.subjects.length) {
             const updateRef = isGlobalTeacher
                 ? doc(db, 'teachers', tempSession.teacherId)
@@ -213,18 +210,15 @@ async function finalizeLogin() {
 
     setSessionData('teacher', tempSession);
 
-    // Gate 1: Profile completion
     if (isGlobalTeacher && tempSession.teacherData.profileComplete === false) {
         window.location.href = 'onboarding/onboarding.html';
         return;
     }
 
-    // Gate 2: Security questions
     if (isGlobalTeacher && !tempSession.teacherData.securityQuestionsSet) {
         window.location.href = '../onboarding/first-time-setup.html?role=teacher';
         return;
     }
 
-    // Gate 3: Home
     window.location.href = 'home/home.html';
 }
