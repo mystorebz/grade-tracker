@@ -1,5 +1,5 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { collection, getDocs, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, getDocs, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // ── Boot Sequence: Security Check ─────────────────────────────────────────
 const rawSession = localStorage.getItem('connectus_hq_session');
@@ -8,56 +8,55 @@ if (!rawSession) {
 }
 const session = JSON.parse(rawSession);
 
+// ── Module-Level State ────────────────────────────────────────────────────
+let knownQuoteIds        = null; // null = first snapshot not yet processed
+let cachedExpiringSchools = [];
+let newQuoteNotifications = [];
+
 // ── Dashboard Metrics Loader ──────────────────────────────────────────────
 async function loadDashboardMetrics() {
     try {
-        // 1. Pending Quotes
-        const qSnap = await getDocs(query(collection(db, 'quote_requests'), where('fulfilled', '==', false)));
-        document.getElementById('metricQuotes').textContent = qSnap.size;
-
-        // 2. Active Schools (Updated with Expiration Checks & Notifications)
+        // 1. Active Schools (Expiration Checks & Notifications)
         const sSnap = await getDocs(collection(db, 'schools'));
         let activeCount = 0;
-        
-        // --- NEW: Setup for Expiration Checks ---
+
         const now = new Date();
-        const expiringSchools = []; // Array to hold data for the Notification Bell
+        const expiringSchools = [];
 
         sSnap.forEach(doc => {
             const data = doc.data();
-            // A school is only counted as active if the kill switch (isVerified) is explicitly true
             if (data.isVerified === true) {
                 activeCount++;
 
-                // --- NEW: Expiration Warning Logic (14 Days) ---
                 if (data.nextRenewalDate) {
                     const renDate = new Date(data.nextRenewalDate);
                     const msPerDay = 1000 * 60 * 60 * 24;
                     const daysRemaining = Math.ceil((renDate - now) / msPerDay);
-                    
+
                     if (daysRemaining > 0 && daysRemaining <= 14) {
                         expiringSchools.push({
-                            id: doc.id,
+                            id:   doc.id,
                             name: data.schoolName || 'Unknown School',
                             days: daysRemaining
                         });
-                        
-                        // Trigger the pop-up toast notification
+
                         window.showToast(
-                            'Subscription Expiring Soon', 
-                            `<strong class="text-white">${data.schoolName || 'Unknown School'}</strong> (${doc.id}) will expire in ${daysRemaining} days.`, 
+                            'Subscription Expiring Soon',
+                            `<strong class="text-white">${data.schoolName || 'Unknown School'}</strong> (${doc.id}) will expire in ${daysRemaining} days.`,
                             'warning'
                         );
                     }
                 }
             }
         });
+
         document.getElementById('metricSchools').textContent = activeCount;
 
-        // --- NEW: Send the expiring schools to the Dropdown Menu ---
-        populateNotificationBell(expiringSchools);
+        // Cache for bell updates triggered by the quote listener
+        cachedExpiringSchools = expiringSchools;
+        populateNotificationBell(cachedExpiringSchools, newQuoteNotifications);
 
-        // 3. Teachers
+        // 2. Teachers
         try {
             const tSnap = await getDocs(collection(db, 'teachers'));
             document.getElementById('metricTeachers').textContent = tSnap.size;
@@ -65,7 +64,7 @@ async function loadDashboardMetrics() {
             document.getElementById('metricTeachers').textContent = "0";
         }
 
-        // 4. Students
+        // 3. Students
         try {
             const stSnap = await getDocs(collection(db, 'students'));
             document.getElementById('metricStudents').textContent = stSnap.size;
@@ -78,22 +77,72 @@ async function loadDashboardMetrics() {
     }
 }
 
+// ── Real-Time Quote Listener ──────────────────────────────────────────────
+function setupQuoteListener() {
+    const q = query(collection(db, 'quote_requests'), where('fulfilled', '==', false));
+
+    onSnapshot(q, (snapshot) => {
+        // Update the metric counter
+        document.getElementById('metricQuotes').textContent = snapshot.size;
+
+        if (knownQuoteIds === null) {
+            // First snapshot — just record what exists, no notifications
+            knownQuoteIds = new Set(snapshot.docs.map(d => d.id));
+            return;
+        }
+
+        // Subsequent snapshots — detect genuinely new documents
+        snapshot.docs.forEach(doc => {
+            if (!knownQuoteIds.has(doc.id)) {
+                knownQuoteIds.add(doc.id);
+
+                const data = doc.data();
+                const schoolName = data.schoolName || 'Unknown School';
+                const reqId      = doc.id;
+
+                // Add to new quotes list for the bell dropdown
+                newQuoteNotifications.unshift({ id: reqId, name: schoolName });
+
+                // Toast in-app
+                window.showToast(
+                    'New Quote Request',
+                    `<strong class="text-white">${schoolName}</strong> just submitted a quote request (${reqId}).`,
+                    'quote'
+                );
+
+                // Browser push notification (OS-level)
+                if (Notification.permission === 'granted') {
+                    new Notification('New Quote Request — ConnectUs HQ', {
+                        body: `${schoolName} just submitted a quote request.`,
+                        icon: '../assets/images/favicon-32x32.png'
+                    });
+                }
+
+                // Refresh the bell
+                populateNotificationBell(cachedExpiringSchools, newQuoteNotifications);
+            }
+        });
+    }, (error) => {
+        console.error("Quote listener error:", error);
+    });
+}
+
 // ── Toast Notification Engine ─────────────────────────────────────────────
 window.showToast = (title, message, type = 'warning') => {
     const container = document.getElementById('toastContainer');
     if (!container) return;
 
-    const colors = {
-        warning: 'bg-amber-500',
-        border: 'border-amber-700',
-        icon: '<i class="fa-solid fa-triangle-exclamation text-amber-500 mt-0.5"></i>'
+    const styles = {
+        warning: { border: 'border-amber-700',  icon: '<i class="fa-solid fa-triangle-exclamation text-amber-500 mt-0.5"></i>' },
+        quote:   { border: 'border-emerald-700', icon: '<i class="fa-solid fa-file-invoice-dollar text-emerald-400 mt-0.5"></i>' }
     };
+    const s = styles[type] || styles.warning;
 
     const toast = document.createElement('div');
-    toast.className = `bg-slate-800 border ${colors.border} p-4 shadow-2xl shadow-black/50 w-80 transform translate-x-full opacity-0 transition-all duration-500 ease-out pointer-events-auto flex items-start gap-3 mb-3`;
-    
+    toast.className = `bg-slate-800 border ${s.border} p-4 shadow-2xl shadow-black/50 w-80 transform translate-x-full opacity-0 transition-all duration-500 ease-out pointer-events-auto flex items-start gap-3 mb-3`;
+
     toast.innerHTML = `
-        <div class="flex-shrink-0 text-lg">${colors.icon}</div>
+        <div class="flex-shrink-0 text-lg">${s.icon}</div>
         <div class="flex-1">
             <h4 class="text-xs font-black text-white uppercase tracking-widest">${title}</h4>
             <p class="text-xs text-slate-400 mt-1 leading-relaxed">${message}</p>
@@ -104,41 +153,61 @@ window.showToast = (title, message, type = 'warning') => {
     `;
 
     container.appendChild(toast);
-
-    // Slide in
     setTimeout(() => toast.classList.remove('translate-x-full', 'opacity-0'), 10);
-
-    // Auto-remove after 8 seconds
     setTimeout(() => {
         toast.classList.add('translate-x-full', 'opacity-0');
-        setTimeout(() => toast.remove(), 500); 
+        setTimeout(() => toast.remove(), 500);
     }, 8000);
 };
 
 // ── Notification Bell UI Builder ──────────────────────────────────────────
-function populateNotificationBell(expiringSchools) {
+function populateNotificationBell(expiringSchools, newQuotes) {
     const badge = document.getElementById('notificationBadge');
-    const list = document.getElementById('notificationList');
-    
+    const list  = document.getElementById('notificationList');
+
     if (!badge || !list) return;
 
-    if (expiringSchools.length > 0) {
-        badge.textContent = expiringSchools.length;
+    const totalCount = expiringSchools.length + newQuotes.length;
+
+    if (totalCount > 0) {
+        badge.textContent = totalCount;
         badge.classList.remove('hidden');
-        
-        // Sort the list so the ones expiring soonest are at the top
-        expiringSchools.sort((a, b) => a.days - b.days);
-        
+
         let html = '';
-        expiringSchools.forEach(school => {
-            html += `
-                <div class="p-4 border-b border-slate-700 hover:bg-slate-800 transition">
-                    <p class="text-xs font-bold text-white mb-1">${school.name} <span class="text-slate-500 font-mono font-normal">(${school.id})</span></p>
-                    <p class="text-[10px] font-black uppercase tracking-widest text-amber-400">Expires in ${school.days} Days</p>
-                </div>
-            `;
-        });
+
+        // New quote requests section
+        if (newQuotes.length > 0) {
+            html += `<div class="px-4 py-2 bg-emerald-950/40 border-b border-slate-700">
+                        <p class="text-[9px] font-black uppercase tracking-widest text-emerald-500">New Quote Requests</p>
+                     </div>`;
+            newQuotes.forEach(q => {
+                html += `
+                    <div class="p-4 border-b border-slate-700 hover:bg-slate-800 transition">
+                        <p class="text-xs font-bold text-white mb-1">${q.name} <span class="text-slate-500 font-mono font-normal">(${q.id})</span></p>
+                        <p class="text-[10px] font-black uppercase tracking-widest text-emerald-400">New Request</p>
+                    </div>
+                `;
+            });
+        }
+
+        // Expiring schools section
+        if (expiringSchools.length > 0) {
+            const sorted = [...expiringSchools].sort((a, b) => a.days - b.days);
+            html += `<div class="px-4 py-2 bg-amber-950/40 border-b border-slate-700">
+                        <p class="text-[9px] font-black uppercase tracking-widest text-amber-500">Expiring Soon</p>
+                     </div>`;
+            sorted.forEach(school => {
+                html += `
+                    <div class="p-4 border-b border-slate-700 hover:bg-slate-800 transition">
+                        <p class="text-xs font-bold text-white mb-1">${school.name} <span class="text-slate-500 font-mono font-normal">(${school.id})</span></p>
+                        <p class="text-[10px] font-black uppercase tracking-widest text-amber-400">Expires in ${school.days} Days</p>
+                    </div>
+                `;
+            });
+        }
+
         list.innerHTML = html;
+
     } else {
         badge.classList.add('hidden');
         list.innerHTML = `
@@ -150,7 +219,6 @@ function populateNotificationBell(expiringSchools) {
         `;
     }
 }
-
 
 // ── DOM Initialization ────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -169,17 +237,15 @@ document.addEventListener('DOMContentLoaded', () => {
         window.location.replace('core/hq-login.html');
     });
 
-    // --- NEW: Dropdown Toggle Logic ---
-    const bellBtn = document.getElementById('notificationBellBtn');
-    const dropdown = document.getElementById('notificationDropdown');
-    
+    // Dropdown Toggle
+    const bellBtn   = document.getElementById('notificationBellBtn');
+    const dropdown  = document.getElementById('notificationDropdown');
+
     if (bellBtn && dropdown) {
         bellBtn.addEventListener('click', (e) => {
-            e.stopPropagation(); // Prevents click from instantly closing it
+            e.stopPropagation();
             dropdown.classList.toggle('hidden');
         });
-        
-        // Close dropdown when clicking anywhere else on the screen
         document.addEventListener('click', (e) => {
             if (!dropdown.contains(e.target) && !bellBtn.contains(e.target)) {
                 dropdown.classList.add('hidden');
@@ -187,5 +253,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Request browser notification permission once
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+
     loadDashboardMetrics();
+    setupQuoteListener();
 });
