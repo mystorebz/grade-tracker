@@ -66,7 +66,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         try {
             const authResult     = await mintTeacherToken({ schoolId: rawId, pin });
             const userCredential = await signInWithCustomToken(auth, authResult.data.token);
-            const idTokenResult  = await userCredential.user.getIdTokenResult();
+            const idTokenResult  = await userCredential.user.getIdTokenResult(true);
             claims               = idTokenResult.claims;
         } catch (authError) {
             console.error('[Teacher Login] Server rejected credentials:', authError);
