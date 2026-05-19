@@ -168,16 +168,13 @@ document.getElementById('saveForceCodeBtn').addEventListener('click', async () =
 
     document.getElementById('newForceCode').value     = '';
     document.getElementById('confirmForceCode').value = '';
-    document.getElementById('loginTeacherCode').value = '';
 
     closeOverlay('forceResetModal', 'forceResetModalInner');
 
     btn.innerHTML = `Save & Continue <i class="fa-solid fa-arrow-right"></i>`;
     btn.disabled  = false;
 
-    const msgEl = document.getElementById('loginMsg');
-    msgEl.textContent = 'PIN updated successfully. Please log in with your new PIN.';
-    msgEl.classList.remove('hidden');
+    await finalizeLogin();
 });
 
 // ── 3. FINALIZE LOGIN (Routing) ───────────────────────────────────────────────
