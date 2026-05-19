@@ -6,7 +6,6 @@ import { signInWithCustomToken, signOut }
 import { getFunctions, httpsCallable }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
 import { setSessionData } from '../assets/js/auth.js';
-import { openOverlay, closeOverlay } from '../assets/js/utils.js';
 
 // ── WIPE ANY STALE SESSION THE MOMENT THE LOGIN PAGE LOADS ───────────────────
 signOut(auth).catch(() => {});
@@ -108,13 +107,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         schoolType  = schoolSnap.data()?.schoolType || 'Primary';
         tempSession = { schoolId, teacherId, teacherData: tData };
 
-        // ── Check if PIN reset is required ────────────────────────────────────
-        if (tData.requiresPinReset) {
-            resetLoginBtn(btn);
-            openOverlay('forceResetModal', 'forceResetModalInner');
-        } else {
-            await finalizeLogin();
-        }
+        await finalizeLogin();
 
     } catch (e) {
         console.error('[Teacher Login] Outer catch:', e);
@@ -129,55 +122,7 @@ function resetLoginBtn(btn) {
     btn.innerHTML = `<i class="fa-solid fa-arrow-right-to-bracket"></i> Access Portal`;
 }
 
-// ── 2. FORCE RESET ────────────────────────────────────────────────────────────
-document.getElementById('saveForceCodeBtn').addEventListener('click', async () => {
-    const n   = document.getElementById('newForceCode').value.trim();
-    const c   = document.getElementById('confirmForceCode').value.trim();
-    const msg = document.getElementById('forceResetMsg');
-
-    if (!n || !c)     { msg.textContent = 'Fill both fields.';      msg.classList.remove('hidden'); return; }
-    if (n !== c)      { msg.textContent = 'Codes do not match.';    msg.classList.remove('hidden'); return; }
-    if (n.length < 5) { msg.textContent = 'Minimum 5 characters.'; msg.classList.remove('hidden'); return; }
-
-    const btn = document.getElementById('saveForceCodeBtn');
-    btn.disabled  = true;
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
-
-    try {
-        const hashedNew = await sha256Trim(n);
-
-        if (isGlobalTeacher) {
-            await updateDoc(doc(db, 'teachers', tempSession.teacherId), {
-                pin: hashedNew, requiresPinReset: false
-            });
-        } else {
-            await updateDoc(doc(db, 'schools', tempSession.schoolId, 'teachers', tempSession.teacherId), {
-                loginCode: hashedNew, requiresPinReset: false
-            });
-        }
-    } catch (e) {
-        console.error('[Teacher Login] Force reset save failed:', e);
-        msg.textContent = 'Failed to save new PIN. Please try again.';
-        msg.classList.remove('hidden');
-        btn.innerHTML = `Save & Continue <i class="fa-solid fa-arrow-right"></i>`;
-        btn.disabled  = false;
-        return;
-    }
-
-    tempSession.teacherData.requiresPinReset = false;
-
-    document.getElementById('newForceCode').value     = '';
-    document.getElementById('confirmForceCode').value = '';
-
-    closeOverlay('forceResetModal', 'forceResetModalInner');
-
-    btn.innerHTML = `Save & Continue <i class="fa-solid fa-arrow-right"></i>`;
-    btn.disabled  = false;
-
-    await finalizeLogin();
-});
-
-// ── 3. FINALIZE LOGIN (Routing) ───────────────────────────────────────────────
+// ── 2. FINALIZE LOGIN (Routing) ───────────────────────────────────────────────
 async function finalizeLogin() {
     try {
         const currentClasses = tempSession.teacherData.classes || [];
