@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Licensing & Pricing | ConnectUs Online</title>
+    <title>Enterprise Solutions | ConnectUs Online</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'DM Sans', sans-serif; }
         
-        .license-card { transition: all 0.3s ease; }
-        .license-card:hover { transform: translateY(-4px); }
+        .solution-card { transition: all 0.3s ease; }
+        .solution-card:hover { transform: translateY(-6px); }
         
         .gradient-text {
             background: linear-gradient(135deg, #4f46e5, #9333ea);
@@ -28,82 +28,110 @@
 </head>
 <body class="bg-slate-50 text-slate-900 relative overflow-x-hidden min-h-screen flex flex-col">
 
-    <!-- Subtle technical background -->
     <div class="absolute inset-0 bg-grid-pattern z-0 pointer-events-none" style="height: 60vh;"></div>
     <div class="absolute top-0 left-0 right-0 h-[60vh] bg-gradient-to-b from-slate-50/0 to-slate-50 z-0 pointer-events-none"></div>
 
     <header class="py-24 px-4 text-center relative z-10">
-        <h2 class="text-indigo-600 font-bold tracking-widest uppercase text-sm mb-4">Scalable Infrastructure</h2>
+        <h2 class="text-indigo-600 font-bold tracking-widest uppercase text-sm mb-4">ConnectUs Infrastructure</h2>
         <h1 class="text-4xl md:text-5xl lg:text-6xl font-extrabold text-slate-900 mb-6 tracking-tight">
-            Flexible <span class="gradient-text">Per-Seat</span> Licensing
+            Built for <span class="gradient-text">Every Campus</span> Size
         </h1>
         <p class="max-w-3xl mx-auto text-slate-600 text-lg md:text-xl leading-relaxed">
-            Every academic institution is unique. Our pricing is directly tied to your school's actual composition, ensuring you only pay for the specific user licenses you need to power your grid.
+            From rural academies to multi-campus national networks, we provide a custom-tailored digital grid for your institution. Select the tier that matches your school's profile to request a comprehensive proposal.
         </p>
     </header>
 
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20 relative z-10 flex-grow">
         
-        <!-- Licensing Architecture Breakdown -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch mb-16">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch mb-16">
             
-            <!-- Student License -->
-            <div class="license-card bg-white p-8 rounded-sm shadow-md border border-slate-200 flex flex-col h-full">
-                <div class="w-12 h-12 bg-indigo-50 flex items-center justify-center rounded-sm mb-6 border border-indigo-100">
-                    <i class="fa-solid fa-user-graduate text-xl text-indigo-600"></i>
-                </div>
-                <h3 class="text-2xl font-bold mb-2 text-slate-900">Per Student</h3>
-                <p class="text-slate-500 text-sm mb-8 flex-grow">
-                    Core licenses for your student body. Includes full access to the academic portal, assignments, grading dashboards, and interactive modules.
-                </p>
-                <div class="pt-6 border-t border-slate-100 mt-auto">
-                    <a href="../quote.html" class="block w-full text-center py-3 px-6 bg-slate-100 text-slate-700 font-bold uppercase tracking-wider text-sm hover:bg-indigo-600 hover:text-white transition-colors duration-300 rounded-sm">Get a Quote</a>
-                </div>
+            <!-- Foundation Tier -->
+            <div class="solution-card bg-white p-8 rounded-sm shadow-md border border-slate-200 flex flex-col h-full">
+                <h3 class="text-2xl font-bold mb-2 text-slate-900">Foundation</h3>
+                <p class="text-slate-500 text-sm mb-6 h-10">Essential digital infrastructure for small academies and primary schools.</p>
+                
+                <ul class="space-y-4 mb-8 flex-grow text-slate-600 pt-6 border-t border-slate-100">
+                    <li class="flex items-start gap-3 text-sm font-medium">
+                        <i class="fa-solid fa-check text-indigo-500 mt-1"></i> 
+                        <span>Core Student & Teacher Registry</span>
+                    </li>
+                    <li class="flex items-start gap-3 text-sm font-medium">
+                        <i class="fa-solid fa-check text-indigo-500 mt-1"></i> 
+                        <span>Standard Gradebook & Attendance</span>
+                    </li>
+                    <li class="flex items-start gap-3 text-sm font-medium">
+                        <i class="fa-solid fa-check text-indigo-500 mt-1"></i> 
+                        <span>Parent Communication Portal</span>
+                    </li>
+                    <li class="flex items-start gap-3 text-sm font-medium">
+                        <i class="fa-solid fa-check text-indigo-500 mt-1"></i> 
+                        <span>Basic Administrative Support</span>
+                    </li>
+                </ul>
+                <a href="../quote.html" class="block w-full text-center py-3 px-6 bg-slate-100 text-slate-700 font-bold uppercase tracking-wider text-sm hover:bg-indigo-600 hover:text-white transition-colors duration-300 rounded-sm">Request Quote</a>
             </div>
 
-            <!-- Teacher License -->
-            <div class="license-card bg-white p-8 rounded-sm shadow-md border-t-4 border-indigo-600 flex flex-col h-full transform lg:-translate-y-2">
-                <div class="w-12 h-12 bg-indigo-50 flex items-center justify-center rounded-sm mb-6 border border-indigo-100">
-                    <i class="fa-solid fa-chalkboard-user text-xl text-indigo-600"></i>
-                </div>
-                <h3 class="text-2xl font-bold mb-2 text-slate-900">Per Teacher</h3>
-                <p class="text-slate-500 text-sm mb-8 flex-grow">
-                    Empower your educators. Includes advanced gradebook management, attendance tracking, lesson planning, and direct classroom communication tools.
-                </p>
-                <div class="pt-6 border-t border-slate-100 mt-auto">
-                    <a href="../quote.html" class="block w-full text-center py-3 px-6 bg-indigo-600 text-white font-bold uppercase tracking-wider text-sm shadow-md shadow-indigo-200 hover:bg-indigo-700 transition-colors duration-300 rounded-sm">Get a Quote</a>
-                </div>
+            <!-- Campus Tier -->
+            <div class="solution-card bg-white p-8 rounded-sm shadow-xl border-t-4 border-indigo-600 flex flex-col h-full transform md:-translate-y-2">
+                <div class="inline-block bg-indigo-100 text-indigo-700 px-3 py-1 text-xs font-bold uppercase tracking-widest mb-4 w-max">Standard Choice</div>
+                <h3 class="text-2xl font-bold mb-2 text-slate-900">Campus</h3>
+                <p class="text-slate-500 text-sm mb-6 h-10">Advanced features for growing secondary schools and large student bodies.</p>
+                
+                <ul class="space-y-4 mb-8 flex-grow text-slate-600 pt-6 border-t border-slate-100">
+                    <li class="flex items-start gap-3 text-sm font-medium">
+                        <i class="fa-solid fa-check text-indigo-500 mt-1"></i> 
+                        <span>Everything in Foundation, plus:</span>
+                    </li>
+                    <li class="flex items-start gap-3 text-sm font-medium">
+                        <i class="fa-solid fa-check text-indigo-500 mt-1"></i> 
+                        <span>Advanced Academic Analytics & Reports</span>
+                    </li>
+                    <li class="flex items-start gap-3 text-sm font-medium">
+                        <i class="fa-solid fa-check text-indigo-500 mt-1"></i> 
+                        <span>Interactive Assignment Modules</span>
+                    </li>
+                    <li class="flex items-start gap-3 text-sm font-medium">
+                        <i class="fa-solid fa-check text-indigo-500 mt-1"></i> 
+                        <span>Priority Technical Support</span>
+                    </li>
+                </ul>
+                <a href="../quote.html" class="block w-full text-center py-3 px-6 bg-indigo-600 text-white font-bold uppercase tracking-wider text-sm shadow-md shadow-indigo-200 hover:bg-indigo-700 transition-colors duration-300 rounded-sm">Request Quote</a>
             </div>
 
-            <!-- Admin License -->
-            <div class="license-card bg-white p-8 rounded-sm shadow-md border border-slate-200 flex flex-col h-full">
-                <div class="w-12 h-12 bg-slate-900 flex items-center justify-center rounded-sm mb-6">
-                    <i class="fa-solid fa-user-shield text-xl text-white"></i>
-                </div>
-                <h3 class="text-2xl font-bold mb-2 text-slate-900">Per Admin</h3>
-                <p class="text-slate-500 text-sm mb-8 flex-grow">
-                    Total administrative control. Includes global registry management, system-wide analytics, staff provisioning, and institutional security settings.
-                </p>
-                <div class="pt-6 border-t border-slate-100 mt-auto">
-                    <a href="../quote.html" class="block w-full text-center py-3 px-6 bg-slate-100 text-slate-700 font-bold uppercase tracking-wider text-sm hover:bg-slate-900 hover:text-white transition-colors duration-300 rounded-sm">Get a Quote</a>
-                </div>
+            <!-- Network Tier -->
+            <div class="solution-card bg-slate-900 p-8 rounded-sm shadow-md border border-slate-800 flex flex-col h-full text-white">
+                <h3 class="text-2xl font-bold mb-2">Network</h3>
+                <p class="text-slate-400 text-sm mb-6 h-10">Complete institutional power for multi-campus networks and districts.</p>
+                
+                <ul class="space-y-4 mb-8 flex-grow text-slate-300 pt-6 border-t border-slate-700">
+                    <li class="flex items-start gap-3 text-sm font-medium">
+                        <i class="fa-solid fa-check text-indigo-400 mt-1"></i> 
+                        <span>Everything in Campus, plus:</span>
+                    </li>
+                    <li class="flex items-start gap-3 text-sm font-medium">
+                        <i class="fa-solid fa-check text-indigo-400 mt-1"></i> 
+                        <span>Multi-School Management Dashboard</span>
+                    </li>
+                    <li class="flex items-start gap-3 text-sm font-medium">
+                        <i class="fa-solid fa-check text-indigo-400 mt-1"></i> 
+                        <span>Custom API Integrations</span>
+                    </li>
+                    <li class="flex items-start gap-3 text-sm font-medium">
+                        <i class="fa-solid fa-check text-indigo-400 mt-1"></i> 
+                        <span>Dedicated Account Manager & Training</span>
+                    </li>
+                </ul>
+                <a href="../quote.html" class="block w-full text-center py-3 px-6 bg-white text-slate-900 font-bold uppercase tracking-wider text-sm hover:bg-slate-200 transition-colors duration-300 rounded-sm">Consult with Sales</a>
             </div>
 
         </div>
-
-        <!-- Unified Quote CTA Block -->
-        <div class="bg-slate-900 border-l-4 border-indigo-500 p-8 md:p-12 shadow-xl flex flex-col md:flex-row items-center justify-between rounded-sm">
-            <div class="mb-8 md:mb-0 text-left max-w-2xl pr-4">
-                <h3 class="text-2xl font-bold text-white mb-3">Calculate Your Infrastructure Costs</h3>
-                <p class="text-slate-400 text-base leading-relaxed">
-                    Ready to deploy ConnectUs? Tell us about your institution's specific headcount for students, teachers, and administrators, and our team will generate a tailored licensing package for your campus.
-                </p>
-            </div>
-            <div class="shrink-0 w-full md:w-auto">
-                <a href="../quote.html" class="block text-center py-4 px-10 bg-indigo-600 text-white font-bold uppercase tracking-widest text-sm hover:bg-indigo-500 transition-colors shadow-lg shadow-indigo-900/50 rounded-sm">
-                    Request Custom Pricing
-                </a>
-            </div>
+        
+        <!-- Community Grant Banner -->
+        <div class="mt-6 bg-indigo-50 border border-indigo-100 p-4 text-center rounded-sm">
+            <p class="text-sm font-medium text-indigo-800">
+                <i class="fa-solid fa-hand-holding-heart mr-2"></i>
+                Special institutional grants and discounts available for rural and community-funded schools. <a href="../quote.html" class="underline font-bold hover:text-indigo-600 transition-colors">Ask us if you qualify</a>.
+            </p>
         </div>
 
     </section>
