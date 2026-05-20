@@ -36,7 +36,7 @@ window.evalRatings = {
     // Behavioral & Conduct
     ruleAdherence: 0, conflictResolution: 0, respectAuthority: 0,
     peerInteractions: 0, selfRegulation: 0, responseToCorrection: 0,
-    impulseControl: 0,
+    emotionalStability: 0, // <-- Updated from impulseControl
     // Mid-Term Review
     academicProgressToDate: 0, workCompletionRate: 0, classParticipation: 0,
     attentionFocus: 0, effortPersistence: 0, behaviourInClass: 0,
@@ -804,6 +804,13 @@ window.toggleEvalType = function() {
     const target = map[type];
     if (target) { const el = document.getElementById(target); if (el) el.classList.remove('hidden'); }
 
+    // Hide Semester dropdown if End of Year
+    const semWrap = document.getElementById('evalSemesterWrap');
+    if (semWrap) {
+        if (type === 'end_of_year') semWrap.classList.add('hidden');
+        else semWrap.classList.remove('hidden');
+    }
+
     // Hide Other fields when switching types
     const behOther  = document.getElementById('evalBehOtherWrap');
     if (behOther)  behOther.classList.add('hidden');
@@ -822,7 +829,8 @@ window.saveEvaluation = async function() {
     const date    = document.getElementById('evalDate').value;
     const btn     = document.getElementById('btnSubmitEval');
 
-    if (!semId || !date) { alert('Please ensure Semester and Date are filled.'); return; }
+    if (type !== 'end_of_year' && !semId) { alert('Please select a Grading Period.'); return; }
+    if (!date) { alert('Please ensure the Date is filled.'); return; }
 
     let payload = {
         type, schoolId: session.schoolId, teacherId: session.teacherId,
@@ -847,9 +855,9 @@ window.saveEvaluation = async function() {
         payload.semesterName = 'Full Academic Year';
 
     } else if (type === 'behavioral') {
-        const required = ['ruleAdherence','conflictResolution','respectAuthority','peerInteractions','selfRegulation','responseToCorrection','impulseControl'];
+        const required = ['ruleAdherence','conflictResolution','respectAuthority','peerInteractions','selfRegulation','responseToCorrection','emotionalStability'];
         if (required.some(k => !window.evalRatings[k])) { alert('Please rate all Conduct metrics.'); return; }
-        payload.ratings = { ruleAdherence: window.evalRatings.ruleAdherence, conflictResolution: window.evalRatings.conflictResolution, respectAuthority: window.evalRatings.respectAuthority, peerInteractions: window.evalRatings.peerInteractions, selfRegulation: window.evalRatings.selfRegulation, responseToCorrection: window.evalRatings.responseToCorrection, impulseControl: window.evalRatings.impulseControl };
+        payload.ratings = { ruleAdherence: window.evalRatings.ruleAdherence, conflictResolution: window.evalRatings.conflictResolution, respectAuthority: window.evalRatings.respectAuthority, peerInteractions: window.evalRatings.peerInteractions, selfRegulation: window.evalRatings.selfRegulation, responseToCorrection: window.evalRatings.responseToCorrection, emotionalStability: window.evalRatings.emotionalStability };
         payload.written = { description: document.getElementById('evalBehDesc').value.trim(), prior: document.getElementById('evalBehPrior').value.trim(), actionPlan: document.getElementById('evalBehAction').value.trim() };
         payload.status = document.getElementById('evalBehStatus').value || 'No Action';
         if (payload.status === 'Other') {
@@ -932,7 +940,7 @@ window.loadStudentEvaluations = async function(studentId) {
                     highlightText = `<div style="margin-top:10px;padding:6px 10px;background:#f8fafb;border-radius:4px;font-size:11px;font-weight:700;color:#0d1f35;"><i class="fa-solid fa-award" style="color:#f59e0b;margin-right:5px;"></i> Status: ${escHtml(ev.status)}</div>`;
                 } else if (ev.type === 'behavioral') {
                     badgeStyle    = 'background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;';
-                    typeLabel     = 'Behavioral & Conduct';
+                    typeLabel     = 'Behavioral & Conduct Intervention';
                     highlightText = ev.status && ev.status !== 'No Action' ? `<div style="margin-top:10px;padding:6px 10px;background:#fff0f3;border-radius:4px;font-size:11px;font-weight:700;color:#be1240;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:5px;"></i> Action: ${escHtml(ev.status)}</div>` : '';
                 } else if (ev.type === 'midterm_review') {
                     badgeStyle = 'background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;';
@@ -1297,7 +1305,7 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
             const evalSnap = await getDocs(query(collection(db, 'students', currentStudentId, 'evaluations'), where('schoolId', '==', session.schoolId)));
             const evaluations = [];
             evalSnap.forEach(d => evaluations.push({ id: d.id, ...d.data() }));
-            evaluations.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
+            evalutions.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
 
             const bySemester = {};
             classGrades.forEach(g => {
