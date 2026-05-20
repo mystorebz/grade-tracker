@@ -26,150 +26,127 @@
         <div class="flex-1 overflow-y-auto p-8">
             <div class="max-w-[1000px] mx-auto space-y-6">
 
+                <!-- ── Profile Header ──────────────────────────────────────── -->
                 <div class="bg-white rounded-sm shadow-sm border border-[#dce3ed] p-6 flex items-center gap-4">
                     <div id="profileAvatar" class="w-14 h-14 bg-[#0d1f35] text-white rounded-sm flex items-center justify-center font-black text-2xl flex-shrink-0">T</div>
-                    <div>
+                    <div class="flex-1 min-w-0">
                         <p id="profileDisplayName" class="font-black text-[#0d1f35] text-xl tracking-tight">Loading...</p>
                         <p class="text-[11px] font-mono text-[#9ab0c6] mt-0.5" id="profileSchoolId">SCH-ID</p>
                     </div>
+                    <!-- Profile completeness badge — populated by JS -->
+                    <div id="profileCompleteBadge" class="hidden flex-shrink-0"></div>
                 </div>
 
+                <!-- ── Two-column layout ───────────────────────────────────── -->
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-                    
-                    <div class="space-y-6">
-                        <div class="bg-white rounded-sm shadow-sm border border-[#dce3ed] overflow-hidden">
-                            <div class="h-[3px] bg-[#3b82f6] w-full"></div>
-                            <div class="p-4 border-b border-[#f0f4f8] bg-[#f8fafb] flex items-center gap-3">
-                                <div class="w-7 h-7 bg-[#eef4ff] text-[#3b82f6] border border-[#c7d9fd] rounded-sm flex items-center justify-center">
-                                    <i class="fa-solid fa-user text-[11px]"></i>
-                                </div>
-                                <h3 class="text-[12px] font-bold text-[#0d1f35] uppercase tracking-widest">Profile</h3>
-                            </div>
-                            <div class="p-6 space-y-4">
-                                <div>
-                                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Full Name *</label>
-                                    <input type="text" id="settingName" class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#3b82f6] transition">
-                                </div>
-                                <div>
-                                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Email Address *</label>
-                                    <input type="email" id="settingEmail" class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#3b82f6] transition">
-                                    <p class="text-[10px] text-[#9ab0c6] font-semibold mt-1">Used for PIN recovery</p>
-                                </div>
-                                <div>
-                                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Phone</label>
-                                    <input type="tel" id="settingPhone" class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#3b82f6] transition">
-                                </div>
-                                <div class="pt-2">
-                                    <button id="saveProfileBtn" class="w-full bg-[#f8fafb] border border-[#dce3ed] hover:border-[#3b82f6] text-[#0d1f35] font-bold py-2.5 rounded-sm transition text-[12px] uppercase tracking-widest">
-                                        Save Profile
-                                    </button>
-                                </div>
-                                <p id="profileMsg" class="text-[12px] font-bold hidden"></p>
-                            </div>
-                        </div>
 
-                        <div class="bg-white rounded-sm shadow-sm border border-[#dce3ed] overflow-hidden">
-                            <div class="h-[3px] bg-[#e31b4a] w-full"></div>
-                            <div class="p-4 border-b border-[#f0f4f8] bg-[#f8fafb] flex items-center gap-3">
-                                <div class="w-7 h-7 bg-[#fff0f3] text-[#e31b4a] border border-[#fecaca] rounded-sm flex items-center justify-center">
-                                    <i class="fa-solid fa-key text-[11px]"></i>
-                                </div>
-                                <h3 class="text-[12px] font-bold text-[#0d1f35] uppercase tracking-widest">Change PIN</h3>
+                    <!-- ── LEFT: Profile card (read-only) ─────────────────── -->
+                    <div class="bg-white rounded-sm shadow-sm border border-[#dce3ed] overflow-hidden">
+                        <div class="h-[3px] bg-[#3b82f6] w-full"></div>
+                        <div class="p-4 border-b border-[#f0f4f8] bg-[#f8fafb] flex items-center gap-3">
+                            <div class="w-7 h-7 bg-[#eef4ff] text-[#3b82f6] border border-[#c7d9fd] rounded-sm flex items-center justify-center">
+                                <i class="fa-solid fa-user text-[11px]"></i>
                             </div>
-                            <div class="p-6 space-y-4">
+                            <h3 class="text-[12px] font-bold text-[#0d1f35] uppercase tracking-widest">Profile</h3>
+                        </div>
+                        <div class="p-6 space-y-4">
+
+                            <!-- Incomplete professional info warning — shown/hidden by JS -->
+                            <div id="profileIncompleteWarning" class="hidden bg-amber-50 border border-amber-200 rounded-sm p-3 flex items-start gap-2.5">
+                                <i class="fa-solid fa-triangle-exclamation text-amber-500 text-[12px] mt-0.5 flex-shrink-0"></i>
                                 <div>
-                                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Current PIN</label>
-                                    <input type="password" id="currentPin" placeholder="Your current login PIN" class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] font-mono tracking-widest outline-none focus:border-[#e31b4a] transition">
+                                    <p class="text-[11px] font-bold text-amber-700">Professional profile incomplete</p>
+                                    <p class="text-[10px] text-amber-600 font-semibold mt-0.5">Please update your professional information so your administrator can verify your profile.</p>
                                 </div>
-                                <div class="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">New PIN</label>
-                                        <input type="password" id="newPin" placeholder="Min. 6 chars" class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] font-mono tracking-widest outline-none focus:border-[#e31b4a] transition">
-                                    </div>
-                                    <div>
-                                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Confirm New</label>
-                                        <input type="password" id="confirmPin" placeholder="Type it again" class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] font-mono tracking-widest outline-none focus:border-[#e31b4a] transition">
-                                    </div>
+                            </div>
+
+                            <!-- Read-only display fields -->
+                            <div class="space-y-3">
+                                <div class="bg-[#f8fafb] border border-[#f0f4f8] rounded-sm p-3">
+                                    <p class="text-[9px] font-bold text-[#9ab0c6] uppercase tracking-widest mb-1">Full Name</p>
+                                    <p id="displayName" class="text-[13px] font-bold text-[#0d1f35]">—</p>
                                 </div>
-                                <div class="pt-2">
-                                    <button id="savePinBtn" class="w-full bg-[#f8fafb] border border-[#dce3ed] hover:border-[#e31b4a] text-[#e31b4a] font-bold py-2.5 rounded-sm transition text-[12px] uppercase tracking-widest">
-                                        Update PIN
-                                    </button>
+                                <div class="bg-[#f8fafb] border border-[#f0f4f8] rounded-sm p-3">
+                                    <p class="text-[9px] font-bold text-[#9ab0c6] uppercase tracking-widest mb-1">Email Address</p>
+                                    <p id="displayEmail" class="text-[13px] font-bold text-[#0d1f35] break-all">—</p>
                                 </div>
-                                <p id="pinMsg" class="text-[12px] font-bold hidden p-2.5 rounded-sm"></p>
+                                <div class="bg-[#f8fafb] border border-[#f0f4f8] rounded-sm p-3">
+                                    <p class="text-[9px] font-bold text-[#9ab0c6] uppercase tracking-widest mb-1">Phone</p>
+                                    <p id="displayPhone" class="text-[13px] font-bold text-[#0d1f35]">—</p>
+                                </div>
+                            </div>
+
+                            <div class="pt-2 border-t border-[#f0f4f8]">
+                                <button onclick="window.openProfileModal()"
+                                    class="w-full bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-2.5 rounded-sm transition text-[12px] uppercase tracking-widest flex items-center justify-center gap-2">
+                                    <i class="fa-solid fa-pen-to-square text-[11px]"></i>
+                                    Update Profile Info
+                                </button>
                             </div>
                         </div>
                     </div>
 
+                    <!-- ── RIGHT: Unified Security card ───────────────────── -->
                     <div class="bg-white rounded-sm shadow-sm border border-[#dce3ed] overflow-hidden h-fit">
                         <div class="h-[3px] bg-[#f59e0b] w-full"></div>
                         <div class="p-4 border-b border-[#f0f4f8] bg-[#f8fafb] flex items-center gap-3">
                             <div class="w-7 h-7 bg-[#fffbeb] text-[#d97706] border border-[#fde68a] rounded-sm flex items-center justify-center">
                                 <i class="fa-solid fa-shield-halved text-[11px]"></i>
                             </div>
-                            <div>
-                                <h3 class="text-[12px] font-bold text-[#0d1f35] uppercase tracking-widest">Security Questions</h3>
-                            </div>
-                            <span id="secQBadge" class="ml-auto text-[10px] font-black px-2.5 py-1 rounded-sm uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200">
-                                Loading...
-                            </span>
+                            <h3 class="text-[12px] font-bold text-[#0d1f35] uppercase tracking-widest">Security</h3>
                         </div>
-                        <div class="p-6 space-y-4">
-                            <p class="text-[12px] text-[#6b84a0] font-semibold bg-[#f8fafb] border border-[#dce3ed] rounded-sm p-3">
-                                <i class="fa-solid fa-circle-info text-[#9ab0c6] mr-2"></i>
-                                Changing your security questions requires your current PIN to confirm your identity.
-                            </p>
 
-                            <div>
-                                <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Verify Identity (Current PIN)</label>
-                                <input type="password" id="secQCurrentPin" placeholder="Enter your current PIN"
-                                    class="w-full p-2.5 bg-[#fffbeb] border border-[#fde68a] rounded-sm text-[13px] font-mono tracking-widest outline-none focus:border-[#f59e0b] transition">
+                        <!-- Security Questions section -->
+                        <div class="p-6 border-b border-[#f0f4f8]">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-circle-question text-[#9ab0c6] text-[12px]"></i>
+                                    <p class="text-[11px] font-bold text-[#374f6b] uppercase tracking-widest">Security Questions</p>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span id="secQBadge" class="text-[10px] font-black px-2.5 py-1 rounded-sm uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200">
+                                        Loading...
+                                    </span>
+                                    <button onclick="window.openSecurityQModal()"
+                                        class="text-[11px] font-bold text-[#2563eb] bg-[#eef4ff] border border-[#c7d9fd] px-3 py-1.5 rounded-sm hover:bg-[#dbeafe] transition flex items-center gap-1.5">
+                                        <i class="fa-solid fa-pen text-[9px]"></i> Edit
+                                    </button>
+                                </div>
                             </div>
 
-                            <div class="pt-2">
-                                <label class="block text-[10px] font-bold text-[#0d1f35] uppercase tracking-widest mb-1.5">Security Question 1 *</label>
-                                <select id="secQ1" class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[12px] mb-2 outline-none focus:border-[#f59e0b] transition">
-                                    <option value="">Select a question...</option>
-                                    <option value="What was the name of your first pet?">What was the name of your first pet?</option>
-                                    <option value="What city were you born in?">What city were you born in?</option>
-                                    <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
-                                    <option value="What was the name of your primary school?">What was the name of your primary school?</option>
-                                    <option value="What is the name of the street you grew up on?">What is the name of the street you grew up on?</option>
-                                    <option value="What was your childhood nickname?">What was your childhood nickname?</option>
-                                    <option value="What is your oldest sibling's middle name?">What is your oldest sibling's middle name?</option>
-                                    <option value="What was the make of your first car?">What was the make of your first car?</option>
-                                    <option value="In what village or town did your parents meet?">In what village or town did your parents meet?</option>
-                                    <option value="What is the name of your favourite teacher?">What is the name of your favourite teacher?</option>
-                                </select>
-                                <input type="text" id="secA1" placeholder="Your answer (not case-sensitive)"
-                                    class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#f59e0b] transition">
+                            <!-- Read-only display of current questions — populated by JS -->
+                            <div class="space-y-2">
+                                <div class="bg-[#f8fafb] border border-[#f0f4f8] rounded-sm p-3">
+                                    <p class="text-[9px] font-bold text-[#9ab0c6] uppercase tracking-widest mb-1">Question 1</p>
+                                    <p id="displaySecQ1" class="text-[12px] font-semibold text-[#374f6b] italic">Not set</p>
+                                    <p class="text-[11px] font-mono text-[#c5d0db] mt-1.5 tracking-[0.25em]">Answer: ••••••••</p>
+                                </div>
+                                <div class="bg-[#f8fafb] border border-[#f0f4f8] rounded-sm p-3">
+                                    <p class="text-[9px] font-bold text-[#9ab0c6] uppercase tracking-widest mb-1">Question 2</p>
+                                    <p id="displaySecQ2" class="text-[12px] font-semibold text-[#374f6b] italic">Not set</p>
+                                    <p class="text-[11px] font-mono text-[#c5d0db] mt-1.5 tracking-[0.25em]">Answer: ••••••••</p>
+                                </div>
                             </div>
+                        </div>
 
-                            <div class="pt-2 border-t border-[#f0f4f8]">
-                                <label class="block text-[10px] font-bold text-[#0d1f35] uppercase tracking-widest mb-1.5">Security Question 2 *</label>
-                                <select id="secQ2" class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[12px] mb-2 outline-none focus:border-[#f59e0b] transition">
-                                    <option value="">Select a question...</option>
-                                    <option value="What was the name of your first pet?">What was the name of your first pet?</option>
-                                    <option value="What city were you born in?">What city were you born in?</option>
-                                    <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
-                                    <option value="What was the name of your primary school?">What was the name of your primary school?</option>
-                                    <option value="What is the name of the street you grew up on?">What is the name of the street you grew up on?</option>
-                                    <option value="What was your childhood nickname?">What was your childhood nickname?</option>
-                                    <option value="What is your oldest sibling's middle name?">What is your oldest sibling's middle name?</option>
-                                    <option value="What was the make of your first car?">What was the make of your first car?</option>
-                                    <option value="In what village or town did your parents meet?">In what village or town did your parents meet?</option>
-                                    <option value="What is the name of your favourite teacher?">What is the name of your favourite teacher?</option>
-                                </select>
-                                <input type="text" id="secA2" placeholder="Your answer (not case-sensitive)"
-                                    class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#f59e0b] transition">
+                        <!-- Change PIN section -->
+                        <div class="p-6">
+                            <div class="flex items-center gap-2 mb-4">
+                                <i class="fa-solid fa-key text-[#9ab0c6] text-[12px]"></i>
+                                <p class="text-[11px] font-bold text-[#374f6b] uppercase tracking-widest">Login PIN</p>
                             </div>
-
-                            <div class="pt-2">
-                                <button id="saveSecQBtn" class="w-full bg-[#f8fafb] border border-[#dce3ed] hover:border-[#f59e0b] text-[#d97706] font-bold py-2.5 rounded-sm transition text-[12px] uppercase tracking-widest">
-                                    Save Security Questions
-                                </button>
+                            <div class="bg-[#f8fafb] border border-[#f0f4f8] rounded-sm p-3 mb-4">
+                                <p class="text-[10px] font-semibold text-[#9ab0c6]">
+                                    <i class="fa-solid fa-lock text-[#c5d0db] mr-1.5"></i>
+                                    Your PIN is encrypted and stored securely.
+                                </p>
+                                <p class="font-mono text-[22px] text-[#dce3ed] tracking-[0.5em] mt-1 leading-none">••••••</p>
                             </div>
-                            <p id="secQMsg" class="text-[12px] font-bold hidden p-2.5 rounded-sm"></p>
+                            <button onclick="window.openChangePinModal()"
+                                class="w-full bg-[#f8fafb] border border-[#dce3ed] hover:border-[#e31b4a] text-[#e31b4a] font-bold py-2.5 rounded-sm transition text-[12px] uppercase tracking-widest flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-key text-[11px]"></i>
+                                Change PIN
+                            </button>
                         </div>
                     </div>
 
@@ -177,6 +154,399 @@
             </div>
         </div>
     </main>
+
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         MODAL 1 — Update Profile Info (basic + professional, all-in-one)
+    ═════════════════════════════════════════════════════════════════════ -->
+    <div id="profileModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-[#0d1f35]/60 backdrop-blur-sm" onclick="window.closeProfileModal()"></div>
+        <div class="relative bg-white rounded-sm shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+
+            <div class="h-[3px] bg-[#3b82f6] w-full flex-shrink-0"></div>
+
+            <!-- Header -->
+            <div class="flex items-center justify-between px-6 py-4 border-b border-[#f0f4f8] bg-[#f8fafb] flex-shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-[#eef4ff] text-[#2563eb] border border-[#c7d9fd] rounded-sm flex items-center justify-center">
+                        <i class="fa-solid fa-pen-to-square text-[12px]"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-[13px] font-black text-[#0d1f35] uppercase tracking-widest">Update Profile Info</h3>
+                        <p class="text-[10px] text-[#9ab0c6] font-semibold mt-0.5">All changes are saved to the national registry</p>
+                    </div>
+                </div>
+                <button onclick="window.closeProfileModal()" class="text-[#9ab0c6] hover:text-[#e31b4a] transition text-lg w-8 h-8 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Body (scrollable) -->
+            <div class="overflow-y-auto flex-1 p-6 space-y-7">
+
+                <!-- Basic Info -->
+                <div>
+                    <div class="flex items-center gap-2 mb-4 pb-2 border-b border-[#f0f4f8]">
+                        <i class="fa-solid fa-user text-[#3b82f6] text-[11px]"></i>
+                        <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Basic Information</p>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="col-span-2">
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Full Name *</label>
+                            <input type="text" id="settingName"
+                                class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#3b82f6] transition">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Email Address *</label>
+                            <input type="email" id="settingEmail"
+                                class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#3b82f6] transition">
+                            <p class="text-[10px] text-[#9ab0c6] font-semibold mt-1">Used for PIN recovery</p>
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Phone</label>
+                            <input type="tel" id="settingPhone"
+                                class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#3b82f6] transition">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Professional Credentials -->
+                <div>
+                    <div class="flex items-center gap-2 mb-4 pb-2 border-b border-[#f0f4f8]">
+                        <i class="fa-solid fa-certificate text-[#3b82f6] text-[11px]"></i>
+                        <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Professional Credentials</p>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">License Number *</label>
+                            <input type="text" id="profLicenseNumber" placeholder="e.g. BZ-TCH-00000"
+                                class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#3b82f6] transition">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">License Type *</label>
+                            <select id="profLicenseType"
+                                class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#3b82f6] transition">
+                                <option value="">— Select —</option>
+                                <option value="Trained Teacher">Trained Teacher</option>
+                                <option value="Uncertified Teacher">Uncertified Teacher</option>
+                                <option value="Temporary Permit">Temporary Permit</option>
+                                <option value="Specialist License">Specialist License</option>
+                                <option value="Administrative License">Administrative License</option>
+                                <option value="Substitute Permit">Substitute Permit</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">License Expiry Date</label>
+                            <input type="date" id="profLicenseExpiry"
+                                class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#3b82f6] transition">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Years of Experience</label>
+                            <input type="number" id="profYearsExperience" min="0" max="60" placeholder="e.g. 5"
+                                class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#3b82f6] transition">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Employment Type *</label>
+                            <select id="profEmploymentType"
+                                class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#3b82f6] transition">
+                                <option value="">— Select —</option>
+                                <option value="Full-Time">Full-Time</option>
+                                <option value="Part-Time">Part-Time</option>
+                                <option value="Contract">Contract</option>
+                                <option value="Substitute">Substitute</option>
+                                <option value="Volunteer">Volunteer</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Grade Level Specialization</label>
+                            <select id="profGradeLevel"
+                                class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#3b82f6] transition">
+                                <option value="">— Select —</option>
+                                <option value="Early Childhood">Early Childhood</option>
+                                <option value="Primary">Primary</option>
+                                <option value="Secondary">Secondary</option>
+                                <option value="Tertiary">Tertiary</option>
+                                <option value="Special Education">Special Education</option>
+                                <option value="All Levels">All Levels</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Academic Background -->
+                <div>
+                    <div class="flex items-center gap-2 mb-4 pb-2 border-b border-[#f0f4f8]">
+                        <i class="fa-solid fa-graduation-cap text-[#3b82f6] text-[11px]"></i>
+                        <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Academic Background</p>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Highest Education Level *</label>
+                            <select id="profEducationLevel"
+                                class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#3b82f6] transition">
+                                <option value="">— Select —</option>
+                                <option value="High School Diploma">High School Diploma</option>
+                                <option value="Associate's Degree">Associate's Degree</option>
+                                <option value="Bachelor's Degree">Bachelor's Degree</option>
+                                <option value="Postgraduate Diploma">Postgraduate Diploma</option>
+                                <option value="Master's Degree">Master's Degree</option>
+                                <option value="Doctorate">Doctorate</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Field of Study</label>
+                            <input type="text" id="profFieldOfStudy" placeholder="e.g. Primary Education"
+                                class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#3b82f6] transition">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Institution</label>
+                            <input type="text" id="profInstitution" placeholder="e.g. University of Belize"
+                                class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#3b82f6] transition">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Year Graduated</label>
+                            <input type="number" id="profYearGraduated" min="1950" max="2030" placeholder="e.g. 2015"
+                                class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#3b82f6] transition">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Address -->
+                <div>
+                    <div class="flex items-center gap-2 mb-4 pb-2 border-b border-[#f0f4f8]">
+                        <i class="fa-solid fa-location-dot text-[#3b82f6] text-[11px]"></i>
+                        <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Address</p>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="col-span-2">
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Address Line 1</label>
+                            <input type="text" id="profAddressLine1" placeholder="Street address"
+                                class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#3b82f6] transition">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Address Line 2</label>
+                            <input type="text" id="profAddressLine2" placeholder="Village, area, or additional info"
+                                class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#3b82f6] transition">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">City / Town *</label>
+                            <input type="text" id="profAddressCity" placeholder="e.g. Belmopan"
+                                class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#3b82f6] transition">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">District</label>
+                            <select id="profAddressDistrict"
+                                class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#3b82f6] transition">
+                                <option value="">— Select —</option>
+                                <option value="Belize">Belize</option>
+                                <option value="Cayo">Cayo</option>
+                                <option value="Corozal">Corozal</option>
+                                <option value="Orange Walk">Orange Walk</option>
+                                <option value="Stann Creek">Stann Creek</option>
+                                <option value="Toledo">Toledo</option>
+                            </select>
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Country</label>
+                            <input type="text" id="profAddressCountry" value="Belize"
+                                class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#3b82f6] transition">
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Footer -->
+            <div class="flex-shrink-0 px-6 py-4 border-t border-[#f0f4f8] bg-[#f8fafb] flex items-center gap-3">
+                <p id="profileMsg" class="text-[12px] font-bold hidden flex-1 p-2 rounded-sm"></p>
+                <div class="flex items-center gap-3 ml-auto">
+                    <button onclick="window.closeProfileModal()"
+                        class="px-5 py-2.5 text-[12px] font-bold text-[#6b84a0] border border-[#dce3ed] rounded-sm hover:bg-[#f0f4f8] transition uppercase tracking-widest">
+                        Cancel
+                    </button>
+                    <button id="saveProfileBtn"
+                        class="px-6 py-2.5 text-[12px] font-bold bg-[#0d1f35] hover:bg-[#2563eb] text-white rounded-sm transition uppercase tracking-widest flex items-center gap-2">
+                        <i class="fa-solid fa-floppy-disk text-[11px]"></i>
+                        Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         MODAL 2 — Security Questions
+    ═════════════════════════════════════════════════════════════════════ -->
+    <div id="securityQModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-[#0d1f35]/60 backdrop-blur-sm" onclick="window.closeSecurityQModal()"></div>
+        <div class="relative bg-white rounded-sm shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+
+            <div class="h-[3px] bg-[#f59e0b] w-full flex-shrink-0"></div>
+
+            <!-- Header -->
+            <div class="flex items-center justify-between px-6 py-4 border-b border-[#f0f4f8] bg-[#f8fafb] flex-shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-[#fffbeb] text-[#d97706] border border-[#fde68a] rounded-sm flex items-center justify-center">
+                        <i class="fa-solid fa-shield-halved text-[12px]"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-[13px] font-black text-[#0d1f35] uppercase tracking-widest">Security Questions</h3>
+                        <p class="text-[10px] text-[#9ab0c6] font-semibold mt-0.5">Both questions must be different</p>
+                    </div>
+                </div>
+                <button onclick="window.closeSecurityQModal()" class="text-[#9ab0c6] hover:text-[#e31b4a] transition text-lg w-8 h-8 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Body -->
+            <div class="overflow-y-auto flex-1 p-6 space-y-5">
+
+                <div class="bg-amber-50 border border-amber-200 rounded-sm p-3 flex items-start gap-2.5">
+                    <i class="fa-solid fa-circle-info text-amber-500 text-[12px] mt-0.5 flex-shrink-0"></i>
+                    <p class="text-[11px] font-semibold text-amber-700">Your current PIN is required to update your security questions.</p>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Verify Identity (Current PIN)</label>
+                    <input type="password" id="secQCurrentPin" placeholder="Enter your current PIN"
+                        class="w-full p-2.5 bg-[#fffbeb] border border-[#fde68a] rounded-sm text-[13px] font-mono tracking-widest outline-none focus:border-[#f59e0b] transition">
+                </div>
+
+                <div class="pt-1">
+                    <label class="block text-[10px] font-bold text-[#0d1f35] uppercase tracking-widest mb-1.5">Security Question 1 *</label>
+                    <select id="secQ1"
+                        class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[12px] mb-2 outline-none focus:border-[#f59e0b] transition">
+                        <option value="">Select a question...</option>
+                        <option value="What was the name of your first pet?">What was the name of your first pet?</option>
+                        <option value="What city were you born in?">What city were you born in?</option>
+                        <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
+                        <option value="What was the name of your primary school?">What was the name of your primary school?</option>
+                        <option value="What is the name of the street you grew up on?">What is the name of the street you grew up on?</option>
+                        <option value="What was your childhood nickname?">What was your childhood nickname?</option>
+                        <option value="What is your oldest sibling's middle name?">What is your oldest sibling's middle name?</option>
+                        <option value="What was the make of your first car?">What was the make of your first car?</option>
+                        <option value="In what village or town did your parents meet?">In what village or town did your parents meet?</option>
+                        <option value="What is the name of your favourite teacher?">What is the name of your favourite teacher?</option>
+                    </select>
+                    <input type="text" id="secA1" placeholder="Your answer (not case-sensitive)"
+                        class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#f59e0b] transition">
+                </div>
+
+                <div class="pt-2 border-t border-[#f0f4f8]">
+                    <label class="block text-[10px] font-bold text-[#0d1f35] uppercase tracking-widest mb-1.5">Security Question 2 *</label>
+                    <select id="secQ2"
+                        class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[12px] mb-2 outline-none focus:border-[#f59e0b] transition">
+                        <option value="">Select a question...</option>
+                        <option value="What was the name of your first pet?">What was the name of your first pet?</option>
+                        <option value="What city were you born in?">What city were you born in?</option>
+                        <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
+                        <option value="What was the name of your primary school?">What was the name of your primary school?</option>
+                        <option value="What is the name of the street you grew up on?">What is the name of the street you grew up on?</option>
+                        <option value="What was your childhood nickname?">What was your childhood nickname?</option>
+                        <option value="What is your oldest sibling's middle name?">What is your oldest sibling's middle name?</option>
+                        <option value="What was the make of your first car?">What was the make of your first car?</option>
+                        <option value="In what village or town did your parents meet?">In what village or town did your parents meet?</option>
+                        <option value="What is the name of your favourite teacher?">What is the name of your favourite teacher?</option>
+                    </select>
+                    <input type="text" id="secA2" placeholder="Your answer (not case-sensitive)"
+                        class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] outline-none focus:border-[#f59e0b] transition">
+                </div>
+
+            </div>
+
+            <!-- Footer -->
+            <div class="flex-shrink-0 px-6 py-4 border-t border-[#f0f4f8] bg-[#f8fafb] flex items-center gap-3">
+                <p id="secQMsg" class="text-[12px] font-bold hidden flex-1 p-2 rounded-sm"></p>
+                <div class="flex items-center gap-3 ml-auto">
+                    <button onclick="window.closeSecurityQModal()"
+                        class="px-5 py-2.5 text-[12px] font-bold text-[#6b84a0] border border-[#dce3ed] rounded-sm hover:bg-[#f0f4f8] transition uppercase tracking-widest">
+                        Cancel
+                    </button>
+                    <button id="saveSecQBtn"
+                        class="px-6 py-2.5 text-[12px] font-bold bg-[#d97706] hover:bg-[#b45309] text-white rounded-sm transition uppercase tracking-widest flex items-center gap-2">
+                        <i class="fa-solid fa-floppy-disk text-[11px]"></i>
+                        Save Questions
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         MODAL 3 — Change PIN
+    ═════════════════════════════════════════════════════════════════════ -->
+    <div id="changePinModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-[#0d1f35]/60 backdrop-blur-sm" onclick="window.closeChangePinModal()"></div>
+        <div class="relative bg-white rounded-sm shadow-2xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col">
+
+            <div class="h-[3px] bg-[#e31b4a] w-full flex-shrink-0"></div>
+
+            <!-- Header -->
+            <div class="flex items-center justify-between px-6 py-4 border-b border-[#f0f4f8] bg-[#f8fafb] flex-shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-[#fff0f3] text-[#e31b4a] border border-[#fecaca] rounded-sm flex items-center justify-center">
+                        <i class="fa-solid fa-key text-[12px]"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-[13px] font-black text-[#0d1f35] uppercase tracking-widest">Change PIN</h3>
+                        <p class="text-[10px] text-[#9ab0c6] font-semibold mt-0.5">Minimum 6 characters required</p>
+                    </div>
+                </div>
+                <button onclick="window.closeChangePinModal()" class="text-[#9ab0c6] hover:text-[#e31b4a] transition text-lg w-8 h-8 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Body -->
+            <div class="overflow-y-auto flex-1 p-6 space-y-4">
+                <div>
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Current PIN</label>
+                    <input type="password" id="currentPin" placeholder="Your current login PIN"
+                        class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] font-mono tracking-widest outline-none focus:border-[#e31b4a] transition">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">New PIN</label>
+                    <input type="password" id="newPin" placeholder="Min. 6 characters"
+                        class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] font-mono tracking-widest outline-none focus:border-[#e31b4a] transition">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Confirm New PIN</label>
+                    <input type="password" id="confirmPin" placeholder="Type it again"
+                        class="w-full p-2.5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] font-mono tracking-widest outline-none focus:border-[#e31b4a] transition">
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="flex-shrink-0 px-6 py-4 border-t border-[#f0f4f8] bg-[#f8fafb] flex items-center gap-3">
+                <p id="pinMsg" class="text-[12px] font-bold hidden flex-1 p-2 rounded-sm"></p>
+                <div class="flex items-center gap-3 ml-auto">
+                    <button onclick="window.closeChangePinModal()"
+                        class="px-5 py-2.5 text-[12px] font-bold text-[#6b84a0] border border-[#dce3ed] rounded-sm hover:bg-[#f0f4f8] transition uppercase tracking-widest">
+                        Cancel
+                    </button>
+                    <button id="savePinBtn"
+                        class="px-6 py-2.5 text-[12px] font-bold bg-[#e31b4a] hover:bg-[#be123c] text-white rounded-sm transition uppercase tracking-widest flex items-center gap-2">
+                        <i class="fa-solid fa-lock text-[11px]"></i>
+                        Update PIN
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Modal helpers (non-module, safe for onclick attributes) -->
+    <script>
+        window.openProfileModal    = () => document.getElementById('profileModal').classList.remove('hidden');
+        window.closeProfileModal   = () => document.getElementById('profileModal').classList.add('hidden');
+        window.openSecurityQModal  = () => document.getElementById('securityQModal').classList.remove('hidden');
+        window.closeSecurityQModal = () => document.getElementById('securityQModal').classList.add('hidden');
+        window.openChangePinModal  = () => document.getElementById('changePinModal').classList.remove('hidden');
+        window.closeChangePinModal = () => document.getElementById('changePinModal').classList.add('hidden');
+    </script>
 
     <script type="module" src="settings.js"></script>
 </body>
