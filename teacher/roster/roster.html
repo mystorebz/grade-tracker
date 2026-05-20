@@ -423,7 +423,7 @@
 
                 <!-- Special Subjects -->
                 <div>
-                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin:0 0 4px;">Special Subjects</h3>
+                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin:0 0 4px;">Enrichment &amp; Character Development</h3>
                     <p style="font-size:11px;color:#9ab0c6;margin:0 0 10px;">1 = Improvement Needed · 3 = Developing · 5 = Exceptional</p>
                     <div style="background:#fff;border:1px solid #e8edf2;border-radius:4px;padding:12px;display:flex;flex-direction:column;gap:10px;">
                         <div class="rc-rating-row" data-field="characterBuilding" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Character Building</span><div class="rc-star-group" style="display:flex;"></div></div>
@@ -437,7 +437,7 @@
 
                 <!-- Personal Development & Academic Habits -->
                 <div>
-                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin:0 0 4px;">Personal Development &amp; Academic Habits</h3>
+                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin:0 0 4px;">Learning Behaviours &amp; Social Growth</h3>
                     <p style="font-size:11px;color:#9ab0c6;margin:0 0 10px;">1 = Improvement Needed · 3 = Developing · 5 = Exceptional</p>
                     <div style="background:#fff;border:1px solid #e8edf2;border-radius:4px;padding:12px;display:flex;flex-direction:column;gap:10px;">
                         <div class="rc-rating-row" data-field="behavior" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Behavior</span><div class="rc-star-group" style="display:flex;"></div></div>
@@ -481,10 +481,9 @@
                 <div style="margin-bottom:20px;background:#fff;border:1px solid #c5d0db;padding:16px;border-radius:4px;">
                     <label class="field-label">Evaluation Type</label>
                     <select id="evalType" class="form-input" style="font-weight:700;color:#0d1f35;" onchange="window.toggleEvalType()">
-                        <option value="academic">Academic Progress (Mid / End of Term)</option>
+                        <option value="academic">Academic Progress</option>
                         <option value="end_of_year">Comprehensive End-of-Year</option>
                         <option value="behavioral">Behavioral &amp; Conduct Intervention</option>
-                        <option value="behavioral_conduct">Behavioral Conduct (Expanded)</option>
                         <option value="midterm_review">Mid-Term Review</option>
                         <option value="parent_conference">Parent Conference Summary</option>
                         <option value="learning_support">Learning Support Plan</option>
@@ -493,8 +492,14 @@
                 </div>
 
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
-                    <div><label class="field-label">Grading Period</label><select id="evalSemester" class="form-input"></select></div>
-                    <div><label class="field-label">Date of Evaluation</label><input type="date" id="evalDate" class="form-input"></div>
+                    <div id="evalSemesterWrap">
+                        <label class="field-label">Grading Period</label>
+                        <select id="evalSemester" class="form-input"></select>
+                    </div>
+                    <div>
+                        <label class="field-label">Date of Evaluation</label>
+                        <input type="date" id="evalDate" class="form-input">
+                    </div>
                 </div>
 
                 <!-- Academic Progress -->
@@ -502,8 +507,11 @@
                     <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin-bottom:12px;">Quantitative Metrics</h3>
                     <div style="background:#fff;border:1px solid #e8edf2;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
                         <div class="rating-row" data-field="academicMastery" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Subject Mastery</span><div class="star-group" style="display:flex;"></div></div>
-                        <div class="rating-row" data-field="taskExecution" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Task Execution (Workmanship)</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="taskExecution" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Task Completion &amp; Workmanship</span><div class="star-group" style="display:flex;"></div></div>
                         <div class="rating-row" data-field="engagement" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Classroom Engagement</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="criticalThinking" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Critical Thinking &amp; Problem Solving</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="writtenCommunication" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Written Communication</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="oralParticipation" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Oral Participation</span><div class="star-group" style="display:flex;"></div></div>
                     </div>
                     <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin-bottom:12px;">Qualitative Assessment</h3>
                     <div style="display:flex;flex-direction:column;gap:12px;">
@@ -517,9 +525,14 @@
                 <div id="type-eoy" class="eval-section hidden">
                     <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin-bottom:12px;">Summative Metrics</h3>
                     <div style="background:#fff;border:1px solid #e8edf2;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
-                        <div class="rating-row" data-field="academicGrowth" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Overall Academic Growth</span><div class="star-group" style="display:flex;"></div></div>
-                        <div class="rating-row" data-field="socialDynamics" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Social &amp; Peer Dynamics</span><div class="star-group" style="display:flex;"></div></div>
-                        <div class="rating-row" data-field="resilience" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Resilience &amp; Effort</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="overallAcademicGrowth" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Overall Academic Growth</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="subjectMasteryAcrossTerms" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Subject Mastery Across Terms</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="socialPeerDynamics" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Social &amp; Peer Dynamics</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="emotionalResilience" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Emotional Resilience</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="selfRegulationEoy" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Self-Regulation &amp; Impulse Control</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="effortPersistenceYear" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Effort &amp; Persistence Over the Year</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="responseToFeedback" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Response to Feedback &amp; Correction</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="readinessNextGrade" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Readiness for Next Grade Level</span><div class="star-group" style="display:flex;"></div></div>
                     </div>
                     <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin-bottom:12px;">Formal Narrative</h3>
                     <div style="display:flex;flex-direction:column;gap:12px;">
@@ -545,6 +558,10 @@
                         <div class="rating-row" data-field="ruleAdherence" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7f1d1d;">Rule Adherence</span><div class="star-group" style="display:flex;"></div></div>
                         <div class="rating-row" data-field="conflictResolution" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7f1d1d;">Conflict Resolution</span><div class="star-group" style="display:flex;"></div></div>
                         <div class="rating-row" data-field="respectAuthority" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7f1d1d;">Respect for Authority</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="peerInteractions" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7f1d1d;">Peer Interactions &amp; Social Skills</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="selfRegulation" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7f1d1d;">Self-Regulation &amp; Impulse Control</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="responseToCorrection" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7f1d1d;">Response to Correction</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="emotionalStability" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7f1d1d;">Emotional Stability</span><div class="star-group" style="display:flex;"></div></div>
                     </div>
                     <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin-bottom:12px;">Incident Documentation</h3>
                     <div style="display:flex;flex-direction:column;gap:12px;">
@@ -569,38 +586,17 @@
                     </div>
                 </div>
 
-                <!-- Behavioral Conduct (Expanded) -->
-                <div id="type-behavioral-conduct" class="eval-section hidden">
-                    <h3 style="font-size:13px;font-weight:700;color:#c2410c;border-bottom:1px solid #fed7aa;padding-bottom:6px;margin-bottom:12px;">Expanded Conduct Metrics</h3>
-                    <div style="background:#fff;border:1px solid #fed7aa;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
-                        <div class="rating-row" data-field="peerInteractions" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7c2d12;">Peer Interactions</span><div class="star-group" style="display:flex;"></div></div>
-                        <div class="rating-row" data-field="selfRegulation" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7c2d12;">Self-Regulation</span><div class="star-group" style="display:flex;"></div></div>
-                        <div class="rating-row" data-field="responseToCorrection" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7c2d12;">Response to Correction</span><div class="star-group" style="display:flex;"></div></div>
-                    </div>
-                    <div style="display:flex;flex-direction:column;gap:12px;">
-                        <div><label class="field-label">Conduct Description</label><textarea id="evalCondDesc" class="form-input" rows="3"></textarea></div>
-                        <div><label class="field-label">Action Plan</label><textarea id="evalCondAction" class="form-input" rows="2"></textarea></div>
-                        <div style="background:#fff7ed;padding:12px;border:1px solid #fed7aa;border-radius:4px;">
-                            <label class="field-label" style="color:#c2410c;">Action Taken</label>
-                            <select id="evalCondStatus" class="form-input" style="border-color:#fed7aa;" onchange="window.toggleCondOther()">
-                                <option value="No Action">No Action Required</option>
-                                <option value="Verbal Warning">Verbal Warning</option>
-                                <option value="Formal Warning">Formal Warning</option>
-                                <option value="Parent Conference Required">Parent Conference Required</option>
-                                <option value="Disciplinary Probation">Disciplinary Probation</option>
-                                <option value="Suspension">Suspension</option>
-                                <option value="Other">Other (specify below)</option>
-                            </select>
-                            <div id="evalCondOtherWrap" class="hidden" style="margin-top:8px;">
-                                <input type="text" id="evalCondOtherText" class="form-input" placeholder="Describe the action taken…">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Mid-Term Review -->
                 <div id="type-midterm" class="eval-section hidden">
-                    <h3 style="font-size:13px;font-weight:700;color:#0369a1;border-bottom:1px solid #bae6fd;padding-bottom:6px;margin-bottom:12px;">Mid-Term Review</h3>
+                    <h3 style="font-size:13px;font-weight:700;color:#0369a1;border-bottom:1px solid #bae6fd;padding-bottom:6px;margin-bottom:12px;">Mid-Term Review Metrics</h3>
+                    <div style="background:#fff;border:1px solid #bae6fd;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
+                        <div class="rating-row" data-field="academicProgressToDate" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#075985;">Academic Progress to Date</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="workCompletionRate" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#075985;">Work Completion Rate</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="classParticipation" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#075985;">Classroom Participation</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="attentionFocus" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#075985;">Attention &amp; Focus</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="effortPersistence" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#075985;">Effort &amp; Persistence</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="behaviourInClass" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#075985;">Behaviour in Class</span><div class="star-group" style="display:flex;"></div></div>
+                    </div>
                     <div style="display:flex;flex-direction:column;gap:12px;">
                         <div><label class="field-label">Academic Strengths This Period</label><textarea id="evalMidStrengths" class="form-input" rows="2"></textarea></div>
                         <div><label class="field-label">Areas of Concern</label><textarea id="evalMidConcerns" class="form-input" rows="2"></textarea></div>
@@ -614,7 +610,12 @@
 
                 <!-- Parent Conference -->
                 <div id="type-parent-conference" class="eval-section hidden">
-                    <h3 style="font-size:13px;font-weight:700;color:#6d28d9;border-bottom:1px solid #ddd6fe;padding-bottom:6px;margin-bottom:12px;">Parent Conference Summary</h3>
+                    <h3 style="font-size:13px;font-weight:700;color:#6d28d9;border-bottom:1px solid #ddd6fe;padding-bottom:6px;margin-bottom:12px;">Conference Metrics</h3>
+                    <div style="background:#fff;border:1px solid #ddd6fe;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
+                        <div class="rating-row" data-field="parentEngagement" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#4c1d95;">Parent Engagement Level</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="communicationQuality" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#4c1d95;">Communication Quality</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="followThroughAgreements" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#4c1d95;">Follow-Through on Prior Agreements</span><div class="star-group" style="display:flex;"></div></div>
+                    </div>
                     <div style="display:flex;flex-direction:column;gap:12px;">
                         <div>
                             <label class="field-label">Parent / Guardian Present</label>
@@ -635,7 +636,14 @@
 
                 <!-- Learning Support Plan -->
                 <div id="type-learning-support" class="eval-section hidden">
-                    <h3 style="font-size:13px;font-weight:700;color:#9333ea;border-bottom:1px solid #e9d5ff;padding-bottom:6px;margin-bottom:12px;">Learning Support Plan</h3>
+                    <h3 style="font-size:13px;font-weight:700;color:#9333ea;border-bottom:1px solid #e9d5ff;padding-bottom:6px;margin-bottom:12px;">Intervention Metrics</h3>
+                    <div style="background:#fff;border:1px solid #e9d5ff;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
+                        <div class="rating-row" data-field="responseToIntervention" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#6b21a8;">Response to Intervention</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="academicEffort" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#6b21a8;">Academic Effort</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="focusAttention" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#6b21a8;">Focus &amp; Attention</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="independenceInTasks" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#6b21a8;">Independence in Tasks</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="progressTowardsGoals" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#6b21a8;">Progress Towards Goals</span><div class="star-group" style="display:flex;"></div></div>
+                    </div>
                     <div style="display:flex;flex-direction:column;gap:12px;">
                         <div>
                             <label class="field-label">Support Level</label>
@@ -654,7 +662,14 @@
 
                 <!-- Custom Evaluation -->
                 <div id="type-custom" class="eval-section hidden">
-                    <h3 style="font-size:13px;font-weight:700;color:#475569;border-bottom:1px solid #cbd5e1;padding-bottom:6px;margin-bottom:12px;">Custom Evaluation</h3>
+                    <h3 style="font-size:13px;font-weight:700;color:#475569;border-bottom:1px solid #cbd5e1;padding-bottom:6px;margin-bottom:12px;">Custom Evaluation Metrics</h3>
+                    <div style="background:#fff;border:1px solid #cbd5e1;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
+                        <div class="rating-row" data-field="overallPerformance" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#334155;">Overall Performance</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="effortEngagement" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#334155;">Effort &amp; Engagement</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="socialSkills" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#334155;">Social Skills</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="workQuality" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#334155;">Work Quality</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="customProgressGoals" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#334155;">Progress Towards Goals</span><div class="star-group" style="display:flex;"></div></div>
+                    </div>
                     <div style="display:flex;flex-direction:column;gap:12px;">
                         <div><label class="field-label">Evaluation Name <span style="color:#e31b4a;">*</span></label><input type="text" id="evalCustomTypeName" class="form-input" placeholder="e.g. Reading Fluency Check, Portfolio Review…"></div>
                         <div><label class="field-label">Notes &amp; Observations</label><textarea id="evalCustomNotes" class="form-input" rows="4"></textarea></div>
