@@ -308,16 +308,12 @@
 
                 <div id="sViewMode" class="hidden" style="flex:1;display:flex;overflow:hidden;">
 
-                    <!-- ── LEFT SIDEBAR ────────────────────────────────── -->
+                    <!-- LEFT SIDEBAR -->
                     <div style="width:280px;flex-shrink:0;background:#fff;border-right:1px solid #dce3ed;overflow-y:auto;display:flex;flex-direction:column;">
-
-                        <!-- Read-only profile -->
                         <div style="padding:20px 20px 0;">
                             <span style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#6b84a0;display:block;margin-bottom:12px;">Profile</span>
                             <div id="sInfoGrid" style="border-top:1px solid #f0f4f8;"></div>
                         </div>
-
-                        <!-- Class assignment (only editable field) -->
                         <div style="margin:12px 16px 0;padding:14px;background:#f8fafb;border:1px solid #c5d0db;border-radius:4px;">
                             <label class="field-label">Class Assignment</label>
                             <select id="editSClass" class="form-input" onchange="window.checkClassChange()" style="margin-bottom:8px;"></select>
@@ -325,47 +321,24 @@
                                 <label class="field-label" style="color:#e31b4a;">Reason for Class Change *</label>
                                 <input type="text" id="editSClassReason" placeholder="Required" class="form-input" style="border-color:#fecaca;">
                             </div>
-                            <button id="saveClassBtn" onclick="window.saveStudentClass()"
-                                    style="width:100%;padding:7px;background:#0ea871;border:none;border-radius:3px;color:#fff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;">
-                                Save Class
-                            </button>
+                            <button id="saveClassBtn" onclick="window.saveStudentClass()" style="width:100%;padding:7px;background:#0ea871;border:none;border-radius:3px;color:#fff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;">Save Class</button>
                             <p id="editClassMsg" class="hidden" style="font-size:11px;font-weight:600;padding:6px;border-radius:3px;text-align:center;margin-top:6px;"></p>
                         </div>
-
-                        <!-- PIN — email reset only (PIN not displayed) -->
                         <div style="margin:12px 16px 0;padding:14px;background:#f0f4ff;border:1px solid #c7d2fe;border-radius:4px;">
-                            <p style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#4f46e5;margin:0 0 6px;">
-                                <i class="fa-solid fa-key" style="margin-right:4px;"></i>Parent Login PIN
-                            </p>
+                            <p style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#4f46e5;margin:0 0 6px;"><i class="fa-solid fa-key" style="margin-right:4px;"></i>Parent Login PIN</p>
                             <p style="font-size:11px;color:#6b84a0;margin:0 0 10px;line-height:1.5;">Send the parent a secure reset link to set or recover their PIN.</p>
-                            <button id="pinResetEmailBtn" onclick="window.sendPinResetEmail()"
-                                    style="width:100%;padding:7px;background:#4f46e5;border:none;border-radius:3px;color:#fff;font-size:11.5px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
-                                <i class="fa-solid fa-envelope"></i> Send PIN Reset Email
-                            </button>
+                            <button id="pinResetEmailBtn" onclick="window.sendPinResetEmail()" style="width:100%;padding:7px;background:#4f46e5;border:none;border-radius:3px;color:#fff;font-size:11.5px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;"><i class="fa-solid fa-envelope"></i> Send PIN Reset Email</button>
                         </div>
-
-                        <!-- Archive button -->
                         <div style="margin:auto 16px 16px;padding-top:12px;border-top:1px solid #f0f4f8;margin-top:16px;">
-                            <button onclick="window.archiveStudent()"
-                                    style="width:100%;padding:9px;background:#fffbeb;border:1px solid #fde68a;border-radius:3px;color:#78350f;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;">
-                                <i class="fa-solid fa-box-archive"></i> Archive This Student
-                            </button>
+                            <button onclick="window.archiveStudent()" style="width:100%;padding:9px;background:#fffbeb;border:1px solid #fde68a;border-radius:3px;color:#78350f;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;"><i class="fa-solid fa-box-archive"></i> Archive This Student</button>
                         </div>
                     </div>
 
-                    <!-- ── RIGHT PANEL ─────────────────────────────────── -->
+                    <!-- RIGHT PANEL -->
                     <div style="flex:1;display:flex;flex-direction:column;background:#f8fafb;overflow:hidden;min-width:0;">
-
-                        <!-- Tab bar -->
                         <div style="background:#fff;border-bottom:1px solid #dce3ed;display:flex;padding:0 20px;flex-shrink:0;">
-                            <button id="tabBtnGrades" onclick="window.switchStudentTab('grades')"
-                                    style="padding:14px 16px;font-size:13px;font-weight:700;color:#0d1f35;border-bottom:2px solid #0ea871;background:none;cursor:pointer;border-top:none;border-left:none;border-right:none;">
-                                Grades &amp; Assessments
-                            </button>
-                            <button id="tabBtnEvaluations" onclick="window.switchStudentTab('evaluations')"
-                                    style="padding:14px 16px;font-size:13px;font-weight:600;color:#6b84a0;border-bottom:2px solid transparent;background:none;cursor:pointer;border-top:none;border-left:none;border-right:none;transition:color 0.15s;">
-                                Formal Evaluations
-                            </button>
+                            <button id="tabBtnGrades" onclick="window.switchStudentTab('grades')" style="padding:14px 16px;font-size:13px;font-weight:700;color:#0d1f35;border-bottom:2px solid #0ea871;background:none;cursor:pointer;border-top:none;border-left:none;border-right:none;">Grades &amp; Assessments</button>
+                            <button id="tabBtnEvaluations" onclick="window.switchStudentTab('evaluations')" style="padding:14px 16px;font-size:13px;font-weight:600;color:#6b84a0;border-bottom:2px solid transparent;background:none;cursor:pointer;border-top:none;border-left:none;border-right:none;transition:color 0.15s;">Formal Evaluations</button>
                         </div>
 
                         <!-- GRADES TAB -->
@@ -373,9 +346,7 @@
                             <div style="padding:14px 20px;border-bottom:1px solid #dce3ed;background:#fff;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;flex-shrink:0;">
                                 <div style="display:flex;align-items:center;gap:8px;">
                                     <i class="fa-solid fa-graduation-cap" style="font-size:12px;color:#0ea871;"></i>
-                                    <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#374f6b;">
-                                        Grade Records — <span id="sPanelSemName" style="color:#0ea871;"></span>
-                                    </span>
+                                    <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#374f6b;">Grade Records — <span id="sPanelSemName" style="color:#0ea871;"></span></span>
                                 </div>
                                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
                                     <div class="control-group" style="border-radius:3px;">
@@ -405,12 +376,8 @@
                                     <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#374f6b;">Formal History &amp; Reports</span>
                                 </div>
                                 <div style="display:flex;gap:8px;">
-                                    <button onclick="window.openReportCardModal()" class="btn-sharp btn-sharp-outline">
-                                        <i class="fa-solid fa-file-invoice" style="font-size:11px;"></i> Generate Report Card
-                                    </button>
-                                    <button onclick="window.openEvalModal()" class="btn-sharp btn-sharp-primary">
-                                        <i class="fa-solid fa-plus" style="font-size:11px;"></i> New Evaluation
-                                    </button>
+                                    <button onclick="window.openReportCardModal()" class="btn-sharp btn-sharp-outline"><i class="fa-solid fa-file-invoice" style="font-size:11px;"></i> Generate Report Card</button>
+                                    <button onclick="window.openEvalModal()" class="btn-sharp btn-sharp-primary"><i class="fa-solid fa-plus" style="font-size:11px;"></i> New Evaluation</button>
                                 </div>
                             </div>
                             <div style="flex:1;overflow-y:auto;padding:16px 20px;">
@@ -421,7 +388,6 @@
                                 </div>
                             </div>
                         </div>
-
                     </div>
                 </div>
             </div>
@@ -430,7 +396,7 @@
 
     <!-- ── REPORT CARD MODAL ─────────────────────────────────────────────── -->
     <div id="reportCardModal" class="modal-overlay hidden opacity-0" style="z-index:65;">
-        <div class="modal-box" id="reportCardModalInner" style="width:100%;max-width:650px;max-height:90vh;display:flex;flex-direction:column;">
+        <div class="modal-box" id="reportCardModalInner" style="width:100%;max-width:680px;max-height:90vh;display:flex;flex-direction:column;">
             <div class="modal-stripe" style="background:linear-gradient(90deg,#1e1b4b,#4f46e5);"></div>
             <div class="modal-header" style="flex-shrink:0;">
                 <div class="modal-header-left">
@@ -440,6 +406,7 @@
                 <button onclick="window.closeReportCardModal()" class="modal-close"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="modal-body" style="flex:1;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:20px;">
+
                 <div>
                     <label class="field-label">Grading Period</label>
                     <select id="rcSemester" class="form-input"></select>
@@ -454,18 +421,35 @@
                     </div>
                 </div>
 
+                <!-- Special Subjects -->
                 <div>
-                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin:0 0 12px;">Behavior &amp; Work Habits</h3>
-                    <p style="font-size:11px;color:#9ab0c6;margin:0 0 10px;">Rate each area: 1 = Improvement Needed · 3 = Developing · 5 = Exceptional</p>
+                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin:0 0 4px;">Special Subjects</h3>
+                    <p style="font-size:11px;color:#9ab0c6;margin:0 0 10px;">1 = Improvement Needed · 3 = Developing · 5 = Exceptional</p>
                     <div style="background:#fff;border:1px solid #e8edf2;border-radius:4px;padding:12px;display:flex;flex-direction:column;gap:10px;">
-                        <div class="rc-rating-row" data-field="academicComprehension" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Academic Comprehension</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="characterBuilding" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Character Building</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="drama" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Drama</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="music" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Music</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="art" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Art</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="physicalEducation" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Physical Education</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="informationTechnology" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Information Technology</span><div class="rc-star-group" style="display:flex;"></div></div>
+                    </div>
+                </div>
+
+                <!-- Personal Development & Academic Habits -->
+                <div>
+                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin:0 0 4px;">Personal Development &amp; Academic Habits</h3>
+                    <p style="font-size:11px;color:#9ab0c6;margin:0 0 10px;">1 = Improvement Needed · 3 = Developing · 5 = Exceptional</p>
+                    <div style="background:#fff;border:1px solid #e8edf2;border-radius:4px;padding:12px;display:flex;flex-direction:column;gap:10px;">
+                        <div class="rc-rating-row" data-field="behavior" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Behavior</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="organization" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Organization</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="respectfulness" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Respectfulness</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="kindness" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Kindness</span><div class="rc-star-group" style="display:flex;"></div></div>
                         <div class="rc-rating-row" data-field="attitudeWork" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Attitude Towards Work</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="attitudePeers" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Attitude Towards Peers</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="academicComprehension" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Academic Comprehension</span><div class="rc-star-group" style="display:flex;"></div></div>
                         <div class="rc-rating-row" data-field="effortResilience" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Effort &amp; Resilience</span><div class="rc-star-group" style="display:flex;"></div></div>
                         <div class="rc-rating-row" data-field="participation" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Participation &amp; Engagement</span><div class="rc-star-group" style="display:flex;"></div></div>
-                        <div class="rc-rating-row" data-field="organization" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Organization &amp; Time Management</span><div class="rc-star-group" style="display:flex;"></div></div>
-                        <div class="rc-rating-row" data-field="behavior" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Classroom Behaviour</span><div class="rc-star-group" style="display:flex;"></div></div>
-                        <div class="rc-rating-row" data-field="peerRelations" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Peer Relations &amp; Respect</span><div class="rc-star-group" style="display:flex;"></div></div>
-                        <div class="rc-rating-row" data-field="punctualityRating" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Class Attendance &amp; Punctuality</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="punctualityRating" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Attendance &amp; Punctuality</span><div class="rc-star-group" style="display:flex;"></div></div>
                     </div>
                 </div>
 
@@ -476,14 +460,12 @@
             </div>
             <div style="padding:16px 24px;border-top:1px solid #e8edf2;background:#fafbfc;display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;">
                 <button onclick="window.closeReportCardModal()" class="btn-sharp btn-sharp-outline">Cancel</button>
-                <button onclick="window.saveAndGenerateReportCard()" id="btnSaveGenerate" class="btn-sharp btn-sharp-primary">
-                    <i class="fa-solid fa-file-pdf"></i> Save &amp; Generate Report Card
-                </button>
+                <button onclick="window.saveAndGenerateReportCard()" id="btnSaveGenerate" class="btn-sharp btn-sharp-primary"><i class="fa-solid fa-file-pdf"></i> Save &amp; Generate Report Card</button>
             </div>
         </div>
     </div>
 
-    <!-- ── EVAL MODAL (NEW EVALUATION — BEHAVIORAL / EOY / ACADEMIC PROGRESS) -->
+    <!-- ── EVAL MODAL ────────────────────────────────────────────────────── -->
     <div id="evalModal" class="modal-overlay hidden opacity-0" style="z-index:60;">
         <div class="modal-box" id="evalModalInner" style="width:100%;max-width:650px;max-height:90vh;display:flex;flex-direction:column;">
             <div class="modal-stripe" style="background:linear-gradient(90deg,#0d1f35,#2563eb);"></div>
@@ -495,14 +477,21 @@
                 <button onclick="window.closeEvalModal()" class="modal-close"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="modal-body" style="flex:1;overflow-y:auto;padding:24px;">
+
                 <div style="margin-bottom:20px;background:#fff;border:1px solid #c5d0db;padding:16px;border-radius:4px;">
                     <label class="field-label">Evaluation Type</label>
                     <select id="evalType" class="form-input" style="font-weight:700;color:#0d1f35;" onchange="window.toggleEvalType()">
                         <option value="academic">Academic Progress (Mid / End of Term)</option>
                         <option value="end_of_year">Comprehensive End-of-Year</option>
                         <option value="behavioral">Behavioral &amp; Conduct Intervention</option>
+                        <option value="behavioral_conduct">Behavioral Conduct (Expanded)</option>
+                        <option value="midterm_review">Mid-Term Review</option>
+                        <option value="parent_conference">Parent Conference Summary</option>
+                        <option value="learning_support">Learning Support Plan</option>
+                        <option value="custom">Custom Evaluation</option>
                     </select>
                 </div>
+
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
                     <div><label class="field-label">Grading Period</label><select id="evalSemester" class="form-input"></select></div>
                     <div><label class="field-label">Date of Evaluation</label><input type="date" id="evalDate" class="form-input"></div>
@@ -549,7 +538,7 @@
                     </div>
                 </div>
 
-                <!-- Behavioral -->
+                <!-- Behavioral Intervention -->
                 <div id="type-behavioral" class="eval-section hidden">
                     <h3 style="font-size:13px;font-weight:700;color:#dc2626;border-bottom:1px solid #fecaca;padding-bottom:6px;margin-bottom:12px;">Conduct Metrics</h3>
                     <div style="background:#fff;border:1px solid #fecaca;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
@@ -564,16 +553,114 @@
                         <div><label class="field-label">Corrective Action Plan</label><textarea id="evalBehAction" class="form-input" rows="2"></textarea></div>
                         <div style="background:#fff0f3;padding:12px;border:1px solid #fecaca;border-radius:4px;">
                             <label class="field-label" style="color:#be1240;">Action Taken</label>
-                            <select id="evalBehStatus" class="form-input" style="border-color:#fecaca;">
-                                <option value="">— Select Formal Action —</option>
+                            <select id="evalBehStatus" class="form-input" style="border-color:#fecaca;" onchange="window.toggleBehOther()">
+                                <option value="No Action">No Action Required</option>
+                                <option value="Verbal Warning">Verbal Warning</option>
                                 <option value="Formal Warning">Formal Warning</option>
                                 <option value="Parent Conference Required">Parent Conference Required</option>
                                 <option value="Disciplinary Probation">Disciplinary Probation</option>
                                 <option value="Suspension">Suspension</option>
+                                <option value="Other">Other (specify below)</option>
                             </select>
+                            <div id="evalBehOtherWrap" class="hidden" style="margin-top:8px;">
+                                <input type="text" id="evalBehOtherText" class="form-input" placeholder="Describe the action taken…">
+                            </div>
                         </div>
                     </div>
                 </div>
+
+                <!-- Behavioral Conduct (Expanded) -->
+                <div id="type-behavioral-conduct" class="eval-section hidden">
+                    <h3 style="font-size:13px;font-weight:700;color:#c2410c;border-bottom:1px solid #fed7aa;padding-bottom:6px;margin-bottom:12px;">Expanded Conduct Metrics</h3>
+                    <div style="background:#fff;border:1px solid #fed7aa;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
+                        <div class="rating-row" data-field="peerInteractions" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7c2d12;">Peer Interactions</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="selfRegulation" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7c2d12;">Self-Regulation</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="responseToCorrection" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7c2d12;">Response to Correction</span><div class="star-group" style="display:flex;"></div></div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <div><label class="field-label">Conduct Description</label><textarea id="evalCondDesc" class="form-input" rows="3"></textarea></div>
+                        <div><label class="field-label">Action Plan</label><textarea id="evalCondAction" class="form-input" rows="2"></textarea></div>
+                        <div style="background:#fff7ed;padding:12px;border:1px solid #fed7aa;border-radius:4px;">
+                            <label class="field-label" style="color:#c2410c;">Action Taken</label>
+                            <select id="evalCondStatus" class="form-input" style="border-color:#fed7aa;" onchange="window.toggleCondOther()">
+                                <option value="No Action">No Action Required</option>
+                                <option value="Verbal Warning">Verbal Warning</option>
+                                <option value="Formal Warning">Formal Warning</option>
+                                <option value="Parent Conference Required">Parent Conference Required</option>
+                                <option value="Disciplinary Probation">Disciplinary Probation</option>
+                                <option value="Suspension">Suspension</option>
+                                <option value="Other">Other (specify below)</option>
+                            </select>
+                            <div id="evalCondOtherWrap" class="hidden" style="margin-top:8px;">
+                                <input type="text" id="evalCondOtherText" class="form-input" placeholder="Describe the action taken…">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mid-Term Review -->
+                <div id="type-midterm" class="eval-section hidden">
+                    <h3 style="font-size:13px;font-weight:700;color:#0369a1;border-bottom:1px solid #bae6fd;padding-bottom:6px;margin-bottom:12px;">Mid-Term Review</h3>
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <div><label class="field-label">Academic Strengths This Period</label><textarea id="evalMidStrengths" class="form-input" rows="2"></textarea></div>
+                        <div><label class="field-label">Areas of Concern</label><textarea id="evalMidConcerns" class="form-input" rows="2"></textarea></div>
+                        <div><label class="field-label">General Comments</label><textarea id="evalMidComments" class="form-input" rows="2"></textarea></div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                            <div><label class="field-label">Days Absent (to date)</label><input type="number" id="evalMidAbsent" class="form-input" placeholder="0" min="0"></div>
+                            <div><label class="field-label">Days Late (to date)</label><input type="number" id="evalMidLate" class="form-input" placeholder="0" min="0"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Parent Conference -->
+                <div id="type-parent-conference" class="eval-section hidden">
+                    <h3 style="font-size:13px;font-weight:700;color:#6d28d9;border-bottom:1px solid #ddd6fe;padding-bottom:6px;margin-bottom:12px;">Parent Conference Summary</h3>
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <div>
+                            <label class="field-label">Parent / Guardian Present</label>
+                            <select id="evalPcParentPresent" class="form-input">
+                                <option value="">— Select —</option>
+                                <option value="Mother">Mother</option>
+                                <option value="Father">Father</option>
+                                <option value="Both Parents">Both Parents</option>
+                                <option value="Guardian">Guardian</option>
+                                <option value="Not Present">Parent Not Present</option>
+                            </select>
+                        </div>
+                        <div><label class="field-label">Conference Summary</label><textarea id="evalPcSummary" class="form-input" rows="3"></textarea></div>
+                        <div><label class="field-label">Agreements &amp; Action Items</label><textarea id="evalPcAgreements" class="form-input" rows="2"></textarea></div>
+                        <div><label class="field-label">Follow-Up Required</label><textarea id="evalPcFollowUp" class="form-input" rows="2" placeholder="Leave blank if no follow-up needed"></textarea></div>
+                    </div>
+                </div>
+
+                <!-- Learning Support Plan -->
+                <div id="type-learning-support" class="eval-section hidden">
+                    <h3 style="font-size:13px;font-weight:700;color:#9333ea;border-bottom:1px solid #e9d5ff;padding-bottom:6px;margin-bottom:12px;">Learning Support Plan</h3>
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <div>
+                            <label class="field-label">Support Level</label>
+                            <select id="evalLsLevel" class="form-input">
+                                <option value="">— Select —</option>
+                                <option value="Tier 1 — Classroom Support">Tier 1 — Classroom Support</option>
+                                <option value="Tier 2 — Targeted Intervention">Tier 2 — Targeted Intervention</option>
+                                <option value="Tier 3 — Intensive Support">Tier 3 — Intensive Support</option>
+                            </select>
+                        </div>
+                        <div><label class="field-label">Learning Concerns</label><textarea id="evalLsConcerns" class="form-input" rows="2"></textarea></div>
+                        <div><label class="field-label">Interventions &amp; Strategies</label><textarea id="evalLsInterventions" class="form-input" rows="2"></textarea></div>
+                        <div><label class="field-label">Goals &amp; Success Indicators</label><textarea id="evalLsGoals" class="form-input" rows="2"></textarea></div>
+                    </div>
+                </div>
+
+                <!-- Custom Evaluation -->
+                <div id="type-custom" class="eval-section hidden">
+                    <h3 style="font-size:13px;font-weight:700;color:#475569;border-bottom:1px solid #cbd5e1;padding-bottom:6px;margin-bottom:12px;">Custom Evaluation</h3>
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <div><label class="field-label">Evaluation Name <span style="color:#e31b4a;">*</span></label><input type="text" id="evalCustomTypeName" class="form-input" placeholder="e.g. Reading Fluency Check, Portfolio Review…"></div>
+                        <div><label class="field-label">Notes &amp; Observations</label><textarea id="evalCustomNotes" class="form-input" rows="4"></textarea></div>
+                    </div>
+                </div>
+
             </div>
             <div style="padding:16px 24px;border-top:1px solid #e8edf2;background:#fafbfc;display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;">
                 <button onclick="window.closeEvalModal()" class="btn-sharp btn-sharp-outline">Cancel</button>
