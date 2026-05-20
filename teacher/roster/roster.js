@@ -22,6 +22,10 @@ let gradeDetailCache        = {};
 let schoolLimit             = 50;
 let cachedEvaluations       = [];
 
+// ── Report card type state (new) ──────────────────────────────────────────
+let selectedRcType      = 'term';   // 'term' | 'midterm'
+let selectedMidtermData = null;     // midterm object from semester doc, or null
+
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 
 // ── Evaluation star ratings ───────────────────────────────────────────────
@@ -36,7 +40,7 @@ window.evalRatings = {
     // Behavioral & Conduct
     ruleAdherence: 0, conflictResolution: 0, respectAuthority: 0,
     peerInteractions: 0, selfRegulation: 0, responseToCorrection: 0,
-    emotionalStability: 0, // <-- Updated from impulseControl
+    emotionalStability: 0,
     // Mid-Term Review
     academicProgressToDate: 0, workCompletionRate: 0, classParticipation: 0,
     attentionFocus: 0, effortPersistence: 0, behaviourInClass: 0,
@@ -804,14 +808,12 @@ window.toggleEvalType = function() {
     const target = map[type];
     if (target) { const el = document.getElementById(target); if (el) el.classList.remove('hidden'); }
 
-    // Hide Semester dropdown if End of Year
     const semWrap = document.getElementById('evalSemesterWrap');
     if (semWrap) {
         if (type === 'end_of_year') semWrap.classList.add('hidden');
         else semWrap.classList.remove('hidden');
     }
 
-    // Hide Other fields when switching types
     const behOther  = document.getElementById('evalBehOtherWrap');
     if (behOther)  behOther.classList.add('hidden');
 };
@@ -932,8 +934,11 @@ window.loadStudentEvaluations = async function(studentId) {
                     badgeStyle = 'background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;';
                     typeLabel  = 'Academic Progress';
                 } else if (ev.type === 'academic_report_card') {
-                    badgeStyle = 'background:#edf7f1;color:#065f46;border:1px solid #a7f3d0;';
-                    typeLabel  = 'Report Card';
+                    const isM  = ev.reportCardType === 'midterm';
+                    badgeStyle = isM
+                        ? 'background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;'
+                        : 'background:#edf7f1;color:#065f46;border:1px solid #a7f3d0;';
+                    typeLabel  = isM ? 'Midterm Report Card' : 'Report Card';
                 } else if (ev.type === 'end_of_year') {
                     badgeStyle    = 'background:#fef3c7;color:#b45309;border:1px solid #fde68a;';
                     typeLabel     = 'Comprehensive End-of-Year';
@@ -981,45 +986,73 @@ window.loadStudentEvaluations = async function(studentId) {
 };
 
 // ── 12. REPORT CARD ───────────────────────────────────────────────────────
-window.buildRcStarGroups = function() {
-    document.querySelectorAll('.rc-rating-row').forEach(row => {
-        const field = row.dataset.field;
-        const group = row.querySelector('.rc-star-group');
-        if (!group) return;
-        group.innerHTML = [1,2,3,4,5].map(n =>
-            `<button type="button" class="star-btn" data-val="${n}" data-rcfield="${field}"
-              onmouseover="window.hoverRcStars('${field}',${n})"
-              onmouseout="window.renderRcStars('${field}')"
-              onclick="window.setRcRating('${field}',${n})">★</button>`
-        ).join('');
-        window.renderRcStars(field);
-    });
-};
 
-window.renderRcStars = function(field) {
-    const val = window.rcRatings[field] || 0;
-    document.querySelectorAll(`[data-rcfield="${field}"]`).forEach(btn => {
-        if (btn.tagName === 'BUTTON') btn.classList.toggle('star-active', parseInt(btn.dataset.val) <= val);
-    });
-};
+// ── Helper: check if selected term has a midterm configured ───────────────
+function checkMidtermAvailability() {
+    if (selectedRcType !== 'midterm') return;
 
-window.hoverRcStars = function(field, val) {
-    document.querySelectorAll(`[data-rcfield="${field}"]`).forEach(btn => {
-        if (btn.tagName === 'BUTTON') btn.classList.toggle('star-active', parseInt(btn.dataset.val) <= val);
-    });
-};
+    const semId = document.getElementById('rcSemester').value;
+    const sem   = rawSemesters.find(s => s.id === semId);
+    const info  = document.getElementById('rcMidtermInfo');
+    if (!info) return;
 
-window.setRcRating = function(field, val) {
-    window.rcRatings[field] = val;
-    window.renderRcStars(field);
+    if (!sem || !sem.midterm) {
+        selectedMidtermData = null;
+        info.innerHTML = `
+            <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:3px;padding:12px;display:flex;align-items:flex-start;gap:10px;">
+                <i class="fa-solid fa-triangle-exclamation" style="color:#d97706;margin-top:1px;flex-shrink:0;font-size:13px;"></i>
+                <div>
+                    <p style="font-size:12px;font-weight:700;color:#78350f;margin:0 0 3px;">No midterm configured for this term</p>
+                    <p style="font-size:11px;color:#92400e;margin:0;line-height:1.5;">Ask your administrator to add a midterm date range to this grading period before generating a midterm report card.</p>
+                </div>
+            </div>`;
+        info.classList.remove('hidden');
+    } else {
+        selectedMidtermData = sem.midterm;
+        info.innerHTML = `
+            <div style="background:#edfaf4;border:1px solid #a7f3d0;border-radius:3px;padding:12px;display:flex;align-items:flex-start;gap:10px;">
+                <i class="fa-solid fa-flag-checkered" style="color:#0ea871;margin-top:1px;flex-shrink:0;font-size:13px;"></i>
+                <div>
+                    <p style="font-size:12px;font-weight:700;color:#065f46;margin:0 0 3px;">${escHtml(sem.midterm.name || 'Midterm')} — ${escHtml(sem.name)}</p>
+                    <p style="font-size:11px;color:#047857;margin:0;line-height:1.5;">Grades from <strong>${escHtml(sem.midterm.startDate)}</strong> to <strong>${escHtml(sem.midterm.endDate)}</strong> will be included in this report card.</p>
+                </div>
+            </div>`;
+        info.classList.remove('hidden');
+    }
+}
+
+// ── Report card type selector ─────────────────────────────────────────────
+window.selectRcType = function(type) {
+    selectedRcType = type;
+
+    const termBtn    = document.getElementById('rcTypeTerm');
+    const midtermBtn = document.getElementById('rcTypeMidterm');
+
+    if (type === 'term') {
+        if (termBtn)    { termBtn.style.background = '#0d1f35'; termBtn.style.borderColor = '#0d1f35'; termBtn.style.color = '#fff'; }
+        if (midtermBtn) { midtermBtn.style.background = '#fff'; midtermBtn.style.borderColor = '#c5d0db'; midtermBtn.style.color = '#6b84a0'; }
+        const info = document.getElementById('rcMidtermInfo');
+        if (info) { info.innerHTML = ''; info.classList.add('hidden'); }
+        selectedMidtermData = null;
+    } else {
+        if (midtermBtn) { midtermBtn.style.background = '#0ea871'; midtermBtn.style.borderColor = '#0ea871'; midtermBtn.style.color = '#fff'; }
+        if (termBtn)    { termBtn.style.background = '#fff'; termBtn.style.borderColor = '#c5d0db'; termBtn.style.color = '#6b84a0'; }
+        checkMidtermAvailability();
+    }
 };
 
 window.openReportCardModal = function() {
+    // Reset type state
+    selectedRcType      = 'term';
+    selectedMidtermData = null;
+
+    // Reset ratings and fields
     Object.keys(window.rcRatings).forEach(k => { window.rcRatings[k] = 0; });
     ['rcTotalSessions','rcDaysAbsent','rcDaysLate','rcComment'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
     });
 
+    // Populate semester dropdown
     const rcSem        = document.getElementById('rcSemester');
     const activeSemVal = document.getElementById('activeSemester')?.value;
     rcSem.innerHTML    = '';
@@ -1029,6 +1062,43 @@ window.openReportCardModal = function() {
         if (s.id === activeSemVal) opt.selected = true;
         rcSem.appendChild(opt);
     });
+
+    // Inject type selector at top of modal body (create once, refresh on reopen)
+    const modalBody = document.querySelector('#reportCardModalInner .modal-body');
+    let typeSelector = document.getElementById('rcTypeSelector');
+    if (!typeSelector) {
+        typeSelector = document.createElement('div');
+        typeSelector.id = 'rcTypeSelector';
+        modalBody.insertBefore(typeSelector, modalBody.firstChild);
+    }
+    typeSelector.innerHTML = `
+        <div>
+            <label class="field-label">Report Card Type</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px;">
+                <button id="rcTypeTerm" onclick="window.selectRcType('term')"
+                    style="padding:12px 10px;border:2px solid #0d1f35;border-radius:4px;background:#0d1f35;color:#fff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all 0.15s;">
+                    <i class="fa-solid fa-file-invoice"></i> Term Report Card
+                </button>
+                <button id="rcTypeMidterm" onclick="window.selectRcType('midterm')"
+                    style="padding:12px 10px;border:2px solid #c5d0db;border-radius:4px;background:#fff;color:#6b84a0;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all 0.15s;">
+                    <i class="fa-solid fa-flag-checkered"></i> Midterm Report Card
+                </button>
+            </div>
+        </div>`;
+
+    // Inject midterm info container after semester selector (create once)
+    let midtermInfo = document.getElementById('rcMidtermInfo');
+    if (!midtermInfo) {
+        midtermInfo = document.createElement('div');
+        midtermInfo.id = 'rcMidtermInfo';
+        const semDiv = document.getElementById('rcSemester').closest('div');
+        semDiv.insertAdjacentElement('afterend', midtermInfo);
+    }
+    midtermInfo.innerHTML = '';
+    midtermInfo.classList.add('hidden');
+
+    // When semester changes, re-check midterm availability
+    rcSem.onchange = () => checkMidtermAvailability();
 
     openOverlay('reportCardModal', 'reportCardModalInner');
     window.buildRcStarGroups();
@@ -1043,6 +1113,12 @@ window.saveAndGenerateReportCard = async function() {
 
     if (!semId) { alert('Please select a grading period.'); return; }
 
+    // Block midterm generation if no midterm is configured
+    if (selectedRcType === 'midterm' && !selectedMidtermData) {
+        alert('No midterm has been configured for this term.\n\nPlease ask your administrator to add a midterm date range to this grading period first.');
+        return;
+    }
+
     const missingRatings = Object.entries(window.rcRatings).filter(([, v]) => !v);
     if (missingRatings.length > 0) {
         alert(`Please complete all ratings before generating the report card. ${missingRatings.length} field(s) still need a rating.`);
@@ -1053,14 +1129,15 @@ window.saveAndGenerateReportCard = async function() {
     btn.disabled  = true;
 
     const payload = {
-        type:         'academic_report_card',
-        schoolId:     session.schoolId,
-        teacherId:    session.teacherId,
-        teacherName:  session.teacherData.name,
-        semesterId:   semId,
-        semesterName: semName,
-        date:         new Date().toISOString().split('T')[0],
-        createdAt:    new Date().toISOString(),
+        type:           'academic_report_card',
+        reportCardType: selectedRcType,
+        schoolId:       session.schoolId,
+        teacherId:      session.teacherId,
+        teacherName:    session.teacherData.name,
+        semesterId:     semId,
+        semesterName:   semName,
+        date:           new Date().toISOString().split('T')[0],
+        createdAt:      new Date().toISOString(),
         attendance: {
             totalSessions: parseInt(document.getElementById('rcTotalSessions').value) || 0,
             daysAbsent:    parseInt(document.getElementById('rcDaysAbsent').value)    || 0,
@@ -1070,11 +1147,21 @@ window.saveAndGenerateReportCard = async function() {
         comment: document.getElementById('rcComment').value.trim()
     };
 
+    // Store midterm reference on the payload for the record
+    if (selectedRcType === 'midterm' && selectedMidtermData) {
+        payload.midterm = selectedMidtermData;
+    }
+
     try {
-        await setDoc(doc(db, 'students', currentStudentId, 'evaluations', `${currentStudentId}_${semId}_rc`), payload);
+        // Use distinct Firestore doc IDs so term and midterm report cards don't overwrite each other
+        const docId = selectedRcType === 'midterm'
+            ? `${currentStudentId}_${semId}_midterm_rc`
+            : `${currentStudentId}_${semId}_rc`;
+
+        await setDoc(doc(db, 'students', currentStudentId, 'evaluations', docId), payload);
         await window.loadStudentEvaluations(currentStudentId);
         window.closeReportCardModal();
-        generateFormalReportCardPDF(payload, semName);
+        generateFormalReportCardPDF(payload, semName, selectedRcType, selectedMidtermData);
     } catch (e) {
         console.error('[Roster] saveAndGenerateReportCard:', e);
         alert('Failed to save. Please try again.');
@@ -1084,26 +1171,45 @@ window.saveAndGenerateReportCard = async function() {
     btn.disabled  = false;
 };
 
-function generateFormalReportCardPDF(ev, semName) {
+// ── PDF generator — reportType and midtermData are new params ─────────────
+function generateFormalReportCardPDF(ev, semName, reportType = 'term', midtermData = null) {
     const student    = allStudentsCache.find(s => s.id === currentStudentId);
     if (!student)    return;
     const schoolName = session.schoolName || 'ConnectUs School';
 
+    // ── Filter grades by midterm date range if this is a midterm report card ──
+    let gradesToUse = [...currentStudentGradesCache];
+    if (reportType === 'midterm' && midtermData?.startDate && midtermData?.endDate) {
+        const start = new Date(midtermData.startDate);
+        const end   = new Date(midtermData.endDate);
+        gradesToUse = gradesToUse.filter(g => {
+            if (!g.date) return false;
+            const d = new Date(g.date);
+            return d >= start && d <= end;
+        });
+    }
+
+    // ── PDF header labels ──────────────────────────────────────────────────
+    const reportTitle    = reportType === 'midterm' ? 'MIDTERM REPORT CARD' : 'OFFICIAL GRADE REPORT';
+    const reportSubtitle = reportType === 'midterm' && midtermData
+        ? `${midtermData.name || 'Midterm'} · ${semName} · ${midtermData.startDate} – ${midtermData.endDate}`
+        : semName;
+
     const bySub = {};
-    currentStudentGradesCache.forEach(g => {
+    gradesToUse.forEach(g => {
         const sub = g.subject || 'Uncategorized';
         if (!bySub[sub]) bySub[sub] = [];
         bySub[sub].push(g);
     });
 
-    const cumulativeAvg = currentStudentGradesCache.length
-        ? calculateWeightedAverage(currentStudentGradesCache, session.teacherData.gradeTypes || getGradeTypes())
+    const cumulativeAvg = gradesToUse.length
+        ? calculateWeightedAverage(gradesToUse, session.teacherData.gradeTypes || getGradeTypes())
         : 0;
     const gpaLetter = cumulativeAvg > 0 ? letterGrade(cumulativeAvg) : 'N/A';
     const r2l = v => v >= 5 ? 'E' : v === 4 ? 'D' : v === 3 ? 'B' : v > 0 ? 'I' : '—';
 
     const gradesHtml = Object.keys(bySub).length === 0
-        ? `<tr><td colspan="3" style="text-align:center;padding:30px;color:#64748b;font-style:italic;">No grades recorded for this term.</td></tr>`
+        ? `<tr><td colspan="3" style="text-align:center;padding:30px;color:#64748b;font-style:italic;">No grades recorded for this period.</td></tr>`
         : Object.entries(bySub).sort((a,b) => a[0].localeCompare(b[0])).map(([sub, gList]) => {
             const subAvg = calculateWeightedAverage(gList, session.teacherData.gradeTypes || getGradeTypes());
             return `<tr style="border-bottom:1px solid #e2e8f0;">
@@ -1143,7 +1249,7 @@ function generateFormalReportCardPDF(ev, semName) {
             <td style="padding:9px 15px;text-align:center;font-weight:800;font-size:15px;color:#1e1b4b;">${r2l(val)}</td>
         </tr>`).join('');
 
-    const html = `<!DOCTYPE html><html><head><title>Report Card — ${escHtml(student.name)}</title>
+    const html = `<!DOCTYPE html><html><head><title>${reportTitle} — ${escHtml(student.name)}</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
 *{box-sizing:border-box;}
@@ -1153,6 +1259,7 @@ body{font-family:'Nunito',sans-serif;padding:36px 44px;color:#0f172a;line-height
 .ht{text-align:right;}
 .ht h1{margin:0 0 4px;font-size:22px;font-weight:900;text-transform:uppercase;color:#1e1b4b;}
 .ht h2{margin:0;font-size:12px;color:#64748b;font-weight:700;letter-spacing:2px;}
+.ht h3{margin:4px 0 0;font-size:11px;color:#94a3b8;font-weight:600;}
 .si{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:14px 18px;margin-bottom:20px;}
 .si-item{display:flex;flex-direction:column;gap:3px;}
 .il{font-size:9px;text-transform:uppercase;color:#64748b;font-weight:800;letter-spacing:1px;}
@@ -1176,7 +1283,11 @@ td{border-bottom:1px solid #e2e8f0;padding:8px 12px;color:#334155;}
 
 <div class="hf">
     <img src="${session.logo||''}" alt="${escHtml(schoolName)}" class="logo" onerror="this.style.display='none'">
-    <div class="ht"><h1>${escHtml(schoolName)}</h1><h2>OFFICIAL GRADE REPORT</h2></div>
+    <div class="ht">
+        <h1>${escHtml(schoolName)}</h1>
+        <h2>${reportTitle}</h2>
+        <h3>${escHtml(reportSubtitle)}</h3>
+    </div>
 </div>
 
 <div class="si">
@@ -1185,7 +1296,7 @@ td{border-bottom:1px solid #e2e8f0;padding:8px 12px;color:#334155;}
     <div class="si-item"><span class="il">Teacher</span><span class="iv">${escHtml(ev.teacherName)}</span></div>
     <div class="si-item"><span class="il">Grading Period</span><span class="iv">${escHtml(semName)}</span></div>
     <div class="si-item"><span class="il">Date Issued</span><span class="iv">${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</span></div>
-    <div class="si-item"><span class="il">Term Average</span><span class="iv">${cumulativeAvg}% (${gpaLetter})</span></div>
+    <div class="si-item"><span class="il">Period Average</span><span class="iv">${cumulativeAvg}% (${gpaLetter})</span></div>
 </div>
 
 <div class="grid2">
@@ -1305,7 +1416,7 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
             const evalSnap = await getDocs(query(collection(db, 'students', currentStudentId, 'evaluations'), where('schoolId', '==', session.schoolId)));
             const evaluations = [];
             evalSnap.forEach(d => evaluations.push({ id: d.id, ...d.data() }));
-            evalutions.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
+            evaluations.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
 
             const bySemester = {};
             classGrades.forEach(g => {
