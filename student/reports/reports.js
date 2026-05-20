@@ -21,6 +21,7 @@ let schoolData = {};
 let teacherRubricsCache = {}; 
 let currentQueryResults = []; 
 let currentQueryMeta = {};
+let currentTeacherName = 'Unassigned';
 
 // Escapes HTML to prevent XSS
 function escHtml(str) {
@@ -39,6 +40,18 @@ async function initializeReports() {
         }
         document.getElementById('displayStudentName').innerText = session.studentData.name || 'Student';
         document.getElementById('displayStudentClass').innerText = session.studentData.className || 'Unassigned Class';
+
+        // Fetch Homeroom Teacher Name
+        if (session.studentData.teacherId) {
+            try {
+                const teacherSnap = await getDoc(doc(db, 'teachers', session.studentData.teacherId));
+                if (teacherSnap.exists()) {
+                    currentTeacherName = teacherSnap.data().name || 'Unassigned';
+                }
+            } catch (e) {
+                console.error("Could not fetch teacher name", e);
+            }
+        }
 
         // Fetch Semesters
         const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
@@ -368,9 +381,10 @@ function printDocument() {
     </div>
     <div class="info-grid">
         <div><strong>Student Name</strong> ${escHtml(session.studentData.name || 'Unknown')}</div>
-        <div><strong>Student ID</strong> ${escHtml(session.studentData.studentId || 'N/A')}</div>
-        <div><strong>Homeroom / Class</strong> ${escHtml(session.studentData.className || 'Unassigned')}</div>
-        <div><strong>Date Generated</strong> ${new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}</div>
+        <div><strong>Student ID</strong> ${escHtml(session.studentData.studentIdNum || 'N/A')}</div>
+        <div><strong>Class</strong> ${escHtml(session.studentData.className || 'Unassigned')}</div>
+        <div><strong>Teacher</strong> ${escHtml(currentTeacherName)}</div>
+        <div style="grid-column: 1 / -1;"><strong>Date Generated</strong> ${new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}</div>
     </div>`;
 
     if (isSummaryMode) {
