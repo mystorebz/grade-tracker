@@ -4,13 +4,13 @@ import { requireAuth } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { openOverlay, closeOverlay, showMsg, gradeColorClass, standingBadge, standingText, gradeFill, letterGrade, downloadCSV, calculateWeightedAverage } from '../../assets/js/utils.js';
 
-// ── 1. AUTH & LAYOUT ─────────────────────────────────────────────────────────
+// ── 1. AUTH & LAYOUT ─────────────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
 if (session) {
     injectTeacherLayout('students', 'My Roster', 'Manage students · PINs · academic standing', true);
 }
 
-// ── 2. STATE ─────────────────────────────────────────────────────────────────
+// ── 2. STATE ─────────────────────────────────────────────────────────────
 let allStudentsCache        = [];
 let unassignedStudentsCache = [];
 let studentMap              = {};
@@ -24,44 +24,45 @@ let cachedEvaluations       = [];
 
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 
-// ── Evaluation star ratings (academic, end-of-year, behavioral, conduct) ─────
+// ── Evaluation star ratings ───────────────────────────────────────────────
 window.evalRatings = {
     // Academic Progress
     academicMastery: 0, taskExecution: 0, engagement: 0,
-    // End of Year / End of Term
-    academicGrowth: 0, socialDynamics: 0, resilience: 0,
-    // Behavioral Intervention
+    criticalThinking: 0, writtenCommunication: 0, oralParticipation: 0,
+    // End of Year
+    overallAcademicGrowth: 0, subjectMasteryAcrossTerms: 0, socialPeerDynamics: 0,
+    emotionalResilience: 0, selfRegulationEoy: 0, effortPersistenceYear: 0,
+    responseToFeedback: 0, readinessNextGrade: 0,
+    // Behavioral & Conduct
     ruleAdherence: 0, conflictResolution: 0, respectAuthority: 0,
-    // Behavioral Conduct (expanded)
-    peerInteractions: 0, selfRegulation: 0, responseToCorrection: 0
+    peerInteractions: 0, selfRegulation: 0, responseToCorrection: 0,
+    impulseControl: 0,
+    // Mid-Term Review
+    academicProgressToDate: 0, workCompletionRate: 0, classParticipation: 0,
+    attentionFocus: 0, effortPersistence: 0, behaviourInClass: 0,
+    // Parent Conference
+    parentEngagement: 0, communicationQuality: 0, followThroughAgreements: 0,
+    // Learning Support
+    responseToIntervention: 0, academicEffort: 0, focusAttention: 0,
+    independenceInTasks: 0, progressTowardsGoals: 0,
+    // Custom generic
+    overallPerformance: 0, effortEngagement: 0, socialSkills: 0,
+    workQuality: 0, customProgressGoals: 0
 };
 
-// ── Report card ratings — mirrors La Isla Cariñosa report card exactly ────────
+// ── Report card ratings ───────────────────────────────────────────────────
 window.rcRatings = {
-    // Special Subjects
-    characterBuilding: 0,
-    drama: 0,
-    music: 0,
-    art: 0,
-    physicalEducation: 0,
-    informationTechnology: 0,
-    // Personal Development
-    behavior: 0,
-    organization: 0,
-    respectfulness: 0,
-    kindness: 0,
-    attitudeWork: 0,
-    attitudePeers: 0,
-    // Academic Habits
-    academicComprehension: 0,
-    effortResilience: 0,
-    participation: 0,
-    punctualityRating: 0
+    // Enrichment & Character Development
+    characterBuilding: 0, drama: 0, music: 0, art: 0,
+    physicalEducation: 0, informationTechnology: 0,
+    // Learning Behaviours & Social Growth
+    behavior: 0, organization: 0, respectfulness: 0, kindness: 0,
+    attitudeWork: 0, attitudePeers: 0, academicComprehension: 0,
+    effortResilience: 0, participation: 0, punctualityRating: 0
 };
 
-function getClasses()        { return session.teacherData.classes || [session.teacherData.className || '']; }
-function getActiveSubjects() { return (session.teacherData.subjects || []).filter(s => !s.archived); }
-function getGradeTypes()     { return session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
+function getClasses()    { return session.teacherData.classes || [session.teacherData.className || '']; }
+function getGradeTypes() { return session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
 
 function generateStudentId() {
     const year  = new Date().getFullYear().toString().slice(-2);
@@ -71,7 +72,7 @@ function generateStudentId() {
     return `S${year}-${rand}`;
 }
 
-// ── 3. INIT ───────────────────────────────────────────────────────────────────
+// ── 3. INIT ───────────────────────────────────────────────────────────────
 async function init() {
     if (!session) return;
     const searchInput = document.getElementById('searchInput');
@@ -110,7 +111,7 @@ async function fetchSchoolLimit() {
     } catch (e) { console.error('[Roster] fetchSchoolLimit:', e); }
 }
 
-// ── 5. SEMESTERS ─────────────────────────────────────────────────────────────
+// ── 5. SEMESTERS ─────────────────────────────────────────────────────────
 async function loadSemesters() {
     try {
         const cacheKey = `connectus_semesters_${session.schoolId}`;
@@ -180,7 +181,7 @@ function checkLockStatus() {
     updatePeriodLabel();
 }
 
-// ── 6. LOAD STUDENTS ──────────────────────────────────────────────────────────
+// ── 6. LOAD STUDENTS ──────────────────────────────────────────────────────
 async function loadStudents() {
     const tbody = document.getElementById('studentsTableBody');
     tbody.innerHTML = `<tr><td colspan="8"><div class="table-loader"><i class="fa-solid fa-spinner fa-spin"></i><p>Loading roster…</p></div></td></tr>`;
@@ -268,7 +269,7 @@ async function fetchAllStudentGrades(semId) {
     return all;
 }
 
-// ── 7. STANDING HELPERS ───────────────────────────────────────────────────────
+// ── 7. STANDING HELPERS ───────────────────────────────────────────────────
 function standingLabelHtml(avg) {
     if (avg === null) return `<span class="standing-label sl-none">No Data</span>`;
     if (avg >= 90)    return `<span class="standing-label sl-excelling"><i class="fa-solid fa-circle-check" style="font-size:9px;"></i>Excelling</span>`;
@@ -286,7 +287,7 @@ function gradeNumClass(avg) {
     return 'grade-red';
 }
 
-// ── 8. FILTERS ────────────────────────────────────────────────────────────────
+// ── 8. FILTERS ────────────────────────────────────────────────────────────
 window.applyRosterFilters = function() {
     const fClass    = document.getElementById('rf-class')?.value    || '';
     const fStanding = document.getElementById('rf-standing')?.value || '';
@@ -319,7 +320,7 @@ window.quickGradeStudent = function(studentId) {
     window.location.assign('../grade_form/grade_form.html');
 };
 
-// ── 9. ENROLL / CLAIM STUDENT ─────────────────────────────────────────────────
+// ── 9. ENROLL / CLAIM STUDENT ─────────────────────────────────────────────
 window.openAddStudentModal = function() {
     const searchQ = document.getElementById('sSearchQuery');
     const searchR = document.getElementById('sSearchResults');
@@ -506,7 +507,7 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
     btn.textContent = 'Create New Student Identity'; btn.disabled = false;
 });
 
-// ── 10. STUDENT PANEL & TABS ──────────────────────────────────────────────────
+// ── 10. STUDENT PANEL & TABS ──────────────────────────────────────────────
 window.switchStudentTab = function(tabName) {
     const btnG = document.getElementById('tabBtnGrades');
     const btnE = document.getElementById('tabBtnEvaluations');
@@ -654,7 +655,7 @@ window.toggleAccordion = function(header) {
     if (chevron) chevron.style.transform = body.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0)';
 };
 
-// ── 10.5. CLASS-ONLY EDIT ────────────────────────────────────────────────────
+// ── 10.5. CLASS-ONLY EDIT ─────────────────────────────────────────────────
 window.checkClassChange = function() {
     const sel  = document.getElementById('editSClass');
     const wrap = document.getElementById('editSClassReasonWrap');
@@ -705,7 +706,7 @@ window.saveStudentClass = async function() {
     btn.textContent = 'Save Class'; btn.disabled = false;
 };
 
-// ── 10.6. PIN — EMAIL RESET ONLY ─────────────────────────────────────────────
+// ── 10.6. PIN RESET ───────────────────────────────────────────────────────
 window.sendPinResetEmail = async function() {
     const student = allStudentsCache.find(s => s.id === currentStudentId);
     if (!student?.email) {
@@ -738,7 +739,7 @@ window.sendPinResetEmail = async function() {
     }
 };
 
-// ── 11. EVALUATIONS ───────────────────────────────────────────────────────────
+// ── 11. EVALUATIONS ───────────────────────────────────────────────────────
 window.buildStarGroups = function() {
     document.querySelectorAll('.rating-row').forEach(row => {
         const field = row.dataset.field;
@@ -783,43 +784,34 @@ window.openEvalModal = function() {
 
 window.closeEvalModal = function() { closeOverlay('evalModal', 'evalModalInner'); };
 
-// ── Handles all eval type panels — hides all, shows the selected one ──────────
 window.toggleEvalType = function() {
     const type = document.getElementById('evalType').value;
     const allPanels = [
         'type-academic', 'type-eoy', 'type-behavioral',
-        'type-midterm', 'type-behavioral-conduct',
-        'type-parent-conference', 'type-learning-support', 'type-custom'
+        'type-midterm', 'type-parent-conference',
+        'type-learning-support', 'type-custom'
     ];
     allPanels.forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('hidden'); });
     const map = {
-        academic:              'type-academic',
-        end_of_year:           'type-eoy',
-        behavioral:            'type-behavioral',
-        midterm_review:        'type-midterm',
-        behavioral_conduct:    'type-behavioral-conduct',
-        parent_conference:     'type-parent-conference',
-        learning_support:      'type-learning-support',
-        custom:                'type-custom'
+        academic:           'type-academic',
+        end_of_year:        'type-eoy',
+        behavioral:         'type-behavioral',
+        midterm_review:     'type-midterm',
+        parent_conference:  'type-parent-conference',
+        learning_support:   'type-learning-support',
+        custom:             'type-custom'
     };
     const target = map[type];
     if (target) { const el = document.getElementById(target); if (el) el.classList.remove('hidden'); }
 
-    // Show/hide "Other" text field for behavioral action
-    const otherWrap = document.getElementById('evalBehOtherWrap');
-    if (otherWrap) otherWrap.classList.add('hidden');
+    // Hide Other fields when switching types
+    const behOther  = document.getElementById('evalBehOtherWrap');
+    if (behOther)  behOther.classList.add('hidden');
 };
 
-// ── Show/hide "Other" action text field ───────────────────────────────────────
 window.toggleBehOther = function() {
     const status    = document.getElementById('evalBehStatus')?.value;
     const otherWrap = document.getElementById('evalBehOtherWrap');
-    if (otherWrap) otherWrap.classList.toggle('hidden', status !== 'Other');
-};
-
-window.toggleCondOther = function() {
-    const status    = document.getElementById('evalCondStatus')?.value;
-    const otherWrap = document.getElementById('evalCondOtherWrap');
     if (otherWrap) otherWrap.classList.toggle('hidden', status !== 'Other');
 };
 
@@ -839,28 +831,26 @@ window.saveEvaluation = async function() {
     };
 
     if (type === 'academic') {
-        if (!window.evalRatings.academicMastery || !window.evalRatings.taskExecution || !window.evalRatings.engagement) {
-            alert('Please rate all quantitative metrics.'); return;
-        }
-        payload.ratings = { mastery: window.evalRatings.academicMastery, execution: window.evalRatings.taskExecution, engagement: window.evalRatings.engagement };
+        const required = ['academicMastery','taskExecution','engagement','criticalThinking','writtenCommunication','oralParticipation'];
+        if (required.some(k => !window.evalRatings[k])) { alert('Please rate all Academic Progress metrics.'); return; }
+        payload.ratings = { mastery: window.evalRatings.academicMastery, execution: window.evalRatings.taskExecution, engagement: window.evalRatings.engagement, criticalThinking: window.evalRatings.criticalThinking, writtenCommunication: window.evalRatings.writtenCommunication, oralParticipation: window.evalRatings.oralParticipation };
         payload.written = { strengths: document.getElementById('evalAcadStrengths').value.trim(), growth: document.getElementById('evalAcadGrowth').value.trim(), steps: document.getElementById('evalAcadSteps').value.trim() };
 
     } else if (type === 'end_of_year') {
-        if (!window.evalRatings.academicGrowth || !window.evalRatings.socialDynamics || !window.evalRatings.resilience) {
-            alert('Please rate all summative metrics.'); return;
-        }
-        payload.ratings = { growth: window.evalRatings.academicGrowth, social: window.evalRatings.socialDynamics, resilience: window.evalRatings.resilience };
+        const required = ['overallAcademicGrowth','subjectMasteryAcrossTerms','socialPeerDynamics','emotionalResilience','selfRegulationEoy','effortPersistenceYear','responseToFeedback','readinessNextGrade'];
+        if (required.some(k => !window.evalRatings[k])) { alert('Please rate all End-of-Year metrics.'); return; }
+        payload.ratings = { overallAcademicGrowth: window.evalRatings.overallAcademicGrowth, subjectMasteryAcrossTerms: window.evalRatings.subjectMasteryAcrossTerms, socialPeerDynamics: window.evalRatings.socialPeerDynamics, emotionalResilience: window.evalRatings.emotionalResilience, selfRegulation: window.evalRatings.selfRegulationEoy, effortPersistenceYear: window.evalRatings.effortPersistenceYear, responseToFeedback: window.evalRatings.responseToFeedback, readinessNextGrade: window.evalRatings.readinessNextGrade };
         payload.written = { narrative: document.getElementById('evalEoyNarrative').value.trim(), interventions: document.getElementById('evalEoyInterventions').value.trim() };
         payload.status  = document.getElementById('evalEoyStatus').value;
         if (!payload.status) { alert('Please select a Promotion Status.'); return; }
+        payload.semesterId   = 'full_year';
+        payload.semesterName = 'Full Academic Year';
 
     } else if (type === 'behavioral') {
-        if (!window.evalRatings.ruleAdherence || !window.evalRatings.conflictResolution || !window.evalRatings.respectAuthority) {
-            alert('Please rate all conduct metrics.'); return;
-        }
-        payload.ratings = { adherence: window.evalRatings.ruleAdherence, resolution: window.evalRatings.conflictResolution, respect: window.evalRatings.respectAuthority };
+        const required = ['ruleAdherence','conflictResolution','respectAuthority','peerInteractions','selfRegulation','responseToCorrection','impulseControl'];
+        if (required.some(k => !window.evalRatings[k])) { alert('Please rate all Conduct metrics.'); return; }
+        payload.ratings = { ruleAdherence: window.evalRatings.ruleAdherence, conflictResolution: window.evalRatings.conflictResolution, respectAuthority: window.evalRatings.respectAuthority, peerInteractions: window.evalRatings.peerInteractions, selfRegulation: window.evalRatings.selfRegulation, responseToCorrection: window.evalRatings.responseToCorrection, impulseControl: window.evalRatings.impulseControl };
         payload.written = { description: document.getElementById('evalBehDesc').value.trim(), prior: document.getElementById('evalBehPrior').value.trim(), actionPlan: document.getElementById('evalBehAction').value.trim() };
-        // Action taken — "No Action" is valid; "Other" requires text
         payload.status = document.getElementById('evalBehStatus').value || 'No Action';
         if (payload.status === 'Other') {
             const otherText = document.getElementById('evalBehOtherText')?.value.trim();
@@ -868,38 +858,32 @@ window.saveEvaluation = async function() {
             payload.status = `Other: ${otherText}`;
         }
 
-    } else if (type === 'behavioral_conduct') {
-        if (!window.evalRatings.peerInteractions || !window.evalRatings.selfRegulation || !window.evalRatings.responseToCorrection) {
-            alert('Please rate all conduct metrics.'); return;
-        }
-        payload.ratings = { peerInteractions: window.evalRatings.peerInteractions, selfRegulation: window.evalRatings.selfRegulation, responseToCorrection: window.evalRatings.responseToCorrection };
-        payload.written = { description: document.getElementById('evalCondDesc')?.value.trim() || '', actionPlan: document.getElementById('evalCondAction')?.value.trim() || '' };
-        payload.status = document.getElementById('evalCondStatus')?.value || 'No Action';
-        if (payload.status === 'Other') {
-            const otherText = document.getElementById('evalCondOtherText')?.value.trim();
-            if (!otherText) { alert('Please describe the action taken.'); return; }
-            payload.status = `Other: ${otherText}`;
-        }
-
     } else if (type === 'midterm_review') {
+        const required = ['academicProgressToDate','workCompletionRate','classParticipation','attentionFocus','effortPersistence','behaviourInClass'];
+        if (required.some(k => !window.evalRatings[k])) { alert('Please rate all Mid-Term metrics.'); return; }
+        payload.ratings = { academicProgressToDate: window.evalRatings.academicProgressToDate, workCompletionRate: window.evalRatings.workCompletionRate, classParticipation: window.evalRatings.classParticipation, attentionFocus: window.evalRatings.attentionFocus, effortPersistence: window.evalRatings.effortPersistence, behaviourInClass: window.evalRatings.behaviourInClass };
         payload.written = { strengths: document.getElementById('evalMidStrengths')?.value.trim() || '', concerns: document.getElementById('evalMidConcerns')?.value.trim() || '', comments: document.getElementById('evalMidComments')?.value.trim() || '' };
-        payload.attendance = {
-            daysAbsent: parseInt(document.getElementById('evalMidAbsent')?.value) || 0,
-            daysLate:   parseInt(document.getElementById('evalMidLate')?.value)   || 0
-        };
+        payload.attendance = { daysAbsent: parseInt(document.getElementById('evalMidAbsent')?.value) || 0, daysLate: parseInt(document.getElementById('evalMidLate')?.value) || 0 };
 
     } else if (type === 'parent_conference') {
+        const required = ['parentEngagement','communicationQuality','followThroughAgreements'];
+        if (required.some(k => !window.evalRatings[k])) { alert('Please rate all Parent Conference metrics.'); return; }
+        payload.ratings = { parentEngagement: window.evalRatings.parentEngagement, communicationQuality: window.evalRatings.communicationQuality, followThroughAgreements: window.evalRatings.followThroughAgreements };
         payload.written = { summary: document.getElementById('evalPcSummary')?.value.trim() || '', agreements: document.getElementById('evalPcAgreements')?.value.trim() || '', followUp: document.getElementById('evalPcFollowUp')?.value.trim() || '' };
         payload.parentPresent = document.getElementById('evalPcParentPresent')?.value || '';
 
     } else if (type === 'learning_support') {
+        const required = ['responseToIntervention','academicEffort','focusAttention','independenceInTasks','progressTowardsGoals'];
+        if (required.some(k => !window.evalRatings[k])) { alert('Please rate all Learning Support metrics.'); return; }
+        payload.ratings = { responseToIntervention: window.evalRatings.responseToIntervention, academicEffort: window.evalRatings.academicEffort, focusAttention: window.evalRatings.focusAttention, independenceInTasks: window.evalRatings.independenceInTasks, progressTowardsGoals: window.evalRatings.progressTowardsGoals };
         payload.written = { concerns: document.getElementById('evalLsConcerns')?.value.trim() || '', interventions: document.getElementById('evalLsInterventions')?.value.trim() || '', goals: document.getElementById('evalLsGoals')?.value.trim() || '' };
         payload.supportLevel = document.getElementById('evalLsLevel')?.value || '';
 
     } else if (type === 'custom') {
         const customName = document.getElementById('evalCustomTypeName')?.value.trim();
-        if (!customName) { alert('Please enter a name for this evaluation type.'); return; }
+        if (!customName) { alert('Please enter a name for this evaluation.'); return; }
         payload.customTypeName = customName;
+        payload.ratings = { overallPerformance: window.evalRatings.overallPerformance, effortEngagement: window.evalRatings.effortEngagement, socialSkills: window.evalRatings.socialSkills, workQuality: window.evalRatings.workQuality, progressTowardsGoals: window.evalRatings.customProgressGoals };
         payload.written = { notes: document.getElementById('evalCustomNotes')?.value.trim() || '' };
     }
 
@@ -944,16 +928,12 @@ window.loadStudentEvaluations = async function(studentId) {
                     typeLabel  = 'Report Card';
                 } else if (ev.type === 'end_of_year') {
                     badgeStyle    = 'background:#fef3c7;color:#b45309;border:1px solid #fde68a;';
-                    typeLabel     = 'End-of-Year Review';
-                    highlightText = `<div style="margin-top:10px;padding:6px 10px;background:#f8fafb;border-radius:4px;font-size:11px;font-weight:700;color:#0d1f35;"><i class="fa-solid fa-award" style="color:#f59e0b;margin-right:5px;"></i> Status: ${ev.status}</div>`;
+                    typeLabel     = 'Comprehensive End-of-Year';
+                    highlightText = `<div style="margin-top:10px;padding:6px 10px;background:#f8fafb;border-radius:4px;font-size:11px;font-weight:700;color:#0d1f35;"><i class="fa-solid fa-award" style="color:#f59e0b;margin-right:5px;"></i> Status: ${escHtml(ev.status)}</div>`;
                 } else if (ev.type === 'behavioral') {
                     badgeStyle    = 'background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;';
-                    typeLabel     = 'Behavioral Intervention';
+                    typeLabel     = 'Behavioral & Conduct';
                     highlightText = ev.status && ev.status !== 'No Action' ? `<div style="margin-top:10px;padding:6px 10px;background:#fff0f3;border-radius:4px;font-size:11px;font-weight:700;color:#be1240;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:5px;"></i> Action: ${escHtml(ev.status)}</div>` : '';
-                } else if (ev.type === 'behavioral_conduct') {
-                    badgeStyle    = 'background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;';
-                    typeLabel     = 'Behavioral Conduct';
-                    highlightText = ev.status && ev.status !== 'No Action' ? `<div style="margin-top:10px;padding:6px 10px;background:#fff7ed;border-radius:4px;font-size:11px;font-weight:700;color:#c2410c;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:5px;"></i> Action: ${escHtml(ev.status)}</div>` : '';
                 } else if (ev.type === 'midterm_review') {
                     badgeStyle = 'background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;';
                     typeLabel  = 'Mid-Term Review';
@@ -992,7 +972,7 @@ window.loadStudentEvaluations = async function(studentId) {
     }
 };
 
-// ── 12. REPORT CARD ───────────────────────────────────────────────────────────
+// ── 12. REPORT CARD ───────────────────────────────────────────────────────
 window.buildRcStarGroups = function() {
     document.querySelectorAll('.rc-rating-row').forEach(row => {
         const field = row.dataset.field;
@@ -1027,7 +1007,6 @@ window.setRcRating = function(field, val) {
 };
 
 window.openReportCardModal = function() {
-    // Reset all 16 rcRating fields
     Object.keys(window.rcRatings).forEach(k => { window.rcRatings[k] = 0; });
     ['rcTotalSessions','rcDaysAbsent','rcDaysLate','rcComment'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
@@ -1056,7 +1035,6 @@ window.saveAndGenerateReportCard = async function() {
 
     if (!semId) { alert('Please select a grading period.'); return; }
 
-    // Require all 16 ratings to be filled
     const missingRatings = Object.entries(window.rcRatings).filter(([, v]) => !v);
     if (missingRatings.length > 0) {
         alert(`Please complete all ratings before generating the report card. ${missingRatings.length} field(s) still need a rating.`);
@@ -1103,7 +1081,6 @@ function generateFormalReportCardPDF(ev, semName) {
     if (!student)    return;
     const schoolName = session.schoolName || 'ConnectUs School';
 
-    // Build grade rows by subject
     const bySub = {};
     currentStudentGradesCache.forEach(g => {
         const sub = g.subject || 'Uncategorized';
@@ -1115,8 +1092,6 @@ function generateFormalReportCardPDF(ev, semName) {
         ? calculateWeightedAverage(currentStudentGradesCache, session.teacherData.gradeTypes || getGradeTypes())
         : 0;
     const gpaLetter = cumulativeAvg > 0 ? letterGrade(cumulativeAvg) : 'N/A';
-
-    // r2l: converts 1–5 star rating to E/D/B/I letter
     const r2l = v => v >= 5 ? 'E' : v === 4 ? 'D' : v === 3 ? 'B' : v > 0 ? 'I' : '—';
 
     const gradesHtml = Object.keys(bySub).length === 0
@@ -1130,30 +1105,28 @@ function generateFormalReportCardPDF(ev, semName) {
             </tr>`;
         }).join('');
 
-    // ── Special Subjects (E/D/B/I) ────────────────────────────────────────────
-    const specialSubjectsHtml = [
-        ['Character Building',      ev.ratings.characterBuilding],
-        ['Drama',                   ev.ratings.drama],
-        ['Music',                   ev.ratings.music],
-        ['Art',                     ev.ratings.art],
-        ['Physical Education',      ev.ratings.physicalEducation],
-        ['Information Technology',  ev.ratings.informationTechnology],
+    const enrichmentHtml = [
+        ['Character Building',     ev.ratings.characterBuilding],
+        ['Drama',                  ev.ratings.drama],
+        ['Music',                  ev.ratings.music],
+        ['Art',                    ev.ratings.art],
+        ['Physical Education',     ev.ratings.physicalEducation],
+        ['Information Technology', ev.ratings.informationTechnology],
     ].map(([label, val]) => `
         <tr style="border-bottom:1px solid #e2e8f0;">
             <td style="padding:9px 15px;font-weight:600;color:#334155;">${label}</td>
             <td style="padding:9px 15px;text-align:center;font-weight:800;font-size:15px;color:#1e1b4b;">${r2l(val)}</td>
         </tr>`).join('');
 
-    // ── Personal Development & Academic Habits (E/D/B/I) ──────────────────────
-    const personalDevHtml = [
-        ['Behavior',                ev.ratings.behavior],
-        ['Organization',            ev.ratings.organization],
-        ['Respectfulness',          ev.ratings.respectfulness],
-        ['Kindness',                ev.ratings.kindness],
-        ['Attitude Towards Work',   ev.ratings.attitudeWork],
-        ['Attitude Towards Peers',  ev.ratings.attitudePeers],
-        ['Academic Comprehension',  ev.ratings.academicComprehension],
-        ['Effort &amp; Resilience', ev.ratings.effortResilience],
+    const learningBehavioursHtml = [
+        ['Behavior',                       ev.ratings.behavior],
+        ['Organization',                   ev.ratings.organization],
+        ['Respectfulness',                 ev.ratings.respectfulness],
+        ['Kindness',                       ev.ratings.kindness],
+        ['Attitude Towards Work',          ev.ratings.attitudeWork],
+        ['Attitude Towards Peers',         ev.ratings.attitudePeers],
+        ['Academic Comprehension',         ev.ratings.academicComprehension],
+        ['Effort &amp; Resilience',        ev.ratings.effortResilience],
         ['Participation &amp; Engagement', ev.ratings.participation],
         ['Attendance &amp; Punctuality',   ev.ratings.punctualityRating],
     ].map(([label, val]) => `
@@ -1177,7 +1150,6 @@ body{font-family:'Nunito',sans-serif;padding:36px 44px;color:#0f172a;line-height
 .il{font-size:9px;text-transform:uppercase;color:#64748b;font-weight:800;letter-spacing:1px;}
 .iv{font-size:14px;font-weight:800;color:#0f172a;}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:20px;}
-.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px;}
 h3{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:#fff;background:#1e1b4b;padding:8px 12px;border-radius:4px;margin:0 0 10px;}
 table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:0;}
 th{background:#f1f5f9;color:#475569;padding:8px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;border-bottom:2px solid #cbd5e1;}
@@ -1194,16 +1166,11 @@ td{border-bottom:1px solid #e2e8f0;padding:8px 12px;color:#334155;}
 .sl{border-top:1px solid #000;padding-top:7px;font-size:11px;font-weight:700;text-align:center;color:#1e1b4b;}
 </style></head><body>
 
-<!-- Header -->
 <div class="hf">
     <img src="${session.logo||''}" alt="${escHtml(schoolName)}" class="logo" onerror="this.style.display='none'">
-    <div class="ht">
-        <h1>${escHtml(schoolName)}</h1>
-        <h2>OFFICIAL GRADE REPORT</h2>
-    </div>
+    <div class="ht"><h1>${escHtml(schoolName)}</h1><h2>OFFICIAL GRADE REPORT</h2></div>
 </div>
 
-<!-- Student Info Strip -->
 <div class="si">
     <div class="si-item"><span class="il">Student Name</span><span class="iv">${escHtml(student.name)}</span></div>
     <div class="si-item"><span class="il">Class</span><span class="iv">${escHtml(student.className||'Unassigned')}</span></div>
@@ -1213,49 +1180,38 @@ td{border-bottom:1px solid #e2e8f0;padding:8px 12px;color:#334155;}
     <div class="si-item"><span class="il">Term Average</span><span class="iv">${cumulativeAvg}% (${gpaLetter})</span></div>
 </div>
 
-<!-- Academic Performance + Special Subjects -->
 <div class="grid2">
     <div>
         <h3>Academic Performance</h3>
-        <table>
-            <thead><tr><th>Subject</th><th class="c">Average</th><th class="c">Grade</th></tr></thead>
-            <tbody>${gradesHtml}</tbody>
-        </table>
+        <table><thead><tr><th>Subject</th><th class="c">Average</th><th class="c">Grade</th></tr></thead>
+        <tbody>${gradesHtml}</tbody></table>
     </div>
     <div>
-        <h3>Special Subjects</h3>
-        <div class="lg">
-            <span>E — Exceptional</span><span>D — Developing</span><span>B — Beginning</span><span>I — Improvement</span>
-        </div>
-        <table><tbody>${specialSubjectsHtml}</tbody></table>
+        <h3>Enrichment &amp; Character Development</h3>
+        <div class="lg"><span>E — Exceptional</span><span>D — Developing</span><span>B — Beginning</span><span>I — Improvement</span></div>
+        <table><tbody>${enrichmentHtml}</tbody></table>
     </div>
 </div>
 
-<!-- Personal Development & Academic Habits -->
 <div style="margin-bottom:20px;">
-    <h3>Personal Development &amp; Academic Habits</h3>
-    <div class="lg">
-        <span>E — Exceptional</span><span>D — Developing</span><span>B — Beginning</span><span>I — Improvement Needed</span>
-    </div>
+    <h3>Learning Behaviours &amp; Social Growth</h3>
+    <div class="lg"><span>E — Exceptional</span><span>D — Developing</span><span>B — Beginning</span><span>I — Improvement Needed</span></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;">
-        <table><tbody>${personalDevHtml}</tbody></table>
+        <table><tbody>${learningBehavioursHtml}</tbody></table>
     </div>
 </div>
 
-<!-- Attendance -->
 <div class="att">
     <div class="ac"><span class="al">Total Sessions</span><span class="av">${ev.attendance.totalSessions}</span></div>
     <div class="ac"><span class="al">Days Absent</span><span class="av">${ev.attendance.daysAbsent}</span></div>
     <div class="ac"><span class="al">Days Late</span><span class="av">${ev.attendance.daysLate}</span></div>
 </div>
 
-<!-- Teacher Comments -->
 <div class="cb">
     <span class="cl">Teacher's Comments</span>
     <p style="margin:0;font-size:12px;color:#334155;white-space:pre-wrap;line-height:1.6;">${escHtml(ev.comment||'No comments recorded.')}</p>
 </div>
 
-<!-- Signatures -->
 <div class="fs">
     <div class="sl">Teacher's Signature &amp; Date</div>
     <div class="sl">Principal's Signature &amp; Date</div>
@@ -1269,7 +1225,7 @@ td{border-bottom:1px solid #e2e8f0;padding:8px 12px;color:#334155;}
     setTimeout(() => w.print(), 800);
 }
 
-// ── 13. ASSIGNMENT MODAL ──────────────────────────────────────────────────────
+// ── 13. ASSIGNMENT MODAL ──────────────────────────────────────────────────
 window.openAssignmentModal = function(gradeId) {
     const g = gradeDetailCache[gradeId]; if (!g) return;
     const pct       = g.max ? Math.round(g.score/g.max*100) : null;
@@ -1285,7 +1241,7 @@ window.openAssignmentModal = function(gradeId) {
 
 window.closeAssignmentModal = function() { closeOverlay('assignmentModal', 'assignmentModalInner'); };
 
-// ── 14. ARCHIVE ───────────────────────────────────────────────────────────────
+// ── 14. ARCHIVE ───────────────────────────────────────────────────────────
 window.archiveStudent = function() {
     const s = allStudentsCache.find(x => x.id === currentStudentId);
     document.getElementById('archiveStudentName').textContent = s ? s.name : 'this student';
@@ -1326,7 +1282,7 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
         if (isRelease) {
             leaveSchool   = true;
             historyReason = releaseReason;
-            if (releaseReason === 'Transferred')   finalStatus = 'Transferred';
+            if (releaseReason === 'Transferred')    finalStatus = 'Transferred';
             else if (releaseReason === 'Graduated') finalStatus = 'Graduated';
             else finalStatus = 'Archived';
         }
@@ -1334,21 +1290,11 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
         let academicSnapshot = {};
         try {
             const gradeTypes = session.teacherData.gradeTypes || session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES;
-
-            const gradesSnap = await getDocs(query(
-                collection(db, 'students', currentStudentId, 'grades'),
-                where('schoolId', '==', session.schoolId)
-            ));
+            const gradesSnap = await getDocs(query(collection(db, 'students', currentStudentId, 'grades'), where('schoolId', '==', session.schoolId)));
             const classGrades = [];
-            gradesSnap.forEach(d => {
-                const g = { id: d.id, ...d.data() };
-                if (g.className === (s?.className || '')) classGrades.push(g);
-            });
+            gradesSnap.forEach(d => { const g = { id: d.id, ...d.data() }; if (g.className === (s?.className || '')) classGrades.push(g); });
 
-            const evalSnap = await getDocs(query(
-                collection(db, 'students', currentStudentId, 'evaluations'),
-                where('schoolId', '==', session.schoolId)
-            ));
+            const evalSnap = await getDocs(query(collection(db, 'students', currentStudentId, 'evaluations'), where('schoolId', '==', session.schoolId)));
             const evaluations = [];
             evalSnap.forEach(d => evaluations.push({ id: d.id, ...d.data() }));
             evaluations.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
@@ -1372,34 +1318,23 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
                     semesters[semName][subj] = Math.round(calculateWeightedAverage(grades, gradeTypes));
                     allSemGrades.push(...grades);
                 });
-                if (allSemGrades.length) {
-                    semesters[semName]._overall = Math.round(calculateWeightedAverage(allSemGrades, gradeTypes));
-                }
+                if (allSemGrades.length) semesters[semName]._overall = Math.round(calculateWeightedAverage(allSemGrades, gradeTypes));
             });
 
-            academicSnapshot = {
-                className: s?.className || '', semesters, evaluations,
-                snapshotDate: new Date().toISOString()
-            };
-        } catch (snapErr) {
-            console.warn('[Roster] academicSnapshot warning:', snapErr.message);
-        }
+            academicSnapshot = { className: s?.className || '', semesters, evaluations, snapshotDate: new Date().toISOString() };
+        } catch (snapErr) { console.warn('[Roster] academicSnapshot warning:', snapErr.message); }
 
         const snapshot = {
-            schoolId:   session.schoolId,
-            schoolName: session.schoolName || session.schoolId,
-            teacherId:  s?.teacherId  || '',
-            className:  s?.className  || '',
-            leftAt:     new Date().toISOString(),
-            reason:     historyReason,
+            schoolId: session.schoolId, schoolName: session.schoolName || session.schoolId,
+            teacherId: s?.teacherId || '', className: s?.className || '',
+            leftAt: new Date().toISOString(), reason: historyReason,
             ...(notes ? { notes } : {})
         };
 
         batch.update(doc(db, 'students', currentStudentId), {
             enrollmentStatus: finalStatus,
             currentSchoolId:  leaveSchool ? '' : session.schoolId,
-            teacherId:        '',
-            className:        '',
+            teacherId: '', className: '',
             academicHistory:  arrayUnion(snapshot),
             lastClassName:    s?.className || '',
             academicSnapshot,
@@ -1408,12 +1343,9 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
 
         if (leaveSchool) {
             batch.set(doc(collection(db, 'schools', session.schoolId, 'notifications')), {
-                type:        'student_enrollment_closed',
-                studentId:   currentStudentId,
-                studentName: s?.name || '',
-                reason:      historyReason,
-                closedBy:    session.teacherData?.name || 'Teacher',
-                closedAt:    new Date().toISOString()
+                type: 'student_enrollment_closed', studentId: currentStudentId,
+                studentName: s?.name || '', reason: historyReason,
+                closedBy: session.teacherData?.name || 'Teacher', closedAt: new Date().toISOString()
             });
         }
 
@@ -1429,7 +1361,7 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
     btn.innerHTML = '<i class="fa-solid fa-box-archive"></i> Confirm Action'; btn.disabled = false;
 });
 
-// ── 15. EXPORT ────────────────────────────────────────────────────────────────
+// ── 15. EXPORT ────────────────────────────────────────────────────────────
 window.exportRosterCSV = function() {
     const rows = [['Global ID','Name','Class','Parent Phone','Parent PIN']];
     allStudentsCache.forEach(s => rows.push([s.id, s.name, s.className||'', s.parentPhone||'', s.pin]));
@@ -1438,11 +1370,11 @@ window.exportRosterCSV = function() {
 
 window.printRoster = function() { window.print(); };
 
-// ── 16. XSS PROTECTION ───────────────────────────────────────────────────────
+// ── 16. XSS PROTECTION ───────────────────────────────────────────────────
 function escHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
 }
 
-// ── FIRE ──────────────────────────────────────────────────────────────────────
+// ── FIRE ──────────────────────────────────────────────────────────────────
 init();
