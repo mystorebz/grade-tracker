@@ -11,55 +11,52 @@ if (session) {
 }
 
 // ── 2. STATE ─────────────────────────────────────────────────────────────
-let allStudentsCache        = [];
-let unassignedStudentsCache = [];
-let studentMap              = {};
-let currentStudentId        = null;
+let allStudentsCache          = [];
+let unassignedStudentsCache   = [];
+let studentMap                = {};
+let currentStudentId          = null;
 let currentStudentGradesCache = [];
-let rawSemesters            = [];
-let isSemesterLocked        = false;
-let gradeDetailCache        = {};
-let schoolLimit             = 50;
-let cachedEvaluations       = [];
+let rawSemesters              = [];
+let isSemesterLocked          = false;
+let gradeDetailCache          = {};
+let schoolLimit               = 50;
+let cachedEvaluations         = [];
 
-// ── Report card type state (new) ──────────────────────────────────────────
+// ── Report card type state ────────────────────────────────────────────────
 let selectedRcType      = 'term';   // 'term' | 'midterm'
-let selectedMidtermData = null;     // midterm object from semester doc, or null
+let selectedMidtermData = null;     // midterm object from Firestore, or null
 
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 
 // ── Evaluation star ratings ───────────────────────────────────────────────
 window.evalRatings = {
-    // Academic Progress
     academicMastery: 0, taskExecution: 0, engagement: 0,
     criticalThinking: 0, writtenCommunication: 0, oralParticipation: 0,
-    // End of Year
     overallAcademicGrowth: 0, subjectMasteryAcrossTerms: 0, socialPeerDynamics: 0,
     emotionalResilience: 0, selfRegulationEoy: 0, effortPersistenceYear: 0,
     responseToFeedback: 0, readinessNextGrade: 0,
-    // Behavioral & Conduct
     ruleAdherence: 0, conflictResolution: 0, respectAuthority: 0,
     peerInteractions: 0, selfRegulation: 0, responseToCorrection: 0,
     emotionalStability: 0,
-    // Mid-Term Review
     academicProgressToDate: 0, workCompletionRate: 0, classParticipation: 0,
     attentionFocus: 0, effortPersistence: 0, behaviourInClass: 0,
-    // Parent Conference
     parentEngagement: 0, communicationQuality: 0, followThroughAgreements: 0,
-    // Learning Support
     responseToIntervention: 0, academicEffort: 0, focusAttention: 0,
     independenceInTasks: 0, progressTowardsGoals: 0,
-    // Custom generic
     overallPerformance: 0, effortEngagement: 0, socialSkills: 0,
     workQuality: 0, customProgressGoals: 0
 };
 
-// ── Report card ratings ───────────────────────────────────────────────────
+// ── Report card ratings (updated enrichment fields) ───────────────────────
 window.rcRatings = {
-    // Enrichment & Character Development
-    characterBuilding: 0, drama: 0, music: 0, art: 0,
-    physicalEducation: 0, informationTechnology: 0,
-    // Learning Behaviours & Social Growth
+    // Enrichment & Character Development (new metrics)
+    characterValues:           0,
+    respectCourtesy:           0,
+    responsibilityReliability: 0,
+    cooperationTeamwork:       0,
+    leadershipInitiative:      0,
+    culturalAwareness:         0,
+    // Learning Behaviours & Social Growth (unchanged)
     behavior: 0, organization: 0, respectfulness: 0, kindness: 0,
     attitudeWork: 0, attitudePeers: 0, academicComprehension: 0,
     effortResilience: 0, participation: 0, punctualityRating: 0
@@ -814,8 +811,8 @@ window.toggleEvalType = function() {
         else semWrap.classList.remove('hidden');
     }
 
-    const behOther  = document.getElementById('evalBehOtherWrap');
-    if (behOther)  behOther.classList.add('hidden');
+    const behOther = document.getElementById('evalBehOtherWrap');
+    if (behOther) behOther.classList.add('hidden');
 };
 
 window.toggleBehOther = function() {
@@ -987,37 +984,85 @@ window.loadStudentEvaluations = async function(studentId) {
 
 // ── 12. REPORT CARD ───────────────────────────────────────────────────────
 
-// ── Helper: check if selected term has a midterm configured ───────────────
-function checkMidtermAvailability() {
+// ── RC star ratings ───────────────────────────────────────────────────────
+window.buildRcStarGroups = function() {
+    document.querySelectorAll('.rc-rating-row').forEach(row => {
+        const field = row.dataset.field;
+        const group = row.querySelector('.rc-star-group');
+        if (!group) return;
+        group.innerHTML = [1,2,3,4,5].map(n =>
+            `<button type="button" class="star-btn" data-val="${n}" data-rcfield="${field}"
+              onmouseover="window.hoverRcStars('${field}',${n})"
+              onmouseout="window.renderRcStars('${field}')"
+              onclick="window.setRcRating('${field}',${n})">★</button>`
+        ).join('');
+        window.renderRcStars(field);
+    });
+};
+
+window.renderRcStars = function(field) {
+    const val = window.rcRatings[field] || 0;
+    document.querySelectorAll(`[data-rcfield="${field}"]`).forEach(btn => {
+        if (btn.tagName === 'BUTTON') btn.classList.toggle('star-active', parseInt(btn.dataset.val) <= val);
+    });
+};
+
+window.hoverRcStars = function(field, val) {
+    document.querySelectorAll(`[data-rcfield="${field}"]`).forEach(btn => {
+        if (btn.tagName === 'BUTTON') btn.classList.toggle('star-active', parseInt(btn.dataset.val) <= val);
+    });
+};
+
+window.setRcRating = function(field, val) {
+    window.rcRatings[field] = val;
+    window.renderRcStars(field);
+};
+
+// ── Midterm availability check — fetches FRESH from Firestore (not cache) ─
+async function checkMidtermAvailability() {
     if (selectedRcType !== 'midterm') return;
 
-    const semId = document.getElementById('rcSemester').value;
-    const sem   = rawSemesters.find(s => s.id === semId);
+    const semId = document.getElementById('rcSemester')?.value;
     const info  = document.getElementById('rcMidtermInfo');
-    if (!info) return;
+    if (!info || !semId) return;
 
-    if (!sem || !sem.midterm) {
+    info.innerHTML = `<div style="padding:10px;text-align:center;color:#9ab0c6;font-size:12px;"><i class="fa-solid fa-spinner fa-spin" style="margin-right:6px;"></i>Checking midterm…</div>`;
+    info.classList.remove('hidden');
+
+    try {
+        // Always fetch directly from Firestore — never trust the localStorage cache for midterm data
+        const semSnap = await getDoc(doc(db, 'schools', session.schoolId, 'semesters', semId));
+
+        if (!semSnap.exists() || !semSnap.data().midterm) {
+            selectedMidtermData = null;
+            info.innerHTML = `
+                <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:3px;padding:12px;display:flex;align-items:flex-start;gap:10px;">
+                    <i class="fa-solid fa-triangle-exclamation" style="color:#d97706;margin-top:1px;flex-shrink:0;font-size:13px;"></i>
+                    <div>
+                        <p style="font-size:12px;font-weight:700;color:#78350f;margin:0 0 3px;">No midterm configured for this term</p>
+                        <p style="font-size:11px;color:#92400e;margin:0;line-height:1.5;">Ask your administrator to add a midterm date range to this grading period before generating a midterm report card.</p>
+                    </div>
+                </div>`;
+        } else {
+            const semData = semSnap.data();
+            selectedMidtermData = semData.midterm;
+            const semName = semData.name || 'this term';
+            info.innerHTML = `
+                <div style="background:#edfaf4;border:1px solid #a7f3d0;border-radius:3px;padding:12px;display:flex;align-items:flex-start;gap:10px;">
+                    <i class="fa-solid fa-flag-checkered" style="color:#0ea871;margin-top:1px;flex-shrink:0;font-size:13px;"></i>
+                    <div>
+                        <p style="font-size:12px;font-weight:700;color:#065f46;margin:0 0 3px;">${escHtml(semData.midterm.name || 'Midterm')} — ${escHtml(semName)}</p>
+                        <p style="font-size:11px;color:#047857;margin:0;line-height:1.5;">Grades from <strong>${escHtml(semData.midterm.startDate)}</strong> to <strong>${escHtml(semData.midterm.endDate)}</strong> will be included in this report card.</p>
+                    </div>
+                </div>`;
+        }
+    } catch (e) {
+        console.error('[Roster] checkMidtermAvailability:', e);
         selectedMidtermData = null;
         info.innerHTML = `
-            <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:3px;padding:12px;display:flex;align-items:flex-start;gap:10px;">
-                <i class="fa-solid fa-triangle-exclamation" style="color:#d97706;margin-top:1px;flex-shrink:0;font-size:13px;"></i>
-                <div>
-                    <p style="font-size:12px;font-weight:700;color:#78350f;margin:0 0 3px;">No midterm configured for this term</p>
-                    <p style="font-size:11px;color:#92400e;margin:0;line-height:1.5;">Ask your administrator to add a midterm date range to this grading period before generating a midterm report card.</p>
-                </div>
+            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:3px;padding:12px;">
+                <p style="font-size:12px;font-weight:700;color:#b91c1c;margin:0;">Could not verify midterm. Please try again.</p>
             </div>`;
-        info.classList.remove('hidden');
-    } else {
-        selectedMidtermData = sem.midterm;
-        info.innerHTML = `
-            <div style="background:#edfaf4;border:1px solid #a7f3d0;border-radius:3px;padding:12px;display:flex;align-items:flex-start;gap:10px;">
-                <i class="fa-solid fa-flag-checkered" style="color:#0ea871;margin-top:1px;flex-shrink:0;font-size:13px;"></i>
-                <div>
-                    <p style="font-size:12px;font-weight:700;color:#065f46;margin:0 0 3px;">${escHtml(sem.midterm.name || 'Midterm')} — ${escHtml(sem.name)}</p>
-                    <p style="font-size:11px;color:#047857;margin:0;line-height:1.5;">Grades from <strong>${escHtml(sem.midterm.startDate)}</strong> to <strong>${escHtml(sem.midterm.endDate)}</strong> will be included in this report card.</p>
-                </div>
-            </div>`;
-        info.classList.remove('hidden');
     }
 }
 
@@ -1027,11 +1072,11 @@ window.selectRcType = function(type) {
 
     const termBtn    = document.getElementById('rcTypeTerm');
     const midtermBtn = document.getElementById('rcTypeMidterm');
+    const info       = document.getElementById('rcMidtermInfo');
 
     if (type === 'term') {
         if (termBtn)    { termBtn.style.background = '#0d1f35'; termBtn.style.borderColor = '#0d1f35'; termBtn.style.color = '#fff'; }
         if (midtermBtn) { midtermBtn.style.background = '#fff'; midtermBtn.style.borderColor = '#c5d0db'; midtermBtn.style.color = '#6b84a0'; }
-        const info = document.getElementById('rcMidtermInfo');
         if (info) { info.innerHTML = ''; info.classList.add('hidden'); }
         selectedMidtermData = null;
     } else {
@@ -1041,10 +1086,21 @@ window.selectRcType = function(type) {
     }
 };
 
+// ── Open report card modal ────────────────────────────────────────────────
 window.openReportCardModal = function() {
     // Reset type state
     selectedRcType      = 'term';
     selectedMidtermData = null;
+
+    // Reset type button visual to default (term selected)
+    const termBtn    = document.getElementById('rcTypeTerm');
+    const midtermBtn = document.getElementById('rcTypeMidterm');
+    if (termBtn)    { termBtn.style.background = '#0d1f35'; termBtn.style.borderColor = '#0d1f35'; termBtn.style.color = '#fff'; }
+    if (midtermBtn) { midtermBtn.style.background = '#fff'; midtermBtn.style.borderColor = '#c5d0db'; midtermBtn.style.color = '#6b84a0'; }
+
+    // Clear midterm info
+    const info = document.getElementById('rcMidtermInfo');
+    if (info) { info.innerHTML = ''; info.classList.add('hidden'); }
 
     // Reset ratings and fields
     Object.keys(window.rcRatings).forEach(k => { window.rcRatings[k] = 0; });
@@ -1063,41 +1119,7 @@ window.openReportCardModal = function() {
         rcSem.appendChild(opt);
     });
 
-    // Inject type selector at top of modal body (create once, refresh on reopen)
-    const modalBody = document.querySelector('#reportCardModalInner .modal-body');
-    let typeSelector = document.getElementById('rcTypeSelector');
-    if (!typeSelector) {
-        typeSelector = document.createElement('div');
-        typeSelector.id = 'rcTypeSelector';
-        modalBody.insertBefore(typeSelector, modalBody.firstChild);
-    }
-    typeSelector.innerHTML = `
-        <div>
-            <label class="field-label">Report Card Type</label>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px;">
-                <button id="rcTypeTerm" onclick="window.selectRcType('term')"
-                    style="padding:12px 10px;border:2px solid #0d1f35;border-radius:4px;background:#0d1f35;color:#fff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all 0.15s;">
-                    <i class="fa-solid fa-file-invoice"></i> Term Report Card
-                </button>
-                <button id="rcTypeMidterm" onclick="window.selectRcType('midterm')"
-                    style="padding:12px 10px;border:2px solid #c5d0db;border-radius:4px;background:#fff;color:#6b84a0;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all 0.15s;">
-                    <i class="fa-solid fa-flag-checkered"></i> Midterm Report Card
-                </button>
-            </div>
-        </div>`;
-
-    // Inject midterm info container after semester selector (create once)
-    let midtermInfo = document.getElementById('rcMidtermInfo');
-    if (!midtermInfo) {
-        midtermInfo = document.createElement('div');
-        midtermInfo.id = 'rcMidtermInfo';
-        const semDiv = document.getElementById('rcSemester').closest('div');
-        semDiv.insertAdjacentElement('afterend', midtermInfo);
-    }
-    midtermInfo.innerHTML = '';
-    midtermInfo.classList.add('hidden');
-
-    // When semester changes, re-check midterm availability
+    // Re-check midterm whenever semester changes
     rcSem.onchange = () => checkMidtermAvailability();
 
     openOverlay('reportCardModal', 'reportCardModalInner');
@@ -1106,6 +1128,7 @@ window.openReportCardModal = function() {
 
 window.closeReportCardModal = function() { closeOverlay('reportCardModal', 'reportCardModalInner'); };
 
+// ── Save & generate ───────────────────────────────────────────────────────
 window.saveAndGenerateReportCard = async function() {
     const semId   = document.getElementById('rcSemester').value;
     const semName = document.getElementById('rcSemester').options[document.getElementById('rcSemester').selectedIndex]?.text || '';
@@ -1113,7 +1136,6 @@ window.saveAndGenerateReportCard = async function() {
 
     if (!semId) { alert('Please select a grading period.'); return; }
 
-    // Block midterm generation if no midterm is configured
     if (selectedRcType === 'midterm' && !selectedMidtermData) {
         alert('No midterm has been configured for this term.\n\nPlease ask your administrator to add a midterm date range to this grading period first.');
         return;
@@ -1147,13 +1169,11 @@ window.saveAndGenerateReportCard = async function() {
         comment: document.getElementById('rcComment').value.trim()
     };
 
-    // Store midterm reference on the payload for the record
     if (selectedRcType === 'midterm' && selectedMidtermData) {
         payload.midterm = selectedMidtermData;
     }
 
     try {
-        // Use distinct Firestore doc IDs so term and midterm report cards don't overwrite each other
         const docId = selectedRcType === 'midterm'
             ? `${currentStudentId}_${semId}_midterm_rc`
             : `${currentStudentId}_${semId}_rc`;
@@ -1171,13 +1191,13 @@ window.saveAndGenerateReportCard = async function() {
     btn.disabled  = false;
 };
 
-// ── PDF generator — reportType and midtermData are new params ─────────────
+// ── PDF generator ─────────────────────────────────────────────────────────
 function generateFormalReportCardPDF(ev, semName, reportType = 'term', midtermData = null) {
     const student    = allStudentsCache.find(s => s.id === currentStudentId);
     if (!student)    return;
     const schoolName = session.schoolName || 'ConnectUs School';
 
-    // ── Filter grades by midterm date range if this is a midterm report card ──
+    // Filter grades by midterm date range if applicable
     let gradesToUse = [...currentStudentGradesCache];
     if (reportType === 'midterm' && midtermData?.startDate && midtermData?.endDate) {
         const start = new Date(midtermData.startDate);
@@ -1189,7 +1209,6 @@ function generateFormalReportCardPDF(ev, semName, reportType = 'term', midtermDa
         });
     }
 
-    // ── PDF header labels ──────────────────────────────────────────────────
     const reportTitle    = reportType === 'midterm' ? 'MIDTERM REPORT CARD' : 'OFFICIAL GRADE REPORT';
     const reportSubtitle = reportType === 'midterm' && midtermData
         ? `${midtermData.name || 'Midterm'} · ${semName} · ${midtermData.startDate} – ${midtermData.endDate}`
@@ -1206,8 +1225,31 @@ function generateFormalReportCardPDF(ev, semName, reportType = 'term', midtermDa
         ? calculateWeightedAverage(gradesToUse, session.teacherData.gradeTypes || getGradeTypes())
         : 0;
     const gpaLetter = cumulativeAvg > 0 ? letterGrade(cumulativeAvg) : 'N/A';
-    const r2l = v => v >= 5 ? 'E' : v === 4 ? 'D' : v === 3 ? 'B' : v > 0 ? 'I' : '—';
 
+    // Rating helpers
+    const ratingLabel = v =>
+        v >= 5 ? 'Exceptional' :
+        v === 4 ? 'Developing Well' :
+        v === 3 ? 'Developing' :
+        v === 2 ? 'Needs Improvement' :
+        v >= 1  ? 'Unsatisfactory' : '—';
+
+    const starDisplay = v =>
+        [1,2,3,4,5].map(n =>
+            `<span style="color:${n <= v ? '#f59e0b' : '#dce3ed'};font-size:14px;">★</span>`
+        ).join('');
+
+    // Rating legend HTML — used in both enrichment and learning behaviours sections
+    const ratingLegendHtml = `
+        <div style="font-size:9px;color:#374f6b;background:#f8fafc;padding:7px 12px;border-radius:4px;margin-bottom:12px;border:1px solid #e2e8f0;line-height:2;">
+            <span style="color:#f59e0b;font-size:11px;">★★★★★</span> <strong>5 — Exceptional:</strong> Consistently exceeds expectations &nbsp;&nbsp;
+            <span style="color:#f59e0b;font-size:11px;">★★★★</span><span style="color:#dce3ed;font-size:11px;">★</span> <strong>4 — Developing Well:</strong> Frequently meets and sometimes exceeds &nbsp;&nbsp;
+            <span style="color:#f59e0b;font-size:11px;">★★★</span><span style="color:#dce3ed;font-size:11px;">★★</span> <strong>3 — Developing:</strong> Generally meets expectations with some guidance &nbsp;&nbsp;
+            <span style="color:#f59e0b;font-size:11px;">★★</span><span style="color:#dce3ed;font-size:11px;">★★★</span> <strong>2 — Needs Improvement:</strong> Partially meets, requires consistent support &nbsp;&nbsp;
+            <span style="color:#f59e0b;font-size:11px;">★</span><span style="color:#dce3ed;font-size:11px;">★★★★</span> <strong>1 — Unsatisfactory:</strong> Rarely meets expectations, requires immediate intervention
+        </div>`;
+
+    // Academic grades table
     const gradesHtml = Object.keys(bySub).length === 0
         ? `<tr><td colspan="3" style="text-align:center;padding:30px;color:#64748b;font-style:italic;">No grades recorded for this period.</td></tr>`
         : Object.entries(bySub).sort((a,b) => a[0].localeCompare(b[0])).map(([sub, gList]) => {
@@ -1219,34 +1261,41 @@ function generateFormalReportCardPDF(ev, semName, reportType = 'term', midtermDa
             </tr>`;
         }).join('');
 
-    const enrichmentHtml = [
-        ['Character Building',     ev.ratings.characterBuilding],
-        ['Drama',                  ev.ratings.drama],
-        ['Music',                  ev.ratings.music],
-        ['Art',                    ev.ratings.art],
-        ['Physical Education',     ev.ratings.physicalEducation],
-        ['Information Technology', ev.ratings.informationTechnology],
-    ].map(([label, val]) => `
+    // Enrichment & Character Development — with descriptors, stars, and label
+    const enrichmentRows = [
+        ['Character & Values',           'Honesty, integrity, and ethical behaviour in daily interactions',          ev.ratings.characterValues],
+        ['Respect & Courtesy',           'Respectful treatment of peers, teachers, and the school environment',      ev.ratings.respectCourtesy],
+        ['Responsibility & Reliability', 'Taking ownership of tasks, duties, and personal belongings',              ev.ratings.responsibilityReliability],
+        ['Cooperation & Teamwork',       'Working constructively with others in group and classroom settings',       ev.ratings.cooperationTeamwork],
+        ['Leadership & Initiative',      'Volunteering, taking the lead, and showing self-driven motivation',        ev.ratings.leadershipInitiative],
+        ['Cultural Awareness & Pride',   'Appreciation of Belizean and Caribbean culture, history, and heritage',   ev.ratings.culturalAwareness],
+    ].map(([label, desc, val]) => `
         <tr style="border-bottom:1px solid #e2e8f0;">
-            <td style="padding:9px 15px;font-weight:600;color:#334155;">${label}</td>
-            <td style="padding:9px 15px;text-align:center;font-weight:800;font-size:15px;color:#1e1b4b;">${r2l(val)}</td>
+            <td style="padding:9px 15px;">
+                <p style="font-weight:700;color:#1e293b;margin:0 0 2px;font-size:12px;">${label}</p>
+                <p style="font-size:10px;color:#64748b;margin:0;font-style:italic;">${desc}</p>
+            </td>
+            <td style="padding:9px 15px;text-align:center;">${starDisplay(val || 0)}</td>
+            <td style="padding:9px 15px;text-align:center;font-size:11px;font-weight:700;color:#1e1b4b;">${ratingLabel(val || 0)}</td>
         </tr>`).join('');
 
-    const learningBehavioursHtml = [
-        ['Behavior',                       ev.ratings.behavior],
-        ['Organization',                   ev.ratings.organization],
-        ['Respectfulness',                 ev.ratings.respectfulness],
-        ['Kindness',                       ev.ratings.kindness],
-        ['Attitude Towards Work',          ev.ratings.attitudeWork],
-        ['Attitude Towards Peers',         ev.ratings.attitudePeers],
-        ['Academic Comprehension',         ev.ratings.academicComprehension],
-        ['Effort &amp; Resilience',        ev.ratings.effortResilience],
-        ['Participation &amp; Engagement', ev.ratings.participation],
-        ['Attendance &amp; Punctuality',   ev.ratings.punctualityRating],
+    // Learning Behaviours — stars and label
+    const learningRows = [
+        ['Behavior',                      ev.ratings.behavior],
+        ['Organization',                  ev.ratings.organization],
+        ['Respectfulness',                ev.ratings.respectfulness],
+        ['Kindness',                      ev.ratings.kindness],
+        ['Attitude Towards Work',         ev.ratings.attitudeWork],
+        ['Attitude Towards Peers',        ev.ratings.attitudePeers],
+        ['Academic Comprehension',        ev.ratings.academicComprehension],
+        ['Effort & Resilience',           ev.ratings.effortResilience],
+        ['Participation & Engagement',    ev.ratings.participation],
+        ['Attendance & Punctuality',      ev.ratings.punctualityRating],
     ].map(([label, val]) => `
         <tr style="border-bottom:1px solid #e2e8f0;">
             <td style="padding:9px 15px;font-weight:600;color:#334155;">${label}</td>
-            <td style="padding:9px 15px;text-align:center;font-weight:800;font-size:15px;color:#1e1b4b;">${r2l(val)}</td>
+            <td style="padding:9px 15px;text-align:center;">${starDisplay(val || 0)}</td>
+            <td style="padding:9px 15px;text-align:center;font-size:11px;font-weight:700;color:#1e1b4b;">${ratingLabel(val || 0)}</td>
         </tr>`).join('');
 
     const html = `<!DOCTYPE html><html><head><title>${reportTitle} — ${escHtml(student.name)}</title>
@@ -1264,21 +1313,20 @@ body{font-family:'Nunito',sans-serif;padding:36px 44px;color:#0f172a;line-height
 .si-item{display:flex;flex-direction:column;gap:3px;}
 .il{font-size:9px;text-transform:uppercase;color:#64748b;font-weight:800;letter-spacing:1px;}
 .iv{font-size:14px;font-weight:800;color:#0f172a;}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:20px;}
 h3{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:#fff;background:#1e1b4b;padding:8px 12px;border-radius:4px;margin:0 0 10px;}
 table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:0;}
 th{background:#f1f5f9;color:#475569;padding:8px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;border-bottom:2px solid #cbd5e1;}
 th.c{text-align:center;}
 td{border-bottom:1px solid #e2e8f0;padding:8px 12px;color:#334155;}
-.lg{font-size:10px;color:#64748b;font-weight:700;display:flex;justify-content:space-around;background:#f8fafc;padding:7px 10px;border-radius:4px;margin-bottom:10px;border:1px solid #e2e8f0;}
 .att{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;}
 .ac{background:#f8fafc;border:1px solid #cbd5e1;padding:9px;text-align:center;border-radius:6px;}
 .al{display:block;font-size:9px;font-weight:800;color:#64748b;text-transform:uppercase;}
 .av{font-size:18px;font-weight:900;color:#1e1b4b;}
-.cb{border:1px solid #cbd5e1;border-radius:6px;padding:14px;background:#fff;min-height:70px;}
+.cb{border:1px solid #cbd5e1;border-radius:6px;padding:14px;background:#fff;min-height:70px;margin-bottom:20px;}
 .cl{font-size:10px;font-weight:800;color:#1e1b4b;text-transform:uppercase;margin-bottom:6px;display:block;}
 .fs{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:36px;}
 .sl{border-top:1px solid #000;padding-top:7px;font-size:11px;font-weight:700;text-align:center;color:#1e1b4b;}
+.sec{margin-bottom:22px;}
 </style></head><body>
 
 <div class="hf">
@@ -1299,25 +1347,30 @@ td{border-bottom:1px solid #e2e8f0;padding:8px 12px;color:#334155;}
     <div class="si-item"><span class="il">Period Average</span><span class="iv">${cumulativeAvg}% (${gpaLetter})</span></div>
 </div>
 
-<div class="grid2">
-    <div>
-        <h3>Academic Performance</h3>
-        <table><thead><tr><th>Subject</th><th class="c">Average</th><th class="c">Grade</th></tr></thead>
-        <tbody>${gradesHtml}</tbody></table>
-    </div>
-    <div>
-        <h3>Enrichment &amp; Character Development</h3>
-        <div class="lg"><span>E — Exceptional</span><span>D — Developing</span><span>B — Beginning</span><span>I — Improvement</span></div>
-        <table><tbody>${enrichmentHtml}</tbody></table>
-    </div>
+<div class="sec">
+    <h3>Academic Performance</h3>
+    <table>
+        <thead><tr><th>Subject</th><th class="c">Average</th><th class="c">Grade</th></tr></thead>
+        <tbody>${gradesHtml}</tbody>
+    </table>
 </div>
 
-<div style="margin-bottom:20px;">
+<div class="sec">
+    <h3>Enrichment &amp; Character Development</h3>
+    ${ratingLegendHtml}
+    <table>
+        <thead><tr><th>Metric</th><th class="c">Rating</th><th class="c">Assessment</th></tr></thead>
+        <tbody>${enrichmentRows}</tbody>
+    </table>
+</div>
+
+<div class="sec">
     <h3>Learning Behaviours &amp; Social Growth</h3>
-    <div class="lg"><span>E — Exceptional</span><span>D — Developing</span><span>B — Beginning</span><span>I — Improvement Needed</span></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;">
-        <table><tbody>${learningBehavioursHtml}</tbody></table>
-    </div>
+    ${ratingLegendHtml}
+    <table>
+        <thead><tr><th>Metric</th><th class="c">Rating</th><th class="c">Assessment</th></tr></thead>
+        <tbody>${learningRows}</tbody>
+    </table>
 </div>
 
 <div class="att">
