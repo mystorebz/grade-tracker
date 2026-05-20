@@ -537,7 +537,8 @@ function escHtml(str) {
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ── 15. GRADE WEIGHTS CONFIGURATION MODAL ─────────────────────────────────────
+
+// ── 15. GRADE WEIGHTS CONFIGURATION MODAL (SMART UX) ─────────────────────────
 let modalGradeTypes = [];
 let usedGradeTypes = new Set(); 
 
@@ -547,7 +548,7 @@ document.getElementById('openGradeWeightsBtn')?.addEventListener('click', () => 
         return;
     }
     
-    // Scan for protected/in-use grade types
+    // Scan for protected/in-use grade types to prevent accidental deletion
     usedGradeTypes.clear();
     if (allGradesCache && allGradesCache.grades) {
         allGradesCache.grades.forEach(g => {
@@ -558,13 +559,12 @@ document.getElementById('openGradeWeightsBtn')?.addEventListener('click', () => 
     const currentTypes = getGradeTypes();
     modalGradeTypes = JSON.parse(JSON.stringify(currentTypes));
 
-    document.getElementById('gwSelect').value = '';
-    document.getElementById('gwCustomName').style.display = 'none';
-    document.getElementById('gwCustomName').value = '';
-    document.getElementById('gwWeight').value = '';
-    document.getElementById('gwMsg').classList.add('hidden');
+    document.getElementById('gwNewName').value = '';
+    document.getElementById('gwNewWeight').value = '';
+    document.getElementById('gwMsg')?.classList.add('hidden');
     
     renderGradeWeights();
+    updateSmartHelper();
     openOverlay('gradeWeightsModal', 'gradeWeightsModalInner');
 });
 
@@ -572,95 +572,135 @@ document.getElementById('closeGradeWeightsBtn')?.addEventListener('click', () =>
     closeOverlay('gradeWeightsModal', 'gradeWeightsModalInner');
 });
 
-document.getElementById('gwSelect')?.addEventListener('change', (e) => {
-    const customInput = document.getElementById('gwCustomName');
-    if (e.target.value === 'Custom') {
-        customInput.style.display = 'block';
-        customInput.focus();
-    } else {
-        customInput.style.display = 'none';
-        customInput.value = '';
+// Auto-suggest weight when typing a new category name
+document.getElementById('gwNewName')?.addEventListener('input', () => {
+    const weightInput = document.getElementById('gwNewWeight');
+    if (weightInput && !weightInput.value) {
+        const total = modalGradeTypes.reduce((sum, g) => sum + g.weight, 0);
+        const remaining = Math.max(0, 100 - total);
+        if (remaining > 0) weightInput.value = remaining;
     }
+});
+
+// Dynamic Hard Cap for the "Quick Add" input field
+document.getElementById('gwNewWeight')?.addEventListener('input', function() {
+    const total = modalGradeTypes.reduce((sum, g) => sum + g.weight, 0);
+    const maxAllowed = Math.max(0, 100 - total);
+    let w = parseInt(this.value, 10);
+    if (w < 0) this.value = 0;
+    if (w > maxAllowed) this.value = maxAllowed;
 });
 
 document.getElementById('addGwBtn')?.addEventListener('click', () => {
-    const typeSelect = document.getElementById('gwSelect');
-    const customName = document.getElementById('gwCustomName');
-    const weightInput = document.getElementById('gwWeight');
+    const nameInput = document.getElementById('gwNewName');
+    const weightInput = document.getElementById('gwNewWeight');
     
-    const type = typeSelect.value;
-    const name = type === 'Custom' ? customName.value.trim() : type;
-    const weight = parseInt(weightInput.value, 10);
+    const name = nameInput.value.trim();
+    let weight = parseInt(weightInput.value, 10);
 
-    if (!type) { showGwMsg('Please select a grade type.', true); return; }
-    if (type === 'Custom' && !name) { showGwMsg('Please enter a custom name.', true); return; }
-    if (isNaN(weight) || weight <= 0) { showGwMsg('Please enter a valid weight (e.g., 20).', true); return; }
+    if (!name) { showGwMsg('Please enter a category name.', true); nameInput.focus(); return; }
+    if (isNaN(weight) || weight <= 0) { showGwMsg('Please enter a valid weight.', true); weightInput.focus(); return; }
 
     if (modalGradeTypes.some(g => g.name.toLowerCase() === name.toLowerCase())) {
-        showGwMsg('This metric already exists in your list.', true); return;
+        showGwMsg('This category already exists in your list.', true); return;
     }
 
-    modalGradeTypes.push({ name, weight });
-    renderGradeWeights();
+    // Double-check the math barrier before pushing to state
+    const total = modalGradeTypes.reduce((sum, g) => sum + g.weight, 0);
+    const maxAllowed = Math.max(0, 100 - total);
+    if (weight > maxAllowed) weight = maxAllowed;
 
-    typeSelect.value = '';
-    customName.style.display = 'none';
-    customName.value = '';
+    modalGradeTypes.push({ name, weight });
+    
+    nameInput.value = '';
     weightInput.value = '';
+    
+    renderGradeWeights();
+    updateSmartHelper();
 });
 
-// Inline editing logic with HARD STOP guardrails
+// Dynamic Hard Cap for inline editing
 window.updateGwWeight = function(index, val) {
     let w = parseInt(val, 10);
-    // Snap negatives directly to 0
     if (isNaN(w) || w < 0) w = 0;
     
-    // Sync the clean value back to the DOM input so users physically cannot see/leave a "-" sign
+    // Calculate the total of all OTHER categories to find out what room is left
+    let sumOthers = modalGradeTypes.reduce((s, g, i) => i !== index ? s + g.weight : s, 0);
+    let maxAllowed = Math.max(0, 100 - sumOthers);
+    
+    // Mathematically prevent them from going over 100%
+    if (w > maxAllowed) w = maxAllowed;
+    
+    // Snap the UI input back to the clamped value so they can't leave an invalid number visually
     const inputEl = document.getElementById(`gw-input-${index}`);
     if (inputEl && inputEl.value != w) inputEl.value = w;
 
     modalGradeTypes[index].weight = w;
-    
-    let total = modalGradeTypes.reduce((sum, g) => sum + g.weight, 0);
-    const totalEl = document.getElementById('gwTotalWeight');
-    const saveBtn = document.getElementById('saveGwBtn');
-    
-    totalEl.textContent = `Total Weight: ${total}%`;
-    
-    // The "Hard Stop" Save Button Logic
-    if (total === 100) {
-        totalEl.style.color = '#0ea871';
-        saveBtn.disabled = false;
-        saveBtn.style.opacity = '1';
-        saveBtn.style.cursor = 'pointer';
-    } else {
-        totalEl.style.color = '#e31b4a';
-        saveBtn.disabled = true;
-        saveBtn.style.opacity = '0.5';
-        saveBtn.style.cursor = 'not-allowed';
-    }
+    updateSmartHelper();
 };
 
 window.removeGwType = function(index) {
     modalGradeTypes.splice(index, 1);
     renderGradeWeights();
+    updateSmartHelper();
 };
 
 function showGwMsg(text, isError) {
     const el = document.getElementById('gwMsg');
+    if (!el) return;
     el.textContent = text;
     el.style.background = isError ? '#fff0f3' : '#edfaf4';
     el.style.color = isError ? '#e31b4a' : '#0ea871';
-    el.style.border = `1px solid ${isError ? '#fecaca' : '#a7f3d0'}`;
     el.classList.remove('hidden');
     setTimeout(() => el.classList.add('hidden'), 3500);
 }
 
+// The Smart Math Guide
+function updateSmartHelper() {
+    let total = modalGradeTypes.reduce((sum, g) => sum + g.weight, 0);
+    const totalEl = document.getElementById('gwTotalWeight');
+    const saveBtn = document.getElementById('saveGwBtn');
+    
+    if (!totalEl || !saveBtn) return;
+
+    if (total === 100) {
+        totalEl.innerHTML = `Total: <strong>100%</strong> &mdash; Ready to save.`;
+        totalEl.style.color = '#0ea871';
+        totalEl.style.background = '#edfaf4';
+        totalEl.style.borderColor = '#a7f3d0';
+        
+        saveBtn.disabled = false;
+        saveBtn.style.opacity = '1';
+        saveBtn.style.cursor = 'pointer';
+    } else {
+        const diff = 100 - total;
+        // Because of the hard caps, total can NEVER be over 100%, so we only need to show what is missing.
+        totalEl.innerHTML = `Total: <strong>${total}%</strong> &mdash; You need <strong>${diff}%</strong> more to reach 100%.`;
+        totalEl.style.color = '#78350f';
+        totalEl.style.background = '#fffbeb';
+        totalEl.style.borderColor = '#fde68a';
+        
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.5';
+        saveBtn.style.cursor = 'not-allowed';
+    }
+    
+    // Keep the "New Category" weight input clamped dynamically as well
+    const newWeightInput = document.getElementById('gwNewWeight');
+    if (newWeightInput) {
+        const remaining = Math.max(0, 100 - total);
+        if (parseInt(newWeightInput.value, 10) > remaining) {
+            newWeightInput.value = remaining;
+        }
+    }
+}
+
 function renderGradeWeights() {
     const list = document.getElementById('gwList');
+    if (!list) return;
     
     if (modalGradeTypes.length === 0) {
-        list.innerHTML = `<div style="padding:20px;text-align:center;border:1px dashed #c5d0db;border-radius:3px;color:#9ab0c6;font-size:12px;">No metrics configured.</div>`;
+        list.innerHTML = `<div style="padding:20px;text-align:center;border:1px dashed #c5d0db;border-radius:3px;color:#9ab0c6;font-size:12px;">No metrics configured. Add below.</div>`;
     } else {
         list.innerHTML = modalGradeTypes.map((g, i) => {
             const isProtected = usedGradeTypes.has(g.name.toLowerCase());
@@ -669,13 +709,13 @@ function renderGradeWeights() {
                 : `<button onclick="window.removeGwType(${i})" style="background:none;border:none;color:#e31b4a;cursor:pointer;font-size:12px;padding:4px;" title="Delete Metric"><i class="fa-solid fa-trash-can"></i></button>`;
 
             return `
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:#fff;border:1px solid #dce3ed;border-radius:3px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:#fff;border:1px solid #dce3ed;border-radius:3px;margin-bottom:8px;">
                 <div style="display:flex;align-items:center;gap:10px;">
                     <i class="fa-solid fa-tag" style="color:#9ab0c6;font-size:10px;"></i>
                     <span style="font-size:13px;font-weight:700;color:#0d1f35;">${escHtml(g.name)}</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:12px;">
-                    <div style="position:relative;width:60px;">
+                    <div style="position:relative;width:65px;">
                         <input type="number" id="gw-input-${i}" min="0" oninput="window.updateGwWeight(${i}, this.value)" value="${g.weight}" style="width:100%;padding:6px;padding-right:20px;background:#f8fafb;border:1px solid #c5d0db;border-radius:3px;font-size:13px;font-weight:700;color:#0ea871;font-family:'DM Mono',monospace;outline:none;">
                         <span style="position:absolute;right:8px;top:7px;font-size:11px;font-weight:700;color:#9ab0c6;pointer-events:none;">%</span>
                     </div>
@@ -686,25 +726,9 @@ function renderGradeWeights() {
             </div>`;
         }).join('');
     }
-
-    // Trigger validation loop on initial load to set save button state correctly
-    if(modalGradeTypes.length > 0) {
-        window.updateGwWeight(0, modalGradeTypes[0].weight);
-    } else {
-        const saveBtn = document.getElementById('saveGwBtn');
-        if(saveBtn) {
-            saveBtn.disabled = true;
-            saveBtn.style.opacity = '0.5';
-            saveBtn.style.cursor = 'not-allowed';
-            document.getElementById('gwTotalWeight').textContent = `Total Weight: 0%`;
-            document.getElementById('gwTotalWeight').style.color = '#e31b4a';
-        }
-    }
 }
 
 document.getElementById('saveGwBtn')?.addEventListener('click', async () => {
-    // Math guardrail ensures button physically cannot be clicked if total != 100, 
-    // but we add a safety check just in case.
     const total = modalGradeTypes.reduce((sum, g) => sum + g.weight, 0);
     if (total !== 100) return;
     
