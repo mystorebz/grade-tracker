@@ -1,5 +1,5 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { collection, doc, getDocs, addDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, doc, getDocs, addDoc, updateDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js'; 
 import { openOverlay, closeOverlay } from '../../assets/js/utils.js';
@@ -12,18 +12,19 @@ injectAdminLayout('semesters', 'Grading Periods', 'Manage active and historical 
 // ── 2. STATE & ELEMENTS ───────────────────────────────────────────────────
 let allSemesters = [];
 let currentEditSemId = null;
+let currentMidtermSemId = null; // tracks which term the midterm modal is for
 
-const activeListEl = document.getElementById('activePeriodList');
-const inactiveListEl = document.getElementById('inactiveSemestersList');
-const archivedListEl = document.getElementById('archivedSemestersList');
+const activeListEl    = document.getElementById('activePeriodList');
+const inactiveListEl  = document.getElementById('inactiveSemestersList');
+const archivedListEl  = document.getElementById('archivedSemestersList');
 
-// Accordion UI Logic
+// ── Accordion UI ──────────────────────────────────────────────────────────
 document.getElementById('toggleAddPeriodBtn').addEventListener('click', () => {
     document.getElementById('addPeriodForm').classList.toggle('hidden');
     document.getElementById('addPeriodIcon').classList.toggle('rotate-180');
 });
 
-// Help Modal Logic
+// ── Help Modal ────────────────────────────────────────────────────────────
 document.getElementById('termHelpBtn').addEventListener('click', (e) => {
     e.preventDefault();
     openOverlay('helpSemModal', 'helpSemModalInner');
@@ -32,13 +33,13 @@ window.closeHelpSemModal = function() {
     closeOverlay('helpSemModal', 'helpSemModalInner');
 };
 
-// Dropdown UI Logic & Auto-Populate Belize Dates
+// ── Dropdown & Auto-Populate Dates ────────────────────────────────────────
 document.getElementById('presetSemName').addEventListener('change', (e) => {
-    const val = e.target.value;
+    const val         = e.target.value;
     const customInput = document.getElementById('customSemName');
-    const startInput = document.getElementById('newSemStart');
-    const endInput = document.getElementById('newSemEnd');
-    const hintEl = document.getElementById('dateHint');
+    const startInput  = document.getElementById('newSemStart');
+    const endInput    = document.getElementById('newSemEnd');
+    const hintEl      = document.getElementById('dateHint');
     
     const currentYear = new Date().getFullYear();
 
@@ -46,31 +47,30 @@ document.getElementById('presetSemName').addEventListener('change', (e) => {
         customInput.classList.remove('hidden');
         customInput.focus();
         hintEl.textContent = '';
-        startInput.value = '';
-        endInput.value = '';
+        startInput.value   = '';
+        endInput.value     = '';
     } else {
         customInput.classList.add('hidden');
-        customInput.value = '';
+        customInput.value  = '';
 
-        // Belize School Calendar Estimates
         if (val === 'Term 1') {
             startInput.value = `${currentYear}-09-01`; 
-            endInput.value = `${currentYear}-11-30`;
+            endInput.value   = `${currentYear}-11-30`;
             hintEl.textContent = "💡 Belize Term 1 typically runs from early September to late November.";
         } else if (val === 'Term 2') {
-            const year = new Date().getMonth() > 6 ? currentYear + 1 : currentYear; 
+            const year       = new Date().getMonth() > 6 ? currentYear + 1 : currentYear; 
             startInput.value = `${year}-01-08`; 
-            endInput.value = `${year}-03-31`;
+            endInput.value   = `${year}-03-31`;
             hintEl.textContent = "💡 Belize Term 2 typically runs from early January to late March.";
         } else if (val === 'Term 3') {
-            const year = new Date().getMonth() > 6 ? currentYear + 1 : currentYear;
+            const year       = new Date().getMonth() > 6 ? currentYear + 1 : currentYear;
             startInput.value = `${year}-04-15`; 
-            endInput.value = `${year}-06-30`;
+            endInput.value   = `${year}-06-30`;
             hintEl.textContent = "💡 Belize Term 3 typically runs from mid-April to late June.";
         } else {
-            hintEl.textContent = "";
-            startInput.value = '';
-            endInput.value = '';
+            hintEl.textContent = '';
+            startInput.value   = '';
+            endInput.value     = '';
         }
     }
 });
@@ -85,11 +85,11 @@ async function loadSemesters() {
         
         const activeId = session.activeSemesterId || null;
         
-        const activePeriod = allSemesters.find(s => s.id === activeId);
+        const activePeriod    = allSemesters.find(s => s.id === activeId);
         const inactivePeriods = allSemesters.filter(s => !s.archived && s.id !== activeId);
         const archivedPeriods = allSemesters.filter(s => s.archived);
 
-        // Render ACTIVE Period (Only the single active one, or empty state)
+        // ── Render ACTIVE Period ───────────────────────────────────────────
         if (!activePeriod) {
             activeListEl.innerHTML = `
                 <div class="bg-amber-50/50 border border-amber-200 rounded-xl p-4 text-center">
@@ -97,51 +97,69 @@ async function loadSemesters() {
                 </div>`;
         } else {
             activeListEl.innerHTML = `
-                <div class="flex items-center justify-between bg-white p-4 border border-green-300 bg-green-50/20 rounded-2xl shadow-sm transition group">
-                    <div>
-                        <div class="flex items-center gap-3">
-                            <i class="fa-solid fa-check text-green-500"></i>
-                            <span class="font-black text-slate-800">${activePeriod.name}</span>
-                            <span class="badge badge-active ml-2 bg-green-100 text-green-700 border-green-200">Active</span>
-                            ${activePeriod.isLocked ? '<span class="bg-rose-100 text-rose-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ml-1"><i class="fa-solid fa-lock mr-1"></i>Locked</span>' : ''}
+                <div class="border border-green-300 bg-green-50/20 rounded-2xl shadow-sm overflow-hidden">
+                    <div class="flex items-center justify-between bg-white p-4 transition group">
+                        <div>
+                            <div class="flex items-center gap-3">
+                                <i class="fa-solid fa-check text-green-500"></i>
+                                <span class="font-black text-slate-800">${activePeriod.name}</span>
+                                <span class="badge badge-active ml-2 bg-green-100 text-green-700 border-green-200">Active</span>
+                                ${activePeriod.isLocked ? '<span class="bg-rose-100 text-rose-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ml-1"><i class="fa-solid fa-lock mr-1"></i>Locked</span>' : ''}
+                            </div>
+                            <p class="text-[10px] font-bold text-slate-500 mt-1 ml-7 uppercase tracking-wider">${activePeriod.startDate} TO ${activePeriod.endDate}</p>
                         </div>
-                        <p class="text-[10px] font-bold text-slate-500 mt-1 ml-7 uppercase tracking-wider">${activePeriod.startDate} TO ${activePeriod.endDate}</p>
+                        <div class="flex items-center gap-2">
+                            ${!activePeriod.midterm ? `
+                                <button onclick="window.openMidtermModal('${activePeriod.id}')"
+                                    class="text-xs font-black text-violet-600 hover:bg-violet-600 hover:text-white border border-violet-300 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5"
+                                    title="Add Midterm">
+                                    <i class="fa-solid fa-plus text-[10px]"></i> Midterm
+                                </button>` : ''}
+                            <button onclick="window.toggleLockSem('${activePeriod.id}', ${!!activePeriod.isLocked})" class="text-slate-400 hover:text-indigo-600 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-indigo-50" title="${activePeriod.isLocked ? 'Unlock Semester' : 'Lock Semester'}"><i class="fa-solid ${activePeriod.isLocked ? 'fa-lock text-rose-500' : 'fa-lock-open'}"></i></button>
+                            <button onclick="window.openEditSemModal('${activePeriod.id}')" class="text-slate-400 hover:text-amber-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-amber-50" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                        </div>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <button onclick="window.toggleLockSem('${activePeriod.id}', ${!!activePeriod.isLocked})" class="text-slate-400 hover:text-indigo-600 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-indigo-50" title="${activePeriod.isLocked ? 'Unlock Semester' : 'Lock Semester'}"><i class="fa-solid ${activePeriod.isLocked ? 'fa-lock text-rose-500' : 'fa-lock-open'}"></i></button>
-                        <button onclick="window.openEditSemModal('${activePeriod.id}')" class="text-slate-400 hover:text-amber-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-amber-50" title="Edit"><i class="fa-solid fa-pen"></i></button>
-                    </div>
+                    ${activePeriod.midterm ? renderMidtermRow(activePeriod.id, activePeriod.midterm) : ''}
                 </div>`;
         }
 
-        // Render INACTIVE Periods
+        // ── Render INACTIVE Periods ────────────────────────────────────────
         if (inactivePeriods.length === 0) {
             inactiveListEl.innerHTML = '<p class="text-sm text-slate-400 italic font-semibold">No inactive periods found.</p>';
         } else {
             inactiveListEl.innerHTML = inactivePeriods.map(s => `
-                <div class="flex items-center justify-between bg-white p-4 border border-slate-200 rounded-2xl shadow-sm transition group hover:shadow-md">
-                    <div>
-                        <div class="flex items-center gap-3">
-                            <i class="fa-solid fa-grip-lines text-slate-300"></i>
-                            <span class="font-black text-slate-600">${s.name}</span>
-                            ${s.isLocked ? '<span class="bg-rose-100 text-rose-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ml-1"><i class="fa-solid fa-lock mr-1"></i>Locked</span>' : ''}
+                <div class="border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                    <div class="flex items-center justify-between bg-white p-4 transition group hover:shadow-md">
+                        <div>
+                            <div class="flex items-center gap-3">
+                                <i class="fa-solid fa-grip-lines text-slate-300"></i>
+                                <span class="font-black text-slate-600">${s.name}</span>
+                                ${s.isLocked ? '<span class="bg-rose-100 text-rose-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ml-1"><i class="fa-solid fa-lock mr-1"></i>Locked</span>' : ''}
+                            </div>
+                            ${(s.startDate || s.endDate) ? `<p class="text-[10px] font-bold text-slate-400 mt-1 ml-6 uppercase tracking-wider">${s.startDate || '???'} TO ${s.endDate || '???'}</p>` : ''}
                         </div>
-                        ${(s.startDate || s.endDate) ? `<p class="text-[10px] font-bold text-slate-400 mt-1 ml-6 uppercase tracking-wider">${s.startDate || '???'} TO ${s.endDate || '???'}</p>` : ''}
+                        <div class="flex items-center gap-2">
+                            ${!s.midterm ? `
+                                <button onclick="window.openMidtermModal('${s.id}')"
+                                    class="text-xs font-black text-violet-600 hover:bg-violet-600 hover:text-white border border-violet-300 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100 flex items-center gap-1.5"
+                                    title="Add Midterm">
+                                    <i class="fa-solid fa-plus text-[10px]"></i> Midterm
+                                </button>` : ''}
+                            ${s.startDate && s.endDate ? 
+                                `<button onclick="window.setActivePeriod('${s.id}')" class="text-xs font-black text-blue-600 hover:bg-blue-600 hover:text-white border border-blue-300 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100">Set Active</button>` 
+                                : 
+                                `<button onclick="alert('Please click the edit (pen) icon to set the Start and End dates before making this period active.')" class="text-xs font-black text-slate-400 border border-slate-200 hover:bg-slate-50 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100" title="Dates required">Needs Dates</button>`
+                            }
+                            <button onclick="window.toggleLockSem('${s.id}', ${!!s.isLocked})" class="text-slate-400 hover:text-indigo-600 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-indigo-50" title="${s.isLocked ? 'Unlock Semester' : 'Lock Semester'}"><i class="fa-solid ${s.isLocked ? 'fa-lock text-rose-500' : 'fa-lock-open'}"></i></button>
+                            <button onclick="window.openEditSemModal('${s.id}')" class="text-slate-400 hover:text-amber-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-amber-50" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                            <button onclick="window.archiveSem('${s.id}')" class="text-slate-400 hover:text-red-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-red-50" title="Archive"><i class="fa-solid fa-box-archive"></i></button>
+                        </div>
                     </div>
-                    <div class="flex items-center gap-2">
-                        ${s.startDate && s.endDate ? 
-                            `<button onclick="window.setActivePeriod('${s.id}')" class="text-xs font-black text-blue-600 hover:bg-blue-600 hover:text-white border border-blue-300 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100">Set Active</button>` 
-                            : 
-                            `<button onclick="alert('Please click the edit (pen) icon to set the Start and End dates before making this period active.')" class="text-xs font-black text-slate-400 border border-slate-200 hover:bg-slate-50 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100" title="Dates required">Needs Dates</button>`
-                        }
-                        <button onclick="window.toggleLockSem('${s.id}', ${!!s.isLocked})" class="text-slate-400 hover:text-indigo-600 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-indigo-50" title="${s.isLocked ? 'Unlock Semester' : 'Lock Semester'}"><i class="fa-solid ${s.isLocked ? 'fa-lock text-rose-500' : 'fa-lock-open'}"></i></button>
-                        <button onclick="window.openEditSemModal('${s.id}')" class="text-slate-400 hover:text-amber-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-amber-50" title="Edit"><i class="fa-solid fa-pen"></i></button>
-                        <button onclick="window.archiveSem('${s.id}')" class="text-slate-400 hover:text-red-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-red-50" title="Archive"><i class="fa-solid fa-box-archive"></i></button>
-                    </div>
+                    ${s.midterm ? renderMidtermRow(s.id, s.midterm) : ''}
                 </div>`).join('');
         }
 
-        // Render ARCHIVED List
+        // ── Render ARCHIVED Periods ────────────────────────────────────────
         archivedListEl.innerHTML = archivedPeriods.length ? archivedPeriods.map(s => `
             <div class="flex items-center justify-between bg-slate-50 p-4 border border-slate-200 rounded-2xl shadow-sm">
                 <div>
@@ -159,7 +177,34 @@ async function loadSemesters() {
     }
 }
 
-// ── 4. GLOBAL ACTIVE PERIOD SETTER ────────────────────────────────────────
+// ── MIDTERM ROW RENDERER ──────────────────────────────────────────────────
+function renderMidtermRow(semId, midterm) {
+    return `
+        <div class="border-t border-violet-100 bg-violet-50/40 px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-flag-checkered text-violet-400 text-[11px] ml-1"></i>
+                <div>
+                    <span class="text-[12px] font-black text-violet-700">${midterm.name || 'Midterm'}</span>
+                    <span class="ml-2 text-[9px] font-black px-1.5 py-0.5 rounded bg-violet-100 text-violet-600 uppercase tracking-wider">Midterm</span>
+                    ${(midterm.startDate && midterm.endDate) ? `<p class="text-[10px] font-bold text-violet-400 mt-0.5 uppercase tracking-wider">${midterm.startDate} TO ${midterm.endDate}</p>` : ''}
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="window.openMidtermModal('${semId}')"
+                    class="text-slate-400 hover:text-amber-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-amber-50"
+                    title="Edit Midterm">
+                    <i class="fa-solid fa-pen text-[11px]"></i>
+                </button>
+                <button onclick="window.removeMidterm('${semId}')"
+                    class="text-slate-400 hover:text-red-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-red-50"
+                    title="Remove Midterm">
+                    <i class="fa-solid fa-trash text-[11px]"></i>
+                </button>
+            </div>
+        </div>`;
+}
+
+// ── 4. GLOBAL ACTIVE PERIOD SETTER (unchanged) ────────────────────────────
 window.setActivePeriod = async function(id) {
     try {
         const sem = allSemesters.find(s => s.id === id);
@@ -181,39 +226,38 @@ window.setActivePeriod = async function(id) {
     }
 };
 
-// ── 5. ADD NEW PERIOD ─────────────────────────────────────────────────────
+// ── 5. ADD NEW PERIOD (unchanged) ─────────────────────────────────────────
 document.getElementById('addSemBtn').addEventListener('click', async () => {
     const preset = document.getElementById('presetSemName').value;
     const custom = document.getElementById('customSemName').value.trim();
-    const start = document.getElementById('newSemStart').value;
-    const end = document.getElementById('newSemEnd').value;
+    const start  = document.getElementById('newSemStart').value;
+    const end    = document.getElementById('newSemEnd').value;
     
     let finalName = preset === 'custom' ? custom : preset;
     
-    if (!finalName) { alert("Please select or type a Period Name."); return; }
-    if (!start || !end) { alert("Start and End dates are required."); return; }
-    if (new Date(start) >= new Date(end)) { alert("End date must be after the Start date."); return; }
+    if (!finalName)                              { alert("Please select or type a Period Name."); return; }
+    if (!start || !end)                          { alert("Start and End dates are required."); return; }
+    if (new Date(start) >= new Date(end))        { alert("End date must be after the Start date."); return; }
     
     const btn = document.getElementById('addSemBtn'); 
-    btn.disabled = true; 
+    btn.disabled  = true; 
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
     
     try {
         await addDoc(collection(db, 'schools', session.schoolId, 'semesters'), {
-            name: finalName, 
+            name:      finalName, 
             startDate: start, 
-            endDate: end, 
-            order: Date.now(), 
-            archived: false, 
-            isLocked: false
+            endDate:   end, 
+            order:     Date.now(), 
+            archived:  false, 
+            isLocked:  false
         });
         
-        // Reset Form & Close Accordion
         document.getElementById('presetSemName').value = ''; 
         document.getElementById('customSemName').value = '';
         document.getElementById('customSemName').classList.add('hidden');
-        document.getElementById('newSemStart').value = ''; 
-        document.getElementById('newSemEnd').value = '';
+        document.getElementById('newSemStart').value   = ''; 
+        document.getElementById('newSemEnd').value     = '';
         document.getElementById('dateHint').textContent = '';
         
         document.getElementById('addPeriodForm').classList.add('hidden');
@@ -225,14 +269,14 @@ document.getElementById('addSemBtn').addEventListener('click', async () => {
         alert("Failed to add new period.");
     }
     
-    btn.disabled = false; 
+    btn.disabled  = false; 
     btn.innerHTML = '<i class="fa-solid fa-check"></i> Create Period';
 });
 
-// ── 6. LOCK/UNLOCK PERIOD ─────────────────────────────────────────────────
+// ── 6. LOCK/UNLOCK (unchanged) ────────────────────────────────────────────
 window.toggleLockSem = async function(id, currentLockStatus) {
     const newStatus = !currentLockStatus;
-    const action = newStatus ? "LOCK" : "UNLOCK";
+    const action    = newStatus ? "LOCK" : "UNLOCK";
     
     if (!confirm(`Are you sure you want to ${action} this grading period? \n\n${newStatus ? "Teachers will NOT be able to enter or edit grades for this period." : "Teachers will regain the ability to edit grades."}`)) return;
     
@@ -245,15 +289,15 @@ window.toggleLockSem = async function(id, currentLockStatus) {
     }
 };
 
-// ── 7. EDIT PERIOD MODAL ──────────────────────────────────────────────────
+// ── 7. EDIT PERIOD MODAL (unchanged) ──────────────────────────────────────
 window.openEditSemModal = function(id) {
     currentEditSemId = id;
     const sem = allSemesters.find(s => s.id === id);
     if (!sem) return;
     
-    document.getElementById('editSemName').value = sem.name || '';
+    document.getElementById('editSemName').value  = sem.name      || '';
     document.getElementById('editSemStart').value = sem.startDate || '';
-    document.getElementById('editSemEnd').value = sem.endDate || '';
+    document.getElementById('editSemEnd').value   = sem.endDate   || '';
     
     openOverlay('editSemModal', 'editSemModalInner');
 };
@@ -263,15 +307,15 @@ window.closeEditSemModal = function() {
 };
 
 document.getElementById('saveSemEditBtn').addEventListener('click', async () => {
-    const name = document.getElementById('editSemName').value.trim();
+    const name      = document.getElementById('editSemName').value.trim();
     const startDate = document.getElementById('editSemStart').value;
-    const endDate = document.getElementById('editSemEnd').value;
+    const endDate   = document.getElementById('editSemEnd').value;
     
     if (!name) { alert("Name is required"); return; }
     if (startDate && endDate && new Date(startDate) >= new Date(endDate)) { alert("End date must be after Start date."); return; }
     
-    const btn = document.getElementById('saveSemEditBtn'); 
-    btn.disabled = true; 
+    const btn     = document.getElementById('saveSemEditBtn'); 
+    btn.disabled  = true; 
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
     
     try {
@@ -283,11 +327,11 @@ document.getElementById('saveSemEditBtn').addEventListener('click', async () => 
         alert("Failed to save changes.");
     }
     
-    btn.disabled = false; 
+    btn.disabled  = false; 
     btn.innerHTML = 'Save Changes';
 });
 
-// ── 8. ARCHIVE / RESTORE ──────────────────────────────────────────────────
+// ── 8. ARCHIVE / RESTORE (unchanged) ─────────────────────────────────────
 window.archiveSem = async function(id) {
     if (id === session.activeSemesterId) {
         alert("This period is currently set as ACTIVE. You must set a different active period before archiving this one.");
@@ -310,6 +354,91 @@ window.restoreSem = async function(id) {
         loadSemesters();
     } catch (e) {
         console.error("Error restoring period:", e);
+    }
+};
+
+// ── 9. MIDTERM MODAL ──────────────────────────────────────────────────────
+window.openMidtermModal = function(semId) {
+    currentMidtermSemId = semId;
+    const sem = allSemesters.find(s => s.id === semId);
+    if (!sem) return;
+
+    // Set modal title and parent label
+    document.getElementById('midtermModalTitle').textContent  = sem.midterm ? 'Edit Midterm' : 'Add Midterm';
+    document.getElementById('midtermModalParent').textContent = `For: ${sem.name}`;
+
+    // Pre-fill if editing existing midterm
+    document.getElementById('midtermName').value  = sem.midterm?.name      || 'Midterm';
+    document.getElementById('midtermStart').value = sem.midterm?.startDate || '';
+    document.getElementById('midtermEnd').value   = sem.midterm?.endDate   || '';
+
+    const msgEl = document.getElementById('midtermMsg');
+    msgEl.textContent = '';
+    msgEl.classList.add('hidden');
+
+    openOverlay('midtermModal', 'midtermModalInner');
+};
+
+window.closeMidtermModal = function() {
+    closeOverlay('midtermModal', 'midtermModalInner');
+    currentMidtermSemId = null;
+};
+
+document.getElementById('saveMidtermBtn').addEventListener('click', async () => {
+    const name      = document.getElementById('midtermName').value.trim();
+    const startDate = document.getElementById('midtermStart').value;
+    const endDate   = document.getElementById('midtermEnd').value;
+    const msgEl     = document.getElementById('midtermMsg');
+
+    msgEl.classList.add('hidden');
+
+    if (!name)                                               { msgEl.textContent = 'Midterm name is required.';          msgEl.classList.remove('hidden'); return; }
+    if (!startDate || !endDate)                              { msgEl.textContent = 'Start and End dates are required.';  msgEl.classList.remove('hidden'); return; }
+    if (new Date(startDate) >= new Date(endDate))            { msgEl.textContent = 'End date must be after Start date.'; msgEl.classList.remove('hidden'); return; }
+
+    // Validate midterm dates fall within the parent term
+    const sem = allSemesters.find(s => s.id === currentMidtermSemId);
+    if (sem && sem.startDate && sem.endDate) {
+        if (new Date(startDate) < new Date(sem.startDate) || new Date(endDate) > new Date(sem.endDate)) {
+            msgEl.textContent = `Midterm dates must fall within ${sem.name} (${sem.startDate} – ${sem.endDate}).`;
+            msgEl.classList.remove('hidden');
+            return;
+        }
+    }
+
+    const btn     = document.getElementById('saveMidtermBtn');
+    btn.disabled  = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...';
+
+    try {
+        await updateDoc(doc(db, 'schools', session.schoolId, 'semesters', currentMidtermSemId), {
+            midterm: { name, startDate, endDate }
+        });
+
+        window.closeMidtermModal();
+        loadSemesters();
+    } catch (e) {
+        console.error("Error saving midterm:", e);
+        msgEl.textContent = 'Failed to save midterm. Please try again.';
+        msgEl.classList.remove('hidden');
+    }
+
+    btn.disabled  = false;
+    btn.innerHTML = '<i class="fa-solid fa-flag-checkered"></i> Save Midterm';
+});
+
+// ── 10. REMOVE MIDTERM ────────────────────────────────────────────────────
+window.removeMidterm = async function(semId) {
+    if (!confirm("Remove the midterm from this period? This only removes the midterm date range — the grading period itself is not affected.")) return;
+
+    try {
+        await updateDoc(doc(db, 'schools', session.schoolId, 'semesters', semId), {
+            midterm: deleteField()
+        });
+        loadSemesters();
+    } catch (e) {
+        console.error("Error removing midterm:", e);
+        alert("Failed to remove midterm. Please try again.");
     }
 };
 
