@@ -24,15 +24,39 @@ let cachedEvaluations       = [];
 
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 
+// ── Evaluation star ratings (academic, end-of-year, behavioral, conduct) ─────
 window.evalRatings = {
+    // Academic Progress
     academicMastery: 0, taskExecution: 0, engagement: 0,
+    // End of Year / End of Term
     academicGrowth: 0, socialDynamics: 0, resilience: 0,
-    ruleAdherence: 0, conflictResolution: 0, respectAuthority: 0
+    // Behavioral Intervention
+    ruleAdherence: 0, conflictResolution: 0, respectAuthority: 0,
+    // Behavioral Conduct (expanded)
+    peerInteractions: 0, selfRegulation: 0, responseToCorrection: 0
 };
 
+// ── Report card ratings — mirrors La Isla Cariñosa report card exactly ────────
 window.rcRatings = {
-    academicComprehension: 0, attitudeWork: 0, effortResilience: 0,
-    participation: 0, organization: 0, behavior: 0, peerRelations: 0, punctualityRating: 0
+    // Special Subjects
+    characterBuilding: 0,
+    drama: 0,
+    music: 0,
+    art: 0,
+    physicalEducation: 0,
+    informationTechnology: 0,
+    // Personal Development
+    behavior: 0,
+    organization: 0,
+    respectfulness: 0,
+    kindness: 0,
+    attitudeWork: 0,
+    attitudePeers: 0,
+    // Academic Habits
+    academicComprehension: 0,
+    effortResilience: 0,
+    participation: 0,
+    punctualityRating: 0
 };
 
 function getClasses()        { return session.teacherData.classes || [session.teacherData.className || '']; }
@@ -425,7 +449,6 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
     btn.textContent = 'Saving…'; btn.disabled = true;
 
     try {
-        // ── GLOBAL EMAIL CHECK ──
         const targetEmail = email ? email.toLowerCase() : null;
         if (targetEmail) {
             const regSnap = await getDoc(doc(db, 'registered_emails', targetEmail));
@@ -445,11 +468,9 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
             btn.textContent = 'Create New Student Identity'; btn.disabled = false; return;
         }
 
-        const newId = generateStudentId();
-        
-        // ── BATCH WRITE: Create Student & Register Email ──
-        const batch = writeBatch(db);
-        
+        const newId  = generateStudentId();
+        const batch  = writeBatch(db);
+
         const studentRef = doc(db, 'students', newId);
         batch.set(studentRef, {
             studentIdNum: newId, name, email,
@@ -469,16 +490,12 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
         if (targetEmail) {
             const emailRef = doc(db, 'registered_emails', targetEmail);
             batch.set(emailRef, {
-                email: targetEmail,
-                name: name,
-                role: 'student',
-                referenceId: newId,
-                createdAt: new Date().toISOString()
+                email: targetEmail, name, role: 'student',
+                referenceId: newId, createdAt: new Date().toISOString()
             });
         }
 
         await batch.commit();
-
         window.closeAddStudentModal();
         await loadStudents();
     } catch (e) {
@@ -663,14 +680,9 @@ window.saveStudentClass = async function() {
         if (newClass !== origClass && origClass !== '') {
             u.lastClassChangeReason = reason;
             u.lastClassChangeDate   = new Date().toISOString();
-
-            // ── Append to classHistory for passport tracking ───────────────
             u.classHistory = arrayUnion({
-                fromClass: origClass,
-                toClass:   newClass,
-                changedAt: new Date().toISOString(),
-                reason,
-                schoolId:  session.schoolId
+                fromClass: origClass, toClass: newClass,
+                changedAt: new Date().toISOString(), reason, schoolId: session.schoolId
             });
         }
 
@@ -731,6 +743,7 @@ window.buildStarGroups = function() {
     document.querySelectorAll('.rating-row').forEach(row => {
         const field = row.dataset.field;
         const group = row.querySelector('.star-group');
+        if (!group) return;
         group.innerHTML = [1,2,3,4,5].map(n =>
             `<button type="button" class="star-btn" data-val="${n}" data-field="${field}"
               onmouseover="window.hoverStars('${field}',${n})"
@@ -770,11 +783,44 @@ window.openEvalModal = function() {
 
 window.closeEvalModal = function() { closeOverlay('evalModal', 'evalModalInner'); };
 
+// ── Handles all eval type panels — hides all, shows the selected one ──────────
 window.toggleEvalType = function() {
     const type = document.getElementById('evalType').value;
-    document.getElementById('type-academic').classList.toggle('hidden', type !== 'academic');
-    document.getElementById('type-eoy').classList.toggle('hidden',      type !== 'end_of_year');
-    document.getElementById('type-behavioral').classList.toggle('hidden', type !== 'behavioral');
+    const allPanels = [
+        'type-academic', 'type-eoy', 'type-behavioral',
+        'type-midterm', 'type-behavioral-conduct',
+        'type-parent-conference', 'type-learning-support', 'type-custom'
+    ];
+    allPanels.forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('hidden'); });
+    const map = {
+        academic:              'type-academic',
+        end_of_year:           'type-eoy',
+        behavioral:            'type-behavioral',
+        midterm_review:        'type-midterm',
+        behavioral_conduct:    'type-behavioral-conduct',
+        parent_conference:     'type-parent-conference',
+        learning_support:      'type-learning-support',
+        custom:                'type-custom'
+    };
+    const target = map[type];
+    if (target) { const el = document.getElementById(target); if (el) el.classList.remove('hidden'); }
+
+    // Show/hide "Other" text field for behavioral action
+    const otherWrap = document.getElementById('evalBehOtherWrap');
+    if (otherWrap) otherWrap.classList.add('hidden');
+};
+
+// ── Show/hide "Other" action text field ───────────────────────────────────────
+window.toggleBehOther = function() {
+    const status    = document.getElementById('evalBehStatus')?.value;
+    const otherWrap = document.getElementById('evalBehOtherWrap');
+    if (otherWrap) otherWrap.classList.toggle('hidden', status !== 'Other');
+};
+
+window.toggleCondOther = function() {
+    const status    = document.getElementById('evalCondStatus')?.value;
+    const otherWrap = document.getElementById('evalCondOtherWrap');
+    if (otherWrap) otherWrap.classList.toggle('hidden', status !== 'Other');
 };
 
 window.saveEvaluation = async function() {
@@ -798,6 +844,7 @@ window.saveEvaluation = async function() {
         }
         payload.ratings = { mastery: window.evalRatings.academicMastery, execution: window.evalRatings.taskExecution, engagement: window.evalRatings.engagement };
         payload.written = { strengths: document.getElementById('evalAcadStrengths').value.trim(), growth: document.getElementById('evalAcadGrowth').value.trim(), steps: document.getElementById('evalAcadSteps').value.trim() };
+
     } else if (type === 'end_of_year') {
         if (!window.evalRatings.academicGrowth || !window.evalRatings.socialDynamics || !window.evalRatings.resilience) {
             alert('Please rate all summative metrics.'); return;
@@ -806,14 +853,54 @@ window.saveEvaluation = async function() {
         payload.written = { narrative: document.getElementById('evalEoyNarrative').value.trim(), interventions: document.getElementById('evalEoyInterventions').value.trim() };
         payload.status  = document.getElementById('evalEoyStatus').value;
         if (!payload.status) { alert('Please select a Promotion Status.'); return; }
+
     } else if (type === 'behavioral') {
         if (!window.evalRatings.ruleAdherence || !window.evalRatings.conflictResolution || !window.evalRatings.respectAuthority) {
             alert('Please rate all conduct metrics.'); return;
         }
         payload.ratings = { adherence: window.evalRatings.ruleAdherence, resolution: window.evalRatings.conflictResolution, respect: window.evalRatings.respectAuthority };
         payload.written = { description: document.getElementById('evalBehDesc').value.trim(), prior: document.getElementById('evalBehPrior').value.trim(), actionPlan: document.getElementById('evalBehAction').value.trim() };
-        payload.status  = document.getElementById('evalBehStatus').value;
-        if (!payload.status) { alert('Please select an Action Taken.'); return; }
+        // Action taken — "No Action" is valid; "Other" requires text
+        payload.status = document.getElementById('evalBehStatus').value || 'No Action';
+        if (payload.status === 'Other') {
+            const otherText = document.getElementById('evalBehOtherText')?.value.trim();
+            if (!otherText) { alert('Please describe the action taken.'); return; }
+            payload.status = `Other: ${otherText}`;
+        }
+
+    } else if (type === 'behavioral_conduct') {
+        if (!window.evalRatings.peerInteractions || !window.evalRatings.selfRegulation || !window.evalRatings.responseToCorrection) {
+            alert('Please rate all conduct metrics.'); return;
+        }
+        payload.ratings = { peerInteractions: window.evalRatings.peerInteractions, selfRegulation: window.evalRatings.selfRegulation, responseToCorrection: window.evalRatings.responseToCorrection };
+        payload.written = { description: document.getElementById('evalCondDesc')?.value.trim() || '', actionPlan: document.getElementById('evalCondAction')?.value.trim() || '' };
+        payload.status = document.getElementById('evalCondStatus')?.value || 'No Action';
+        if (payload.status === 'Other') {
+            const otherText = document.getElementById('evalCondOtherText')?.value.trim();
+            if (!otherText) { alert('Please describe the action taken.'); return; }
+            payload.status = `Other: ${otherText}`;
+        }
+
+    } else if (type === 'midterm_review') {
+        payload.written = { strengths: document.getElementById('evalMidStrengths')?.value.trim() || '', concerns: document.getElementById('evalMidConcerns')?.value.trim() || '', comments: document.getElementById('evalMidComments')?.value.trim() || '' };
+        payload.attendance = {
+            daysAbsent: parseInt(document.getElementById('evalMidAbsent')?.value) || 0,
+            daysLate:   parseInt(document.getElementById('evalMidLate')?.value)   || 0
+        };
+
+    } else if (type === 'parent_conference') {
+        payload.written = { summary: document.getElementById('evalPcSummary')?.value.trim() || '', agreements: document.getElementById('evalPcAgreements')?.value.trim() || '', followUp: document.getElementById('evalPcFollowUp')?.value.trim() || '' };
+        payload.parentPresent = document.getElementById('evalPcParentPresent')?.value || '';
+
+    } else if (type === 'learning_support') {
+        payload.written = { concerns: document.getElementById('evalLsConcerns')?.value.trim() || '', interventions: document.getElementById('evalLsInterventions')?.value.trim() || '', goals: document.getElementById('evalLsGoals')?.value.trim() || '' };
+        payload.supportLevel = document.getElementById('evalLsLevel')?.value || '';
+
+    } else if (type === 'custom') {
+        const customName = document.getElementById('evalCustomTypeName')?.value.trim();
+        if (!customName) { alert('Please enter a name for this evaluation type.'); return; }
+        payload.customTypeName = customName;
+        payload.written = { notes: document.getElementById('evalCustomNotes')?.value.trim() || '' };
     }
 
     btn.textContent = 'Saving...'; btn.disabled = true;
@@ -848,20 +935,40 @@ window.loadStudentEvaluations = async function(studentId) {
             noMsg.classList.add('hidden');
             cachedEvaluations.forEach(ev => {
                 let badgeStyle = '', typeLabel = '', highlightText = '';
+
                 if (ev.type === 'academic') {
                     badgeStyle = 'background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;';
                     typeLabel  = 'Academic Progress';
                 } else if (ev.type === 'academic_report_card') {
                     badgeStyle = 'background:#edf7f1;color:#065f46;border:1px solid #a7f3d0;';
-                    typeLabel  = 'Report Card Evaluation';
+                    typeLabel  = 'Report Card';
                 } else if (ev.type === 'end_of_year') {
                     badgeStyle    = 'background:#fef3c7;color:#b45309;border:1px solid #fde68a;';
-                    typeLabel     = 'Comprehensive End-of-Year';
+                    typeLabel     = 'End-of-Year Review';
                     highlightText = `<div style="margin-top:10px;padding:6px 10px;background:#f8fafb;border-radius:4px;font-size:11px;font-weight:700;color:#0d1f35;"><i class="fa-solid fa-award" style="color:#f59e0b;margin-right:5px;"></i> Status: ${ev.status}</div>`;
                 } else if (ev.type === 'behavioral') {
                     badgeStyle    = 'background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;';
                     typeLabel     = 'Behavioral Intervention';
-                    highlightText = `<div style="margin-top:10px;padding:6px 10px;background:#fff0f3;border-radius:4px;font-size:11px;font-weight:700;color:#be1240;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:5px;"></i> Action: ${ev.status}</div>`;
+                    highlightText = ev.status && ev.status !== 'No Action' ? `<div style="margin-top:10px;padding:6px 10px;background:#fff0f3;border-radius:4px;font-size:11px;font-weight:700;color:#be1240;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:5px;"></i> Action: ${escHtml(ev.status)}</div>` : '';
+                } else if (ev.type === 'behavioral_conduct') {
+                    badgeStyle    = 'background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;';
+                    typeLabel     = 'Behavioral Conduct';
+                    highlightText = ev.status && ev.status !== 'No Action' ? `<div style="margin-top:10px;padding:6px 10px;background:#fff7ed;border-radius:4px;font-size:11px;font-weight:700;color:#c2410c;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:5px;"></i> Action: ${escHtml(ev.status)}</div>` : '';
+                } else if (ev.type === 'midterm_review') {
+                    badgeStyle = 'background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;';
+                    typeLabel  = 'Mid-Term Review';
+                } else if (ev.type === 'parent_conference') {
+                    badgeStyle = 'background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;';
+                    typeLabel  = 'Parent Conference';
+                } else if (ev.type === 'learning_support') {
+                    badgeStyle = 'background:#fdf4ff;color:#9333ea;border:1px solid #e9d5ff;';
+                    typeLabel  = 'Learning Support Plan';
+                } else if (ev.type === 'custom') {
+                    badgeStyle = 'background:#f8fafc;color:#475569;border:1px solid #cbd5e1;';
+                    typeLabel  = ev.customTypeName || 'Custom Evaluation';
+                } else {
+                    badgeStyle = 'background:#f8fafc;color:#475569;border:1px solid #cbd5e1;';
+                    typeLabel  = ev.type || 'Evaluation';
                 }
 
                 const card = document.createElement('div');
@@ -870,7 +977,7 @@ window.loadStudentEvaluations = async function(studentId) {
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;">
                         <div>
                             <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:99px;text-transform:uppercase;letter-spacing:0.05em;${badgeStyle}">${typeLabel}</span>
-                            <h4 style="font-size:14px;font-weight:700;color:#0d1f35;margin:8px 0 2px;">${ev.semesterName}</h4>
+                            <h4 style="font-size:14px;font-weight:700;color:#0d1f35;margin:8px 0 2px;">${escHtml(ev.semesterName)}</h4>
                             <p style="font-size:11px;color:#6b84a0;margin:0;">Filed by ${escHtml(ev.teacherName)} on ${ev.date}</p>
                         </div>
                     </div>
@@ -890,6 +997,7 @@ window.buildRcStarGroups = function() {
     document.querySelectorAll('.rc-rating-row').forEach(row => {
         const field = row.dataset.field;
         const group = row.querySelector('.rc-star-group');
+        if (!group) return;
         group.innerHTML = [1,2,3,4,5].map(n =>
             `<button type="button" class="star-btn" data-val="${n}" data-rcfield="${field}"
               onmouseover="window.hoverRcStars('${field}',${n})"
@@ -919,6 +1027,7 @@ window.setRcRating = function(field, val) {
 };
 
 window.openReportCardModal = function() {
+    // Reset all 16 rcRating fields
     Object.keys(window.rcRatings).forEach(k => { window.rcRatings[k] = 0; });
     ['rcTotalSessions','rcDaysAbsent','rcDaysLate','rcComment'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
@@ -946,8 +1055,11 @@ window.saveAndGenerateReportCard = async function() {
     const btn     = document.getElementById('btnSaveGenerate');
 
     if (!semId) { alert('Please select a grading period.'); return; }
-    if (Object.values(window.rcRatings).some(v => !v)) {
-        alert('Please complete all 8 Behavior & Work Habit ratings before generating the report card.');
+
+    // Require all 16 ratings to be filled
+    const missingRatings = Object.entries(window.rcRatings).filter(([, v]) => !v);
+    if (missingRatings.length > 0) {
+        alert(`Please complete all ratings before generating the report card. ${missingRatings.length} field(s) still need a rating.`);
         return;
     }
 
@@ -991,6 +1103,7 @@ function generateFormalReportCardPDF(ev, semName) {
     if (!student)    return;
     const schoolName = session.schoolName || 'ConnectUs School';
 
+    // Build grade rows by subject
     const bySub = {};
     currentStudentGradesCache.forEach(g => {
         const sub = g.subject || 'Uncategorized';
@@ -1002,6 +1115,8 @@ function generateFormalReportCardPDF(ev, semName) {
         ? calculateWeightedAverage(currentStudentGradesCache, session.teacherData.gradeTypes || getGradeTypes())
         : 0;
     const gpaLetter = cumulativeAvg > 0 ? letterGrade(cumulativeAvg) : 'N/A';
+
+    // r2l: converts 1–5 star rating to E/D/B/I letter
     const r2l = v => v >= 5 ? 'E' : v === 4 ? 'D' : v === 3 ? 'B' : v > 0 ? 'I' : '—';
 
     const gradesHtml = Object.keys(bySub).length === 0
@@ -1009,72 +1124,143 @@ function generateFormalReportCardPDF(ev, semName) {
         : Object.entries(bySub).sort((a,b) => a[0].localeCompare(b[0])).map(([sub, gList]) => {
             const subAvg = calculateWeightedAverage(gList, session.teacherData.gradeTypes || getGradeTypes());
             return `<tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:12px 15px;font-weight:700;color:#1e293b;">${escHtml(sub)}</td>
-                <td style="padding:12px 15px;text-align:center;font-weight:700;">${subAvg}%</td>
-                <td style="padding:12px 15px;text-align:center;font-weight:800;font-family:monospace;">${letterGrade(subAvg)}</td>
+                <td style="padding:10px 15px;font-weight:700;color:#1e293b;">${escHtml(sub)}</td>
+                <td style="padding:10px 15px;text-align:center;font-weight:700;">${subAvg}%</td>
+                <td style="padding:10px 15px;text-align:center;font-weight:800;font-family:monospace;">${letterGrade(subAvg)}</td>
             </tr>`;
         }).join('');
+
+    // ── Special Subjects (E/D/B/I) ────────────────────────────────────────────
+    const specialSubjectsHtml = [
+        ['Character Building',      ev.ratings.characterBuilding],
+        ['Drama',                   ev.ratings.drama],
+        ['Music',                   ev.ratings.music],
+        ['Art',                     ev.ratings.art],
+        ['Physical Education',      ev.ratings.physicalEducation],
+        ['Information Technology',  ev.ratings.informationTechnology],
+    ].map(([label, val]) => `
+        <tr style="border-bottom:1px solid #e2e8f0;">
+            <td style="padding:9px 15px;font-weight:600;color:#334155;">${label}</td>
+            <td style="padding:9px 15px;text-align:center;font-weight:800;font-size:15px;color:#1e1b4b;">${r2l(val)}</td>
+        </tr>`).join('');
+
+    // ── Personal Development & Academic Habits (E/D/B/I) ──────────────────────
+    const personalDevHtml = [
+        ['Behavior',                ev.ratings.behavior],
+        ['Organization',            ev.ratings.organization],
+        ['Respectfulness',          ev.ratings.respectfulness],
+        ['Kindness',                ev.ratings.kindness],
+        ['Attitude Towards Work',   ev.ratings.attitudeWork],
+        ['Attitude Towards Peers',  ev.ratings.attitudePeers],
+        ['Academic Comprehension',  ev.ratings.academicComprehension],
+        ['Effort &amp; Resilience', ev.ratings.effortResilience],
+        ['Participation &amp; Engagement', ev.ratings.participation],
+        ['Attendance &amp; Punctuality',   ev.ratings.punctualityRating],
+    ].map(([label, val]) => `
+        <tr style="border-bottom:1px solid #e2e8f0;">
+            <td style="padding:9px 15px;font-weight:600;color:#334155;">${label}</td>
+            <td style="padding:9px 15px;text-align:center;font-weight:800;font-size:15px;color:#1e1b4b;">${r2l(val)}</td>
+        </tr>`).join('');
 
     const html = `<!DOCTYPE html><html><head><title>Report Card — ${escHtml(student.name)}</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
-body{font-family:'Nunito',sans-serif;padding:40px;color:#0f172a;line-height:1.5;margin:0 auto;max-width:8.5in;}
-.hf{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #1e1b4b;padding-bottom:20px;margin-bottom:20px;}
-.logo{max-height:80px;max-width:250px;object-fit:contain;}.ht{text-align:right;}
-.ht h1{margin:0 0 5px;font-size:26px;font-weight:900;text-transform:uppercase;color:#1e1b4b;}
-.ht h2{margin:0;font-size:14px;color:#64748b;font-weight:700;letter-spacing:2px;}
-.si{display:flex;justify-content:space-between;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:15px 20px;margin-bottom:30px;}
-.si div{display:flex;flex-direction:column;gap:4px;}
-.il{font-size:10px;text-transform:uppercase;color:#64748b;font-weight:800;letter-spacing:1px;}
-.iv{font-size:16px;font-weight:800;color:#0f172a;}
-.gc{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-bottom:30px;}
-h3{font-size:14px;text-transform:uppercase;letter-spacing:1px;color:#1e1b4b;border-bottom:2px solid #1e1b4b;padding-bottom:8px;margin-top:0;margin-bottom:12px;}
-table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px;}
-th{background:#f1f5f9;color:#475569;padding:10px 15px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:1px;border-bottom:2px solid #cbd5e1;}
-th.c{text-align:center;}td{border-bottom:1px solid #e2e8f0;padding:10px 15px;color:#334155;}
-.lg{font-size:11px;color:#64748b;font-weight:700;display:flex;justify-content:space-between;background:#f8fafc;padding:8px 12px;border-radius:6px;margin-bottom:15px;}
-.ag{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px;}
-.ac{background:#f8fafc;border:1px solid #cbd5e1;padding:10px;text-align:center;border-radius:6px;}
-.al{display:block;font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;}
+*{box-sizing:border-box;}
+body{font-family:'Nunito',sans-serif;padding:36px 44px;color:#0f172a;line-height:1.5;margin:0 auto;max-width:8.5in;font-size:13px;}
+.hf{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #1e1b4b;padding-bottom:16px;margin-bottom:18px;}
+.logo{max-height:72px;max-width:220px;object-fit:contain;}
+.ht{text-align:right;}
+.ht h1{margin:0 0 4px;font-size:22px;font-weight:900;text-transform:uppercase;color:#1e1b4b;}
+.ht h2{margin:0;font-size:12px;color:#64748b;font-weight:700;letter-spacing:2px;}
+.si{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:14px 18px;margin-bottom:20px;}
+.si-item{display:flex;flex-direction:column;gap:3px;}
+.il{font-size:9px;text-transform:uppercase;color:#64748b;font-weight:800;letter-spacing:1px;}
+.iv{font-size:14px;font-weight:800;color:#0f172a;}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:20px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px;}
+h3{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:#fff;background:#1e1b4b;padding:8px 12px;border-radius:4px;margin:0 0 10px;}
+table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:0;}
+th{background:#f1f5f9;color:#475569;padding:8px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;border-bottom:2px solid #cbd5e1;}
+th.c{text-align:center;}
+td{border-bottom:1px solid #e2e8f0;padding:8px 12px;color:#334155;}
+.lg{font-size:10px;color:#64748b;font-weight:700;display:flex;justify-content:space-around;background:#f8fafc;padding:7px 10px;border-radius:4px;margin-bottom:10px;border:1px solid #e2e8f0;}
+.att{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;}
+.ac{background:#f8fafc;border:1px solid #cbd5e1;padding:9px;text-align:center;border-radius:6px;}
+.al{display:block;font-size:9px;font-weight:800;color:#64748b;text-transform:uppercase;}
 .av{font-size:18px;font-weight:900;color:#1e1b4b;}
-.cb{border:1px solid #cbd5e1;border-radius:8px;padding:15px;background:#fff;min-height:80px;}
-.cl{font-size:11px;font-weight:800;color:#1e1b4b;text-transform:uppercase;margin-bottom:8px;display:block;}
-.fs{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:50px;}
-.sl{border-top:1px solid #000;padding-top:8px;font-size:12px;font-weight:700;text-align:center;color:#1e1b4b;}
+.cb{border:1px solid #cbd5e1;border-radius:6px;padding:14px;background:#fff;min-height:70px;}
+.cl{font-size:10px;font-weight:800;color:#1e1b4b;text-transform:uppercase;margin-bottom:6px;display:block;}
+.fs{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:36px;}
+.sl{border-top:1px solid #000;padding-top:7px;font-size:11px;font-weight:700;text-align:center;color:#1e1b4b;}
 </style></head><body>
-<div class="hf"><img src="${session.logo||''}" alt="${escHtml(schoolName)}" class="logo" onerror="this.style.display='none'">
-<div class="ht"><h1>${escHtml(schoolName)}</h1><h2>OFFICIAL TERM REPORT CARD</h2></div></div>
+
+<!-- Header -->
+<div class="hf">
+    <img src="${session.logo||''}" alt="${escHtml(schoolName)}" class="logo" onerror="this.style.display='none'">
+    <div class="ht">
+        <h1>${escHtml(schoolName)}</h1>
+        <h2>OFFICIAL GRADE REPORT</h2>
+    </div>
+</div>
+
+<!-- Student Info Strip -->
 <div class="si">
-<div><span class="il">Student Name</span><span class="iv">${escHtml(student.name)}</span></div>
-<div><span class="il">Class</span><span class="iv">${escHtml(student.className||'Unassigned')}</span></div>
-<div><span class="il">Academic Term</span><span class="iv">${escHtml(semName)}</span></div>
-<div><span class="il">Term Average</span><span class="iv">${cumulativeAvg}% (${gpaLetter})</span></div>
+    <div class="si-item"><span class="il">Student Name</span><span class="iv">${escHtml(student.name)}</span></div>
+    <div class="si-item"><span class="il">Class</span><span class="iv">${escHtml(student.className||'Unassigned')}</span></div>
+    <div class="si-item"><span class="il">Teacher</span><span class="iv">${escHtml(ev.teacherName)}</span></div>
+    <div class="si-item"><span class="il">Grading Period</span><span class="iv">${escHtml(semName)}</span></div>
+    <div class="si-item"><span class="il">Date Issued</span><span class="iv">${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</span></div>
+    <div class="si-item"><span class="il">Term Average</span><span class="iv">${cumulativeAvg}% (${gpaLetter})</span></div>
 </div>
-<div class="gc">
-<div><h3>Academic Performance</h3>
-<table><thead><tr><th>Subject</th><th class="c">Term Avg</th><th class="c">Grade</th></tr></thead>
-<tbody>${gradesHtml}</tbody></table></div>
-<div><h3>Behavior &amp; Work Habits</h3>
-<div class="lg"><span>E—Exceptional</span><span>D—Developing</span><span>B—Beginning</span><span>I—Improvement</span></div>
-<table><tbody>
-<tr><td style="font-weight:700;">Academic Comprehension</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.academicComprehension)}</td></tr>
-<tr><td style="font-weight:700;">Attitude Towards Work</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.attitudeWork)}</td></tr>
-<tr><td style="font-weight:700;">Effort &amp; Resilience</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.effortResilience)}</td></tr>
-<tr><td style="font-weight:700;">Participation &amp; Engagement</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.participation)}</td></tr>
-<tr><td style="font-weight:700;">Organization &amp; Time Mgt</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.organization)}</td></tr>
-<tr><td style="font-weight:700;">Classroom Behaviour</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.behavior)}</td></tr>
-<tr><td style="font-weight:700;">Peer Relations &amp; Respect</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.peerRelations)}</td></tr>
-<tr><td style="font-weight:700;">Attendance &amp; Punctuality</td><td style="text-align:center;font-weight:800;font-size:14px;">${r2l(ev.ratings.punctualityRating)}</td></tr>
-</tbody></table>
-<div class="ag">
-<div class="ac"><span class="al">Sessions</span><span class="av">${ev.attendance.totalSessions}</span></div>
-<div class="ac"><span class="al">Absent</span><span class="av">${ev.attendance.daysAbsent}</span></div>
-<div class="ac"><span class="al">Late</span><span class="av">${ev.attendance.daysLate}</span></div>
+
+<!-- Academic Performance + Special Subjects -->
+<div class="grid2">
+    <div>
+        <h3>Academic Performance</h3>
+        <table>
+            <thead><tr><th>Subject</th><th class="c">Average</th><th class="c">Grade</th></tr></thead>
+            <tbody>${gradesHtml}</tbody>
+        </table>
+    </div>
+    <div>
+        <h3>Special Subjects</h3>
+        <div class="lg">
+            <span>E — Exceptional</span><span>D — Developing</span><span>B — Beginning</span><span>I — Improvement</span>
+        </div>
+        <table><tbody>${specialSubjectsHtml}</tbody></table>
+    </div>
 </div>
-<div class="cb"><span class="cl">Teacher's Comments</span>
-<p style="margin:0;font-size:13px;color:#334155;white-space:pre-wrap;">${escHtml(ev.comment||'No comments recorded.')}</p></div>
-</div></div>
-<div class="fs"><div class="sl">Teacher's Signature &amp; Date</div><div class="sl">Principal's Signature &amp; Date</div></div>
+
+<!-- Personal Development & Academic Habits -->
+<div style="margin-bottom:20px;">
+    <h3>Personal Development &amp; Academic Habits</h3>
+    <div class="lg">
+        <span>E — Exceptional</span><span>D — Developing</span><span>B — Beginning</span><span>I — Improvement Needed</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;">
+        <table><tbody>${personalDevHtml}</tbody></table>
+    </div>
+</div>
+
+<!-- Attendance -->
+<div class="att">
+    <div class="ac"><span class="al">Total Sessions</span><span class="av">${ev.attendance.totalSessions}</span></div>
+    <div class="ac"><span class="al">Days Absent</span><span class="av">${ev.attendance.daysAbsent}</span></div>
+    <div class="ac"><span class="al">Days Late</span><span class="av">${ev.attendance.daysLate}</span></div>
+</div>
+
+<!-- Teacher Comments -->
+<div class="cb">
+    <span class="cl">Teacher's Comments</span>
+    <p style="margin:0;font-size:12px;color:#334155;white-space:pre-wrap;line-height:1.6;">${escHtml(ev.comment||'No comments recorded.')}</p>
+</div>
+
+<!-- Signatures -->
+<div class="fs">
+    <div class="sl">Teacher's Signature &amp; Date</div>
+    <div class="sl">Principal's Signature &amp; Date</div>
+</div>
+
 </body></html>`;
 
     const w = window.open('', '_blank');
@@ -1145,12 +1331,10 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
             else finalStatus = 'Archived';
         }
 
-        // ── FIX: compute academic snapshot before batch commits ───────────
         let academicSnapshot = {};
         try {
             const gradeTypes = session.teacherData.gradeTypes || session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES;
 
-            // Fetch grades for this student's current class only
             const gradesSnap = await getDocs(query(
                 collection(db, 'students', currentStudentId, 'grades'),
                 where('schoolId', '==', session.schoolId)
@@ -1161,7 +1345,6 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
                 if (g.className === (s?.className || '')) classGrades.push(g);
             });
 
-            // Fetch evaluations for this school
             const evalSnap = await getDocs(query(
                 collection(db, 'students', currentStudentId, 'evaluations'),
                 where('schoolId', '==', session.schoolId)
@@ -1170,7 +1353,6 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
             evalSnap.forEach(d => evaluations.push({ id: d.id, ...d.data() }));
             evaluations.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
 
-            // Group grades by semester name → subject, compute weighted averages
             const bySemester = {};
             classGrades.forEach(g => {
                 if (!g.semesterId) return;
@@ -1196,9 +1378,7 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
             });
 
             academicSnapshot = {
-                className:    s?.className || '',
-                semesters,
-                evaluations,
+                className: s?.className || '', semesters, evaluations,
                 snapshotDate: new Date().toISOString()
             };
         } catch (snapErr) {
@@ -1206,7 +1386,7 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
         }
 
         const snapshot = {
-            schoolId:  session.schoolId,
+            schoolId:   session.schoolId,
             schoolName: session.schoolName || session.schoolId,
             teacherId:  s?.teacherId  || '',
             className:  s?.className  || '',
@@ -1221,9 +1401,9 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
             teacherId:        '',
             className:        '',
             academicHistory:  arrayUnion(snapshot),
-            lastClassName:    s?.className || '',          // ── FIX: preserve for archives display
-            academicSnapshot,                              // ── FIX: snapshot saved at archive time
-            ...(leaveSchool ? { archivedSchoolIds: arrayUnion(session.schoolId) } : {})  // ── FIX: release path only
+            lastClassName:    s?.className || '',
+            academicSnapshot,
+            ...(leaveSchool ? { archivedSchoolIds: arrayUnion(session.schoolId) } : {})
         });
 
         if (leaveSchool) {
