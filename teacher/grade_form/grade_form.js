@@ -10,7 +10,7 @@ injectTeacherLayout('grade-entry', 'Enter Grade', 'Log a new assignment or asses
 
 // ── 2. STATE ──────────────────────────────────────────────────────────────
 let rawSemesters    = [];
-let teacherStudents = []; // ← module-level so saveGrade can access className
+let teacherStudents = [];
 
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 
@@ -170,7 +170,6 @@ async function loadStudents() {
         );
         const snap = await getDocs(q);
 
-        // Store at module level so saveGrade can look up className
         teacherStudents = snap.docs
             .map(d => ({ id: d.id, ...d.data() }))
             .filter(s => s.teacherId === session.teacherId);
@@ -178,12 +177,25 @@ async function loadStudents() {
         studentSelect.innerHTML = '<option value="">Select student...</option>';
         teacherStudents.forEach(s => {
             const opt = document.createElement('option');
-            opt.value   = s.id;
+            opt.value       = s.id;
             opt.textContent = `${s.name} (${s.id})`;
             studentSelect.appendChild(opt);
         });
 
         makeSearchable('agStudent');
+
+        // ── Auto-select student if coming from roster panel ───────────────
+        const preselectedId = localStorage.getItem('connectus_quick_grade_student');
+        if (preselectedId) {
+            const match = teacherStudents.find(s => s.id === preselectedId);
+            if (match) {
+                studentSelect.value = preselectedId;
+                if (studentSelect.wrapperRef) {
+                    studentSelect.wrapperRef.input.value = `${match.name} (${match.id})`;
+                }
+            }
+            localStorage.removeItem('connectus_quick_grade_student');
+        }
 
     } catch (e) {
         console.error('[Grade Form] Failed to load students:', e);
@@ -276,8 +288,7 @@ async function saveGrade() {
         alert('Please enter valid score and max values.'); return;
     }
 
-    // ── Look up student's current className for passport stamping ──────────
-    const student  = teacherStudents.find(s => s.id === studentId);
+    const student   = teacherStudents.find(s => s.id === studentId);
     const className = student?.className || '';
 
     const btn = document.getElementById('saveGradeBtn');
@@ -291,7 +302,7 @@ async function saveGrade() {
             schoolId:    session.schoolId,
             teacherId:   session.teacherId,
             semesterId:  semId,
-            className,               // ← passport stamp
+            className,
             subject,
             type,
             date,
@@ -303,7 +314,6 @@ async function saveGrade() {
             createdAt:   new Date().toISOString()
         });
 
-        // Reset inputs
         if (scoreEl) scoreEl.value = '';
         if (notesEl) notesEl.value = '';
         document.getElementById('agTitle').value = '';
