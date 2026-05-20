@@ -19,7 +19,7 @@
         /* Required hidden class for JS toggles */
         .hidden { display: none !important; }
 
-        /* ── Page header ── */
+        /* ── Page header (Restored exactly to your original) ── */
         .gb-topbar {
             background: linear-gradient(120deg, #1e1b4b 0%, #3730a3 55%, #4f46e5 100%);
             padding: 32px 40px;
@@ -71,26 +71,13 @@
 
         <div class="flex-1 overflow-y-auto">
 
-            <div style="display: flex; gap: 16px; align-items: center; margin-bottom: 24px; padding: 24px 40px 0;">
-                <div id="studentAvatar" style="width: 48px; height: 48px; border-radius: 12px; background: #1e1b4b; color: white; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 800;"></div>
-                <div>
-                    <h1 style="margin: 0; font-size: 22px; font-weight: 800; color: #1e293b;"><span id="displayStudentName"></span></h1>
-                    <div style="font-size: 13px; color: #64748b; margin-top: 4px; font-weight: 500;">
-                        <span id="displayStudentClass"></span> &bull; <span id="displaySchoolName"></span>
-                    </div>
-                </div>
-                <div style="margin-left: auto;">
-                    <span style="color: #64748b; font-size: 14px; font-weight: 700;" id="activeSemesterDisplay"></span>
-                </div>
-            </div>
-
-            <div class="gb-topbar" id="gbTopbar" style="display:none; margin: 0 40px 24px; border-radius: 16px;">
+            <div class="gb-topbar" id="gbTopbar" style="display:none;">
                 <div class="gb-avg-ring">
                     <span id="gbAvg" class="num">--</span>
                     <span class="unit">OVERALL</span>
                 </div>
                 <div class="gb-info">
-                    <h1 style="font-size: 24px; font-weight: 800; color: #fff; margin: 0 0 4px;">My Gradebook</h1>
+                    <h1>My Gradebook</h1>
                     <p id="gbTerm">Loading…</p>
                     <div id="gbStanding" class="gb-standing" style="display:none;"></div>
                 </div>
@@ -109,7 +96,7 @@
                 <p>No grades recorded for this period yet.</p>
             </div>
 
-            <div id="gradesTable" class="hidden" style="margin: 0 40px 40px;">
+            <div id="gradesTable" class="hidden" style="margin: 0; padding: 24px 40px;">
                 <div id="subjectRows"></div>
             </div>
 
@@ -119,5 +106,13 @@
     <div id="typeModal" class="modal-overlay hidden"></div>
 
     <script type="module" src="grades.js"></script>
+    
+    <div class="hidden">
+        <span id="studentAvatar"></span>
+        <span id="displayStudentName"></span>
+        <span id="displayStudentClass"></span>
+        <span id="displaySchoolName"></span>
+        <span id="activeSemesterDisplay"></span>
+    </div>
 </body>
 </html>
