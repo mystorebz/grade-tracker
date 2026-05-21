@@ -160,8 +160,18 @@ loginBtn.addEventListener('click', async () => {
             tempAdminData = adminSnap.data();
             tempAdminId   = adminId;
 
-            // ── ONLY CHANGE: block archived sub-admins before launching ────────
+            // ── CHANGE: set minimal session before redirecting so the deactivated
+            //            page can show the sub-admin's name and school ─────────────
             if (tempAdminData.isArchived === true) {
+                setSessionData('admin', {
+                    schoolId,
+                    adminId,
+                    role:         'sub_admin',
+                    isSuperAdmin: false,
+                    schoolName:   tempSchoolData.schoolName || '',
+                    adminName:    tempAdminData.name        || '',
+                    adminEmail:   tempAdminData.email       || ''
+                });
                 window.location.replace('deactivated/deactivated.html');
                 return;
             }
