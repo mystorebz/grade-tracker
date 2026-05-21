@@ -8,7 +8,7 @@ body { background: #f8faff; }
 .navbar.scrolled { box-shadow: 0 4px 24px rgba(30,58,138,0.10); }
 
 /* ── Hero Section & Blobs ── */
-.hero-section { min-height: 100vh; background: linear-gradient(160deg, #e0eaff 0%, #c7d7fc 30%, #f0f5ff 70%, #ffffff 100%); position: relative; overflow: hidden; }
+.hero-section { background: linear-gradient(160deg, #e0eaff 0%, #c7d7fc 30%, #f0f5ff 70%, #ffffff 100%); position: relative; overflow: hidden; }
 .blob { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.35; pointer-events: none; }
 .blob-1 { width: 600px; height: 600px; background: radial-gradient(circle, #93c5fd, #3b82f6); top: -180px; left: -180px; }
 .blob-2 { width: 400px; height: 400px; background: radial-gradient(circle, #bfdbfe, #60a5fa); bottom: -120px; right: -100px; }
