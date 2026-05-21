@@ -96,8 +96,10 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
             return;
         }
 
-        // ── ONLY CHANGE: redirect to deactivated page instead of showing error ─
+        // ── CHANGE: set session before redirecting so the deactivated page
+        //            can load the teacher's career summary without a loop ────────
         if (tData.archived) {
+            setSessionData('teacher', { schoolId, teacherId, teacherData: tData });
             window.location.replace('deactivated/deactivated.html');
             return;
         }
