@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Restricted — ConnectUs</title>
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: #f0f4f8;
+            color: #0d1f35;
+            min-height: 100vh;
+        }
+
+        /* ── TOPBAR ── */
+        .topbar {
+            background: #0d1f35;
+            height: 56px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .topbar-logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .topbar-logo img { height: 28px; object-fit: contain; }
+
+        .topbar-logo span {
+            font-size: 13px;
+            font-weight: 700;
+            color: #9ab0c6;
+            letter-spacing: 0.05em;
+        }
+
+        .topbar-badge {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 3px 12px;
+            border-radius: 99px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .badge-amber { background: #fef3c7; color: #b45309; }
+        .badge-red   { background: #fff0f3; color: #e31b4a; }
+
+        /* ── LAYOUT ── */
+        .page-wrap {
+            max-width: 860px;
+            margin: 0 auto;
+            padding: 32px 20px 60px;
+        }
+
+        /* ── BANNERS ── */
+        .banner {
+            border-radius: 10px;
+            padding: 18px 22px;
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            margin-bottom: 28px;
+            border-left-width: 4px;
+            border-left-style: solid;
+        }
+
+        .banner-amber {
+            background: #fffbeb;
+            border-color: #f59e0b;
+            border: 1px solid #fde68a;
+            border-left: 4px solid #f59e0b;
+        }
+
+        .banner-red {
+            background: #fff0f3;
+            border: 1px solid #ffd6de;
+            border-left: 4px solid #e31b4a;
+        }
+
+        .banner i { font-size: 20px; margin-top: 2px; flex-shrink: 0; }
+        .banner-amber i { color: #f59e0b; }
+        .banner-red   i { color: #e31b4a; }
+
+        .banner-text h2 { font-size: 15px; font-weight: 800; margin-bottom: 4px; }
+        .banner-amber .banner-text h2 { color: #92400e; }
+        .banner-red   .banner-text h2 { color: #be123c; }
+
+        .banner-text p {
+            font-size: 12.5px;
+            color: #374f6b;
+            font-weight: 500;
+            line-height: 1.6;
+        }
+
+        /* ── CARDS ── */
+        .card {
+            background: #fff;
+            border: 1px solid #dce3ed;
+            border-radius: 12px;
+            padding: 22px 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 4px rgba(13,31,53,0.05);
+        }
+
+        .card-title {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: #6b84a0;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+        }
+
+        /* ── INFO GRID ── */
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .info-item {
+            background: #f8fafb;
+            border: 1px solid #f0f4f8;
+            border-radius: 8px;
+            padding: 10px 14px;
+        }
+
+        .info-item label {
+            display: block;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #9ab0c6;
+            margin-bottom: 4px;
+        }
+
+        .info-item span {
+            font-size: 13px;
+            font-weight: 700;
+            color: #0d1f35;
+        }
+
+        .mono { font-family: 'DM Mono', monospace; font-size: 11.5px; letter-spacing: 0.05em; }
+
+        /* ── STAT CARDS ── */
+        .stat-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: #fff;
+            border: 1px solid #dce3ed;
+            border-radius: 12px;
+            padding: 18px 20px;
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            box-shadow: 0 1px 4px rgba(13,31,53,0.05);
+        }
+
+        .stat-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 14px;
+        }
+
+        .stat-val {
+            font-size: 24px;
+            font-weight: 800;
+            color: #0d1f35;
+            line-height: 1;
+            margin-bottom: 4px;
+        }
+
+        .stat-lbl {
+            font-size: 10.5px;
+            font-weight: 700;
+            color: #9ab0c6;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        /* ── BARS ── */
+        .bar-row { margin-bottom: 14px; }
+        .bar-row:last-child { margin-bottom: 0; }
+
+        .bar-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+
+        .bar-label span:first-child {
+            font-size: 12px;
+            font-weight: 700;
+            color: #374f6b;
+        }
+
+        .bar-label span:last-child {
+            font-size: 12px;
+            font-weight: 800;
+            color: #0d1f35;
+        }
+
+        .bar-track {
+            height: 6px;
+            background: #f0f4f8;
+            border-radius: 99px;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            border-radius: 99px;
+            transition: width 0.5s ease;
+        }
+
+        /* ── TWO-COL ANALYTICS ── */
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        /* ── CONTACT BLOCK ── */
+        .contact-card {
+            background: #eef4ff;
+            border: 1px solid #c7d9fd;
+            border-radius: 12px;
+            padding: 22px 24px;
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .contact-card i { font-size: 20px; color: #2563eb; margin-top: 2px; flex-shrink: 0; }
+        .contact-card h3 { font-size: 13.5px; font-weight: 700; color: #0d1f35; margin-bottom: 5px; }
+        .contact-card p  { font-size: 12px; color: #374f6b; font-weight: 500; line-height: 1.6; margin-bottom: 10px; }
+        .contact-card a  { font-size: 12.5px; font-weight: 700; color: #2563eb; text-decoration: none; }
+        .contact-card a:hover { text-decoration: underline; }
+
+        /* ── SUBADMIN CENTERED CARD ── */
+        .centered-wrap {
+            min-height: calc(100vh - 56px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 32px 20px;
+        }
+
+        .sub-card {
+            background: #fff;
+            border: 1px solid #dce3ed;
+            border-radius: 16px;
+            padding: 40px 36px;
+            max-width: 460px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 2px 12px rgba(13,31,53,0.08);
+        }
+
+        .sub-icon {
+            width: 56px;
+            height: 56px;
+            background: #fff0f3;
+            border: 1px solid #ffd6de;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 22px;
+            color: #e31b4a;
+        }
+
+        .sub-card h2 {
+            font-size: 17px;
+            font-weight: 800;
+            color: #0d1f35;
+            margin-bottom: 8px;
+        }
+
+        .sub-card .sub-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #6b84a0;
+            margin-bottom: 20px;
+        }
+
+        .sub-divider {
+            border: none;
+            border-top: 1px solid #f0f4f8;
+            margin: 20px 0;
+        }
+
+        .sub-card p {
+            font-size: 13px;
+            color: #374f6b;
+            font-weight: 500;
+            line-height: 1.7;
+            margin-bottom: 20px;
+        }
+
+        .sub-contact {
+            background: #eef4ff;
+            border: 1px solid #c7d9fd;
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 12px;
+            color: #374f6b;
+            font-weight: 500;
+            margin-bottom: 24px;
+        }
+
+        .sub-contact a {
+            font-weight: 700;
+            color: #2563eb;
+            text-decoration: none;
+        }
+
+        /* ── LOGOUT BUTTON ── */
+        .logout-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #fff;
+            border: 1px solid #dce3ed;
+            color: #374f6b;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 12.5px;
+            font-weight: 700;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .logout-btn:hover { background: #f8fafb; border-color: #b8c5d4; }
+
+        /* ── LOADER ── */
+        .loader {
+            text-align: center;
+            padding: 32px 24px;
+            color: #9ab0c6;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .loader i { font-size: 22px; color: #2563eb; display: block; margin-bottom: 10px; }
+
+        .empty { color: #9ab0c6; font-size: 12.5px; font-style: italic; text-align: center; padding: 16px 0; }
+
+        @media (max-width: 640px) {
+            .stat-row      { grid-template-columns: 1fr; }
+            .analytics-grid { grid-template-columns: 1fr; }
+            .info-grid     { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ── TOPBAR ── -->
+<div class="topbar">
+    <div class="topbar-logo">
+        <img src="../../assets/images/logo.png" alt="ConnectUs" onerror="this.style.display='none'">
+        <span>ConnectUs</span>
+    </div>
+    <span class="topbar-badge" id="topbarBadge"></span>
+</div>
+
+<!-- ══ SUPER ADMIN VIEW ══════════════════════════════════════════════════ -->
+<div id="superAdminView" style="display:none;">
+    <div class="page-wrap">
+
+        <!-- Amber banner -->
+        <div class="banner banner-amber">
+            <i class="fa-solid fa-circle-exclamation"></i>
+            <div class="banner-text">
+                <h2>Your school account is currently suspended</h2>
+                <p>This may be due to a missed renewal or a pending verification review.
+                   Your school data is fully preserved. Contact ConnectUs to restore access.</p>
+            </div>
+        </div>
+
+        <!-- School Identity -->
+        <div class="card">
+            <div class="card-title"><i class="fa-solid fa-school"></i> School Profile</div>
+            <div class="info-grid" id="saIdentityGrid"></div>
+        </div>
+
+        <!-- Stat Cards -->
+        <div class="stat-row">
+            <div class="stat-card">
+                <div class="stat-icon" style="background:#eef4ff;">
+                    <i class="fa-solid fa-chalkboard-user" style="color:#2563eb;"></i>
+                </div>
+                <div>
+                    <div class="stat-val" id="saTeacherCount"><i class="fa-solid fa-spinner fa-spin" style="font-size:16px;color:#9ab0c6;"></i></div>
+                    <div class="stat-lbl">Teachers</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="background:#edfaf4;">
+                    <i class="fa-solid fa-user-graduate" style="color:#0ea871;"></i>
+                </div>
+                <div>
+                    <div class="stat-val" id="saStudentCount"><i class="fa-solid fa-spinner fa-spin" style="font-size:16px;color:#9ab0c6;"></i></div>
+                    <div class="stat-lbl">Active Students</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="background:#fef3c7;">
+                    <i class="fa-solid fa-crown" style="color:#f59e0b;"></i>
+                </div>
+                <div>
+                    <div class="stat-val" id="saPlanName" style="font-size:14px;margin-top:4px;">—</div>
+                    <div class="stat-lbl">Subscription Plan</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Analytics -->
+        <div class="analytics-grid">
+            <div class="card" style="margin-bottom:0;">
+                <div class="card-title"><i class="fa-solid fa-layer-group"></i> Class Performance</div>
+                <div id="saClassBars"><div class="loader"><i class="fa-solid fa-spinner fa-spin"></i>Loading...</div></div>
+            </div>
+            <div class="card" style="margin-bottom:0;">
+                <div class="card-title"><i class="fa-solid fa-book-open"></i> Subject Mastery</div>
+                <div id="saSubjectBars"><div class="loader"><i class="fa-solid fa-spinner fa-spin"></i>Loading...</div></div>
+            </div>
+        </div>
+        <div style="margin-bottom:20px;"></div>
+
+        <!-- Contact -->
+        <div class="contact-card">
+            <i class="fa-solid fa-envelope"></i>
+            <div>
+                <h3>Restore your school's access</h3>
+                <p>To resolve your suspension, renew your subscription, or clarify your account status,
+                   contact the ConnectUs team directly. Your data is safe and fully preserved.</p>
+                <a href="mailto:info@connectusonline.org">
+                    <i class="fa-solid fa-paper-plane" style="margin-right:5px;"></i>info@connectusonline.org
+                </a>
+            </div>
+        </div>
+
+        <button class="logout-btn" onclick="handleLogout()">
+            <i class="fa-solid fa-arrow-right-from-bracket"></i> Sign Out
+        </button>
+
+    </div>
+</div>
+
+<!-- ══ SUB-ADMIN VIEW ════════════════════════════════════════════════════ -->
+<div id="subAdminView" style="display:none;">
+    <div class="centered-wrap">
+        <div class="sub-card">
+
+            <div class="sub-icon">
+                <i class="fa-solid fa-user-slash"></i>
+            </div>
+
+            <h2>Access Revoked</h2>
+            <div class="sub-name" id="subAdminMeta">Sub-Administrator</div>
+
+            <hr class="sub-divider">
+
+            <p>Your admin access to this school's ConnectUs portal has been removed by the principal or super administrator.</p>
+
+            <div class="sub-contact">
+                For assistance, contact your school's principal directly,
+                or reach ConnectUs at
+                <a href="mailto:info@connectusonline.org">info@connectusonline.org</a>
+            </div>
+
+            <button class="logout-btn" onclick="handleLogout()" style="width:100%;justify-content:center;">
+                <i class="fa-solid fa-arrow-right-from-bracket"></i> Sign Out & Clear Session
+            </button>
+
+        </div>
+    </div>
+</div>
+
+<script type="module">
+import { db } from '../../assets/js/firebase-init.js';
+import {
+    collection, query, where, getDocs, getDoc, doc
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getSessionData, logout } from '../../assets/js/auth.js';
+import { calculateWeightedAverage } from '../../assets/js/utils.js';
+
+// ── Logout accessible to inline onclick ──────────────────────────────────
+window.handleLogout = () => logout('../../index.html');
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function escHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function infoItem(label, value, mono = false) {
+    return `<div class="info-item">
+        <label>${label}</label>
+        <span class="${mono ? 'mono' : ''}">${value || '—'}</span>
+    </div>`;
+}
+
+function barHtml(label, avg, subLabel = '') {
+    const color = avg >= 80 ? '#0ea871' : avg >= 70 ? '#2563eb' : avg >= 65 ? '#f59e0b' : '#e31b4a';
+    return `
+    <div class="bar-row">
+        <div class="bar-label">
+            <span>${escHtml(label)}${subLabel ? `<span style="font-size:10px;color:#9ab0c6;font-weight:500;margin-left:5px;">${subLabel}</span>` : ''}</span>
+            <span style="color:${color};">${avg}%</span>
+        </div>
+        <div class="bar-track">
+            <div class="bar-fill" style="width:${avg}%;background:${color};"></div>
+        </div>
+    </div>`;
+}
+
+// ── Route based on session ────────────────────────────────────────────────
+const session = getSessionData('admin');
+
+if (session && session.isSuperAdmin) {
+    // ── Super Admin Suspended View ────────────────────────────────────────
+    document.getElementById('topbarBadge').className = 'topbar-badge badge-amber';
+    document.getElementById('topbarBadge').innerHTML = '<i class="fa-solid fa-circle-pause" style="margin-right:5px;"></i>Account Suspended';
+    document.getElementById('superAdminView').style.display = 'block';
+    loadSuperAdminView(session);
+
+} else {
+    // ── Sub-Admin Deactivated View ────────────────────────────────────────
+    document.getElementById('topbarBadge').className = 'topbar-badge badge-red';
+    document.getElementById('topbarBadge').innerHTML = '<i class="fa-solid fa-circle-exclamation" style="margin-right:5px;"></i>Access Revoked';
+    document.getElementById('subAdminView').style.display = 'block';
+
+    // Populate whatever we have
+    if (session) {
+        const meta = [session.adminName, session.schoolName || session.schoolId].filter(Boolean).join(' · ');
+        if (meta) document.getElementById('subAdminMeta').textContent = meta;
+    }
+}
+
+// ── Super Admin: load school identity + stats + analytics ─────────────────
+async function loadSuperAdminView(session) {
+
+    // Identity card from session
+    document.getElementById('saIdentityGrid').innerHTML = [
+        infoItem('School Name',  escHtml(session.schoolName)),
+        infoItem('School ID',    escHtml(session.schoolId), true),
+        infoItem('Contact Email', escHtml(session.contactEmail)),
+        infoItem('Plan',         escHtml(session.planName)),
+    ].join('');
+
+    document.getElementById('saPlanName').textContent = session.planName || '—';
+
+    try {
+        // Fetch teachers and students
+        const [tSnap, sSnap] = await Promise.all([
+            getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId))),
+            getDocs(query(collection(db, 'students'),
+                where('currentSchoolId', '==', session.schoolId),
+                where('enrollmentStatus', '==', 'Active')))
+        ]);
+
+        document.getElementById('saTeacherCount').textContent = tSnap.size;
+        document.getElementById('saStudentCount').textContent = sSnap.size;
+
+        const teachersList = tSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const studentsList = sSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // Build rubric cache
+        const teacherRubrics = {};
+        teachersList.forEach(t => {
+            teacherRubrics[t.id] = t.gradeTypes || t.customGradeTypes || [];
+        });
+
+        // Only fetch grades if there's an active semester
+        const activeSemId = session.activeSemesterId;
+        if (!activeSemId || !studentsList.length) {
+            document.getElementById('saClassBars').innerHTML = '<div class="empty">No active grading period.</div>';
+            document.getElementById('saSubjectBars').innerHTML = '<div class="empty">No active grading period.</div>';
+            return;
+        }
+
+        // Fetch all grades across students
+        const classAverages  = {};
+        const subjectTotals  = {};
+
+        await Promise.all(studentsList.map(async student => {
+            try {
+                const gSnap = await getDocs(query(
+                    collection(db, 'students', student.id, 'grades'),
+                    where('schoolId',   '==', session.schoolId),
+                    where('semesterId', '==', activeSemId)
+                ));
+
+                const grades = gSnap.docs.map(d => d.data());
+                if (!grades.length) return;
+
+                // Group by subject
+                const bySub = {};
+                grades.forEach(g => {
+                    const sub = g.subject || 'Uncategorized';
+                    if (!bySub[sub]) bySub[sub] = [];
+                    bySub[sub].push(g);
+                });
+
+                let sumSubjAvgs = 0;
+                let subjCount   = 0;
+
+                for (const sub in bySub) {
+                    const rubric = teacherRubrics[student.teacherId] || [];
+                    const avg    = calculateWeightedAverage(bySub[sub], rubric);
+                    if (avg !== null) {
+                        sumSubjAvgs += avg;
+                        subjCount++;
+
+                        // Subject totals
+                        if (!subjectTotals[sub]) subjectTotals[sub] = { sum: 0, count: 0 };
+                        subjectTotals[sub].sum   += avg;
+                        subjectTotals[sub].count += 1;
+                    }
+                }
+
+                if (subjCount > 0) {
+                    const studentAvg = Math.round(sumSubjAvgs / subjCount);
+                    const cls = student.className || 'Unassigned';
+                    if (!classAverages[cls]) classAverages[cls] = { sum: 0, count: 0 };
+                    classAverages[cls].sum   += studentAvg;
+                    classAverages[cls].count += 1;
+                }
+
+            } catch (_) {}
+        }));
+
+        // ── Class performance bars ────────────────────────────────────────
+        const classEl   = document.getElementById('saClassBars');
+        const classData = Object.entries(classAverages)
+            .map(([cls, d]) => ({ name: cls, avg: Math.round(d.sum / d.count), count: d.count }))
+            .sort((a, b) => b.avg - a.avg);
+
+        classEl.innerHTML = classData.length
+            ? classData.map(c => barHtml(c.name, c.avg, `${c.count} student${c.count !== 1 ? 's' : ''}`)).join('')
+            : '<div class="empty">No grade data recorded yet.</div>';
+
+        // ── Subject mastery bars ──────────────────────────────────────────
+        const subjEl   = document.getElementById('saSubjectBars');
+        const subjData = Object.entries(subjectTotals)
+            .map(([subj, d]) => ({ name: subj, avg: Math.round(d.sum / d.count) }))
+            .sort((a, b) => b.avg - a.avg);
+
+        subjEl.innerHTML = subjData.length
+            ? subjData.map(s => barHtml(s.name, s.avg)).join('')
+            : '<div class="empty">No grade data recorded yet.</div>';
+
+    } catch (e) {
+        console.error('[Suspended] loadSuperAdminView error:', e);
+        document.getElementById('saTeacherCount').textContent = '—';
+        document.getElementById('saStudentCount').textContent = '—';
+        document.getElementById('saClassBars').innerHTML   = '<div class="empty">Could not load analytics.</div>';
+        document.getElementById('saSubjectBars').innerHTML = '<div class="empty">Could not load analytics.</div>';
+    }
+}
+</script>
+</body>
+</html>
