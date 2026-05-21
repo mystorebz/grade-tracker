@@ -70,6 +70,47 @@ async function handleLogin() {
             return;
         }
 
+        // ── ENROLLMENT STATUS GATE ─────────────────────────────────────────────
+        const status          = studentData.enrollmentStatus || 'Active';
+        const currentSchoolId = studentData.currentSchoolId  || '';
+
+        if (status !== 'Active') {
+            if (currentSchoolId) {
+                // Internally archived — still at school, mint token for valid session
+                try {
+                    const result         = await mintStudentToken({ studentId: rawId, pin });
+                    const userCredential = await signInWithCustomToken(auth, result.data.token);
+                    const idTokenResult  = await userCredential.user.getIdTokenResult();
+                    const claims         = idTokenResult.claims;
+                    setSessionData('student', {
+                        studentId:   claims.studentId  || studentData.id,
+                        schoolId:    currentSchoolId,
+                        studentData: studentData,
+                        accessMode:  'inactive'
+                    });
+                } catch (e) {
+                    setSessionData('student', {
+                        studentId:   studentData.id,
+                        schoolId:    currentSchoolId,
+                        studentData: studentData,
+                        accessMode:  'inactive'
+                    });
+                }
+                window.location.replace('inactive/inactive.html');
+            } else {
+                // Released — no token, no session, just enough for the screen
+                sessionStorage.setItem('connectus_released', JSON.stringify({
+                    studentName: studentData.name,
+                    studentId:   studentData.id,
+                    reason:      status
+                }));
+                window.location.replace('released/released.html');
+            }
+            setLoading(false);
+            return;
+        }
+        // ── END ENROLLMENT STATUS GATE ─────────────────────────────────────────
+
         // ── Mint Firebase Auth token via Cloud Function ────────────────────────
         try {
             const result         = await mintStudentToken({ studentId: rawId, pin });
