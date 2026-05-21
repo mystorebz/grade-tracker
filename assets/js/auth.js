@@ -62,7 +62,13 @@ export function requireAuth(role, redirectUrl = '../index.html') {
                 logout(redirectUrl);
             } else if (docSnap.data().isVerified !== true) {
                 console.warn(`[ConnectUs Ghostbuster] School suspended. Evicting.`);
-                logout(redirectUrl);
+                // Super admin sees their school summary on the suspended page.
+                // Session must be preserved so the page can load school stats.
+                if (role === 'admin' && session.isSuperAdmin) {
+                    window.location.replace('../deactivated/deactivated.html');
+                } else {
+                    logout(redirectUrl);
+                }
             }
         }, (error) => {
             console.error(`[ConnectUs Ghostbuster] Security/Permission error:`, error);
@@ -100,15 +106,16 @@ export function requireAuth(role, redirectUrl = '../index.html') {
 
     // ── 4. TEACHER ARCHIVE WATCHER ────────────────────────────────────────────
     // Detects if a teacher is archived mid-session by an admin.
+    // Session is preserved (no logout) so the deactivated page can load their career summary.
     if (role === 'teacher' && session.teacherId) {
         const isGlobal   = /^T\d{2}-[A-Z0-9]{5}$/i.test(session.teacherId);
         const teacherRef = isGlobal
             ? doc(db, 'teachers', session.teacherId)
             : doc(db, 'schools', session.schoolId, 'teachers', session.teacherId);
-        onSnapshot(teacherRef, async (snap) => {
+        onSnapshot(teacherRef, (snap) => {
             if (!snap.exists() || snap.data().archived === true) {
                 console.warn('[ConnectUs] Teacher archived mid-session. Evicting.');
-                await logout('../deactivated/deactivated.html');
+                window.location.replace('../deactivated/deactivated.html');
             }
         }, (error) => {
             console.error('[ConnectUs] Teacher watcher error:', error);
@@ -117,12 +124,13 @@ export function requireAuth(role, redirectUrl = '../index.html') {
 
     // ── 5. SUB-ADMIN ARCHIVE WATCHER ──────────────────────────────────────────
     // Detects if a sub-admin is archived mid-session by the super admin.
+    // Session is preserved (no logout) so the deactivated page can show their name.
     if (role === 'admin' && session.adminId && !session.isSuperAdmin) {
         const adminRef = doc(db, 'schools', session.schoolId, 'admins', session.adminId);
-        onSnapshot(adminRef, async (snap) => {
+        onSnapshot(adminRef, (snap) => {
             if (!snap.exists() || snap.data().isArchived === true) {
                 console.warn('[ConnectUs] Sub-admin archived mid-session. Evicting.');
-                await logout('../deactivated/deactivated.html');
+                window.location.replace('../deactivated/deactivated.html');
             }
         }, (error) => {
             console.error('[ConnectUs] Admin watcher error:', error);
