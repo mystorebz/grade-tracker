@@ -96,10 +96,9 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
             return;
         }
 
+        // ── ONLY CHANGE: redirect to deactivated page instead of showing error ─
         if (tData.archived) {
-            msgEl.textContent = 'Your account has been archived. Contact your administrator.';
-            msgEl.classList.remove('hidden');
-            resetLoginBtn(btn);
+            window.location.replace('deactivated/deactivated.html');
             return;
         }
 
