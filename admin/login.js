@@ -160,6 +160,12 @@ loginBtn.addEventListener('click', async () => {
             tempAdminData = adminSnap.data();
             tempAdminId   = adminId;
 
+            // ── ONLY CHANGE: block archived sub-admins before launching ────────
+            if (tempAdminData.isArchived === true) {
+                window.location.replace('deactivated/deactivated.html');
+                return;
+            }
+
             if (tempAdminData.requiresPinReset) {
                 showForceReset();
             } else {
@@ -188,12 +194,6 @@ saveForceCodeBtn.addEventListener('click', async () => {
     saveForceCodeBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Updating Server...`;
 
     try {
-        // Note: The hashing should ideally happen on the server via a Cloud Function for resets too,
-        // but if your updateDoc rules still expect a raw write, we need a lightweight hash here, 
-        // OR better yet, pass the new raw PIN to a 'resetAdminPin' Cloud Function.
-        // Assuming your backend expects a newly generated hash to be written directly for now:
-        
-        // (Temporary recreation of SHA just for the write, though a CF is preferred)
         const encoded = new TextEncoder().encode(n.toLowerCase().trim());
         const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
         const hashedNew = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
@@ -208,7 +208,6 @@ saveForceCodeBtn.addEventListener('click', async () => {
             });
         }
 
-        // UX FIX: DO NOT AUTO LOGIN. Force manual entry to clear DOM state.
         document.getElementById('newForceCode').value    = '';
         document.getElementById('confirmForceCode').value = '';
         document.getElementById('loginAdminCode').value  = '';
