@@ -114,18 +114,35 @@ async function loadArchivesTab() {
     subjectListEl.innerHTML = '<div class="text-center py-10 text-[#9ab0c6] text-[13px] font-bold"><i class="fa-solid fa-spinner fa-spin text-[#2563eb] text-2xl mb-3 block"></i>Loading archived subjects...</div>';
 
     try {
-        // CHANGED: query global /students for non-active students at this school
-        const q = query(
-            collection(db, 'students'),
-            where('currentSchoolId', '==', session.schoolId),
-            where('enrollmentStatus', 'in', ['Archived', 'Graduated', 'Expelled', 'Dropped Out'])
-        );
-        const snap = await getDocs(q);
-        
-        const archivedStudents = snap.docs.filter(d => {
+        // ── FIX: two parallel queries to catch both internally archived and
+        //         released students (transferred/graduated have currentSchoolId cleared
+        //         but are still in archivedSchoolIds for this school).
+        const [snap1, snap2] = await Promise.all([
+            getDocs(query(
+                collection(db, 'students'),
+                where('currentSchoolId', '==', session.schoolId),
+                where('enrollmentStatus', 'in', ['Archived', 'Graduated', 'Expelled', 'Dropped Out'])
+            )),
+            getDocs(query(
+                collection(db, 'students'),
+                where('archivedSchoolIds', 'array-contains', session.schoolId)
+            ))
+        ]);
+
+        // Merge and deduplicate
+        const seen = new Set();
+        const allDocs = [];
+        [...snap1.docs, ...snap2.docs].forEach(d => {
+            if (!seen.has(d.id)) { seen.add(d.id); allDocs.push(d); }
+        });
+
+        const archivedStudents = allDocs.filter(d => {
             const data = d.data();
+            // Exclude anyone still actively enrolled at this school
+            if (data.enrollmentStatus === 'Active' && data.currentSchoolId === session.schoolId) return false;
             return data.teacherId === session.teacherId || !data.teacherId || data.teacherId === '';
         });
+        // ── END FIX ───────────────────────────────────────────────────────────
         
         const countEl = document.getElementById('archivesStudentCount');
         if (countEl) countEl.textContent = archivedStudents.length;
