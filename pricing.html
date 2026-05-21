@@ -3,138 +3,427 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enterprise Solutions | ConnectUs Online</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Pricing | ConnectUs</title>
+
+    <link rel="icon" type="image/x-icon" href="assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/images/favicon-32x32.png">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+
     <style>
-        body { font-family: 'DM Sans', sans-serif; }
-        
-        .solution-card { transition: all 0.3s ease; }
-        .solution-card:hover { transform: translateY(-6px); }
-        
-        .gradient-text {
-            background: linear-gradient(135deg, #4f46e5, #9333ea);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+        * { font-family: 'Nunito', sans-serif; }
+        body { background: #f8faff; color: #1e293b; }
+
+        /* ── Nav ── */
+        .navbar {
+            position: sticky; top: 0; z-index: 50;
+            background: rgba(255,255,255,0.92);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid #e0e7ff;
+            box-shadow: 0 1px 12px rgba(37,99,235,0.06);
         }
 
-        .bg-grid-pattern {
-            background-image: linear-gradient(to right, rgba(79, 70, 229, 0.05) 1px, transparent 1px),
-                              linear-gradient(to bottom, rgba(79, 70, 229, 0.05) 1px, transparent 1px);
-            background-size: 40px 40px;
+        /* ── Hero ── */
+        .hero-bg {
+            background: linear-gradient(135deg, #eff6ff 0%, #e0f2fe 50%, #f0f9ff 100%);
+            position: relative; overflow: hidden;
         }
+        .hero-bg::before {
+            content: '';
+            position: absolute;
+            width: 600px; height: 600px; border-radius: 50%;
+            background: radial-gradient(circle, rgba(99,179,237,0.18) 0%, transparent 70%);
+            top: -150px; right: -100px; pointer-events: none;
+        }
+        .hero-bg::after {
+            content: '';
+            position: absolute;
+            width: 400px; height: 400px; border-radius: 50%;
+            background: radial-gradient(circle, rgba(37,99,235,0.1) 0%, transparent 70%);
+            bottom: -80px; left: -80px; pointer-events: none;
+        }
+
+        /* ── Included strip ── */
+        .included-strip {
+            background: #fff;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 20px;
+        }
+
+        /* ── Plan cards ── */
+        .plan-card {
+            background: #fff;
+            border-radius: 24px;
+            border: 1.5px solid #e2e8f0;
+            display: flex; flex-direction: column;
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
+        }
+        .plan-card:hover {
+            transform: translateY(-6px);
+            box-shadow: 0 20px 48px rgba(37,99,235,0.12);
+        }
+        .plan-card.featured {
+            border-color: #2563eb;
+            box-shadow: 0 8px 32px rgba(37,99,235,0.15);
+        }
+        .plan-card.pro {
+            background: #0f172a;
+            border-color: #1e293b;
+            color: #f1f5f9;
+        }
+
+        /* login stats */
+        .stat-row {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin: 20px 0 24px;
+            padding: 20px;
+            background: #f8faff;
+            border-radius: 14px;
+        }
+        .plan-card.pro .stat-row {
+            background: #1e293b;
+        }
+        .stat-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 14px;
+        }
+        .stat-label {
+            font-weight: 700;
+            color: #64748b;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .plan-card.pro .stat-label { color: #94a3b8; }
+        .stat-value {
+            font-weight: 900;
+            color: #1e293b;
+            font-size: 15px;
+        }
+        .plan-card.pro .stat-value { color: #f1f5f9; }
+
+        /* divider */
+        .card-divider {
+            height: 1px; background: #f1f5f9; margin: 0 0 20px;
+        }
+        .plan-card.pro .card-divider { background: #1e293b; }
+
+        /* standout feature */
+        .standout-feature {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            font-weight: 800;
+            color: #2563eb;
+            margin-bottom: 24px;
+        }
+        .plan-card.pro .standout-feature { color: #93c5fd; }
+
+        /* CTA button */
+        .cta-btn {
+            display: block; width: 100%; text-align: center;
+            padding: 14px 20px; border-radius: 14px;
+            font-weight: 900; font-size: 15px;
+            transition: all 0.2s ease; margin-top: auto;
+            text-decoration: none;
+        }
+        .cta-btn-outline {
+            border: 2px solid #bfdbfe; color: #2563eb; background: #eff6ff;
+        }
+        .cta-btn-outline:hover { background: #2563eb; color: #fff; border-color: #2563eb; }
+        .cta-btn-primary {
+            background: #2563eb; color: #fff;
+            box-shadow: 0 6px 20px rgba(37,99,235,0.3);
+        }
+        .cta-btn-primary:hover { background: #1d4ed8; }
+        .cta-btn-pro {
+            background: #fff; color: #0f172a; font-weight: 900;
+        }
+        .cta-btn-pro:hover { background: #e0e7ff; }
+
+        /* badge */
+        .popular-badge {
+            position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+            background: #2563eb; color: #fff;
+            font-size: 10px; font-weight: 900;
+            letter-spacing: 0.1em; text-transform: uppercase;
+            padding: 5px 16px; border-radius: 999px;
+            box-shadow: 0 4px 12px rgba(37,99,235,0.3);
+            white-space: nowrap;
+        }
+
+        /* ── Final CTA ── */
+        .final-cta {
+            background: linear-gradient(135deg, #1d4ed8 0%, #0ea5e9 100%);
+        }
+
+        /* ── Footer ── */
+        footer { background: #0f172a; }
+
+        /* ── Fade in ── */
+        .fade-up {
+            opacity: 0; transform: translateY(24px);
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+        .fade-up.visible { opacity: 1; transform: translateY(0); }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900 relative overflow-x-hidden min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col">
 
-    <div class="absolute inset-0 bg-grid-pattern z-0 pointer-events-none" style="height: 60vh;"></div>
-    <div class="absolute top-0 left-0 right-0 h-[60vh] bg-gradient-to-b from-slate-50/0 to-slate-50 z-0 pointer-events-none"></div>
-
-    <header class="py-24 px-4 text-center relative z-10">
-        <h2 class="text-indigo-600 font-bold tracking-widest uppercase text-sm mb-4">ConnectUs Infrastructure</h2>
-        <h1 class="text-4xl md:text-5xl lg:text-6xl font-extrabold text-slate-900 mb-6 tracking-tight">
-            Built for <span class="gradient-text">Every Campus</span> Size
-        </h1>
-        <p class="max-w-3xl mx-auto text-slate-600 text-lg md:text-xl leading-relaxed">
-            From rural academies to multi-campus national networks, we provide a custom-tailored digital grid for your institution. Select the tier that matches your school's profile to request a comprehensive proposal.
-        </p>
-    </header>
-
-    <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20 relative z-10 flex-grow">
-        
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch mb-16">
-            
-            <!-- Foundation Tier -->
-            <div class="solution-card bg-white p-8 rounded-sm shadow-md border border-slate-200 flex flex-col h-full">
-                <h3 class="text-2xl font-bold mb-2 text-slate-900">Foundation</h3>
-                <p class="text-slate-500 text-sm mb-6 h-10">Essential digital infrastructure for small academies and primary schools.</p>
-                
-                <ul class="space-y-4 mb-8 flex-grow text-slate-600 pt-6 border-t border-slate-100">
-                    <li class="flex items-start gap-3 text-sm font-medium">
-                        <i class="fa-solid fa-check text-indigo-500 mt-1"></i> 
-                        <span>Core Student & Teacher Registry</span>
-                    </li>
-                    <li class="flex items-start gap-3 text-sm font-medium">
-                        <i class="fa-solid fa-check text-indigo-500 mt-1"></i> 
-                        <span>Standard Gradebook & Attendance</span>
-                    </li>
-                    <li class="flex items-start gap-3 text-sm font-medium">
-                        <i class="fa-solid fa-check text-indigo-500 mt-1"></i> 
-                        <span>Parent Communication Portal</span>
-                    </li>
-                    <li class="flex items-start gap-3 text-sm font-medium">
-                        <i class="fa-solid fa-check text-indigo-500 mt-1"></i> 
-                        <span>Basic Administrative Support</span>
-                    </li>
-                </ul>
-                <a href="../quote.html" class="block w-full text-center py-3 px-6 bg-slate-100 text-slate-700 font-bold uppercase tracking-wider text-sm hover:bg-indigo-600 hover:text-white transition-colors duration-300 rounded-sm">Request Quote</a>
-            </div>
-
-            <!-- Campus Tier -->
-            <div class="solution-card bg-white p-8 rounded-sm shadow-xl border-t-4 border-indigo-600 flex flex-col h-full transform md:-translate-y-2">
-                <div class="inline-block bg-indigo-100 text-indigo-700 px-3 py-1 text-xs font-bold uppercase tracking-widest mb-4 w-max">Standard Choice</div>
-                <h3 class="text-2xl font-bold mb-2 text-slate-900">Campus</h3>
-                <p class="text-slate-500 text-sm mb-6 h-10">Advanced features for growing secondary schools and large student bodies.</p>
-                
-                <ul class="space-y-4 mb-8 flex-grow text-slate-600 pt-6 border-t border-slate-100">
-                    <li class="flex items-start gap-3 text-sm font-medium">
-                        <i class="fa-solid fa-check text-indigo-500 mt-1"></i> 
-                        <span>Everything in Foundation, plus:</span>
-                    </li>
-                    <li class="flex items-start gap-3 text-sm font-medium">
-                        <i class="fa-solid fa-check text-indigo-500 mt-1"></i> 
-                        <span>Advanced Academic Analytics & Reports</span>
-                    </li>
-                    <li class="flex items-start gap-3 text-sm font-medium">
-                        <i class="fa-solid fa-check text-indigo-500 mt-1"></i> 
-                        <span>Interactive Assignment Modules</span>
-                    </li>
-                    <li class="flex items-start gap-3 text-sm font-medium">
-                        <i class="fa-solid fa-check text-indigo-500 mt-1"></i> 
-                        <span>Priority Technical Support</span>
-                    </li>
-                </ul>
-                <a href="../quote.html" class="block w-full text-center py-3 px-6 bg-indigo-600 text-white font-bold uppercase tracking-wider text-sm shadow-md shadow-indigo-200 hover:bg-indigo-700 transition-colors duration-300 rounded-sm">Request Quote</a>
-            </div>
-
-            <!-- Network Tier -->
-            <div class="solution-card bg-slate-900 p-8 rounded-sm shadow-md border border-slate-800 flex flex-col h-full text-white">
-                <h3 class="text-2xl font-bold mb-2">Network</h3>
-                <p class="text-slate-400 text-sm mb-6 h-10">Complete institutional power for multi-campus networks and districts.</p>
-                
-                <ul class="space-y-4 mb-8 flex-grow text-slate-300 pt-6 border-t border-slate-700">
-                    <li class="flex items-start gap-3 text-sm font-medium">
-                        <i class="fa-solid fa-check text-indigo-400 mt-1"></i> 
-                        <span>Everything in Campus, plus:</span>
-                    </li>
-                    <li class="flex items-start gap-3 text-sm font-medium">
-                        <i class="fa-solid fa-check text-indigo-400 mt-1"></i> 
-                        <span>Multi-School Management Dashboard</span>
-                    </li>
-                    <li class="flex items-start gap-3 text-sm font-medium">
-                        <i class="fa-solid fa-check text-indigo-400 mt-1"></i> 
-                        <span>Custom API Integrations</span>
-                    </li>
-                    <li class="flex items-start gap-3 text-sm font-medium">
-                        <i class="fa-solid fa-check text-indigo-400 mt-1"></i> 
-                        <span>Dedicated Account Manager & Training</span>
-                    </li>
-                </ul>
-                <a href="../quote.html" class="block w-full text-center py-3 px-6 bg-white text-slate-900 font-bold uppercase tracking-wider text-sm hover:bg-slate-200 transition-colors duration-300 rounded-sm">Consult with Sales</a>
-            </div>
-
+    <!-- NAV -->
+    <nav class="navbar">
+        <div class="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
+            <a href="index.html" class="flex items-center gap-3">
+                <img src="assets/images/logo.png" alt="ConnectUs Logo" class="h-10 w-auto">
+                <span class="font-black text-blue-900 text-xl tracking-tight hidden sm:block">ConnectUs</span>
+            </a>
+            <a href="index.html" class="text-sm font-black text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-5 py-2 rounded-full border border-blue-100 transition">
+                ← Back to Home
+            </a>
         </div>
-        
-        <!-- Community Grant Banner -->
-        <div class="mt-6 bg-indigo-50 border border-indigo-100 p-4 text-center rounded-sm">
-            <p class="text-sm font-medium text-indigo-800">
-                <i class="fa-solid fa-hand-holding-heart mr-2"></i>
-                Special institutional grants and discounts available for rural and community-funded schools. <a href="../quote.html" class="underline font-bold hover:text-indigo-600 transition-colors">Ask us if you qualify</a>.
+    </nav>
+
+    <!-- HERO -->
+    <header class="hero-bg py-20 px-4 text-center">
+        <div class="max-w-3xl mx-auto relative z-10">
+            <span class="inline-flex items-center gap-2 bg-blue-100 text-blue-700 text-xs font-black px-4 py-1.5 rounded-full border border-blue-200 mb-6">
+                ✅ &nbsp; No Surprises &nbsp;·&nbsp; No Hidden Fees &nbsp;·&nbsp; Custom Quote in 48 Hours
+            </span>
+            <h1 class="text-4xl md:text-5xl lg:text-6xl font-black text-blue-900 leading-tight mb-5 tracking-tight">
+                The right plan<br>
+                <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">for every school.</span>
+            </h1>
+            <p class="text-lg text-slate-600 font-semibold leading-relaxed max-w-xl mx-auto">
+                Find the tier that matches your school's size, tell us about it, and we'll send you a custom quote within 24–48 hours.
             </p>
         </div>
+    </header>
 
+    <!-- WHAT EVERY PLAN INCLUDES -->
+    <section class="py-12 px-4 bg-white">
+        <div class="max-w-5xl mx-auto fade-up">
+            <p class="text-center text-xs font-black text-blue-500 uppercase tracking-widest mb-6">What every plan includes</p>
+            <div class="included-strip px-8 py-6">
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4 text-center">
+                    <div class="flex flex-col items-center gap-2">
+                        <i class="fa-solid fa-book-open text-blue-500 text-xl"></i>
+                        <span class="text-xs font-bold text-slate-600 leading-tight">Standard<br>Gradebook</span>
+                    </div>
+                    <div class="flex flex-col items-center gap-2">
+                        <i class="fa-solid fa-users text-blue-500 text-xl"></i>
+                        <span class="text-xs font-bold text-slate-600 leading-tight">Parent<br>View Portal</span>
+                    </div>
+                    <div class="flex flex-col items-center gap-2">
+                        <i class="fa-solid fa-shield-halved text-blue-500 text-xl"></i>
+                        <span class="text-xs font-bold text-slate-600 leading-tight">Secure<br>Cloud Data</span>
+                    </div>
+                    <div class="flex flex-col items-center gap-2">
+                        <i class="fa-solid fa-clock-rotate-left text-blue-500 text-xl"></i>
+                        <span class="text-xs font-bold text-slate-600 leading-tight">Full Grade<br>History</span>
+                    </div>
+                    <div class="flex flex-col items-center gap-2">
+                        <i class="fa-solid fa-chart-line text-blue-500 text-xl"></i>
+                        <span class="text-xs font-bold text-slate-600 leading-tight">Academic<br>Reports</span>
+                    </div>
+                    <div class="flex flex-col items-center gap-2">
+                        <i class="fa-solid fa-mobile-screen text-blue-500 text-xl"></i>
+                        <span class="text-xs font-bold text-slate-600 leading-tight">Works on<br>Any Device</span>
+                    </div>
+                </div>
+            </div>
+        </div>
     </section>
+
+    <!-- PLAN CARDS -->
+    <section class="py-16 px-4 bg-[#f8faff]">
+        <div class="max-w-6xl mx-auto">
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 items-stretch">
+
+                <!-- STARTER -->
+                <div class="plan-card p-7 fade-up">
+                    <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Starter</p>
+                    <h3 class="text-xl font-black text-slate-800 mb-1">Small Academies</h3>
+                    <p class="text-slate-400 text-xs font-semibold leading-relaxed">Ideal for rural and small community schools getting started with digital grade management.</p>
+
+                    <div class="stat-row">
+                        <div class="stat-item">
+                            <span class="stat-label"><i class="fa-solid fa-user-graduate text-blue-400"></i> Students</span>
+                            <span class="stat-value">Up to 50</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label"><i class="fa-solid fa-chalkboard-user text-blue-400"></i> Teachers</span>
+                            <span class="stat-value">Up to 10</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label"><i class="fa-solid fa-key text-blue-400"></i> Admins</span>
+                            <span class="stat-value">1 Account</span>
+                        </div>
+                    </div>
+
+                    <div class="card-divider"></div>
+                    <div class="standout-feature">
+                        <i class="fa-solid fa-circle-check"></i> Core Portal Access
+                    </div>
+
+                    <a href="index.html#register" class="cta-btn cta-btn-outline">Get a Quote →</a>
+                </div>
+
+                <!-- GROWTH (featured) -->
+                <div class="plan-card featured p-7 fade-up relative">
+                    <div class="popular-badge">Most Popular</div>
+                    <p class="text-xs font-black text-blue-400 uppercase tracking-widest mb-1 mt-3">Growth</p>
+                    <h3 class="text-xl font-black text-slate-800 mb-1">Primary Schools</h3>
+                    <p class="text-slate-400 text-xs font-semibold leading-relaxed">For growing primary schools that need a reliable, full-featured platform from day one.</p>
+
+                    <div class="stat-row">
+                        <div class="stat-item">
+                            <span class="stat-label"><i class="fa-solid fa-user-graduate text-blue-500"></i> Students</span>
+                            <span class="stat-value">Up to 150</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label"><i class="fa-solid fa-chalkboard-user text-blue-500"></i> Teachers</span>
+                            <span class="stat-value">Up to 20</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label"><i class="fa-solid fa-key text-blue-500"></i> Admins</span>
+                            <span class="stat-value">3 Accounts</span>
+                        </div>
+                    </div>
+
+                    <div class="card-divider"></div>
+                    <div class="standout-feature">
+                        <i class="fa-solid fa-circle-check"></i> Priority Support
+                    </div>
+
+                    <a href="index.html#register" class="cta-btn cta-btn-primary">Get a Quote →</a>
+                </div>
+
+                <!-- ENTERPRISE -->
+                <div class="plan-card p-7 fade-up">
+                    <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Enterprise</p>
+                    <h3 class="text-xl font-black text-slate-800 mb-1">Large Schools</h3>
+                    <p class="text-slate-400 text-xs font-semibold leading-relaxed">For large secondary schools and campuses with bigger staff teams and broader admin needs.</p>
+
+                    <div class="stat-row">
+                        <div class="stat-item">
+                            <span class="stat-label"><i class="fa-solid fa-user-graduate text-blue-400"></i> Students</span>
+                            <span class="stat-value">Up to 300</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label"><i class="fa-solid fa-chalkboard-user text-blue-400"></i> Teachers</span>
+                            <span class="stat-value">Up to 30</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label"><i class="fa-solid fa-key text-blue-400"></i> Admins</span>
+                            <span class="stat-value">10 Accounts</span>
+                        </div>
+                    </div>
+
+                    <div class="card-divider"></div>
+                    <div class="standout-feature">
+                        <i class="fa-solid fa-circle-check"></i> Custom Training
+                    </div>
+
+                    <a href="index.html#register" class="cta-btn cta-btn-outline">Get a Quote →</a>
+                </div>
+
+                <!-- PRO (dark) -->
+                <div class="plan-card pro p-7 fade-up">
+                    <p class="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Pro</p>
+                    <h3 class="text-xl font-black text-white mb-1">Districts & Networks</h3>
+                    <p class="text-slate-400 text-xs font-semibold leading-relaxed">Complete institutional power for multi-campus networks, districts, and large-scale deployments.</p>
+
+                    <div class="stat-row">
+                        <div class="stat-item">
+                            <span class="stat-label"><i class="fa-solid fa-user-graduate text-blue-400"></i> Students</span>
+                            <span class="stat-value">Unlimited</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label"><i class="fa-solid fa-chalkboard-user text-blue-400"></i> Teachers</span>
+                            <span class="stat-value">Unlimited</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label"><i class="fa-solid fa-key text-blue-400"></i> Admins</span>
+                            <span class="stat-value">Unlimited</span>
+                        </div>
+                    </div>
+
+                    <div class="card-divider"></div>
+                    <div class="standout-feature">
+                        <i class="fa-solid fa-circle-check"></i> Multi-Campus Portal
+                    </div>
+
+                    <a href="index.html#register" class="cta-btn cta-btn-pro">Get a Quote →</a>
+                </div>
+
+            </div>
+
+            <!-- Sub-note -->
+            <p class="text-center text-slate-400 text-xs font-bold mt-8 fade-up">
+                Need more than 300 students but not quite district scale? <a href="index.html#register" class="text-blue-500 hover:underline font-black">Tell us on the quote form</a> and we'll build around you.
+</p>
+        </div>
+    </section>
+
+    <!-- FINAL CTA -->
+    <section class="final-cta py-20 px-4">
+        <div class="max-w-2xl mx-auto text-center fade-up">
+            <h2 class="text-3xl md:text-4xl font-black text-white mb-4 leading-tight">
+                Found your plan?<br>Let's make it official.
+            </h2>
+            <p class="text-blue-100 font-semibold text-base mb-8 leading-relaxed max-w-lg mx-auto">
+                Fill out a short form and our team will send you a custom quote within 24–48 hours. No commitment, no pressure.
+            </p>
+            <a href="index.html#register"
+               class="inline-block bg-white hover:bg-blue-50 text-blue-700 font-black py-4 px-10 rounded-2xl transition shadow-xl text-lg">
+                Request a Free Quote →
+            </a>
+        </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="py-10 px-4 text-center">
+        <div class="max-w-4xl mx-auto">
+            <div class="flex items-center justify-center gap-3 mb-5">
+                <img src="assets/images/logo.png" alt="ConnectUs Logo" class="h-10 w-auto opacity-90">
+                <span class="font-black text-white text-2xl tracking-tight">ConnectUs</span>
+            </div>
+            <div class="flex items-center justify-center gap-6 text-slate-400 text-sm font-semibold mb-8">
+                <a href="index.html#features"    class="hover:text-white transition">Features</a>
+                <a href="index.html#get-started" class="hover:text-white transition">Portals</a>
+                <a href="index.html#register"    class="hover:text-white transition">Get a Quote</a>
+            </div>
+            <div class="border-t border-white/10 pt-6">
+                <p class="text-slate-500 text-sm font-semibold">
+                    © 2026 ConnectUs. All rights reserved. &nbsp;|&nbsp;
+                    <a href="terms/terms.html"   class="hover:text-white transition">Terms of Service</a> &nbsp;|&nbsp;
+                    <a href="terms/privacy.html" class="hover:text-white transition">Privacy Policy</a> &nbsp;|&nbsp;
+                    <a href="pricing.html"        class="hover:text-white transition">Pricing</a>
+                </p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach((entry, i) => {
+                if (entry.isIntersecting) {
+                    setTimeout(() => entry.target.classList.add('visible'), i * 80);
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.08 });
+        document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+    </script>
 
 </body>
 </html>
