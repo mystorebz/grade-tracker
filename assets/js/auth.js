@@ -1,5 +1,5 @@
-import { auth, db } from './firebase-init.js'; // Make sure db is imported
-import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"; // Import Firestore functions
+import { auth, db } from './firebase-init.js';
+import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { signOut, onAuthStateChanged }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
@@ -35,7 +35,6 @@ export function getSessionData(role) {
 
 export function requireAuth(role, redirectUrl = '../index.html') {
     const session = getSessionData(role);
-
     if (!session || !isValidSession(role, session)) {
         console.warn(`[ConnectUs] No valid ${role} session — redirecting to ${redirectUrl}`);
         window.location.replace(redirectUrl);
@@ -56,7 +55,7 @@ export function requireAuth(role, redirectUrl = '../index.html') {
     // This listens to the school's document. If deleted or suspended, kicks them out.
     if (session.schoolId) {
         const schoolRef = doc(db, 'schools', session.schoolId);
-        
+
         onSnapshot(schoolRef, (docSnap) => {
             if (!docSnap.exists()) {
                 console.warn(`[ConnectUs Ghostbuster] School deleted. Evicting.`);
@@ -67,7 +66,66 @@ export function requireAuth(role, redirectUrl = '../index.html') {
             }
         }, (error) => {
             console.error(`[ConnectUs Ghostbuster] Security/Permission error:`, error);
-            logout(redirectUrl); // Kick them out if rules suddenly block access
+            logout(redirectUrl);
+        });
+    }
+
+    // ── 3. STUDENT ENROLLMENT WATCHER ─────────────────────────────────────────
+    // Detects mid-session status changes — archived, transferred, or restored.
+    if (role === 'student' && session.studentId) {
+        const studentRef = doc(db, 'students', session.studentId);
+        onSnapshot(studentRef, async (snap) => {
+            if (!snap.exists()) { await logout(redirectUrl); return; }
+            const data     = snap.data();
+            const status   = data.enrollmentStatus || 'Active';
+            const schoolId = data.currentSchoolId  || '';
+            const path     = window.location.pathname;
+
+            if (status === 'Active') {
+                // Restored mid-session — send back to dashboard if on inactive page
+                if (path.includes('/inactive/')) window.location.replace('../home/home.html');
+                return;
+            }
+            if (schoolId) {
+                // Internally archived — redirect to inactive if not already there
+                if (!path.includes('/inactive/')) window.location.replace('../inactive/inactive.html');
+            } else {
+                // Released — clear session and redirect to released screen
+                if (!path.includes('/released/')) await logout('../released/released.html');
+            }
+        }, (error) => {
+            console.error('[ConnectUs] Student watcher error:', error);
+        });
+    }
+
+    // ── 4. TEACHER ARCHIVE WATCHER ────────────────────────────────────────────
+    // Detects if a teacher is archived mid-session by an admin.
+    if (role === 'teacher' && session.teacherId) {
+        const isGlobal   = /^T\d{2}-[A-Z0-9]{5}$/i.test(session.teacherId);
+        const teacherRef = isGlobal
+            ? doc(db, 'teachers', session.teacherId)
+            : doc(db, 'schools', session.schoolId, 'teachers', session.teacherId);
+        onSnapshot(teacherRef, async (snap) => {
+            if (!snap.exists() || snap.data().archived === true) {
+                console.warn('[ConnectUs] Teacher archived mid-session. Evicting.');
+                await logout('../deactivated/deactivated.html');
+            }
+        }, (error) => {
+            console.error('[ConnectUs] Teacher watcher error:', error);
+        });
+    }
+
+    // ── 5. SUB-ADMIN ARCHIVE WATCHER ──────────────────────────────────────────
+    // Detects if a sub-admin is archived mid-session by the super admin.
+    if (role === 'admin' && session.adminId && !session.isSuperAdmin) {
+        const adminRef = doc(db, 'schools', session.schoolId, 'admins', session.adminId);
+        onSnapshot(adminRef, async (snap) => {
+            if (!snap.exists() || snap.data().isArchived === true) {
+                console.warn('[ConnectUs] Sub-admin archived mid-session. Evicting.');
+                await logout('../deactivated/deactivated.html');
+            }
+        }, (error) => {
+            console.error('[ConnectUs] Admin watcher error:', error);
         });
     }
 
@@ -81,15 +139,12 @@ export async function logout(redirectUrl = '../index.html') {
     } catch (e) {
         console.error('[ConnectUs] Firebase signOut error:', e);
     }
-
     // Clear all ConnectUs localStorage keys
     ['teacher', 'admin', 'student'].forEach(role => {
         localStorage.removeItem(SESSION_KEY(role));
     });
-
     Object.keys(localStorage)
         .filter(k => k.startsWith('connectUs_') || k.startsWith('connectus_'))
         .forEach(k => localStorage.removeItem(k));
-
     window.location.replace(redirectUrl);
 }
