@@ -3,534 +3,181 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Account Deactivated — ConnectUs</title>
+    <title>Account Deactivated — Teacher Portal</title>
+    
     <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['DM Sans', 'sans-serif'],
+                        mono: ['DM Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+
     <style>
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'DM Sans', sans-serif; background: #f0fdf8; }
+        
+        .loader-spin { animation: spin 1s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
 
-        body {
-            font-family: 'DM Sans', sans-serif;
-            background: #f0f4f8;
-            color: #0d1f35;
-            min-height: 100vh;
-        }
-
-        /* ── TOPBAR ── */
-        .topbar {
-            background: #0d1f35;
-            height: 56px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 24px;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
-
-        .topbar-logo {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .topbar-logo img {
-            height: 28px;
-            object-fit: contain;
-        }
-
-        .topbar-logo span {
-            font-size: 13px;
-            font-weight: 700;
-            color: #9ab0c6;
-            letter-spacing: 0.05em;
-        }
-
-        .topbar-badge {
-            font-size: 10px;
-            font-weight: 700;
-            background: #e31b4a;
-            color: #fff;
-            padding: 3px 10px;
-            border-radius: 99px;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-        }
-
-        /* ── LAYOUT ── */
-        .page-wrap {
-            max-width: 860px;
-            margin: 0 auto;
-            padding: 32px 20px 60px;
-        }
-
-        /* ── BANNER ── */
-        .banner {
-            background: #fff0f3;
-            border: 1px solid #ffd6de;
-            border-left: 4px solid #e31b4a;
-            border-radius: 10px;
-            padding: 18px 22px;
-            display: flex;
-            align-items: flex-start;
-            gap: 14px;
-            margin-bottom: 28px;
-        }
-
-        .banner i {
-            color: #e31b4a;
-            font-size: 20px;
-            margin-top: 2px;
-            flex-shrink: 0;
-        }
-
-        .banner-text h2 {
-            font-size: 15px;
-            font-weight: 800;
-            color: #be123c;
-            margin-bottom: 4px;
-        }
-
-        .banner-text p {
-            font-size: 12.5px;
-            color: #374f6b;
-            font-weight: 500;
-            line-height: 1.6;
-        }
-
-        /* ── SECTION CARDS ── */
-        .card {
-            background: #fff;
-            border: 1px solid #dce3ed;
-            border-radius: 12px;
-            padding: 22px 24px;
-            margin-bottom: 20px;
-            box-shadow: 0 1px 4px rgba(13,31,53,0.05);
-        }
-
-        .card-title {
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.12em;
-            color: #6b84a0;
-            margin-bottom: 16px;
-            display: flex;
-            align-items: center;
-            gap: 7px;
-        }
-
-        .card-title i {
-            font-size: 11px;
-        }
-
-        /* ── IDENTITY GRID ── */
-        .info-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-
-        .info-item {
-            background: #f8fafb;
-            border: 1px solid #f0f4f8;
-            border-radius: 8px;
-            padding: 10px 14px;
-        }
-
-        .info-item label {
-            display: block;
-            font-size: 9px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            color: #9ab0c6;
-            margin-bottom: 4px;
-        }
-
-        .info-item span {
-            font-size: 13px;
-            font-weight: 700;
-            color: #0d1f35;
-        }
-
-        .info-item .mono {
-            font-family: 'DM Mono', monospace;
-            font-size: 11.5px;
-            letter-spacing: 0.05em;
-        }
-
-        /* ── TEACHING HISTORY ── */
-        .history-entry {
-            border: 1px solid #dce3ed;
-            border-radius: 8px;
-            padding: 14px 16px;
-            margin-bottom: 10px;
-            background: #f8fafb;
-        }
-
-        .history-entry:last-child { margin-bottom: 0; }
-
-        .history-school {
-            font-size: 13px;
-            font-weight: 700;
-            color: #0d1f35;
-            margin-bottom: 4px;
-        }
-
-        .history-meta {
-            font-size: 11px;
-            color: #6b84a0;
-            font-weight: 500;
-            margin-bottom: 8px;
-        }
-
-        .subject-pills {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-        }
-
-        .subject-pill {
-            font-size: 10.5px;
-            font-weight: 700;
-            background: #fff;
-            border: 1px solid #dce3ed;
-            border-radius: 6px;
-            padding: 3px 10px;
-            color: #374f6b;
-        }
-
-        /* ── EVALUATIONS ── */
-        .eval-entry {
-            border: 1px solid #dce3ed;
-            border-radius: 8px;
-            overflow: hidden;
-            margin-bottom: 10px;
-        }
-
-        .eval-entry:last-child { margin-bottom: 0; }
-
-        .eval-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 13px 16px;
-            cursor: pointer;
-            background: #fff;
-            user-select: none;
-            transition: background 0.15s;
-        }
-
-        .eval-header:hover { background: #f8fafb; }
-
-        .eval-header-left { display: flex; align-items: center; gap: 12px; }
-
-        .rating-circle {
-            width: 40px;
-            height: 40px;
-            border-radius: 8px;
-            background: #f4f7fb;
-            border: 1px solid #dce3ed;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-        }
-
-        .rating-circle .num {
-            font-size: 13px;
-            font-weight: 700;
-            color: #0d1f35;
-            line-height: 1;
-        }
-
-        .rating-circle .denom {
-            font-size: 9px;
-            color: #9ab0c6;
-            font-weight: 600;
-        }
-
-        .eval-type {
-            font-size: 13px;
-            font-weight: 700;
-            color: #0d1f35;
-            margin-bottom: 2px;
-        }
-
-        .eval-date {
-            font-size: 11px;
-            color: #9ab0c6;
-            font-weight: 500;
-        }
-
-        .stars { display: flex; gap: 1px; }
-
-        .star-on  { color: #f59e0b; font-size: 13px; }
-        .star-off { color: #dce3ed; font-size: 13px; }
-
-        .rec-badge {
-            font-size: 10.5px;
-            font-weight: 700;
-            padding: 3px 10px;
-            border-radius: 99px;
-            border: 1px solid;
-            white-space: nowrap;
-        }
-
-        .eval-body {
-            display: none;
-            padding: 14px 16px;
-            background: #f8fafb;
-            border-top: 1px solid #f0f4f8;
-        }
-
-        .eval-body.open { display: block; }
-
-        .eval-written {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 14px;
-            margin-top: 10px;
-        }
-
-        .eval-written-block p:first-child {
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            margin-bottom: 4px;
-        }
-
-        .eval-written-block p:last-child {
-            font-size: 12.5px;
-            color: #374f6b;
-            font-weight: 400;
-            line-height: 1.55;
-        }
-
-        .eval-comments {
-            margin-top: 12px;
-            padding-top: 12px;
-            border-top: 1px solid #e8edf2;
-            font-size: 12.5px;
-            color: #374f6b;
-            font-weight: 400;
-            line-height: 1.55;
-        }
-
-        /* ── CONTACT BLOCK ── */
-        .contact-card {
-            background: #eef4ff;
-            border: 1px solid #c7d9fd;
-            border-radius: 12px;
-            padding: 22px 24px;
-            display: flex;
-            align-items: flex-start;
-            gap: 16px;
-            margin-bottom: 20px;
-        }
-
-        .contact-card i {
-            font-size: 20px;
-            color: #2563eb;
-            margin-top: 2px;
-            flex-shrink: 0;
-        }
-
-        .contact-card h3 {
-            font-size: 13.5px;
-            font-weight: 700;
-            color: #0d1f35;
-            margin-bottom: 5px;
-        }
-
-        .contact-card p {
-            font-size: 12px;
-            color: #374f6b;
-            font-weight: 500;
-            line-height: 1.6;
-            margin-bottom: 10px;
-        }
-
-        .contact-card a {
-            font-size: 12.5px;
-            font-weight: 700;
-            color: #2563eb;
-            text-decoration: none;
-        }
-
-        .contact-card a:hover { text-decoration: underline; }
-
-        /* ── LOGOUT BUTTON ── */
-        .logout-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            background: #fff;
-            border: 1px solid #dce3ed;
-            color: #374f6b;
-            font-family: 'DM Sans', sans-serif;
-            font-size: 12.5px;
-            font-weight: 700;
-            padding: 10px 20px;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.15s;
-            text-decoration: none;
-        }
-
-        .logout-btn:hover {
-            background: #f8fafb;
-            border-color: #b8c5d4;
-        }
-
-        /* ── EMPTY STATE ── */
-        .empty {
-            text-align: center;
-            padding: 24px;
-            color: #9ab0c6;
-            font-size: 13px;
-            font-style: italic;
-            font-weight: 500;
-        }
-
-        /* ── LOADER ── */
-        .loader {
-            text-align: center;
-            padding: 48px 24px;
-            color: #9ab0c6;
-            font-size: 13px;
-            font-weight: 500;
-        }
-
-        .loader i { font-size: 24px; color: #2563eb; display: block; margin-bottom: 12px; }
-
-        @media (max-width: 600px) {
-            .info-grid { grid-template-columns: 1fr; }
-            .eval-written { grid-template-columns: 1fr; }
-        }
+        /* Custom Scrollbar to match portal */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 0; }
     </style>
 </head>
-<body>
+<body class="flex flex-col h-screen overflow-hidden text-slate-800">
 
-<!-- ── TOPBAR ── -->
-<div class="topbar">
-    <div class="topbar-logo">
-        <img src="../../assets/images/logo.png" alt="ConnectUs" onerror="this.style.display='none'">
-        <span>ConnectUs</span>
-    </div>
-    <span class="topbar-badge"><i class="fa-solid fa-circle-exclamation" style="margin-right:5px;"></i>Account Deactivated</span>
-</div>
-
-<!-- ── PAGE CONTENT ── -->
-<div class="page-wrap">
-
-    <!-- Banner -->
-    <div class="banner">
-        <i class="fa-solid fa-triangle-exclamation"></i>
-        <div class="banner-text">
-            <h2>Your account has been deactivated</h2>
-            <p>Your access to the ConnectUs teacher portal has been removed by your school administrator.
-               Your national teaching record and evaluation history remain fully preserved in the registry.</p>
+    <div class="bg-slate-900 h-14 flex items-center justify-between px-6 flex-shrink-0 z-20 shadow-md">
+        <div class="flex items-center gap-3">
+            <img src="../../assets/images/logo.png" alt="ConnectUs" class="h-6 object-contain" onerror="this.style.display='none'">
+            <span class="font-bold text-slate-400 tracking-wider text-xs uppercase hidden sm:block">Teacher Portal</span>
+        </div>
+        <div class="bg-rose-600 text-white text-[10px] font-bold px-3 py-1 rounded-full tracking-widest uppercase shadow-sm flex items-center gap-2">
+            <i class="fa-solid fa-circle-exclamation"></i> Account Deactivated
         </div>
     </div>
 
-    <!-- Identity -->
-    <div class="card" id="identityCard">
-        <div class="card-title"><i class="fa-solid fa-id-card"></i> Professional Identity</div>
-        <div class="loader" id="identityLoader">
-            <i class="fa-solid fa-spinner fa-spin"></i>Loading your record...
+    <main class="flex-1 overflow-y-auto p-6 md:p-10">
+        <div class="max-w-4xl mx-auto space-y-6 pb-12">
+
+            <div class="bg-rose-50 border border-rose-200 rounded-none shadow-sm overflow-hidden flex flex-col sm:flex-row items-stretch">
+                <div class="bg-rose-100 flex items-center justify-center p-5 sm:w-16 flex-shrink-0 border-b sm:border-b-0 sm:border-r border-rose-200">
+                    <i class="fa-solid fa-triangle-exclamation text-rose-600 text-2xl"></i>
+                </div>
+                <div class="p-5 flex-1">
+                    <h2 class="text-rose-800 font-bold text-base mb-1">Your account has been deactivated</h2>
+                    <p class="text-rose-700 font-medium text-[13px] leading-relaxed">
+                        Your access to the ConnectUs teacher portal has been removed by your school administrator. Your national teaching record and evaluation history remain fully preserved in the registry.
+                    </p>
+                </div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-none shadow-sm p-6" id="identityCard">
+                <div class="flex items-center gap-3 mb-5 border-b border-slate-100 pb-3">
+                    <div class="w-8 h-8 bg-blue-50 text-blue-600 flex items-center justify-center rounded-none text-sm">
+                        <i class="fa-solid fa-id-card"></i>
+                    </div>
+                    <h3 class="font-black text-slate-700 text-xs uppercase tracking-widest">Professional Identity</h3>
+                </div>
+                
+                <div id="identityLoader" class="text-center py-8 text-slate-400">
+                    <i class="fa-solid fa-circle-notch loader-spin text-blue-500 text-2xl mb-3 block"></i>
+                    <p class="text-xs font-bold uppercase tracking-widest">Loading your record...</p>
+                </div>
+
+                <div id="identityGrid" class="hidden grid-cols-1 sm:grid-cols-2 gap-3">
+                    </div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-none shadow-sm p-6">
+                <div class="flex items-center gap-3 mb-5 border-b border-slate-100 pb-3">
+                    <div class="w-8 h-8 bg-emerald-50 text-emerald-600 flex items-center justify-center rounded-none text-sm">
+                        <i class="fa-solid fa-school"></i>
+                    </div>
+                    <h3 class="font-black text-slate-700 text-xs uppercase tracking-widest">Teaching History — Career Passport</h3>
+                </div>
+                
+                <div id="historyList">
+                    <div class="text-center py-8 text-slate-400">
+                        <i class="fa-solid fa-circle-notch loader-spin text-emerald-500 text-2xl mb-3 block"></i>
+                        <p class="text-xs font-bold uppercase tracking-widest">Loading history...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-none shadow-sm p-6">
+                <div class="flex items-center gap-3 mb-5 border-b border-slate-100 pb-3">
+                    <div class="w-8 h-8 bg-amber-50 text-amber-600 flex items-center justify-center rounded-none text-sm">
+                        <i class="fa-solid fa-star-half-stroke"></i>
+                    </div>
+                    <h3 class="font-black text-slate-700 text-xs uppercase tracking-widest">Evaluation Record</h3>
+                </div>
+                
+                <div id="evalList">
+                    <div class="text-center py-8 text-slate-400">
+                        <i class="fa-solid fa-circle-notch loader-spin text-amber-500 text-2xl mb-3 block"></i>
+                        <p class="text-xs font-bold uppercase tracking-widest">Loading evaluations...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex flex-col md:flex-row items-center justify-between gap-4 mt-8 pt-6 border-t border-slate-200">
+                <div class="bg-indigo-50 border border-indigo-200 p-4 rounded-none flex items-center gap-4 w-full md:w-auto">
+                    <i class="fa-solid fa-envelope text-indigo-500 text-xl flex-shrink-0 mx-2"></i>
+                    <div>
+                        <h4 class="font-bold text-indigo-900 text-[13px] mb-0.5">Need a certified copy of your records?</h4>
+                        <a href="mailto:info@connectusonline.org" class="text-indigo-600 font-bold text-xs hover:underline uppercase tracking-wide"><i class="fa-solid fa-paper-plane mr-1"></i> info@connectusonline.org</a>
+                    </div>
+                </div>
+
+                <button onclick="handleLogout()" class="bg-slate-800 hover:bg-slate-900 text-white font-bold py-3.5 px-6 rounded-none transition flex items-center justify-center gap-2 shadow-sm w-full md:w-auto text-xs uppercase tracking-widest">
+                    <i class="fa-solid fa-arrow-right-from-bracket"></i> Sign Out & Clear Session
+                </button>
+            </div>
+
         </div>
-        <div class="info-grid" id="identityGrid" style="display:none;"></div>
-    </div>
-
-    <!-- Teaching History -->
-    <div class="card">
-        <div class="card-title"><i class="fa-solid fa-school"></i> Teaching History — Career Passport</div>
-        <div id="historyList"><div class="loader"><i class="fa-solid fa-spinner fa-spin"></i>Loading history...</div></div>
-    </div>
-
-    <!-- Evaluations -->
-    <div class="card">
-        <div class="card-title"><i class="fa-solid fa-star-half-stroke"></i> Evaluation Record</div>
-        <div id="evalList"><div class="loader"><i class="fa-solid fa-spinner fa-spin"></i>Loading evaluations...</div></div>
-    </div>
-
-    <!-- Contact -->
-    <div class="contact-card">
-        <i class="fa-solid fa-envelope"></i>
-        <div>
-            <h3>Need a certified copy of your records?</h3>
-            <p>To request an official copy of your professional record, inquire about your account status,
-               or transfer your history to a new institution, contact ConnectUs directly.</p>
-            <a href="mailto:info@connectusonline.org">
-                <i class="fa-solid fa-paper-plane" style="margin-right:5px;"></i>info@connectusonline.org
-            </a>
-        </div>
-    </div>
-
-    <!-- Logout -->
-    <button class="logout-btn" onclick="handleLogout()">
-        <i class="fa-solid fa-arrow-right-from-bracket"></i> Sign Out & Clear Session
-    </button>
-
-</div>
+    </main>
 
 <script type="module">
 import { db } from '../../assets/js/firebase-init.js';
 import { doc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getSessionData, logout } from '../../assets/js/auth.js';
 
-// ── Make logout accessible to inline onclick ──────────────────────────────
 window.handleLogout = () => logout('../login.html');
 
-// ── Helpers ───────────────────────────────────────────────────────────────
 function escHtml(str) {
     if (!str) return '';
-    return String(str)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function stars(rating) {
     return [1,2,3,4,5].map(n =>
-        `<span class="${n <= Math.round(rating) ? 'star-on' : 'star-off'}">★</span>`
-    ).join('');
+        `<i class="fa-solid fa-star text-[11px] ${n <= Math.round(rating) ? 'text-amber-400' : 'text-slate-200'}"></i>`
+    ).join('<span class="mx-0.5"></span>');
 }
 
 function recStyle(action) {
-    if (!action || action === 'None') return 'background:#f4f7fb;color:#6b84a0;border-color:#dce3ed';
-    if (action === 'Commendation')             return 'background:#edfaf4;color:#0b8f5e;border-color:#c6f0db';
-    if (action === 'Professional Development') return 'background:#fffbeb;color:#b45309;border-color:#fde68a';
-    return 'background:#fff0f3;color:#e31b4a;border-color:#ffd6de';
+    if (!action || action === 'None') return 'bg-slate-50 text-slate-500 border-slate-200';
+    if (action === 'Commendation')             return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    if (action === 'Professional Development') return 'bg-amber-50 text-amber-700 border-amber-200';
+    return 'bg-rose-50 text-rose-700 border-rose-200';
 }
 
 function infoItem(label, value, mono = false) {
-    return `<div class="info-item">
-        <label>${label}</label>
-        <span class="${mono ? 'mono' : ''}">${value || '—'}</span>
+    return `
+    <div class="bg-slate-50 border border-slate-100 p-3">
+        <label class="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">${label}</label>
+        <span class="font-bold text-slate-800 ${mono ? 'font-mono text-xs tracking-wider' : 'text-[13px]'} truncate block">${value || '—'}</span>
     </div>`;
 }
 
-// ── Toggle eval accordion ─────────────────────────────────────────────────
 window.toggleEval = function(id) {
-    const body    = document.getElementById(`eval-body-${id}`);
+    const body = document.getElementById(`eval-body-${id}`);
     const chevron = document.getElementById(`eval-chevron-${id}`);
     if (!body) return;
-    body.classList.toggle('open');
-    if (chevron) chevron.style.transform = body.classList.contains('open') ? 'rotate(180deg)' : '';
+    
+    body.classList.toggle('hidden');
+    if (chevron) {
+        chevron.style.transform = body.classList.contains('hidden') ? '' : 'rotate(180deg)';
+    }
 };
 
-// ── Load ──────────────────────────────────────────────────────────────────
 const session = getSessionData('teacher');
 
 if (!session || !session.teacherId) {
-    // No session at all — send to login
     window.location.replace('../login.html');
 } else {
     loadPage();
@@ -541,17 +188,16 @@ async function loadPage() {
         const snap = await getDoc(doc(db, 'teachers', session.teacherId));
 
         if (!snap.exists()) {
-            document.getElementById('identityLoader').innerHTML =
-                '<p style="color:#e31b4a;font-weight:600;text-align:center;padding:16px;">Record not found in registry.</p>';
+            document.getElementById('identityLoader').innerHTML = '<p class="text-rose-600 font-bold py-4 text-xs uppercase tracking-widest">Record not found in registry.</p>';
             return;
         }
 
         const t = { id: snap.id, ...snap.data() };
 
         // ── Identity ──────────────────────────────────────────────────────
-        document.getElementById('identityLoader').style.display = 'none';
+        document.getElementById('identityLoader').classList.add('hidden');
         const grid = document.getElementById('identityGrid');
-        grid.style.display = 'grid';
+        grid.classList.remove('hidden');
         grid.innerHTML = [
             infoItem('Full Name',         escHtml(t.name)),
             infoItem('Global Teacher ID', escHtml(t.id), true),
@@ -568,28 +214,28 @@ async function loadPage() {
         const histEl  = document.getElementById('historyList');
 
         if (!history.length) {
-            histEl.innerHTML = '<div class="empty">No teaching history recorded yet.</div>';
+            histEl.innerHTML = '<div class="text-center py-6 text-slate-400 font-bold text-xs uppercase tracking-widest italic">No teaching history recorded yet.</div>';
         } else {
             histEl.innerHTML = history.slice().reverse().map(h => {
                 const subjPills = Object.keys(h.subjectAverages || {}).map(subj =>
-                    `<span class="subject-pill">${escHtml(subj)}: ${h.subjectAverages[subj]}%</span>`
+                    `<span class="bg-white border border-slate-200 text-slate-600 text-[10px] font-bold px-2 py-1 uppercase tracking-wide">${escHtml(subj)}: <span class="text-slate-800">${h.subjectAverages[subj]}%</span></span>`
                 ).join('') || (h.subjects || []).map(s =>
-                    `<span class="subject-pill">${escHtml(s)}</span>`
+                    `<span class="bg-white border border-slate-200 text-slate-600 text-[10px] font-bold px-2 py-1 uppercase tracking-wide">${escHtml(s)}</span>`
                 ).join('') || '';
 
                 return `
-                <div class="history-entry">
-                    <div class="history-school">
-                        <i class="fa-solid fa-building-columns" style="color:#6b84a0;font-size:11px;margin-right:6px;"></i>
+                <div class="bg-slate-50 border border-slate-200 p-4 mb-3">
+                    <div class="font-bold text-slate-800 text-[13px] mb-1 flex items-center gap-2">
+                        <i class="fa-solid fa-building-columns text-slate-400 text-[10px]"></i>
                         ${escHtml(h.schoolId || 'Unknown School')}
                     </div>
-                    <div class="history-meta">
-                        ${h.semesterName ? escHtml(h.semesterName) + ' · ' : ''}
-                        ${h.classes?.length ? escHtml(h.classes.join(', ')) : ''}
-                        ${h.studentCount ? ` · ${h.studentCount} student${h.studentCount !== 1 ? 's' : ''}` : ''}
-                        ${h.snapshotDate ? ' · Recorded ' + new Date(h.snapshotDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : ''}
+                    <div class="text-[11px] font-medium text-slate-500 mb-3 flex flex-wrap gap-x-2">
+                        ${h.semesterName ? `<span>${escHtml(h.semesterName)}</span> &bull;` : ''}
+                        ${h.classes?.length ? `<span>${escHtml(h.classes.join(', '))}</span> &bull;` : ''}
+                        ${h.studentCount ? `<span>${h.studentCount} student${h.studentCount !== 1 ? 's' : ''}</span> &bull;` : ''}
+                        ${h.snapshotDate ? `<span>Recorded ${new Date(h.snapshotDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>` : ''}
                     </div>
-                    ${subjPills ? `<div class="subject-pills">${subjPills}</div>` : ''}
+                    ${subjPills ? `<div class="flex flex-wrap gap-1.5">${subjPills}</div>` : ''}
                 </div>`;
             }).join('');
         }
@@ -603,75 +249,73 @@ async function loadPage() {
                 .sort((a, b) => new Date(b.timestamp || b.date || 0) - new Date(a.timestamp || a.date || 0));
 
             if (!evals.length) {
-                evalEl.innerHTML = '<div class="empty">No evaluations on record.</div>';
+                evalEl.innerHTML = '<div class="text-center py-6 text-slate-400 font-bold text-xs uppercase tracking-widest italic">No evaluations on record.</div>';
             } else {
                 evalEl.innerHTML = evals.map((e, i) => {
-                    const dateStr = e.date || (e.timestamp ? new Date(e.timestamp).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '—');
+                    const dateStr = e.date || (e.timestamp ? new Date(e.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—');
                     const rating  = e.overallRating || e.performanceScore || 0;
                     const rec     = e.recommendedAction && e.recommendedAction !== 'None' ? e.recommendedAction : null;
 
                     const writtenBlock = (e.strengths || e.areasForImprovement) ? `
-                        <div class="eval-written">
-                            ${e.strengths ? `<div class="eval-written-block">
-                                <p style="color:#0b8f5e;"><i class="fa-solid fa-arrow-trend-up" style="margin-right:4px;"></i>Strengths</p>
-                                <p>${escHtml(e.strengths)}</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+                            ${e.strengths ? `
+                            <div>
+                                <p class="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-1"><i class="fa-solid fa-arrow-trend-up mr-1"></i>Strengths</p>
+                                <p class="text-xs text-slate-600 leading-relaxed">${escHtml(e.strengths)}</p>
                             </div>` : ''}
-                            ${e.areasForImprovement ? `<div class="eval-written-block">
-                                <p style="color:#b45309;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>Areas for Improvement</p>
-                                <p>${escHtml(e.areasForImprovement)}</p>
+                            ${e.areasForImprovement ? `
+                            <div>
+                                <p class="text-[9px] font-black text-amber-600 uppercase tracking-widest mb-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Areas for Improvement</p>
+                                <p class="text-xs text-slate-600 leading-relaxed">${escHtml(e.areasForImprovement)}</p>
                             </div>` : ''}
                         </div>` : '';
 
                     const commentsBlock = e.comments ? `
-                        <div class="eval-comments">
-                            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#6b84a0;display:block;margin-bottom:5px;">Comments</span>
-                            ${escHtml(e.comments)}
+                        <div class="mt-4 pt-3 border-t border-slate-200">
+                            <span class="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Comments</span>
+                            <p class="text-xs text-slate-600 leading-relaxed">${escHtml(e.comments)}</p>
                         </div>` : '';
 
                     return `
-                    <div class="eval-entry">
-                        <div class="eval-header" onclick="window.toggleEval('${e.id}')">
-                            <div class="eval-header-left">
-                                <div class="rating-circle">
-                                    <span class="num">${rating}</span>
-                                    <span class="denom">/ 5</span>
+                    <div class="border border-slate-200 mb-3 bg-white overflow-hidden transition-all duration-200">
+                        <div class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition" onclick="window.toggleEval('${e.id}')">
+                            <div class="flex items-center gap-4">
+                                <div class="w-10 h-10 bg-slate-50 border border-slate-200 flex flex-col items-center justify-center flex-shrink-0">
+                                    <span class="text-sm font-black text-slate-800 leading-none">${rating}</span>
+                                    <span class="text-[8px] font-bold text-slate-400">/ 5</span>
                                 </div>
                                 <div>
-                                    <div class="eval-type">${escHtml(e.type || 'Evaluation')}</div>
-                                    <div class="eval-date">
-                                        <div class="stars" style="display:inline-flex;margin-right:6px;">${stars(rating)}</div>
-                                        ${escHtml(dateStr)}
-                                        ${e.evaluatorName ? ` · by ${escHtml(e.evaluatorName)}` : ''}
-                                        ${e.schoolId ? ` · ${escHtml(e.schoolId)}` : ''}
+                                    <div class="font-bold text-slate-800 text-[13px] mb-0.5">${escHtml(e.type || 'Evaluation')}</div>
+                                    <div class="text-[10px] font-medium text-slate-500 flex items-center gap-2 flex-wrap">
+                                        <div class="flex">${stars(rating)}</div>
+                                        <span>&bull; ${escHtml(dateStr)}</span>
+                                        ${e.evaluatorName ? `<span>&bull; by ${escHtml(e.evaluatorName)}</span>` : ''}
+                                        ${e.schoolId ? `<span>&bull; ${escHtml(e.schoolId)}</span>` : ''}
                                     </div>
                                 </div>
                             </div>
-                            <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
-                                ${rec ? `<span class="rec-badge" style="${recStyle(rec)}">${escHtml(rec)}</span>` : ''}
-                                <i id="eval-chevron-${e.id}" class="fa-solid fa-chevron-down" style="font-size:11px;color:#9ab0c6;transition:transform 0.2s;"></i>
+                            <div class="flex items-center gap-3 flex-shrink-0">
+                                ${rec ? `<span class="border text-[9px] font-black uppercase tracking-widest px-2 py-1 ${recStyle(rec)}">${escHtml(rec)}</span>` : ''}
+                                <i id="eval-chevron-${e.id}" class="fa-solid fa-chevron-down text-xs text-slate-400 transition-transform duration-200"></i>
                             </div>
                         </div>
-                        <div class="eval-body ${i === 0 ? 'open' : ''}" id="eval-body-${e.id}">
+                        <div class="${i === 0 ? '' : 'hidden'} border-t border-slate-100 bg-slate-50 p-4" id="eval-body-${e.id}">
                             ${writtenBlock}
                             ${commentsBlock}
-                            ${!writtenBlock && !commentsBlock ? '<p style="font-size:12px;color:#9ab0c6;font-style:italic;">No additional detail recorded.</p>' : ''}
+                            ${!writtenBlock && !commentsBlock ? '<p class="text-xs text-slate-400 italic">No additional detail recorded.</p>' : ''}
                         </div>
                     </div>`;
                 }).join('');
 
-                // Set first chevron to rotated since it starts open
                 const firstChevron = document.getElementById(`eval-chevron-${evals[0].id}`);
                 if (firstChevron) firstChevron.style.transform = 'rotate(180deg)';
             }
         } catch (e) {
-            console.error('[Deactivated] evaluations load error:', e);
-            evalEl.innerHTML = '<div class="empty">Could not load evaluations. Contact ConnectUs for a copy of your record.</div>';
+            evalEl.innerHTML = '<div class="text-center py-6 text-rose-500 font-bold text-xs uppercase tracking-widest">Could not load evaluations.</div>';
         }
 
     } catch (e) {
-        console.error('[Deactivated] loadPage error:', e);
-        document.getElementById('identityLoader').innerHTML =
-            '<p style="color:#e31b4a;font-weight:600;text-align:center;padding:16px;">Error loading record. Please try again or contact support.</p>';
+        document.getElementById('identityLoader').innerHTML = '<p class="text-rose-600 font-bold py-4 text-xs uppercase tracking-widest">Error loading record. Please contact support.</p>';
     }
 }
 </script>
