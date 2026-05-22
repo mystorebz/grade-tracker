@@ -185,7 +185,7 @@ function handleClear() {
     Object.keys(localStorage)
         .filter(k => k.startsWith('connectUs_') || k.startsWith('connectus_'))
         .forEach(k => localStorage.removeItem(k));
-    window.location.replace('../index.html');
+    window.location.replace('../login.html');
 }
 
 window.handleClear = handleClear;
