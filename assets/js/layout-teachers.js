@@ -45,19 +45,19 @@ export function injectTeacherLayout(activePageId, pageTitle, pageSub, showSearch
 
         <nav class="sidebar-nav">
           <p class="nav-section-label">Main</p>
-          <a href="../home/home.html"             id="nav-overview"      class="nav-item"><i class="fa-solid fa-chart-pie"></i><span>Overview</span></a>
-          <a href="../roster/roster.html"         id="nav-students"      class="nav-item"><i class="fa-solid fa-users"></i><span>My Roster</span></a>
+          <a href="../home/home.html"             id="nav-overview"     class="nav-item"><i class="fa-solid fa-chart-pie"></i><span>Overview</span></a>
+          <a href="../roster/roster.html"         id="nav-students"     class="nav-item"><i class="fa-solid fa-users"></i><span>My Roster</span></a>
           <a href="../grade_form/grade_form.html" id="nav-enter-grade"  class="nav-item"><i class="fa-solid fa-plus-circle"></i><span>Enter Grade</span></a>
-          <a href="../subjects/subjects.html"     id="nav-subjects"      class="nav-item"><i class="fa-solid fa-layer-group"></i><span>Subjects</span></a>
-          <a href="../gradebook/gradebook.html"   id="nav-gradebook"     class="nav-item"><i class="fa-solid fa-book"></i><span>Gradebook</span></a>
+          <a href="../subjects/subjects.html"     id="nav-subjects"     class="nav-item"><i class="fa-solid fa-layer-group"></i><span>Subjects</span></a>
+          <a href="../gradebook/gradebook.html"   id="nav-gradebook"    class="nav-item"><i class="fa-solid fa-book"></i><span>Gradebook</span></a>
 
           <p class="nav-section-label">Reports & Analytics</p>
-          <a href="../analytics/analytics.html"   id="nav-analytics"     class="nav-item"><i class="fa-solid fa-star-half-stroke"></i><span>My Evaluations</span></a>
-          <a href="../archives/archives.html"     id="nav-archives"      class="nav-item"><i class="fa-solid fa-box-archive"></i><span>Archives</span></a>
+          <a href="../analytics/analytics.html"   id="nav-analytics"    class="nav-item"><i class="fa-solid fa-star-half-stroke"></i><span>My Evaluations</span></a>
+          <a href="../archives/archives.html"     id="nav-archives"     class="nav-item"><i class="fa-solid fa-box-archive"></i><span>Archives</span></a>
 
           <p class="nav-section-label">System</p>
-          <a href="../reports/reports.html"       id="nav-reports"       class="nav-item"><i class="fa-solid fa-chart-column"></i><span>Reports</span></a>
-          <a href="../settings/settings.html"     id="nav-settings"      class="nav-item"><i class="fa-solid fa-gear"></i><span>Settings</span></a>
+          <a href="../reports/reports.html"       id="nav-reports"      class="nav-item"><i class="fa-solid fa-chart-column"></i><span>Reports</span></a>
+          <a href="../settings/settings.html"     id="nav-settings"     class="nav-item"><i class="fa-solid fa-gear"></i><span>Settings</span></a>
         </nav>
 
         <div class="sidebar-footer">
@@ -75,33 +75,44 @@ export function injectTeacherLayout(activePageId, pageTitle, pageSub, showSearch
     `;
 
     // ── TOPBAR ───────────────────────────────────────────────────────────────
+    // Hamburger: flex md:hidden — mobile only, never visible on desktop.
+    // Logo: hidden on mobile to save topbar space.
+    // Period label: hidden on mobile, select stays.
+    // Locked badge: hidden on very small screens.
     const topbarHTML = `
       <header class="topbar">
-        <div class="topbar-left">
-          <h1 class="topbar-title">${pageTitle}</h1>
-          <p class="topbar-sub">${pageSub}</p>
+        <div class="topbar-left" style="display:flex;align-items:center;gap:10px;">
+          <button id="sidebarToggle" aria-label="Open menu"
+            class="flex md:hidden items-center justify-center w-9 h-9 rounded-lg bg-slate-100 text-slate-600 hover:bg-green-50 hover:text-green-700 transition flex-shrink-0"
+            style="border:none;cursor:pointer;">
+            <i class="fa-solid fa-bars" style="font-size:14px;"></i>
+          </button>
+          <div>
+            <h1 class="topbar-title">${pageTitle}</h1>
+            <p class="topbar-sub hidden sm:block">${pageSub}</p>
+          </div>
         </div>
         <div class="topbar-right">
 
-          <div id="topbarSearch" class="topbar-search ${showSearch ? 'topbar-search-visible' : 'topbar-search-hidden'}">
+          <div id="topbarSearch" class="topbar-search ${showSearch ? 'topbar-search-visible' : 'topbar-search-hidden'} hidden md:flex">
             <i class="fa-solid fa-magnifying-glass topbar-search-icon"></i>
             <input type="text" id="searchInput" placeholder="Search students…" class="topbar-search-input">
           </div>
 
           <div id="topbarLockedBadge" class="topbar-locked-badge hidden">
             <i class="fa-solid fa-lock"></i>
-            <span>Locked</span>
+            <span class="hidden sm:inline">Locked</span>
           </div>
 
           <div class="topbar-period-wrap">
             <i class="fa-solid fa-calendar-days topbar-period-icon"></i>
-            <span class="topbar-period-label">Period</span>
+            <span class="topbar-period-label hidden md:inline">Period</span>
             <select id="activeSemester" class="topbar-period-select">
               <option value="">Loading…</option>
             </select>
           </div>
 
-          <img src="../../assets/images/logo.png" alt="ConnectUs" class="topbar-logo">
+          <img src="../../assets/images/logo.png" alt="ConnectUs" class="topbar-logo hidden sm:block">
         </div>
       </header>
     `;
@@ -109,6 +120,14 @@ export function injectTeacherLayout(activePageId, pageTitle, pageSub, showSearch
     // ── INJECT ───────────────────────────────────────────────────────────────
     document.getElementById('layout-sidebar-container').innerHTML = sidebarHTML;
     document.getElementById('layout-topbar-container').innerHTML  = topbarHTML;
+
+    // ── INJECT OVERLAY INTO BODY ─────────────────────────────────────────────
+    // z-index: 15 in CSS — below the sidebar container stacking context (z-20)
+    // so the sidebar paints above it and all nav taps reach their links.
+    // Visibility controlled by opacity + pointer-events only — never display.
+    const overlay  = document.createElement('div');
+    overlay.id     = 'sidebarOverlay';
+    document.body.appendChild(overlay);
 
     // ── POPULATE TEACHER PROFILE DATA ────────────────────────────────────────
     const session = getSessionData('teacher');
@@ -118,14 +137,13 @@ export function injectTeacherLayout(activePageId, pageTitle, pageSub, showSearch
         document.getElementById('sidebarSchoolId').textContent = session.schoolId || '—';
 
         // ── CLASSES SYNC FIX ──
-        // Check for globally cached classes first, fallback to session data
         const cachedClasses = localStorage.getItem('connectus_cached_classes');
         let classesToDisplay = session.teacherData.classes || [session.teacherData.className || ''];
-        
+
         if (cachedClasses) {
             try { classesToDisplay = JSON.parse(cachedClasses); } catch(e) {}
         }
-        
+
         document.getElementById('displayTeacherClasses').innerHTML =
             classesToDisplay.filter(Boolean).map(c => `<span class="class-pill">${c}</span>`).join('');
     }
@@ -136,7 +154,7 @@ export function injectTeacherLayout(activePageId, pageTitle, pageSub, showSearch
         if (cachedStats) {
             const stats = JSON.parse(cachedStats);
             const sbStudents = document.getElementById('sb-students');
-            const sbRisk = document.getElementById('sb-risk');
+            const sbRisk     = document.getElementById('sb-risk');
 
             if (sbStudents && stats.students !== undefined) {
                 sbStudents.textContent = stats.students;
@@ -158,4 +176,23 @@ export function injectTeacherLayout(activePageId, pageTitle, pageSub, showSearch
     document.getElementById('logoutBtn').addEventListener('click', () => {
         logout('../../teacher/login.html');
     });
-}
+
+    // ── MOBILE SIDEBAR TOGGLE ────────────────────────────────────────────────
+    // Class toggles only — no body overflow manipulation, no display toggling.
+    // Nav <a> links navigate naturally on their own.
+    const sidebar   = document.getElementById('sidebar');
+    const toggleBtn = document.getElementById('sidebarToggle');
+
+    function openSidebar() {
+        sidebar.classList.add('sidebar-open');
+        overlay.classList.add('visible');
+    }
+
+    function closeSidebar() {
+        sidebar.classList.remove('sidebar-open');
+        overlay.classList.remove('visible');
+    }
+
+    if (toggleBtn) toggleBtn.addEventListener('click', openSidebar);
+    overlay.addEventListener('click', closeSidebar);
+}  
