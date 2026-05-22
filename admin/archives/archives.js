@@ -338,15 +338,22 @@ window.printStudentRecord = async function(studentId) {
                             : ev.type === 'behavioral' ? 'Behavioral Evaluation'
                             : ev.type === 'academic' ? 'Academic Progress Evaluation'
                             : escHtml(ev.type || 'Evaluation');
+
+            // ── ONLY CHANGE: check ev.written nested object first,
+            //                 fall back to flat fields for older records ──────
             const writtenParts = [
-                ev.narrative          ? `<strong>Narrative:</strong> ${escHtml(ev.narrative)}` : '',
-                ev.strengths          ? `<strong>Strengths:</strong> ${escHtml(ev.strengths)}` : '',
-                ev.areasForImprovement? `<strong>Improvements:</strong> ${escHtml(ev.areasForImprovement)}` : '',
-                ev.comment            ? `<strong>Comment:</strong> ${escHtml(ev.comment)}` : '',
-                ev.comments           ? `<strong>Comments:</strong> ${escHtml(ev.comments)}` : '',
-                ev.actionPlan         ? `<strong>Action Plan:</strong> ${escHtml(ev.actionPlan)}` : '',
-                ev.description        ? `<strong>Description:</strong> ${escHtml(ev.description)}` : '',
+                (ev.written?.narrative    || ev.narrative)            ? `<strong>Narrative:</strong> ${escHtml(ev.written?.narrative    || ev.narrative)}` : '',
+                (ev.written?.strengths    || ev.strengths)            ? `<strong>Strengths:</strong> ${escHtml(ev.written?.strengths    || ev.strengths)}` : '',
+                (ev.written?.growth       || ev.areasForImprovement)  ? `<strong>Areas for Growth:</strong> ${escHtml(ev.written?.growth || ev.areasForImprovement)}` : '',
+                ev.written?.steps                                     ? `<strong>Next Steps:</strong> ${escHtml(ev.written.steps)}` : '',
+                ev.written?.interventions                             ? `<strong>Interventions:</strong> ${escHtml(ev.written.interventions)}` : '',
+                (ev.written?.actionPlan   || ev.actionPlan)           ? `<strong>Action Plan:</strong> ${escHtml(ev.written?.actionPlan  || ev.actionPlan)}` : '',
+                (ev.written?.description  || ev.description)          ? `<strong>Description:</strong> ${escHtml(ev.written?.description || ev.description)}` : '',
+                ev.comment                                            ? `<strong>Comment:</strong> ${escHtml(ev.comment)}` : '',
+                ev.comments                                           ? `<strong>Comments:</strong> ${escHtml(ev.comments)}` : '',
+                ev.status                                             ? `<strong>Status:</strong> ${escHtml(ev.status)}` : '',
             ].filter(Boolean).join('<br>');
+
             return `<tr>
                 <td style="border-bottom:1px solid #f1f5f9;padding:10px 14px;font-weight:700;color:#334155;">${typeLabel}<br><span style="font-size:10px;color:#94a3b8;font-weight:600;">${evDate}${ev.status ? ' · ' + escHtml(ev.status) : ''}</span></td>
                 <td style="border-bottom:1px solid #f1f5f9;padding:10px 14px;font-size:11px;color:#475569;line-height:1.5;">${writtenParts || '—'}</td>
