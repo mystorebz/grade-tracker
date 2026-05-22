@@ -3,511 +3,171 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Account Restricted — ConnectUs</title>
+    <title>Account Restricted — ConnectUs Admin</title>
+    
     <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800;9..40,900&family=DM+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['DM Sans', 'sans-serif'],
+                        mono: ['DM Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+
     <style>
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'DM Sans', sans-serif; }
+        
+        .loader-spin { animation: spin 1s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
 
-        body {
-            font-family: 'DM Sans', sans-serif;
-            background: #f0f4f8;
-            color: #0d1f35;
-            min-height: 100vh;
-        }
-
-        /* ── TOPBAR ── */
-        .topbar {
-            background: #0d1f35;
-            height: 56px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 24px;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
-
-        .topbar-logo {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .topbar-logo img { height: 28px; object-fit: contain; }
-
-        .topbar-logo span {
-            font-size: 13px;
-            font-weight: 700;
-            color: #9ab0c6;
-            letter-spacing: 0.05em;
-        }
-
-        .topbar-badge {
-            font-size: 10px;
-            font-weight: 700;
-            padding: 3px 12px;
-            border-radius: 99px;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-        }
-
-        .badge-amber { background: #fef3c7; color: #b45309; }
-        .badge-red   { background: #fff0f3; color: #e31b4a; }
-
-        /* ── LAYOUT ── */
-        .page-wrap {
-            max-width: 860px;
-            margin: 0 auto;
-            padding: 32px 20px 60px;
-        }
-
-        /* ── BANNERS ── */
-        .banner {
-            border-radius: 10px;
-            padding: 18px 22px;
-            display: flex;
-            align-items: flex-start;
-            gap: 14px;
-            margin-bottom: 28px;
-            border-left-width: 4px;
-            border-left-style: solid;
-        }
-
-        .banner-amber {
-            background: #fffbeb;
-            border-color: #f59e0b;
-            border: 1px solid #fde68a;
-            border-left: 4px solid #f59e0b;
-        }
-
-        .banner-red {
-            background: #fff0f3;
-            border: 1px solid #ffd6de;
-            border-left: 4px solid #e31b4a;
-        }
-
-        .banner i { font-size: 20px; margin-top: 2px; flex-shrink: 0; }
-        .banner-amber i { color: #f59e0b; }
-        .banner-red   i { color: #e31b4a; }
-
-        .banner-text h2 { font-size: 15px; font-weight: 800; margin-bottom: 4px; }
-        .banner-amber .banner-text h2 { color: #92400e; }
-        .banner-red   .banner-text h2 { color: #be123c; }
-
-        .banner-text p {
-            font-size: 12.5px;
-            color: #374f6b;
-            font-weight: 500;
-            line-height: 1.6;
-        }
-
-        /* ── CARDS ── */
-        .card {
-            background: #fff;
-            border: 1px solid #dce3ed;
-            border-radius: 12px;
-            padding: 22px 24px;
-            margin-bottom: 20px;
-            box-shadow: 0 1px 4px rgba(13,31,53,0.05);
-        }
-
-        .card-title {
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.12em;
-            color: #6b84a0;
-            margin-bottom: 16px;
-            display: flex;
-            align-items: center;
-            gap: 7px;
-        }
-
-        /* ── INFO GRID ── */
-        .info-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-
-        .info-item {
-            background: #f8fafb;
-            border: 1px solid #f0f4f8;
-            border-radius: 8px;
-            padding: 10px 14px;
-        }
-
-        .info-item label {
-            display: block;
-            font-size: 9px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            color: #9ab0c6;
-            margin-bottom: 4px;
-        }
-
-        .info-item span {
-            font-size: 13px;
-            font-weight: 700;
-            color: #0d1f35;
-        }
-
-        .mono { font-family: 'DM Mono', monospace; font-size: 11.5px; letter-spacing: 0.05em; }
-
-        /* ── STAT CARDS ── */
-        .stat-row {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 14px;
-            margin-bottom: 20px;
-        }
-
-        .stat-card {
-            background: #fff;
-            border: 1px solid #dce3ed;
-            border-radius: 12px;
-            padding: 18px 20px;
-            display: flex;
-            align-items: flex-start;
-            gap: 14px;
-            box-shadow: 0 1px 4px rgba(13,31,53,0.05);
-        }
-
-        .stat-icon {
-            width: 38px;
-            height: 38px;
-            border-radius: 9px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            font-size: 14px;
-        }
-
-        .stat-val {
-            font-size: 24px;
-            font-weight: 800;
-            color: #0d1f35;
-            line-height: 1;
-            margin-bottom: 4px;
-        }
-
-        .stat-lbl {
-            font-size: 10.5px;
-            font-weight: 700;
-            color: #9ab0c6;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-        }
-
-        /* ── BARS ── */
-        .bar-row { margin-bottom: 14px; }
-        .bar-row:last-child { margin-bottom: 0; }
-
-        .bar-label {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 5px;
-        }
-
-        .bar-label span:first-child {
-            font-size: 12px;
-            font-weight: 700;
-            color: #374f6b;
-        }
-
-        .bar-label span:last-child {
-            font-size: 12px;
-            font-weight: 800;
-            color: #0d1f35;
-        }
-
-        .bar-track {
-            height: 6px;
-            background: #f0f4f8;
-            border-radius: 99px;
-            overflow: hidden;
-        }
-
-        .bar-fill {
-            height: 100%;
-            border-radius: 99px;
-            transition: width 0.5s ease;
-        }
-
-        /* ── TWO-COL ANALYTICS ── */
-        .analytics-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
-
-        /* ── CONTACT BLOCK ── */
-        .contact-card {
-            background: #eef4ff;
-            border: 1px solid #c7d9fd;
-            border-radius: 12px;
-            padding: 22px 24px;
-            display: flex;
-            align-items: flex-start;
-            gap: 16px;
-            margin-bottom: 20px;
-        }
-
-        .contact-card i { font-size: 20px; color: #2563eb; margin-top: 2px; flex-shrink: 0; }
-        .contact-card h3 { font-size: 13.5px; font-weight: 700; color: #0d1f35; margin-bottom: 5px; }
-        .contact-card p  { font-size: 12px; color: #374f6b; font-weight: 500; line-height: 1.6; margin-bottom: 10px; }
-        .contact-card a  { font-size: 12.5px; font-weight: 700; color: #2563eb; text-decoration: none; }
-        .contact-card a:hover { text-decoration: underline; }
-
-        /* ── SUBADMIN CENTERED CARD ── */
-        .centered-wrap {
-            min-height: calc(100vh - 56px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 32px 20px;
-        }
-
-        .sub-card {
-            background: #fff;
-            border: 1px solid #dce3ed;
-            border-radius: 16px;
-            padding: 40px 36px;
-            max-width: 460px;
-            width: 100%;
-            text-align: center;
-            box-shadow: 0 2px 12px rgba(13,31,53,0.08);
-        }
-
-        .sub-icon {
-            width: 56px;
-            height: 56px;
-            background: #fff0f3;
-            border: 1px solid #ffd6de;
-            border-radius: 14px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 20px;
-            font-size: 22px;
-            color: #e31b4a;
-        }
-
-        .sub-card h2 {
-            font-size: 17px;
-            font-weight: 800;
-            color: #0d1f35;
-            margin-bottom: 8px;
-        }
-
-        .sub-card .sub-name {
-            font-size: 13px;
-            font-weight: 600;
-            color: #6b84a0;
-            margin-bottom: 20px;
-        }
-
-        .sub-divider {
-            border: none;
-            border-top: 1px solid #f0f4f8;
-            margin: 20px 0;
-        }
-
-        .sub-card p {
-            font-size: 13px;
-            color: #374f6b;
-            font-weight: 500;
-            line-height: 1.7;
-            margin-bottom: 20px;
-        }
-
-        .sub-contact {
-            background: #eef4ff;
-            border: 1px solid #c7d9fd;
-            border-radius: 8px;
-            padding: 12px 16px;
-            font-size: 12px;
-            color: #374f6b;
-            font-weight: 500;
-            margin-bottom: 24px;
-        }
-
-        .sub-contact a {
-            font-weight: 700;
-            color: #2563eb;
-            text-decoration: none;
-        }
-
-        /* ── LOGOUT BUTTON ── */
-        .logout-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            background: #fff;
-            border: 1px solid #dce3ed;
-            color: #374f6b;
-            font-family: 'DM Sans', sans-serif;
-            font-size: 12.5px;
-            font-weight: 700;
-            padding: 10px 20px;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.15s;
-        }
-
-        .logout-btn:hover { background: #f8fafb; border-color: #b8c5d4; }
-
-        /* ── LOADER ── */
-        .loader {
-            text-align: center;
-            padding: 32px 24px;
-            color: #9ab0c6;
-            font-size: 13px;
-            font-weight: 500;
-        }
-
-        .loader i { font-size: 22px; color: #2563eb; display: block; margin-bottom: 10px; }
-
-        .empty { color: #9ab0c6; font-size: 12.5px; font-style: italic; text-align: center; padding: 16px 0; }
-
-        @media (max-width: 640px) {
-            .stat-row      { grid-template-columns: 1fr; }
-            .analytics-grid { grid-template-columns: 1fr; }
-            .info-grid     { grid-template-columns: 1fr; }
-        }
+        /* Sharp, institutional progress bar animation */
+        .bar-fill { transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
     </style>
 </head>
-<body>
+<body class="flex flex-col h-screen overflow-hidden bg-slate-50 text-slate-800">
 
-<!-- ── TOPBAR ── -->
-<div class="topbar">
-    <div class="topbar-logo">
-        <img src="../../assets/images/logo.png" alt="ConnectUs" onerror="this.style.display='none'">
-        <span>ConnectUs</span>
+    <div class="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 flex-shrink-0 z-20 shadow-sm">
+        <div class="flex items-center gap-3">
+            <img src="../../assets/images/logo.png" alt="ConnectUs" class="h-7 object-contain" onerror="this.style.display='none'">
+            <span class="font-black text-slate-400 tracking-wider text-sm uppercase hidden sm:block">Admin Portal</span>
+        </div>
+        <div id="topbarBadge" class="text-[10px] font-black px-4 py-1.5 rounded-none tracking-widest uppercase border shadow-sm flex items-center gap-2">
+            </div>
     </div>
-    <span class="topbar-badge" id="topbarBadge"></span>
-</div>
 
-<!-- ══ SUPER ADMIN VIEW ══════════════════════════════════════════════════ -->
-<div id="superAdminView" style="display:none;">
-    <div class="page-wrap">
+    <main class="flex-1 overflow-y-auto p-5 md:p-8">
 
-        <!-- Amber banner -->
-        <div class="banner banner-amber">
-            <i class="fa-solid fa-circle-exclamation"></i>
-            <div class="banner-text">
-                <h2>Your school account is currently suspended</h2>
-                <p>This may be due to a missed renewal or a pending verification review.
-                   Your school data is fully preserved. Contact ConnectUs to restore access.</p>
+        <div id="superAdminView" class="hidden max-w-6xl mx-auto space-y-8 pb-10">
+
+            <div class="bg-amber-50 border-l-4 border-amber-500 border-y-0 border-r-0 p-5 rounded-none flex flex-col sm:flex-row items-start sm:items-center justify-between shadow-sm gap-4">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 bg-amber-100 text-amber-600 rounded-none flex items-center justify-center text-xl flex-shrink-0">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <div>
+                        <h4 class="font-black text-amber-800 text-sm uppercase tracking-wider">Institution Suspended</h4>
+                        <p class="text-xs text-amber-700 font-semibold mt-0.5">
+                            Account paused due to billing or verification. Your data remains fully preserved on our servers.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                
+                <div class="bg-white border border-slate-200 p-6 rounded-none shadow-sm md:col-span-2">
+                    <div class="flex items-center gap-3 mb-5 border-b border-slate-100 pb-3">
+                        <i class="fa-solid fa-school text-indigo-500"></i>
+                        <h3 class="font-black text-slate-700 text-sm uppercase tracking-wider">School Identity</h3>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4" id="saIdentityGrid">
+                        </div>
+                </div>
+
+                <div class="bg-white border border-slate-200 p-6 rounded-none shadow-sm flex items-center gap-4">
+                    <div class="w-12 h-12 bg-blue-50 border border-blue-100 text-blue-500 rounded-none flex items-center justify-center text-xl flex-shrink-0">
+                        <i class="fa-solid fa-chalkboard-user"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h3 id="saTeacherCount" class="text-3xl font-black text-slate-800 tracking-tighter leading-none mb-1">
+                            <i class="fa-solid fa-circle-notch loader-spin text-slate-300 text-xl"></i>
+                        </h3>
+                        <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Active Teachers</p>
+                    </div>
+                </div>
+
+                <div class="bg-white border border-slate-200 p-6 rounded-none shadow-sm flex items-center gap-4">
+                    <div class="w-12 h-12 bg-emerald-50 border border-emerald-100 text-emerald-500 rounded-none flex items-center justify-center text-xl flex-shrink-0">
+                        <i class="fa-solid fa-user-graduate"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h3 id="saStudentCount" class="text-3xl font-black text-slate-800 tracking-tighter leading-none mb-1">
+                            <i class="fa-solid fa-circle-notch loader-spin text-slate-300 text-xl"></i>
+                        </h3>
+                        <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Active Students</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white border border-slate-200 shadow-sm p-6 rounded-none">
+                <div class="flex items-center gap-2 mb-6 border-b border-slate-100 pb-3">
+                    <i class="fa-solid fa-chart-pie text-slate-600"></i>
+                    <h3 class="font-black text-slate-700 text-sm uppercase tracking-wider">Preserved Analytics Dashboard</h3>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div>
+                        <h4 class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Class Performance</h4>
+                        <div id="saClassBars" class="space-y-4">
+                            <div class="text-center py-6 text-slate-400 font-bold text-xs uppercase tracking-widest"><i class="fa-solid fa-circle-notch loader-spin text-indigo-400 text-xl mb-2 block"></i> Aggregating...</div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h4 class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Subject Mastery</h4>
+                        <div id="saSubjectBars" class="space-y-4">
+                            <div class="text-center py-6 text-slate-400 font-bold text-xs uppercase tracking-widest"><i class="fa-solid fa-circle-notch loader-spin text-indigo-400 text-xl mb-2 block"></i> Aggregating...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex flex-col md:flex-row items-center justify-between gap-6 border-t border-slate-200 pt-6 mt-4">
+                <div class="bg-indigo-50 border border-indigo-100 p-4 rounded-none flex items-center gap-4 w-full md:w-auto shadow-sm">
+                    <i class="fa-solid fa-headset text-indigo-500 text-2xl flex-shrink-0 mx-2"></i>
+                    <div>
+                        <h4 class="font-black text-indigo-900 text-xs uppercase tracking-wider">Need to restore access?</h4>
+                        <a href="mailto:info@connectusonline.org" class="text-indigo-600 font-bold text-sm hover:underline">Contact ConnectUs Support &rarr;</a>
+                    </div>
+                </div>
+
+                <button onclick="handleLogout()" class="bg-slate-800 hover:bg-slate-900 text-white font-black py-3.5 px-8 rounded-none transition flex items-center gap-3 shadow-md w-full md:w-auto uppercase tracking-wider text-xs">
+                    <i class="fa-solid fa-arrow-right-from-bracket"></i> Sign Out Securely
+                </button>
+            </div>
+
+        </div>
+
+        <div id="subAdminView" class="hidden h-full flex flex-col items-center justify-center py-10">
+            <div class="bg-white border border-slate-200 rounded-none p-10 max-w-lg w-full text-center shadow-md">
+                
+                <div class="w-20 h-20 bg-rose-50 border border-rose-100 text-rose-600 rounded-none flex items-center justify-center text-4xl mx-auto mb-6">
+                    <i class="fa-solid fa-ban"></i>
+                </div>
+
+                <h2 class="text-2xl font-black text-slate-800 mb-2 tracking-tighter uppercase">Access Revoked</h2>
+                <div id="subAdminMeta" class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-6">Sub-Administrator</div>
+
+                <div class="w-16 h-1 bg-slate-200 mx-auto mb-6"></div>
+
+                <p class="text-slate-600 font-medium text-sm leading-relaxed mb-8">
+                    Your administrative privileges for this school have been removed by the principal or super administrator. 
+                </p>
+
+                <div class="bg-slate-50 border border-slate-200 p-4 text-xs font-bold text-slate-500 mb-8 rounded-none text-left">
+                    <i class="fa-solid fa-circle-info text-slate-400 mr-2"></i> If you believe this is an error, please contact your school's principal directly.
+                </div>
+
+                <button onclick="handleLogout()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-black py-4 px-6 rounded-none transition flex items-center justify-center gap-3 shadow-md uppercase tracking-wider text-xs">
+                    <i class="fa-solid fa-power-off"></i> Clear Session & Sign Out
+                </button>
+
             </div>
         </div>
 
-        <!-- School Identity -->
-        <div class="card">
-            <div class="card-title"><i class="fa-solid fa-school"></i> School Profile</div>
-            <div class="info-grid" id="saIdentityGrid"></div>
-        </div>
-
-        <!-- Stat Cards -->
-        <div class="stat-row">
-            <div class="stat-card">
-                <div class="stat-icon" style="background:#eef4ff;">
-                    <i class="fa-solid fa-chalkboard-user" style="color:#2563eb;"></i>
-                </div>
-                <div>
-                    <div class="stat-val" id="saTeacherCount"><i class="fa-solid fa-spinner fa-spin" style="font-size:16px;color:#9ab0c6;"></i></div>
-                    <div class="stat-lbl">Teachers</div>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon" style="background:#edfaf4;">
-                    <i class="fa-solid fa-user-graduate" style="color:#0ea871;"></i>
-                </div>
-                <div>
-                    <div class="stat-val" id="saStudentCount"><i class="fa-solid fa-spinner fa-spin" style="font-size:16px;color:#9ab0c6;"></i></div>
-                    <div class="stat-lbl">Active Students</div>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon" style="background:#fef3c7;">
-                    <i class="fa-solid fa-crown" style="color:#f59e0b;"></i>
-                </div>
-                <div>
-                    <div class="stat-val" id="saPlanName" style="font-size:14px;margin-top:4px;">—</div>
-                    <div class="stat-lbl">Subscription Plan</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Analytics -->
-        <div class="analytics-grid">
-            <div class="card" style="margin-bottom:0;">
-                <div class="card-title"><i class="fa-solid fa-layer-group"></i> Class Performance</div>
-                <div id="saClassBars"><div class="loader"><i class="fa-solid fa-spinner fa-spin"></i>Loading...</div></div>
-            </div>
-            <div class="card" style="margin-bottom:0;">
-                <div class="card-title"><i class="fa-solid fa-book-open"></i> Subject Mastery</div>
-                <div id="saSubjectBars"><div class="loader"><i class="fa-solid fa-spinner fa-spin"></i>Loading...</div></div>
-            </div>
-        </div>
-        <div style="margin-bottom:20px;"></div>
-
-        <!-- Contact -->
-        <div class="contact-card">
-            <i class="fa-solid fa-envelope"></i>
-            <div>
-                <h3>Restore your school's access</h3>
-                <p>To resolve your suspension, renew your subscription, or clarify your account status,
-                   contact the ConnectUs team directly. Your data is safe and fully preserved.</p>
-                <a href="mailto:info@connectusonline.org">
-                    <i class="fa-solid fa-paper-plane" style="margin-right:5px;"></i>info@connectusonline.org
-                </a>
-            </div>
-        </div>
-
-        <button class="logout-btn" onclick="handleLogout()">
-            <i class="fa-solid fa-arrow-right-from-bracket"></i> Sign Out
-        </button>
-
-    </div>
-</div>
-
-<!-- ══ SUB-ADMIN VIEW ════════════════════════════════════════════════════ -->
-<div id="subAdminView" style="display:none;">
-    <div class="centered-wrap">
-        <div class="sub-card">
-
-            <div class="sub-icon">
-                <i class="fa-solid fa-user-slash"></i>
-            </div>
-
-            <h2>Access Revoked</h2>
-            <div class="sub-name" id="subAdminMeta">Sub-Administrator</div>
-
-            <hr class="sub-divider">
-
-            <p>Your admin access to this school's ConnectUs portal has been removed by the principal or super administrator.</p>
-
-            <div class="sub-contact">
-                For assistance, contact your school's principal directly,
-                or reach ConnectUs at
-                <a href="mailto:info@connectusonline.org">info@connectusonline.org</a>
-            </div>
-
-            <button class="logout-btn" onclick="handleLogout()" style="width:100%;justify-content:center;">
-                <i class="fa-solid fa-arrow-right-from-bracket"></i> Sign Out & Clear Session
-            </button>
-
-        </div>
-    </div>
-</div>
+    </main>
 
 <script type="module">
 import { db } from '../../assets/js/firebase-init.js';
@@ -517,81 +177,84 @@ import {
 import { getSessionData, logout } from '../../assets/js/auth.js';
 import { calculateWeightedAverage } from '../../assets/js/utils.js';
 
-// ── Logout accessible to inline onclick ──────────────────────────────────
 window.handleLogout = () => logout('../login.html');
 
-// ── Helpers ───────────────────────────────────────────────────────────────
 function escHtml(str) {
     if (!str) return '';
-    return String(str)
-        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function infoItem(label, value, mono = false) {
-    return `<div class="info-item">
-        <label>${label}</label>
-        <span class="${mono ? 'mono' : ''}">${value || '—'}</span>
+function infoItem(label, value, isPlan = false) {
+    if (isPlan) {
+        return `
+        <div class="mb-2">
+            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">${label}</p>
+            <span class="bg-amber-100 border border-amber-200 text-amber-800 font-black text-[10px] px-2 py-1 rounded-none uppercase tracking-widest">${value || '—'}</span>
+        </div>`;
+    }
+    return `
+    <div class="mb-2">
+        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">${label}</p>
+        <p class="font-bold text-slate-800 text-sm truncate">${value || '—'}</p>
     </div>`;
 }
 
 function barHtml(label, avg, subLabel = '') {
-    const color = avg >= 80 ? '#0ea871' : avg >= 70 ? '#2563eb' : avg >= 65 ? '#f59e0b' : '#e31b4a';
+    // Sharp institutional colors
+    const colorClass = avg >= 80 ? 'bg-emerald-500' : avg >= 70 ? 'bg-blue-500' : avg >= 65 ? 'bg-amber-500' : 'bg-rose-500';
+    const textClass = avg >= 80 ? 'text-emerald-700' : avg >= 70 ? 'text-blue-700' : avg >= 65 ? 'text-amber-700' : 'text-rose-700';
+
     return `
-    <div class="bar-row">
-        <div class="bar-label">
-            <span>${escHtml(label)}${subLabel ? `<span style="font-size:10px;color:#9ab0c6;font-weight:500;margin-left:5px;">${subLabel}</span>` : ''}</span>
-            <span style="color:${color};">${avg}%</span>
+    <div class="mb-3">
+        <div class="flex justify-between items-end mb-1.5">
+            <div class="font-bold text-slate-700 text-xs uppercase tracking-wide">
+                ${escHtml(label)}
+                ${subLabel ? `<span class="text-[9px] text-slate-400 font-bold ml-2 tracking-widest">${subLabel}</span>` : ''}
+            </div>
+            <div class="font-black ${textClass} font-mono text-sm">${avg}%</div>
         </div>
-        <div class="bar-track">
-            <div class="bar-fill" style="width:${avg}%;background:${color};"></div>
+        <div class="h-1.5 w-full bg-slate-100 rounded-none overflow-hidden">
+            <div class="${colorClass} h-full rounded-none bar-fill" style="width: 0%;" data-target="${avg}%"></div>
         </div>
     </div>`;
 }
 
 // ── Route based on session ────────────────────────────────────────────────
 const session = getSessionData('admin');
+const badge = document.getElementById('topbarBadge');
 
 if (session && session.isSuperAdmin) {
-    // ── Super Admin Suspended View ────────────────────────────────────────
-    document.getElementById('topbarBadge').className = 'topbar-badge badge-amber';
-    document.getElementById('topbarBadge').innerHTML = '<i class="fa-solid fa-circle-pause" style="margin-right:5px;"></i>Account Suspended';
-    document.getElementById('superAdminView').style.display = 'block';
+    // Super Admin View
+    badge.className += ' bg-amber-50 text-amber-700 border-amber-200';
+    badge.innerHTML = '<i class="fa-solid fa-lock"></i> Account Suspended';
+    document.getElementById('superAdminView').classList.remove('hidden');
     loadSuperAdminView(session);
 
 } else {
-    // ── Sub-Admin Deactivated View ────────────────────────────────────────
-    document.getElementById('topbarBadge').className = 'topbar-badge badge-red';
-    document.getElementById('topbarBadge').innerHTML = '<i class="fa-solid fa-circle-exclamation" style="margin-right:5px;"></i>Access Revoked';
-    document.getElementById('subAdminView').style.display = 'block';
+    // Sub-Admin View
+    badge.className += ' bg-rose-50 text-rose-700 border-rose-200';
+    badge.innerHTML = '<i class="fa-solid fa-ban"></i> Access Revoked';
+    document.getElementById('subAdminView').classList.remove('hidden');
 
-    // Populate whatever we have
     if (session) {
         const meta = [session.adminName, session.schoolName || session.schoolId].filter(Boolean).join(' · ');
         if (meta) document.getElementById('subAdminMeta').textContent = meta;
     }
 }
 
-// ── Super Admin: load school identity + stats + analytics ─────────────────
 async function loadSuperAdminView(session) {
-
-    // Identity card from session
+    // Identity Grid
     document.getElementById('saIdentityGrid').innerHTML = [
-        infoItem('School Name',  escHtml(session.schoolName)),
-        infoItem('School ID',    escHtml(session.schoolId), true),
-        infoItem('Contact Email', escHtml(session.contactEmail)),
-        infoItem('Plan',         escHtml(session.planName)),
+        infoItem('Institution Name', escHtml(session.schoolName)),
+        infoItem('ConnectUs ID',     `<span class="font-mono text-slate-500">${escHtml(session.schoolId)}</span>`),
+        infoItem('Admin Email',      escHtml(session.contactEmail)),
+        infoItem('Subscription',     escHtml(session.planName), true),
     ].join('');
 
-    document.getElementById('saPlanName').textContent = session.planName || '—';
-
     try {
-        // Fetch teachers and students
         const [tSnap, sSnap] = await Promise.all([
             getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId))),
-            getDocs(query(collection(db, 'students'),
-                where('currentSchoolId', '==', session.schoolId),
-                where('enrollmentStatus', '==', 'Active')))
+            getDocs(query(collection(db, 'students'), where('currentSchoolId', '==', session.schoolId), where('enrollmentStatus', '==', 'Active')))
         ]);
 
         document.getElementById('saTeacherCount').textContent = tSnap.size;
@@ -600,36 +263,31 @@ async function loadSuperAdminView(session) {
         const teachersList = tSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         const studentsList = sSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        // Build rubric cache
         const teacherRubrics = {};
-        teachersList.forEach(t => {
-            teacherRubrics[t.id] = t.gradeTypes || t.customGradeTypes || [];
-        });
+        teachersList.forEach(t => { teacherRubrics[t.id] = t.gradeTypes || t.customGradeTypes || []; });
 
-        // Only fetch grades if there's an active semester
         const activeSemId = session.activeSemesterId;
         if (!activeSemId || !studentsList.length) {
-            document.getElementById('saClassBars').innerHTML = '<div class="empty">No active grading period.</div>';
-            document.getElementById('saSubjectBars').innerHTML = '<div class="empty">No active grading period.</div>';
+            const emptyMsg = '<div class="text-left py-4 text-slate-400 font-bold text-xs uppercase tracking-widest italic">No active grading period data.</div>';
+            document.getElementById('saClassBars').innerHTML = emptyMsg;
+            document.getElementById('saSubjectBars').innerHTML = emptyMsg;
             return;
         }
 
-        // Fetch all grades across students
-        const classAverages  = {};
-        const subjectTotals  = {};
+        const classAverages = {};
+        const subjectTotals = {};
 
         await Promise.all(studentsList.map(async student => {
             try {
                 const gSnap = await getDocs(query(
                     collection(db, 'students', student.id, 'grades'),
-                    where('schoolId',   '==', session.schoolId),
+                    where('schoolId', '==', session.schoolId),
                     where('semesterId', '==', activeSemId)
                 ));
 
                 const grades = gSnap.docs.map(d => d.data());
                 if (!grades.length) return;
 
-                // Group by subject
                 const bySub = {};
                 grades.forEach(g => {
                     const sub = g.subject || 'Uncategorized';
@@ -637,19 +295,17 @@ async function loadSuperAdminView(session) {
                     bySub[sub].push(g);
                 });
 
-                let sumSubjAvgs = 0;
-                let subjCount   = 0;
+                let sumSubjAvgs = 0, subjCount = 0;
 
                 for (const sub in bySub) {
                     const rubric = teacherRubrics[student.teacherId] || [];
-                    const avg    = calculateWeightedAverage(bySub[sub], rubric);
+                    const avg = calculateWeightedAverage(bySub[sub], rubric);
                     if (avg !== null) {
                         sumSubjAvgs += avg;
                         subjCount++;
 
-                        // Subject totals
                         if (!subjectTotals[sub]) subjectTotals[sub] = { sum: 0, count: 0 };
-                        subjectTotals[sub].sum   += avg;
+                        subjectTotals[sub].sum += avg;
                         subjectTotals[sub].count += 1;
                     }
                 }
@@ -658,39 +314,44 @@ async function loadSuperAdminView(session) {
                     const studentAvg = Math.round(sumSubjAvgs / subjCount);
                     const cls = student.className || 'Unassigned';
                     if (!classAverages[cls]) classAverages[cls] = { sum: 0, count: 0 };
-                    classAverages[cls].sum   += studentAvg;
+                    classAverages[cls].sum += studentAvg;
                     classAverages[cls].count += 1;
                 }
-
             } catch (_) {}
         }));
 
-        // ── Class performance bars ────────────────────────────────────────
-        const classEl   = document.getElementById('saClassBars');
+        // Render Bars
+        const classEl = document.getElementById('saClassBars');
         const classData = Object.entries(classAverages)
             .map(([cls, d]) => ({ name: cls, avg: Math.round(d.sum / d.count), count: d.count }))
             .sort((a, b) => b.avg - a.avg);
 
         classEl.innerHTML = classData.length
-            ? classData.map(c => barHtml(c.name, c.avg, `${c.count} student${c.count !== 1 ? 's' : ''}`)).join('')
-            : '<div class="empty">No grade data recorded yet.</div>';
+            ? classData.map(c => barHtml(c.name, c.avg, `${c.count} EVALUATED`)).join('')
+            : '<div class="text-left py-4 text-slate-400 font-bold text-xs uppercase tracking-widest italic">No grade data recorded yet.</div>';
 
-        // ── Subject mastery bars ──────────────────────────────────────────
-        const subjEl   = document.getElementById('saSubjectBars');
+        const subjEl = document.getElementById('saSubjectBars');
         const subjData = Object.entries(subjectTotals)
             .map(([subj, d]) => ({ name: subj, avg: Math.round(d.sum / d.count) }))
             .sort((a, b) => b.avg - a.avg);
 
         subjEl.innerHTML = subjData.length
             ? subjData.map(s => barHtml(s.name, s.avg)).join('')
-            : '<div class="empty">No grade data recorded yet.</div>';
+            : '<div class="text-left py-4 text-slate-400 font-bold text-xs uppercase tracking-widest italic">No grade data recorded yet.</div>';
+
+        // Animate progress bars
+        setTimeout(() => {
+            document.querySelectorAll('.bar-fill').forEach(bar => {
+                bar.style.width = bar.getAttribute('data-target');
+            });
+        }, 100);
 
     } catch (e) {
-        console.error('[Suspended] loadSuperAdminView error:', e);
         document.getElementById('saTeacherCount').textContent = '—';
         document.getElementById('saStudentCount').textContent = '—';
-        document.getElementById('saClassBars').innerHTML   = '<div class="empty">Could not load analytics.</div>';
-        document.getElementById('saSubjectBars').innerHTML = '<div class="empty">Could not load analytics.</div>';
+        const errMsg = '<div class="text-left py-4 text-rose-500 font-bold text-xs uppercase tracking-widest">Failed to load analytics.</div>';
+        document.getElementById('saClassBars').innerHTML = errMsg;
+        document.getElementById('saSubjectBars').innerHTML = errMsg;
     }
 }
 </script>
