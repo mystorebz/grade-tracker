@@ -429,8 +429,143 @@ html, body {
 
 .login-input:focus { border-color: var(--blue-500); box-shadow: var(--shadow-blue); background: var(--surface); }
 
-/* ── RESPONSIVE ──────────────────────────────────────────────────────────── */
+/* ── RESPONSIVE (existing rule — untouched) ──────────────────────────────── */
 @media (max-width: 768px) {
   .view-section { padding: 16px !important; }
   .stat-card    { padding: 14px 16px !important; }
+}
+
+
+/* ==========================================================================
+   MOBILE & TABLET — max-width: 767px
+   Every rule below is scoped to mobile only.
+   Desktop (768px+) is completely unaffected by everything in this section.
+   ========================================================================== */
+
+@media (max-width: 767px) {
+
+    /* ── 1. VIEWPORT HEIGHT ─────────────────────────────────────────────────
+       iOS Safari's 100vh includes the hidden address bar and toolbar,
+       clipping content. 100dvh tracks the actual visible area.
+       Browsers that don't recognise dvh ignore this safely.              ── */
+    body {
+        height: 100dvh !important;
+    }
+
+    /* ── 2. MAIN CONTENT SCROLL ─────────────────────────────────────────────
+       min-height: 0 forces the flex child to respect its parent's bounds
+       so overflow-y triggers correctly.
+       -webkit-overflow-scrolling: touch gives iOS momentum scrolling.
+       Safe area padding stops content hiding behind the home indicator.  ── */
+    #dashboardMain {
+        min-height: 0;
+    }
+
+    #dashboardMain > .flex-1 {
+        -webkit-overflow-scrolling: touch;
+        overflow-y: auto;
+        padding-bottom: calc(1.75rem + env(safe-area-inset-bottom, 0px));
+    }
+
+    /* ── 3. SIDEBAR CONTAINER ───────────────────────────────────────────────
+       Collapse to zero width so #dashboardMain fills the full screen.
+       The aside is position: fixed so it's out of flow anyway.           ── */
+    #layout-sidebar-container {
+        width: 0 !important;
+        flex-shrink: 0;
+    }
+
+    /* ── 4. SIDEBAR DRAWER ──────────────────────────────────────────────────
+       Fixed, full-height, slides in from the left.
+       z-index: 50 keeps it above everything within its stacking context.
+       overflow: hidden on the aside + overflow-y: scroll on .sidebar-nav
+       is the correct iOS pattern for scrollable fixed drawers.
+       max-width: 85vw ensures it never overflows on tiny screens.        ── */
+    #sidebar {
+        position: fixed !important;
+        top: 0;
+        left: 0;
+        height: 100dvh !important;
+        z-index: 50 !important;
+        transform: translateX(-100%);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        overflow: hidden !important;
+        max-width: 85vw;
+    }
+
+    #sidebar.sidebar-open {
+        transform: translateX(0);
+    }
+
+    /* Brand and profile card — must not shrink */
+    .sidebar-brand   { flex-shrink: 0; }
+    .sidebar-profile { flex-shrink: 0; }
+
+    /* Footer — must not shrink */
+    .sidebar-footer  { flex-shrink: 0; }
+
+    /* Nav scroll area — the ONLY scrolling element inside the sidebar.
+       scroll (not auto) because iOS Safari silently fails with auto
+       inside fixed flex containers.                                      ── */
+    .sidebar-nav {
+        overflow-y: scroll !important;
+        -webkit-overflow-scrolling: touch;
+        min-height: 0;
+        flex: 1;
+    }
+
+    /* ── 5. OVERLAY ─────────────────────────────────────────────────────────
+       z-index: 15 is the critical value.
+       #layout-sidebar-container has Tailwind's z-20 which, as a flex
+       child of body, creates a stacking context at level 20 in root.
+       Overlay at 15 is BELOW that context so the sidebar (inside it at
+       z-index 50) paints above the overlay and taps reach nav links.
+       Overlay at 15 is still ABOVE #dashboardMain (z-index: auto = 0)
+       so it correctly dims the content area.
+       pointer-events: none when hidden — zero chance of blocking taps.  ── */
+    #sidebarOverlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.55);
+        z-index: 15;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.25s ease;
+    }
+
+    #sidebarOverlay.visible {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    /* ── 6. NAV TEXT BRIGHTNESS ─────────────────────────────────────────────
+       The admin CSS uses !important heavily on nav items so our overrides
+       must also use !important to win the cascade.
+       Active state colour is preserved via the .active rule below.       ── */
+    #sidebar .nav-item {
+        color: rgba(255, 255, 255, 0.88) !important;
+    }
+
+    #sidebar .nav-item:hover {
+        color: rgba(255, 255, 255, 0.98) !important;
+    }
+
+    #sidebar .nav-item.active {
+        color: var(--sb-accent) !important;
+    }
+
+    /* Fully restore icon visibility */
+    #sidebar .nav-item i {
+        opacity: 1 !important;
+    }
+
+    /* Section header labels */
+    #sidebar .nav-section-label {
+        color: rgba(255, 255, 255, 0.45) !important;
+    }
+
+    /* Topbar: reduce padding on mobile */
+    .topbar {
+        padding: 0 14px !important;
+    }
 }
