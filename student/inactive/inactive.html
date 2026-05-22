@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Inactive — ConnectUs</title>
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body { font-family: 'DM Sans', sans-serif; background: #f0f4f8; color: #0d1f35; min-height: 100vh; }
+
+        /* ── TOPBAR ── */
+        .topbar {
+            background: #0d1f35; height: 56px;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 24px; position: sticky; top: 0; z-index: 100;
+        }
+        .topbar-logo { display: flex; align-items: center; gap: 10px; }
+        .topbar-logo img { height: 28px; object-fit: contain; }
+        .topbar-logo span { font-size: 13px; font-weight: 700; color: #9ab0c6; letter-spacing: 0.05em; }
+        .topbar-badge {
+            font-size: 10px; font-weight: 700; background: #fef3c7; color: #b45309;
+            padding: 3px 12px; border-radius: 99px; letter-spacing: 0.08em; text-transform: uppercase;
+        }
+
+        /* ── LAYOUT ── */
+        .page-wrap { max-width: 820px; margin: 0 auto; padding: 28px 20px 60px; }
+
+        /* ── BANNER ── */
+        .banner {
+            background: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #f59e0b;
+            border-radius: 10px; padding: 16px 20px;
+            display: flex; align-items: flex-start; gap: 12px; margin-bottom: 24px;
+        }
+        .banner i { color: #f59e0b; font-size: 18px; margin-top: 2px; flex-shrink: 0; }
+        .banner-text h2 { font-size: 14px; font-weight: 800; color: #92400e; margin-bottom: 3px; }
+        .banner-text p  { font-size: 12px; color: #374f6b; font-weight: 500; line-height: 1.6; }
+
+        /* ── CARDS ── */
+        .card {
+            background: #fff; border: 1px solid #dce3ed; border-radius: 12px;
+            padding: 20px 22px; margin-bottom: 18px;
+            box-shadow: 0 1px 4px rgba(13,31,53,0.05);
+        }
+        .card-title {
+            font-size: 10px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.12em; color: #6b84a0; margin-bottom: 14px;
+            display: flex; align-items: center; gap: 7px;
+        }
+
+        /* ── IDENTITY ── */
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .info-item { background: #f8fafb; border: 1px solid #f0f4f8; border-radius: 8px; padding: 10px 14px; }
+        .info-item label { display: block; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #9ab0c6; margin-bottom: 3px; }
+        .info-item span  { font-size: 13px; font-weight: 700; color: #0d1f35; }
+        .mono { font-family: 'DM Mono', monospace; font-size: 11.5px; letter-spacing: 0.05em; }
+
+        /* ── SEMESTER BLOCKS ── */
+        .sem-block { margin-bottom: 20px; }
+        .sem-block:last-child { margin-bottom: 0; }
+        .sem-label {
+            font-size: 10px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.1em; color: #fff; background: #0d1f35;
+            padding: 6px 12px; border-radius: 4px; margin-bottom: 10px; display: inline-block;
+        }
+
+        /* ── SUBJECT ACCORDION ── */
+        .subject-card { border: 1px solid #dce3ed; border-radius: 8px; overflow: hidden; margin-bottom: 8px; }
+        .subject-card:last-child { margin-bottom: 0; }
+        .subject-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 16px; cursor: pointer; background: #fff;
+            user-select: none; transition: background 0.15s;
+        }
+        .subject-header:hover { background: #f8fafb; }
+        .subject-header-left { display: flex; align-items: center; gap: 10px; }
+        .subject-initial {
+            width: 30px; height: 30px; border-radius: 6px; background: #0d1f35;
+            color: #fff; font-size: 12px; font-weight: 700;
+            display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        }
+        .subject-name  { font-size: 13px; font-weight: 700; color: #0d1f35; }
+        .subject-count { font-size: 10.5px; color: #9ab0c6; font-weight: 400; margin-top: 1px; }
+        .subject-avg-badge {
+            font-size: 11px; font-weight: 700; padding: 3px 10px;
+            border-radius: 4px; border: 1px solid; font-family: 'DM Mono', monospace;
+        }
+        .subject-body { display: none; border-top: 1px solid #f0f4f8; background: #f8fafb; padding: 10px 12px; }
+        .subject-body.open { display: block; }
+
+        /* ── GRADE ROWS ── */
+        .grade-row {
+            display: flex; align-items: center; justify-content: space-between;
+            background: #fff; border: 1px solid #e8edf2; border-radius: 4px;
+            padding: 10px 14px; margin-bottom: 6px;
+        }
+        .grade-row:last-child { margin-bottom: 0; }
+        .grade-title { font-size: 12.5px; font-weight: 600; color: #0d1f35; margin-bottom: 2px; }
+        .grade-meta  { font-size: 10.5px; color: #9ab0c6; font-weight: 400; }
+        .grade-score { font-size: 12px; font-weight: 600; font-family: 'DM Mono', monospace; margin-right: 10px; color: #374f6b; }
+        .grade-pct   { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 3px; border: 1px solid; font-family: 'DM Mono', monospace; }
+
+        /* ── EVALUATIONS ── */
+        .eval-card { border: 1px solid #dce3ed; border-radius: 8px; padding: 14px 16px; margin-bottom: 10px; background: #fff; }
+        .eval-card:last-child { margin-bottom: 0; }
+        .eval-badge {
+            font-size: 10px; font-weight: 700; padding: 2px 8px;
+            border-radius: 99px; border: 1px solid; text-transform: uppercase;
+            letter-spacing: 0.05em; display: inline-block; margin-bottom: 8px;
+        }
+        .eval-period { font-size: 13px; font-weight: 700; color: #0d1f35; margin-bottom: 3px; }
+        .eval-meta   { font-size: 11px; color: #6b84a0; font-weight: 500; }
+
+        /* ── LOGOUT ── */
+        .logout-btn {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: #fff; border: 1px solid #dce3ed; color: #374f6b;
+            font-family: 'DM Sans', sans-serif; font-size: 12.5px; font-weight: 700;
+            padding: 10px 20px; border-radius: 8px; cursor: pointer; transition: all 0.15s;
+        }
+        .logout-btn:hover { background: #f8fafb; border-color: #b8c5d4; }
+
+        /* ── LOADER / EMPTY ── */
+        .loader { text-align: center; padding: 32px; color: #9ab0c6; font-size: 13px; font-weight: 500; }
+        .loader i { font-size: 22px; color: #2563eb; display: block; margin-bottom: 10px; }
+        .empty { text-align: center; padding: 24px; color: #9ab0c6; font-size: 13px; font-style: italic; font-weight: 500; }
+
+        /* ── READ-ONLY LABEL ── */
+        .readonly-tag {
+            font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;
+            color: #9ab0c6; background: #f4f7fb; border: 1px solid #dce3ed;
+            padding: 2px 8px; border-radius: 4px; margin-left: auto;
+        }
+
+        @media (max-width: 600px) { .info-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+
+<div class="topbar">
+    <div class="topbar-logo">
+        <img src="../../assets/images/logo.png" alt="ConnectUs" onerror="this.style.display='none'">
+        <span>ConnectUs</span>
+    </div>
+    <span class="topbar-badge"><i class="fa-solid fa-circle-pause" style="margin-right:5px;"></i>Account Inactive</span>
+</div>
+
+<div class="page-wrap">
+
+    <div class="banner">
+        <i class="fa-solid fa-circle-exclamation"></i>
+        <div class="banner-text">
+            <h2>Your account is currently inactive</h2>
+            <p>You are viewing your records in read-only mode. Contact your teacher or school administrator for more information.</p>
+        </div>
+    </div>
+
+    <!-- Identity -->
+    <div class="card">
+        <div class="card-title">
+            <i class="fa-solid fa-id-card"></i> Student Profile
+            <span class="readonly-tag">Read Only</span>
+        </div>
+        <div class="info-grid" id="identityGrid">
+            <div class="loader" style="grid-column:1/-1;"><i class="fa-solid fa-spinner fa-spin"></i>Loading...</div>
+        </div>
+    </div>
+
+    <!-- Grades -->
+    <div class="card">
+        <div class="card-title">
+            <i class="fa-solid fa-graduation-cap"></i> Academic Record
+            <span class="readonly-tag">Read Only</span>
+        </div>
+        <div id="gradesSection"><div class="loader"><i class="fa-solid fa-spinner fa-spin"></i>Loading grades...</div></div>
+    </div>
+
+    <!-- Evaluations -->
+    <div class="card">
+        <div class="card-title">
+            <i class="fa-solid fa-star-half-stroke"></i> Evaluations
+            <span class="readonly-tag">Read Only</span>
+        </div>
+        <div id="evalsSection"><div class="loader"><i class="fa-solid fa-spinner fa-spin"></i>Loading evaluations...</div></div>
+    </div>
+
+    <button class="logout-btn" onclick="handleLogout()">
+        <i class="fa-solid fa-arrow-right-from-bracket"></i> Sign Out
+    </button>
+
+</div>
+
+<script type="module">
+import { db } from '../../assets/js/firebase-init.js';
+import {
+    collection, query, where, getDocs, getDoc, doc
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { requireAuth, logout } from '../../assets/js/auth.js';
+import { calculateWeightedAverage, letterGrade } from '../../assets/js/utils.js';
+
+window.handleLogout = () => logout('../index.html');
+
+const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
+
+function escHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function gradeColor(pct) {
+    if (pct >= 90) return { bg: '#dcfce7', border: '#bbf7d0', text: '#065f46' };
+    if (pct >= 80) return { bg: '#dbeafe', border: '#bfdbfe', text: '#1e3a8a' };
+    if (pct >= 70) return { bg: '#ccfbf1', border: '#99f6e4', text: '#134e4a' };
+    if (pct >= 65) return { bg: '#fef3c7', border: '#fde68a', text: '#78350f' };
+    return { bg: '#fee2e2', border: '#fecaca', text: '#7f1d1d' };
+}
+
+function infoItem(label, value, mono = false) {
+    return `<div class="info-item"><label>${label}</label><span class="${mono ? 'mono' : ''}">${value || '—'}</span></div>`;
+}
+
+// requireAuth validates session, fires student watcher for mid-session changes
+const session = requireAuth('student', '../index.html');
+if (session) init();
+
+async function init() {
+    const student = session.studentData || {};
+
+    // ── Identity ──────────────────────────────────────────────────────────
+    let schoolName = session.schoolId;
+    try {
+        const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
+        if (schoolSnap.exists()) schoolName = schoolSnap.data().schoolName || session.schoolId;
+    } catch (_) {}
+
+    document.getElementById('identityGrid').innerHTML = [
+        infoItem('Full Name',     escHtml(student.name)),
+        infoItem('Student ID',    escHtml(session.studentId), true),
+        infoItem('Class',         escHtml(student.lastClassName || student.className)),
+        infoItem('School',        escHtml(schoolName)),
+        infoItem('Parent Name',   escHtml(student.parentName)),
+        infoItem('Parent Phone',  escHtml(student.parentPhone)),
+    ].join('');
+
+    // ── Semesters ─────────────────────────────────────────────────────────
+    let semesters = [];
+    try {
+        const cacheKey = `connectus_semesters_${session.schoolId}`;
+        const cached   = localStorage.getItem(cacheKey);
+        if (cached) {
+            semesters = JSON.parse(cached);
+        } else {
+            const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
+            semesters = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.order||0)-(b.order||0));
+            localStorage.setItem(cacheKey, JSON.stringify(semesters));
+        }
+    } catch (_) {}
+
+    // ── Grades ────────────────────────────────────────────────────────────
+    const gradesEl = document.getElementById('gradesSection');
+    try {
+        const gSnap = await getDocs(query(
+            collection(db, 'students', session.studentId, 'grades'),
+            where('schoolId', '==', session.schoolId)
+        ));
+        const grades = gSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        if (!grades.length) {
+            gradesEl.innerHTML = '<div class="empty">No grades recorded for this school.</div>';
+        } else {
+            // Group by semester
+            const bySem = {};
+            grades.forEach(g => {
+                const sem = semesters.find(s => s.id === g.semesterId);
+                const semName = sem?.name || 'Unknown Period';
+                const semOrder = sem?.order || 99;
+                if (!bySem[semName]) bySem[semName] = { order: semOrder, subjects: {} };
+                const subj = g.subject || 'Uncategorized';
+                if (!bySem[semName].subjects[subj]) bySem[semName].subjects[subj] = [];
+                bySem[semName].subjects[subj].push(g);
+            });
+
+            const semNames = Object.keys(bySem).sort((a,b) => bySem[a].order - bySem[b].order);
+            let html = '';
+
+            semNames.forEach(semName => {
+                const subjects = bySem[semName].subjects;
+                html += `<div class="sem-block"><span class="sem-label">${escHtml(semName)}</span>`;
+
+                Object.entries(subjects).sort((a,b) => a[0].localeCompare(b[0])).forEach(([subj, sGrades], idx) => {
+                    const avg = calculateWeightedAverage(sGrades, DEFAULT_GRADE_TYPES);
+                    const avgR = avg !== null ? Math.round(avg) : null;
+                    const c = avgR !== null ? gradeColor(avgR) : { bg: '#f8fafb', border: '#dce3ed', text: '#6b84a0' };
+                    const bodyId = `subj-body-${semName}-${idx}`.replace(/\s/g, '-');
+
+                    const rows = sGrades
+                        .sort((a,b) => (b.date||'').localeCompare(a.date||''))
+                        .map(g => {
+                            const pct = g.max ? Math.round(g.score / g.max * 100) : null;
+                            const gc  = pct !== null ? gradeColor(pct) : { bg: '#f8fafb', border: '#dce3ed', text: '#6b84a0' };
+                            return `
+                            <div class="grade-row">
+                                <div style="min-width:0;flex:1;">
+                                    <div class="grade-title">${escHtml(g.title || 'Assessment')}</div>
+                                    <div class="grade-meta">${escHtml(g.type || '')}${g.date ? ' · ' + g.date : ''}</div>
+                                </div>
+                                <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:12px;">
+                                    <span class="grade-score">${g.score}/${g.max || '?'}</span>
+                                    <span class="grade-pct" style="background:${gc.bg};border-color:${gc.border};color:${gc.text};">${pct !== null ? pct + '%' : '—'}</span>
+                                </div>
+                            </div>`;
+                        }).join('');
+
+                    html += `
+                    <div class="subject-card">
+                        <div class="subject-header" onclick="toggleSubject('${bodyId}', this)">
+                            <div class="subject-header-left">
+                                <div class="subject-initial">${escHtml(subj.charAt(0))}</div>
+                                <div>
+                                    <div class="subject-name">${escHtml(subj)}</div>
+                                    <div class="subject-count">${sGrades.length} assessment${sGrades.length !== 1 ? 's' : ''}</div>
+                                </div>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                ${avgR !== null
+                                    ? `<span class="subject-avg-badge" style="background:${c.bg};border-color:${c.border};color:${c.text};">${avgR}% · ${letterGrade(avgR)}</span>`
+                                    : '<span class="subject-avg-badge" style="background:#f8fafb;border-color:#dce3ed;color:#9ab0c6;">—</span>'}
+                                <i class="fa-solid fa-chevron-down" style="font-size:11px;color:#9ab0c6;transition:transform 0.2s;"></i>
+                            </div>
+                        </div>
+                        <div class="subject-body" id="${bodyId}">${rows}</div>
+                    </div>`;
+                });
+
+                html += '</div>';
+            });
+
+            gradesEl.innerHTML = html;
+        }
+    } catch (e) {
+        console.error('[Inactive] grades error:', e);
+        gradesEl.innerHTML = '<div class="empty">Error loading grades. Please try again.</div>';
+    }
+
+    // ── Evaluations ───────────────────────────────────────────────────────
+    const evalsEl = document.getElementById('evalsSection');
+    try {
+        const eSnap = await getDocs(query(
+            collection(db, 'students', session.studentId, 'evaluations'),
+            where('schoolId', '==', session.schoolId)
+        ));
+        const evals = eSnap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .sort((a,b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
+
+        if (!evals.length) {
+            evalsEl.innerHTML = '<div class="empty">No evaluations on record.</div>';
+        } else {
+            evalsEl.innerHTML = evals.map(ev => {
+                let badgeStyle = '', typeLabel = '';
+                if (ev.type === 'academic') {
+                    badgeStyle = 'background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;';
+                    typeLabel  = 'Academic Progress';
+                } else if (ev.type === 'academic_report_card') {
+                    const isM  = ev.reportCardType === 'midterm';
+                    badgeStyle = isM ? 'background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe;'
+                                     : 'background:#edf7f1;color:#065f46;border-color:#a7f3d0;';
+                    typeLabel  = isM ? 'Midterm Report Card' : 'Report Card';
+                } else if (ev.type === 'end_of_year') {
+                    badgeStyle = 'background:#fef3c7;color:#b45309;border-color:#fde68a;';
+                    typeLabel  = 'End-of-Year Evaluation';
+                } else if (ev.type === 'behavioral') {
+                    badgeStyle = 'background:#fef2f2;color:#b91c1c;border-color:#fecaca;';
+                    typeLabel  = 'Behavioral & Conduct';
+                } else if (ev.type === 'midterm_review') {
+                    badgeStyle = 'background:#f0f9ff;color:#0369a1;border-color:#bae6fd;';
+                    typeLabel  = 'Mid-Term Review';
+                } else if (ev.type === 'parent_conference') {
+                    badgeStyle = 'background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe;';
+                    typeLabel  = 'Parent Conference';
+                } else if (ev.type === 'learning_support') {
+                    badgeStyle = 'background:#fdf4ff;color:#9333ea;border-color:#e9d5ff;';
+                    typeLabel  = 'Learning Support';
+                } else {
+                    badgeStyle = 'background:#f8fafc;color:#475569;border-color:#cbd5e1;';
+                    typeLabel  = ev.customTypeName || ev.type || 'Evaluation';
+                }
+
+                const dateStr = ev.date
+                    ? new Date(ev.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                    : '—';
+
+                return `
+                <div class="eval-card">
+                    <span class="eval-badge" style="${badgeStyle}">${escHtml(typeLabel)}</span>
+                    <div class="eval-period">${escHtml(ev.semesterName || '—')}</div>
+                    <div class="eval-meta">Filed by ${escHtml(ev.teacherName || '—')} · ${escHtml(dateStr)}</div>
+                </div>`;
+            }).join('');
+        }
+    } catch (e) {
+        console.error('[Inactive] evals error:', e);
+        evalsEl.innerHTML = '<div class="empty">Error loading evaluations.</div>';
+    }
+}
+
+// ── Subject accordion toggle ──────────────────────────────────────────────
+window.toggleSubject = function(bodyId, header) {
+    const body    = document.getElementById(bodyId);
+    const chevron = header.querySelector('.fa-chevron-down');
+    if (!body) return;
+    body.classList.toggle('open');
+    if (chevron) chevron.style.transform = body.classList.contains('open') ? 'rotate(180deg)' : '';
+};
+</script>
+</body>
+</html>
