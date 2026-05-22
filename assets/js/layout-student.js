@@ -54,17 +54,25 @@ export function injectStudentLayout(activePageId, pageTitle, pageSub) {
     `;
 
     // 2. The Family/Student Topbar HTML
+    // — hamburger is only visible on mobile (flex md:hidden)
+    // — semester pill compacts on small screens
     const topbarHTML = `
-      <header class="topbar h-16 bg-white border-b border-slate-200 flex items-center px-8 z-10 justify-between flex-shrink-0 shadow-sm">
-        <div>
-          <h1 id="topbarTitle" class="text-xl font-black text-slate-800 leading-none">${pageTitle}</h1>
-          <p id="topbarSub" class="text-xs text-slate-400 font-semibold mt-0.5">${pageSub}</p>
+      <header class="topbar h-16 bg-white border-b border-slate-200 flex items-center px-4 md:px-8 z-10 justify-between flex-shrink-0 shadow-sm">
+        <div class="flex items-center gap-3">
+          <button id="sidebarToggle" aria-label="Open menu"
+            class="flex md:hidden items-center justify-center w-10 h-10 rounded-xl bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-600 transition flex-shrink-0">
+            <i class="fa-solid fa-bars text-base"></i>
+          </button>
+          <div>
+            <h1 id="topbarTitle" class="text-lg md:text-xl font-black text-slate-800 leading-none">${pageTitle}</h1>
+            <p id="topbarSub" class="text-xs text-slate-400 font-semibold mt-0.5 hidden sm:block">${pageSub}</p>
+          </div>
         </div>
-        <div class="flex items-center gap-4">
-          <div class="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2">
-            <i class="fa-solid fa-calendar-days text-indigo-500 text-sm"></i>
-            <span class="text-xs font-black text-indigo-700 uppercase tracking-wider">Current Period:</span>
-            <span id="activeSemesterDisplay" class="text-sm font-black text-indigo-800">Loading...</span>
+        <div class="flex items-center gap-2 md:gap-4">
+          <div class="flex items-center gap-1.5 md:gap-2 bg-indigo-50 border border-indigo-100 rounded-xl px-2.5 md:px-3 py-1.5 md:py-2">
+            <i class="fa-solid fa-calendar-days text-indigo-500 text-xs md:text-sm"></i>
+            <span class="text-xs font-black text-indigo-700 uppercase tracking-wider hidden md:inline">Current Period:</span>
+            <span id="activeSemesterDisplay" class="text-xs md:text-sm font-black text-indigo-800">Loading...</span>
           </div>
           <img src="../../assets/images/logo.png" alt="ConnectUs" class="h-8 w-auto opacity-30 hidden sm:block">
         </div>
@@ -74,13 +82,46 @@ export function injectStudentLayout(activePageId, pageTitle, pageSub) {
     document.getElementById('layout-sidebar-container').innerHTML = sidebarHTML;
     document.getElementById('layout-topbar-container').innerHTML = topbarHTML;
 
+    // 3. Inject the mobile overlay into the body
+    const overlay = document.createElement('div');
+    overlay.id = 'sidebarOverlay';
+    document.body.appendChild(overlay);
+
+    // 4. Active nav highlight
     const activeNav = document.getElementById(`nav-${activePageId}`);
     if (activeNav) {
         activeNav.classList.remove('text-slate-400');
         activeNav.classList.add('active');
     }
 
+    // 5. Logout
     document.getElementById('logoutBtn').addEventListener('click', () => {
         logout('../../student/login.html');
+    });
+
+    // 6. Mobile sidebar open/close logic
+    const sidebar      = document.getElementById('sidebar');
+    const toggleBtn    = document.getElementById('sidebarToggle');
+
+    function openSidebar() {
+        sidebar.classList.add('sidebar-open');
+        overlay.classList.add('visible');
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeSidebar() {
+        sidebar.classList.remove('sidebar-open');
+        overlay.classList.remove('visible');
+        document.body.style.overflow = '';
+    }
+
+    if (toggleBtn) toggleBtn.addEventListener('click', openSidebar);
+    overlay.addEventListener('click', closeSidebar);
+
+    // Close sidebar automatically when a nav link is tapped on mobile
+    document.querySelectorAll('#sidebar .nav-item').forEach(item => {
+        item.addEventListener('click', () => {
+            if (window.innerWidth < 768) closeSidebar();
+        });
     });
 }
