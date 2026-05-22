@@ -41,6 +41,20 @@ async function sha256Trim(text) {
         .join('');
 }
 
+// ── ERROR HELPERS ─────────────────────────────────────────────────────────────
+// The .login-error CSS class has display:none. Using style.display directly
+// guarantees the message is always visible regardless of which CSS classes
+// are present. This prevents silent failures where the user sees nothing.
+function showError(el, msg) {
+    el.textContent    = msg;
+    el.style.display  = 'block';
+}
+
+function hideError(el) {
+    el.style.display  = 'none';
+    el.textContent    = '';
+}
+
 // ── 1. MAIN LOGIN ─────────────────────────────────────────────────────────────
 document.getElementById('loginBtn').addEventListener('click', async () => {
     const rawId = document.getElementById('loginSchoolId').value.trim();
@@ -48,11 +62,10 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     const msgEl = document.getElementById('loginMsg');
     const btn   = document.getElementById('loginBtn');
 
-    msgEl.classList.add('hidden');
+    hideError(msgEl);
 
     if (!rawId || !pin) {
-        msgEl.textContent = 'Please enter both fields.';
-        msgEl.classList.remove('hidden');
+        showError(msgEl, 'Please enter both fields.');
         return;
     }
 
@@ -69,8 +82,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
             claims               = idTokenResult.claims;
         } catch (authError) {
             console.error('[Teacher Login] Server rejected credentials:', authError);
-            msgEl.textContent = 'Invalid School ID or Teacher Code.';
-            msgEl.classList.remove('hidden');
+            showError(msgEl, 'Invalid School ID or Teacher Code.');
             resetLoginBtn(btn);
             return;
         }
@@ -90,8 +102,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         }
 
         if (!tData) {
-            msgEl.textContent = 'Could not load teacher profile. Please try again.';
-            msgEl.classList.remove('hidden');
+            showError(msgEl, 'Could not load teacher profile. Please try again.');
             resetLoginBtn(btn);
             return;
         }
@@ -112,8 +123,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
 
     } catch (e) {
         console.error('[Teacher Login] Outer catch:', e);
-        msgEl.textContent = 'Connection error. Please try again.';
-        msgEl.classList.remove('hidden');
+        showError(msgEl, 'Connection error. Please try again.');
         resetLoginBtn(btn);
     }
 });
