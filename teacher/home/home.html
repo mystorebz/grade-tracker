@@ -90,7 +90,7 @@
         .stat-card {
             background: var(--surface, #fff);
             border: 1px solid var(--border, #dce3ed);
-            border-radius: 0px; /* Sharp corners */
+            border-radius: 0px;
             box-shadow: 0 1px 3px rgba(13,31,53,0.07);
             padding: 20px 22px;
             display: flex;
@@ -135,7 +135,7 @@
         .stat-card-icon {
             width: 40px;
             height: 40px;
-            border-radius: 0px; /* Sharp corners */
+            border-radius: 0px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -150,7 +150,7 @@
             gap: 12px;
             background: #fff8f9;
             border: 1px solid #ffd6de;
-            border-radius: 0px; /* Sharp corners */
+            border-radius: 0px;
             padding: 12px 18px;
             margin-bottom: 16px;
         }
@@ -161,7 +161,7 @@
             width: 32px;
             height: 32px;
             background: #fee2e2;
-            border-radius: 0px; /* Sharp corners */
+            border-radius: 0px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -200,7 +200,7 @@
             padding: 16px;
             background: var(--surface, #fff);
             border: 1px solid var(--border, #dce3ed);
-            border-radius: 0px; /* Sharp corners */
+            border-radius: 0px;
             text-decoration: none;
             transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
             box-shadow: 0 1px 2px rgba(13,31,53,0.05);
@@ -215,7 +215,7 @@
         .qa-card-icon {
             width: 34px;
             height: 34px;
-            border-radius: 0px; /* Sharp corners */
+            border-radius: 0px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -242,7 +242,7 @@
         .panel {
             background: var(--surface, #fff);
             border: 1px solid var(--border, #dce3ed);
-            border-radius: 0px; /* Sharp corners */
+            border-radius: 0px;
             box-shadow: 0 1px 3px rgba(13,31,53,0.07);
             overflow: hidden;
         }
@@ -265,7 +265,7 @@
         .panel-header-icon {
             width: 24px;
             height: 24px;
-            border-radius: 0px; /* Sharp corners */
+            border-radius: 0px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -320,7 +320,7 @@
         .risk-panel {
             background: var(--surface, #fff);
             border: 1px solid #ffd6de;
-            border-radius: 0px; /* Sharp corners */
+            border-radius: 0px;
             box-shadow: 0 1px 3px rgba(13,31,53,0.07);
             overflow: hidden;
         }
@@ -375,6 +375,82 @@
 
         .loading-state i { font-size: 20px; }
         .loading-state p { font-size: 12.5px; font-weight: 400; margin: 0; }
+
+        /* ── MOBILE RESPONSIVE ────────────────────────────────────────────── */
+        @media (max-width: 767px) {
+
+            /* Reduce scroll area padding on mobile */
+            .home-scroll {
+                padding: 16px 16px 40px;
+            }
+
+            /* Page header stacks vertically, date moves below */
+            .page-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 4px;
+            }
+
+            .page-header-date {
+                text-align: left;
+            }
+
+            /* Stat cards: 1 column on very small, keep 3 on slightly larger */
+            .stats-row {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+
+            /* Stat card compact on mobile */
+            .stat-card {
+                padding: 14px 16px;
+            }
+
+            /* Dashboard grid: stack to single column so risk panel
+               never overlaps the left content */
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+
+            /* Risk panel goes below left content when stacked */
+            .risk-panel {
+                width: 100%;
+            }
+
+            /* Quick actions: 2 columns instead of 4 */
+            .quick-actions-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            /* Activity table head: hide less critical columns on mobile */
+            .activity-table-head {
+                grid-template-columns: 1fr 80px 64px;
+                padding: 9px 14px;
+            }
+
+            /* Hide Type and Subject columns on very small screens */
+            .activity-table-head .activity-col-label:nth-child(2),
+            .activity-table-head .activity-col-label:nth-child(3) {
+                display: none;
+            }
+
+            /* Needs attention list height relaxed on mobile */
+            #needsAttentionList {
+                max-height: none;
+            }
+
+            /* Safe area padding at bottom */
+            .home-scroll {
+                padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+            }
+        }
+
+        /* Slightly wider mobile — 2 column stats */
+        @media (min-width: 480px) and (max-width: 767px) {
+            .stats-row {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
     </style>
 </head>
 
@@ -572,31 +648,31 @@
                         <p id="dist-attention" class="text-3xl font-black text-amber-600">0</p>
                     </div>
                     <div class="bg-red-50 border border-red-200 p-4 rounded-none text-center">
-                        <p class="text-[10px] font-black text-red-700 uppercase tracking-widest mb-1">At Risk (<65)</p>
+                        <p class="text-[10px] font-black text-red-700 uppercase tracking-widest mb-1">At Risk (&lt;65)</p>
                         <p id="dist-risk" class="text-3xl font-black text-red-600">0</p>
                     </div>
                 </div>
 
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    
+
                     <div class="bg-white border border-slate-200 p-6 rounded-none shadow-sm flex flex-col">
                         <h4 class="text-xs font-black text-slate-500 uppercase tracking-widest mb-6"><i class="fa-solid fa-layer-group text-indigo-500 mr-2"></i>Subject Performance Ranking</h4>
                         <div id="classSubjectPerformanceList" class="space-y-4 max-h-[220px] overflow-y-auto pr-2 flex-1">
-                            </div>
+                        </div>
                     </div>
 
                     <div class="bg-white border border-slate-200 p-6 rounded-none shadow-sm flex flex-col">
                         <h4 class="text-xs font-black text-slate-500 uppercase tracking-widest mb-6"><i class="fa-solid fa-shapes text-indigo-500 mr-2"></i>Assessment Type Analysis</h4>
                         <p class="text-[10px] text-slate-400 font-bold mb-4">Analyze how your teaching approach impacts scores across different assignment types.</p>
                         <div id="classAssessmentAnalysisList" class="space-y-4 max-h-[190px] overflow-y-auto pr-2 flex-1">
-                            </div>
+                        </div>
                     </div>
                 </div>
 
                 <div class="bg-white border border-slate-200 p-6 rounded-none shadow-sm">
                     <h4 class="text-xs font-black text-slate-500 uppercase tracking-widest mb-6">Classroom Evaluation Matrix (1-5 Scale)</h4>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-8" id="classMatrixContainer">
-                        </div>
+                    </div>
                 </div>
 
             </div>
