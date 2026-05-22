@@ -4,195 +4,129 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Account Inactive — ConnectUs</title>
+    
     <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Nunito', 'sans-serif'],
+                        mono: ['DM Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+
     <style>
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-        body { font-family: 'DM Sans', sans-serif; background: #f0f4f8; color: #0d1f35; min-height: 100vh; }
-
-        /* ── TOPBAR ── */
-        .topbar {
-            background: #0d1f35; height: 56px;
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 0 24px; position: sticky; top: 0; z-index: 100;
-        }
-        .topbar-logo { display: flex; align-items: center; gap: 10px; }
-        .topbar-logo img { height: 28px; object-fit: contain; }
-        .topbar-logo span { font-size: 13px; font-weight: 700; color: #9ab0c6; letter-spacing: 0.05em; }
-        .topbar-badge {
-            font-size: 10px; font-weight: 700; background: #fef3c7; color: #b45309;
-            padding: 3px 12px; border-radius: 99px; letter-spacing: 0.08em; text-transform: uppercase;
-        }
-
-        /* ── LAYOUT ── */
-        .page-wrap { max-width: 820px; margin: 0 auto; padding: 28px 20px 60px; }
-
-        /* ── BANNER ── */
-        .banner {
-            background: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #f59e0b;
-            border-radius: 10px; padding: 16px 20px;
-            display: flex; align-items: flex-start; gap: 12px; margin-bottom: 24px;
-        }
-        .banner i { color: #f59e0b; font-size: 18px; margin-top: 2px; flex-shrink: 0; }
-        .banner-text h2 { font-size: 14px; font-weight: 800; color: #92400e; margin-bottom: 3px; }
-        .banner-text p  { font-size: 12px; color: #374f6b; font-weight: 500; line-height: 1.6; }
-
-        /* ── CARDS ── */
-        .card {
-            background: #fff; border: 1px solid #dce3ed; border-radius: 12px;
-            padding: 20px 22px; margin-bottom: 18px;
-            box-shadow: 0 1px 4px rgba(13,31,53,0.05);
-        }
-        .card-title {
-            font-size: 10px; font-weight: 700; text-transform: uppercase;
-            letter-spacing: 0.12em; color: #6b84a0; margin-bottom: 14px;
-            display: flex; align-items: center; gap: 7px;
-        }
-
-        /* ── IDENTITY ── */
-        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-        .info-item { background: #f8fafb; border: 1px solid #f0f4f8; border-radius: 8px; padding: 10px 14px; }
-        .info-item label { display: block; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #9ab0c6; margin-bottom: 3px; }
-        .info-item span  { font-size: 13px; font-weight: 700; color: #0d1f35; }
-        .mono { font-family: 'DM Mono', monospace; font-size: 11.5px; letter-spacing: 0.05em; }
-
-        /* ── SEMESTER BLOCKS ── */
-        .sem-block { margin-bottom: 20px; }
-        .sem-block:last-child { margin-bottom: 0; }
-        .sem-label {
-            font-size: 10px; font-weight: 700; text-transform: uppercase;
-            letter-spacing: 0.1em; color: #fff; background: #0d1f35;
-            padding: 6px 12px; border-radius: 4px; margin-bottom: 10px; display: inline-block;
-        }
-
-        /* ── SUBJECT ACCORDION ── */
-        .subject-card { border: 1px solid #dce3ed; border-radius: 8px; overflow: hidden; margin-bottom: 8px; }
-        .subject-card:last-child { margin-bottom: 0; }
-        .subject-header {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 12px 16px; cursor: pointer; background: #fff;
-            user-select: none; transition: background 0.15s;
-        }
-        .subject-header:hover { background: #f8fafb; }
-        .subject-header-left { display: flex; align-items: center; gap: 10px; }
-        .subject-initial {
-            width: 30px; height: 30px; border-radius: 6px; background: #0d1f35;
-            color: #fff; font-size: 12px; font-weight: 700;
-            display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-        }
-        .subject-name  { font-size: 13px; font-weight: 700; color: #0d1f35; }
-        .subject-count { font-size: 10.5px; color: #9ab0c6; font-weight: 400; margin-top: 1px; }
-        .subject-avg-badge {
-            font-size: 11px; font-weight: 700; padding: 3px 10px;
-            border-radius: 4px; border: 1px solid; font-family: 'DM Mono', monospace;
-        }
-        .subject-body { display: none; border-top: 1px solid #f0f4f8; background: #f8fafb; padding: 10px 12px; }
-        .subject-body.open { display: block; }
-
-        /* ── GRADE ROWS ── */
-        .grade-row {
-            display: flex; align-items: center; justify-content: space-between;
-            background: #fff; border: 1px solid #e8edf2; border-radius: 4px;
-            padding: 10px 14px; margin-bottom: 6px;
-        }
-        .grade-row:last-child { margin-bottom: 0; }
-        .grade-title { font-size: 12.5px; font-weight: 600; color: #0d1f35; margin-bottom: 2px; }
-        .grade-meta  { font-size: 10.5px; color: #9ab0c6; font-weight: 400; }
-        .grade-score { font-size: 12px; font-weight: 600; font-family: 'DM Mono', monospace; margin-right: 10px; color: #374f6b; }
-        .grade-pct   { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 3px; border: 1px solid; font-family: 'DM Mono', monospace; }
-
-        /* ── EVALUATIONS ── */
-        .eval-card { border: 1px solid #dce3ed; border-radius: 8px; padding: 14px 16px; margin-bottom: 10px; background: #fff; }
-        .eval-card:last-child { margin-bottom: 0; }
-        .eval-badge {
-            font-size: 10px; font-weight: 700; padding: 2px 8px;
-            border-radius: 99px; border: 1px solid; text-transform: uppercase;
-            letter-spacing: 0.05em; display: inline-block; margin-bottom: 8px;
-        }
-        .eval-period { font-size: 13px; font-weight: 700; color: #0d1f35; margin-bottom: 3px; }
-        .eval-meta   { font-size: 11px; color: #6b84a0; font-weight: 500; }
-
-        /* ── LOGOUT ── */
-        .logout-btn {
-            display: inline-flex; align-items: center; gap: 8px;
-            background: #fff; border: 1px solid #dce3ed; color: #374f6b;
-            font-family: 'DM Sans', sans-serif; font-size: 12.5px; font-weight: 700;
-            padding: 10px 20px; border-radius: 8px; cursor: pointer; transition: all 0.15s;
-        }
-        .logout-btn:hover { background: #f8fafb; border-color: #b8c5d4; }
-
-        /* ── LOADER / EMPTY ── */
-        .loader { text-align: center; padding: 32px; color: #9ab0c6; font-size: 13px; font-weight: 500; }
-        .loader i { font-size: 22px; color: #2563eb; display: block; margin-bottom: 10px; }
-        .empty { text-align: center; padding: 24px; color: #9ab0c6; font-size: 13px; font-style: italic; font-weight: 500; }
-
-        /* ── READ-ONLY LABEL ── */
-        .readonly-tag {
-            font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;
-            color: #9ab0c6; background: #f4f7fb; border: 1px solid #dce3ed;
-            padding: 2px 8px; border-radius: 4px; margin-left: auto;
-        }
-
-        @media (max-width: 600px) { .info-grid { grid-template-columns: 1fr; } }
+        /* Smooth scrolling and base styling */
+        body { font-family: 'Nunito', sans-serif; }
+        
+        /* Custom scrollbar for the accordion content */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        
+        /* Spinner Animation */
+        .loader-spin { animation: spin 1s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
     </style>
 </head>
-<body>
+<body class="flex flex-col h-screen overflow-hidden bg-[#f5f3ff] text-slate-800">
 
-<div class="topbar">
-    <div class="topbar-logo">
-        <img src="../../assets/images/logo.png" alt="ConnectUs" onerror="this.style.display='none'">
-        <span>ConnectUs</span>
-    </div>
-    <span class="topbar-badge"><i class="fa-solid fa-circle-pause" style="margin-right:5px;"></i>Account Inactive</span>
-</div>
-
-<div class="page-wrap">
-
-    <div class="banner">
-        <i class="fa-solid fa-circle-exclamation"></i>
-        <div class="banner-text">
-            <h2>Your account is currently inactive</h2>
-            <p>You are viewing your records in read-only mode. Contact your teacher or school administrator for more information.</p>
+    <div class="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 flex-shrink-0 z-20 shadow-sm">
+        <div class="flex items-center gap-3">
+            <img src="../../assets/images/logo.png" alt="ConnectUs" class="h-7 object-contain" onerror="this.style.display='none'">
+            <span class="font-black text-slate-400 tracking-wider text-sm uppercase">ConnectUs</span>
+        </div>
+        <div class="bg-amber-100 text-amber-700 text-[10px] font-black px-4 py-1.5 rounded-full tracking-widest uppercase border border-amber-200 shadow-sm flex items-center gap-2">
+            <i class="fa-solid fa-lock"></i> Account Inactive
         </div>
     </div>
 
-    <!-- Identity -->
-    <div class="card">
-        <div class="card-title">
-            <i class="fa-solid fa-id-card"></i> Student Profile
-            <span class="readonly-tag">Read Only</span>
-        </div>
-        <div class="info-grid" id="identityGrid">
-            <div class="loader" style="grid-column:1/-1;"><i class="fa-solid fa-spinner fa-spin"></i>Loading...</div>
-        </div>
-    </div>
+    <main class="flex-1 overflow-y-auto p-5 md:p-10">
+        <div class="max-w-4xl mx-auto space-y-8 pb-10">
 
-    <!-- Grades -->
-    <div class="card">
-        <div class="card-title">
-            <i class="fa-solid fa-graduation-cap"></i> Academic Record
-            <span class="readonly-tag">Read Only</span>
+            <div class="bg-amber-50 border border-amber-200 border-l-4 border-l-amber-500 rounded-2xl p-5 md:p-6 flex items-start gap-4 shadow-sm">
+                <i class="fa-solid fa-circle-exclamation text-amber-500 text-2xl mt-0.5"></i>
+                <div>
+                    <h2 class="text-amber-900 font-black text-lg mb-1">Your account is currently inactive</h2>
+                    <p class="text-amber-700 font-semibold text-sm leading-relaxed">
+                        You are viewing your records in read-only mode. To restore full access or request changes, please contact your teacher or school administrator.
+                    </p>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 md:p-8">
+                <div class="flex items-center justify-between mb-6 border-b border-slate-100 pb-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-indigo-50 text-indigo-500 rounded-xl flex items-center justify-center text-lg">
+                            <i class="fa-solid fa-id-card"></i>
+                        </div>
+                        <h3 class="font-black text-slate-800 text-lg uppercase tracking-wide">Student Profile</h3>
+                    </div>
+                    <span class="bg-slate-100 text-slate-400 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full">Read Only</span>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="identityGrid">
+                    <div class="col-span-full text-center py-8 text-slate-400 font-bold">
+                        <i class="fa-solid fa-spinner loader-spin text-indigo-400 text-2xl mb-3 block"></i> Loading profile...
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 md:p-8">
+                <div class="flex items-center justify-between mb-6 border-b border-slate-100 pb-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-emerald-50 text-emerald-500 rounded-xl flex items-center justify-center text-lg">
+                            <i class="fa-solid fa-graduation-cap"></i>
+                        </div>
+                        <h3 class="font-black text-slate-800 text-lg uppercase tracking-wide">Academic Record</h3>
+                    </div>
+                    <span class="bg-slate-100 text-slate-400 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full">Read Only</span>
+                </div>
+
+                <div id="gradesSection">
+                    <div class="text-center py-8 text-slate-400 font-bold">
+                        <i class="fa-solid fa-spinner loader-spin text-emerald-400 text-2xl mb-3 block"></i> Loading grades...
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 md:p-8">
+                <div class="flex items-center justify-between mb-6 border-b border-slate-100 pb-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-purple-50 text-purple-500 rounded-xl flex items-center justify-center text-lg">
+                            <i class="fa-solid fa-star-half-stroke"></i>
+                        </div>
+                        <h3 class="font-black text-slate-800 text-lg uppercase tracking-wide">Evaluations</h3>
+                    </div>
+                    <span class="bg-slate-100 text-slate-400 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full">Read Only</span>
+                </div>
+
+                <div id="evalsSection">
+                    <div class="text-center py-8 text-slate-400 font-bold">
+                        <i class="fa-solid fa-spinner loader-spin text-purple-400 text-2xl mb-3 block"></i> Loading evaluations...
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-end">
+                <button onclick="handleLogout()" class="bg-white border border-slate-300 text-slate-700 font-black py-3 px-6 rounded-xl hover:bg-slate-50 hover:border-slate-400 transition flex items-center gap-2 shadow-sm">
+                    <i class="fa-solid fa-arrow-right-from-bracket"></i> Sign Out
+                </button>
+            </div>
+
         </div>
-        <div id="gradesSection"><div class="loader"><i class="fa-solid fa-spinner fa-spin"></i>Loading grades...</div></div>
-    </div>
-
-    <!-- Evaluations -->
-    <div class="card">
-        <div class="card-title">
-            <i class="fa-solid fa-star-half-stroke"></i> Evaluations
-            <span class="readonly-tag">Read Only</span>
-        </div>
-        <div id="evalsSection"><div class="loader"><i class="fa-solid fa-spinner fa-spin"></i>Loading evaluations...</div></div>
-    </div>
-
-    <button class="logout-btn" onclick="handleLogout()">
-        <i class="fa-solid fa-arrow-right-from-bracket"></i> Sign Out
-    </button>
-
-</div>
+    </main>
 
 <script type="module">
 import { db } from '../../assets/js/firebase-init.js';
@@ -212,18 +146,22 @@ function escHtml(str) {
 }
 
 function gradeColor(pct) {
-    if (pct >= 90) return { bg: '#dcfce7', border: '#bbf7d0', text: '#065f46' };
-    if (pct >= 80) return { bg: '#dbeafe', border: '#bfdbfe', text: '#1e3a8a' };
-    if (pct >= 70) return { bg: '#ccfbf1', border: '#99f6e4', text: '#134e4a' };
-    if (pct >= 65) return { bg: '#fef3c7', border: '#fde68a', text: '#78350f' };
-    return { bg: '#fee2e2', border: '#fecaca', text: '#7f1d1d' };
+    // Kept hex codes to ensure smooth inline styling, updated shades to match Tailwind palette
+    if (pct >= 90) return { bg: '#dcfce7', border: '#bbf7d0', text: '#166534' }; // emerald
+    if (pct >= 80) return { bg: '#e0e7ff', border: '#c7d2fe', text: '#3730a3' }; // indigo
+    if (pct >= 70) return { bg: '#ccfbf1', border: '#99f6e4', text: '#115e59' }; // teal
+    if (pct >= 65) return { bg: '#fef3c7', border: '#fde68a', text: '#92400e' }; // amber
+    return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b' }; // red
 }
 
 function infoItem(label, value, mono = false) {
-    return `<div class="info-item"><label>${label}</label><span class="${mono ? 'mono' : ''}">${value || '—'}</span></div>`;
+    return `
+    <div class="bg-slate-50 border border-slate-100 rounded-2xl p-4">
+        <label class="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">${label}</label>
+        <span class="font-bold text-slate-800 ${mono ? 'font-mono text-sm tracking-wider' : 'text-[15px]'}">${value || '—'}</span>
+    </div>`;
 }
 
-// requireAuth validates session, fires student watcher for mid-session changes
 const session = requireAuth('student', '../login.html');
 if (session) init();
 
@@ -270,9 +208,8 @@ async function init() {
         const grades = gSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
         if (!grades.length) {
-            gradesEl.innerHTML = '<div class="empty">No grades recorded for this school.</div>';
+            gradesEl.innerHTML = '<div class="text-center py-6 text-slate-400 font-bold italic">No grades recorded for this school.</div>';
         } else {
-            // Group by semester
             const bySem = {};
             grades.forEach(g => {
                 const sem = semesters.find(s => s.id === g.semesterId);
@@ -289,50 +226,53 @@ async function init() {
 
             semNames.forEach(semName => {
                 const subjects = bySem[semName].subjects;
-                html += `<div class="sem-block"><span class="sem-label">${escHtml(semName)}</span>`;
+                // Tailwind Semester Label
+                html += `<div class="mb-8"><span class="bg-slate-800 text-white text-[11px] font-black uppercase tracking-widest px-4 py-2 rounded-lg inline-block mb-4 shadow-sm">${escHtml(semName)}</span>`;
 
                 Object.entries(subjects).sort((a,b) => a[0].localeCompare(b[0])).forEach(([subj, sGrades], idx) => {
                     const avg = calculateWeightedAverage(sGrades, DEFAULT_GRADE_TYPES);
                     const avgR = avg !== null ? Math.round(avg) : null;
-                    const c = avgR !== null ? gradeColor(avgR) : { bg: '#f8fafb', border: '#dce3ed', text: '#6b84a0' };
+                    const c = avgR !== null ? gradeColor(avgR) : { bg: '#f8fafc', border: '#e2e8f0', text: '#64748b' };
                     const bodyId = `subj-body-${semName}-${idx}`.replace(/\s/g, '-');
 
                     const rows = sGrades
                         .sort((a,b) => (b.date||'').localeCompare(a.date||''))
                         .map(g => {
                             const pct = g.max ? Math.round(g.score / g.max * 100) : null;
-                            const gc  = pct !== null ? gradeColor(pct) : { bg: '#f8fafb', border: '#dce3ed', text: '#6b84a0' };
+                            const gc  = pct !== null ? gradeColor(pct) : { bg: '#f8fafc', border: '#e2e8f0', text: '#64748b' };
                             return `
-                            <div class="grade-row">
-                                <div style="min-width:0;flex:1;">
-                                    <div class="grade-title">${escHtml(g.title || 'Assessment')}</div>
-                                    <div class="grade-meta">${escHtml(g.type || '')}${g.date ? ' · ' + g.date : ''}</div>
+                            <div class="flex items-center justify-between bg-white border border-slate-100 rounded-xl p-3 mb-2 shadow-sm">
+                                <div class="min-w-0 flex-1">
+                                    <div class="font-bold text-slate-800 text-[13px] mb-0.5">${escHtml(g.title || 'Assessment')}</div>
+                                    <div class="text-[11px] font-semibold text-slate-400">${escHtml(g.type || '')}${g.date ? ' · ' + g.date : ''}</div>
                                 </div>
-                                <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:12px;">
-                                    <span class="grade-score">${g.score}/${g.max || '?'}</span>
-                                    <span class="grade-pct" style="background:${gc.bg};border-color:${gc.border};color:${gc.text};">${pct !== null ? pct + '%' : '—'}</span>
+                                <div class="flex items-center gap-3 flex-shrink-0 ml-3">
+                                    <span class="font-mono font-bold text-slate-500 text-xs">${g.score}/${g.max || '?'}</span>
+                                    <span class="font-mono font-black text-xs px-2 py-1 rounded text-center min-w-[44px] border" style="background:${gc.bg};border-color:${gc.border};color:${gc.text};">${pct !== null ? pct + '%' : '—'}</span>
                                 </div>
                             </div>`;
                         }).join('');
 
                     html += `
-                    <div class="subject-card">
-                        <div class="subject-header" onclick="toggleSubject('${bodyId}', this)">
-                            <div class="subject-header-left">
-                                <div class="subject-initial">${escHtml(subj.charAt(0))}</div>
+                    <div class="border border-slate-200 rounded-2xl overflow-hidden mb-3 shadow-sm bg-white">
+                        <div class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition" onclick="toggleSubject('${bodyId}', this)">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 font-black flex items-center justify-center flex-shrink-0 text-sm">
+                                    ${escHtml(subj.charAt(0))}
+                                </div>
                                 <div>
-                                    <div class="subject-name">${escHtml(subj)}</div>
-                                    <div class="subject-count">${sGrades.length} assessment${sGrades.length !== 1 ? 's' : ''}</div>
+                                    <div class="font-black text-slate-800 text-sm">${escHtml(subj)}</div>
+                                    <div class="text-[11px] font-bold text-slate-400 mt-0.5">${sGrades.length} assessment${sGrades.length !== 1 ? 's' : ''}</div>
                                 </div>
                             </div>
-                            <div style="display:flex;align-items:center;gap:8px;">
+                            <div class="flex items-center gap-3">
                                 ${avgR !== null
-                                    ? `<span class="subject-avg-badge" style="background:${c.bg};border-color:${c.border};color:${c.text};">${avgR}% · ${letterGrade(avgR)}</span>`
-                                    : '<span class="subject-avg-badge" style="background:#f8fafb;border-color:#dce3ed;color:#9ab0c6;">—</span>'}
-                                <i class="fa-solid fa-chevron-down" style="font-size:11px;color:#9ab0c6;transition:transform 0.2s;"></i>
+                                    ? `<span class="font-mono font-black text-xs px-3 py-1.5 rounded-lg border shadow-sm" style="background:${c.bg};border-color:${c.border};color:${c.text};">${avgR}% · ${letterGrade(avgR)}</span>`
+                                    : '<span class="font-mono font-black text-xs px-3 py-1.5 rounded-lg border bg-slate-50 border-slate-200 text-slate-400 shadow-sm">—</span>'}
+                                <i class="fa-solid fa-chevron-down text-slate-400 text-xs transition-transform duration-200"></i>
                             </div>
                         </div>
-                        <div class="subject-body" id="${bodyId}">${rows}</div>
+                        <div class="hidden border-t border-slate-100 bg-slate-50/50 p-3" id="${bodyId}">${rows}</div>
                     </div>`;
                 });
 
@@ -342,8 +282,7 @@ async function init() {
             gradesEl.innerHTML = html;
         }
     } catch (e) {
-        console.error('[Inactive] grades error:', e);
-        gradesEl.innerHTML = '<div class="empty">Error loading grades. Please try again.</div>';
+        gradesEl.innerHTML = '<div class="text-center py-6 text-red-500 font-bold">Error loading grades. Please try again.</div>';
     }
 
     // ── Evaluations ───────────────────────────────────────────────────────
@@ -358,36 +297,22 @@ async function init() {
             .sort((a,b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
 
         if (!evals.length) {
-            evalsEl.innerHTML = '<div class="empty">No evaluations on record.</div>';
+            evalsEl.innerHTML = '<div class="text-center py-6 text-slate-400 font-bold italic">No evaluations on record.</div>';
         } else {
             evalsEl.innerHTML = evals.map(ev => {
                 let badgeStyle = '', typeLabel = '';
                 if (ev.type === 'academic') {
-                    badgeStyle = 'background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;';
-                    typeLabel  = 'Academic Progress';
+                    badgeStyle = 'bg-blue-50 text-blue-700 border-blue-200'; typeLabel = 'Academic Progress';
                 } else if (ev.type === 'academic_report_card') {
-                    const isM  = ev.reportCardType === 'midterm';
-                    badgeStyle = isM ? 'background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe;'
-                                     : 'background:#edf7f1;color:#065f46;border-color:#a7f3d0;';
-                    typeLabel  = isM ? 'Midterm Report Card' : 'Report Card';
+                    const isM = ev.reportCardType === 'midterm';
+                    badgeStyle = isM ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                    typeLabel = isM ? 'Midterm Report Card' : 'Report Card';
                 } else if (ev.type === 'end_of_year') {
-                    badgeStyle = 'background:#fef3c7;color:#b45309;border-color:#fde68a;';
-                    typeLabel  = 'End-of-Year Evaluation';
+                    badgeStyle = 'bg-amber-50 text-amber-700 border-amber-200'; typeLabel = 'End-of-Year Evaluation';
                 } else if (ev.type === 'behavioral') {
-                    badgeStyle = 'background:#fef2f2;color:#b91c1c;border-color:#fecaca;';
-                    typeLabel  = 'Behavioral & Conduct';
-                } else if (ev.type === 'midterm_review') {
-                    badgeStyle = 'background:#f0f9ff;color:#0369a1;border-color:#bae6fd;';
-                    typeLabel  = 'Mid-Term Review';
-                } else if (ev.type === 'parent_conference') {
-                    badgeStyle = 'background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe;';
-                    typeLabel  = 'Parent Conference';
-                } else if (ev.type === 'learning_support') {
-                    badgeStyle = 'background:#fdf4ff;color:#9333ea;border-color:#e9d5ff;';
-                    typeLabel  = 'Learning Support';
+                    badgeStyle = 'bg-red-50 text-red-700 border-red-200'; typeLabel = 'Behavioral & Conduct';
                 } else {
-                    badgeStyle = 'background:#f8fafc;color:#475569;border-color:#cbd5e1;';
-                    typeLabel  = ev.customTypeName || ev.type || 'Evaluation';
+                    badgeStyle = 'bg-slate-50 text-slate-600 border-slate-200'; typeLabel = ev.customTypeName || ev.type || 'Evaluation';
                 }
 
                 const dateStr = ev.date
@@ -395,26 +320,31 @@ async function init() {
                     : '—';
 
                 return `
-                <div class="eval-card">
-                    <span class="eval-badge" style="${badgeStyle}">${escHtml(typeLabel)}</span>
-                    <div class="eval-period">${escHtml(ev.semesterName || '—')}</div>
-                    <div class="eval-meta">Filed by ${escHtml(ev.teacherName || '—')} · ${escHtml(dateStr)}</div>
+                <div class="bg-white border border-slate-200 rounded-2xl p-5 mb-3 shadow-sm flex flex-col items-start">
+                    <span class="${badgeStyle} text-[10px] font-black px-3 py-1 rounded-full border uppercase tracking-widest mb-3 inline-block">${escHtml(typeLabel)}</span>
+                    <div class="font-black text-slate-800 text-[15px] mb-1">${escHtml(ev.semesterName || '—')}</div>
+                    <div class="font-bold text-slate-400 text-xs">Filed by ${escHtml(ev.teacherName || '—')} · ${escHtml(dateStr)}</div>
                 </div>`;
             }).join('');
         }
     } catch (e) {
-        console.error('[Inactive] evals error:', e);
-        evalsEl.innerHTML = '<div class="empty">Error loading evaluations.</div>';
+        evalsEl.innerHTML = '<div class="text-center py-6 text-red-500 font-bold">Error loading evaluations.</div>';
     }
 }
 
-// ── Subject accordion toggle ──────────────────────────────────────────────
+// ── Subject accordion toggle using Tailwind classes ───────────────────────
 window.toggleSubject = function(bodyId, header) {
-    const body    = document.getElementById(bodyId);
+    const body = document.getElementById(bodyId);
     const chevron = header.querySelector('.fa-chevron-down');
     if (!body) return;
-    body.classList.toggle('open');
-    if (chevron) chevron.style.transform = body.classList.contains('open') ? 'rotate(180deg)' : '';
+    
+    // Toggle the Tailwind 'hidden' utility class
+    body.classList.toggle('hidden');
+    
+    // Rotate the chevron
+    if (chevron) {
+        chevron.style.transform = body.classList.contains('hidden') ? '' : 'rotate(180deg)';
+    }
 };
 </script>
 </body>
