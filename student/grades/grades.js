@@ -17,8 +17,8 @@ document.getElementById('displayStudentClass').innerText = session.studentData.c
 let allGrades     = [];
 let teacherRubric = [];
 let teachersMap   = {};
-let bySubCache    = {};   // cached subject groups for modal drill-down
-let drillSubject  = null; // currently open subject in modal
+let bySubCache    = {};
+let drillSubject  = null;
 
 // ── 3. HELPERS (unchanged) ────────────────────────────────────────────────
 function esc(s) {
@@ -53,17 +53,10 @@ function getWeight(type) {
 }
 
 // ── 4. LOAD DATA ──────────────────────────────────────────────────────────
-// Refactored from 5 sequential awaits to 3 phases.
-// Phase 1: school doc (must be first — gives us semId).
-// Phase 2: semester doc + student's teacher doc + grades query all fire
-//          in parallel via Promise.all (3 round trips become 1).
-// Phase 3: fetch ONLY the specific teacher docs referenced in the student's
-//          actual grades, in parallel. Replaces the old getDocs(all teachers)
-//          collection scan which fetched every teacher regardless of need.
 async function loadGrades() {
     try {
 
-        // ── Phase 1: school doc ───────────────────────────────────────────
+        // Phase 1: school doc
         const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
         const schoolData = schoolSnap.data() || {};
         const semId      = schoolData.activeSemesterId;
@@ -76,7 +69,7 @@ async function loadGrades() {
             return;
         }
 
-        // ── Phase 2: semester + teacher rubric + grades — all in parallel ─
+        // Phase 2: semester + teacher rubric + grades — all in parallel
         const tId = session.studentData?.teacherId;
 
         const [semSnap, tSnap, gSnap] = await Promise.all([
@@ -89,19 +82,16 @@ async function loadGrades() {
             ))
         ]);
 
-        // Semester
         const semName = semSnap.data()?.name || 'Current Period';
         document.getElementById('activeSemesterDisplay').textContent = semName;
         document.getElementById('gbTerm').textContent = semName;
 
-        // Student's assigned teacher rubric
         if (tSnap && tSnap.exists()) {
             const td         = tSnap.data();
             teacherRubric    = td.gradeTypes || td.customGradeTypes || [];
             teachersMap[tId] = td.name || 'Teacher';
         }
 
-        // Grades
         allGrades = gSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
         document.getElementById('gradesLoader').style.display = 'none';
@@ -111,9 +101,7 @@ async function loadGrades() {
             return;
         }
 
-        // ── Phase 3: fetch only teachers referenced in this student's grades
-        // Skip admin-entered grades (those show adminName, not teachersMap).
-        // Skip any teacherId already in the map (e.g. the student's own teacher).
+        // Phase 3: fetch only teachers referenced in grades, in parallel
         const extraTeacherIds = [
             ...new Set(
                 allGrades
@@ -202,11 +190,7 @@ function renderSubjectTiles(bySub) {
                      style="background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:20px 18px;cursor:pointer;transition:all 0.15s;display:flex;flex-direction:column;gap:14px;position:relative;overflow:hidden;"
                      onmouseover="this.style.borderColor='${color.accent}';this.style.boxShadow='0 6px 24px rgba(0,0,0,0.10)';this.style.transform='translateY(-2px)';"
                      onmouseout="this.style.borderColor='#e2e8f0';this.style.boxShadow='none';this.style.transform='translateY(0)';">
-
-                    <!-- Top accent bar -->
                     <div style="position:absolute;top:0;left:0;right:0;height:3px;background:${color.accent};border-radius:12px 12px 0 0;"></div>
-
-                    <!-- Initial + Subject name -->
                     <div style="display:flex;align-items:center;gap:12px;margin-top:6px;">
                         <div style="width:42px;height:42px;border-radius:10px;background:${color.bg};color:#fff;font-size:17px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
                             ${esc(subject.charAt(0).toUpperCase())}
@@ -216,20 +200,15 @@ function renderSubjectTiles(bySub) {
                             <div style="font-size:11px;color:#94a3b8;font-weight:500;margin-top:2px;">${cnt} ${cnt !== 1 ? 'entries' : 'entry'}</div>
                         </div>
                     </div>
-
-                    <!-- Average + letter badge -->
                     <div style="display:flex;align-items:flex-end;justify-content:space-between;">
                         <div style="font-size:30px;font-weight:900;line-height:1;color:${st?.color || '#94a3b8'};">
                             ${avgRnd !== null ? avgRnd + '%' : '—'}
                         </div>
                         ${st ? `<span style="font-size:15px;font-weight:800;padding:5px 13px;border-radius:8px;background:${st.bg};color:${st.color};border:1.5px solid ${st.border};">${st.letter}</span>` : ''}
                     </div>
-
-                    <!-- Progress bar -->
                     <div style="height:4px;background:#f1f5f9;border-radius:99px;overflow:hidden;margin-top:-6px;">
                         <div style="height:100%;width:${Math.min(avgRnd||0,100)}%;background:${st?.bar || '#cbd5e1'};border-radius:99px;"></div>
                     </div>
-
                 </div>`;
             }).join('')}
         </div>`;
@@ -246,7 +225,6 @@ window.openSubjectModal = function(subject) {
     const st       = avgRnd !== null ? gradeStyle(avgRnd) : null;
     const cnt      = grades.length;
 
-    // Group by type
     const byType = {};
     grades.forEach(g => {
         const t = g.type || 'Other';
@@ -267,8 +245,6 @@ window.openSubjectModal = function(subject) {
                  style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:18px 16px;cursor:pointer;transition:all 0.15s;display:flex;flex-direction:column;gap:10px;"
                  onmouseover="this.style.background='#f1f5f9';this.style.borderColor='${tSt.color}';this.style.boxShadow='0 2px 12px rgba(0,0,0,0.07)';"
                  onmouseout="this.style.background='#f8fafc';this.style.borderColor='#e2e8f0';this.style.boxShadow='none';">
-
-                <!-- Type name + entry count -->
                 <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
                     <div>
                         <div style="font-size:13px;font-weight:700;color:#0f172a;">${esc(type)}</div>
@@ -276,32 +252,22 @@ window.openSubjectModal = function(subject) {
                     </div>
                     <span style="font-size:10px;font-weight:700;padding:2px 8px;background:${tSt.bg};color:${tSt.color};border:1px solid ${tSt.border};border-radius:4px;white-space:nowrap;">${tCnt} ${tCnt !== 1 ? 'entries' : 'entry'}</span>
                 </div>
-
-                <!-- Average + letter -->
                 <div style="display:flex;align-items:center;justify-content:space-between;">
                     <div style="font-size:28px;font-weight:900;color:${tSt.color};line-height:1;">${typeAvg}%</div>
                     <span style="font-size:13px;font-weight:800;padding:4px 12px;background:${tSt.bg};color:${tSt.color};border:1.5px solid ${tSt.border};border-radius:6px;">${tSt.letter}</span>
                 </div>
-
-                <!-- Progress bar -->
                 <div style="height:5px;background:#e2e8f0;border-radius:99px;overflow:hidden;">
                     <div style="height:100%;width:${Math.min(typeAvg,100)}%;background:${tSt.bar};border-radius:99px;"></div>
                 </div>
-
                 <div style="font-size:10px;color:#94a3b8;font-weight:600;text-align:right;">Tap to view entries →</div>
             </div>`;
         }).join('');
 
     modal.innerHTML = `
     <div style="width:100%;max-width:700px;max-height:88vh;background:#fff;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.22);" onclick="event.stopPropagation()">
-
-        <!-- Top stripe -->
         <div style="height:4px;background:linear-gradient(90deg,#0ea871,#0d1f35);flex-shrink:0;"></div>
-
-        <!-- Header -->
         <div style="padding:18px 24px;border-bottom:1px solid #e8edf2;background:#fafbfc;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-shrink:0;">
             <div style="display:flex;align-items:center;gap:12px;">
-                <!-- Back button (hidden on type tiles view) -->
                 <div id="modalBackBtn" style="display:none;">
                     <button onclick="window.goBackToTypes()"
                             style="display:flex;align-items:center;gap:6px;padding:6px 12px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;font-weight:700;color:#374f6b;font-family:inherit;cursor:pointer;"
@@ -323,17 +289,13 @@ window.openSubjectModal = function(subject) {
                 <i class="fa-solid fa-xmark"></i>
             </button>
         </div>
-
-        <!-- Body -->
         <div id="modalBody" style="flex:1;overflow-y:auto;padding:20px 24px;">
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;">
                 ${typeTilesHtml}
             </div>
         </div>
-
     </div>`;
 
-    // Position overlay
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(13,31,53,0.65);z-index:50;display:flex;align-items:center;justify-content:center;padding:16px;';
     modal.classList.remove('hidden');
 };
@@ -351,7 +313,6 @@ window.openEntriesView = function(subject, type) {
     const sorted  = [...grades].sort((a,b) => (b.date||'').localeCompare(a.date||''));
     const cnt     = grades.length;
 
-    // Update header
     document.getElementById('modalTitle').textContent    = type;
     document.getElementById('modalSubtitle').textContent =
         `${subject}${w !== null ? ' · ' + w + '% of grade' : ''} · ${cnt} ${cnt !== 1 ? 'entries' : 'entry'}`;
@@ -390,8 +351,6 @@ window.openEntriesView = function(subject, type) {
 
     document.getElementById('modalBody').innerHTML = `
         <div style="display:flex;flex-direction:column;gap:10px;">
-
-            <!-- Summary strip -->
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:4px;">
                 <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;text-align:center;">
                     <div style="font-size:9px;text-transform:uppercase;font-weight:800;color:#94a3b8;letter-spacing:1px;margin-bottom:4px;">Average</div>
@@ -406,8 +365,6 @@ window.openEntriesView = function(subject, type) {
                     <div style="font-size:22px;font-weight:900;color:#0d1f35;">${w !== null ? w + '%' : '—'}</div>
                 </div>
             </div>
-
-            <!-- Individual entries -->
             ${entriesHtml}
         </div>`;
 };
@@ -425,10 +382,423 @@ window.closeTypeModal = function() {
     drillSubject    = null;
 };
 
-// Close on backdrop click
 document.getElementById('typeModal').addEventListener('click', function(e) {
     if (e.target === this) window.closeTypeModal();
 });
+
+// ── 11. PRINT GRADEBOOK ───────────────────────────────────────────────────
+// Opens a new window with a fully formatted, print-ready grade report,
+// then triggers the print dialog automatically.
+// Uses only data already loaded in memory — no extra Firestore calls.
+window.printGradebook = function() {
+    if (!allGrades.length || !Object.keys(bySubCache).length) {
+        alert('Grade data is still loading. Please wait a moment and try again.');
+        return;
+    }
+
+    // ── Gather page meta ─────────────────────────────────────────────────
+    const logoUrl    = new URL('../../assets/images/logo.png', window.location.href).href;
+    const printDate  = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+    const semName    = document.getElementById('activeSemesterDisplay')?.textContent || 'Current Period';
+    const schoolName = document.getElementById('displaySchoolName')?.textContent    || 'School';
+    const studentName  = session.studentData?.name      || 'Student';
+    const studentClass = session.studentData?.className || '—';
+    const studentId    = session.studentId              || '—';
+
+    // ── Calculate all subject averages ───────────────────────────────────
+    const subjects = Object.entries(bySubCache).sort((a, b) => a[0].localeCompare(b[0]));
+    let totalAvg = 0, subCount = 0;
+    const subjectAverages = {};
+
+    for (const [sub, grades] of subjects) {
+        const avg = calculateWeightedAverage(grades, teacherRubric);
+        if (avg !== null) {
+            const rounded = Math.round(avg);
+            subjectAverages[sub] = rounded;
+            totalAvg += rounded;
+            subCount++;
+        }
+    }
+
+    const overall    = subCount > 0 ? Math.round(totalAvg / subCount) : null;
+    const overallSt  = overall !== null ? gradeStyle(overall) : null;
+    const standingTx = overall !== null ? standing(overall).replace(/[⭐👍➡⚠🔴]\s?/u, '') : '—';
+
+    // ── Build subject sections ───────────────────────────────────────────
+    const subjectSectionsHtml = subjects.map(([subject, grades], idx) => {
+        const avg   = subjectAverages[subject] ?? null;
+        const st    = avg !== null ? gradeStyle(avg) : null;
+        const color = TILE_COLORS[idx % TILE_COLORS.length];
+
+        const sorted = [...grades].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+        const rows = sorted.map(g => {
+            const pct   = g.max ? Math.round((g.score / g.max) * 100) : null;
+            const gSt   = pct !== null ? gradeStyle(pct) : null;
+            const w     = getWeight(g.type);
+            const tName = g.enteredByAdmin
+                ? (g.adminName || 'Administrator')
+                : (teachersMap[g.teacherId] || 'Teacher');
+
+            return `
+            <tr>
+                <td class="col-title">${esc(g.title || '—')}${g.enteredByAdmin ? ' <span class="admin-tag">Admin</span>' : ''}</td>
+                <td class="col-date">${esc(g.date || '—')}</td>
+                <td class="col-type">${esc(g.type || '—')}${w !== null ? `<span class="weight"> (${w}%)</span>` : ''}</td>
+                <td class="col-score center">${g.score} / ${g.max ?? '?'}</td>
+                <td class="col-pct center" style="color:${gSt?.color || '#374f6b'};font-weight:800;">${pct !== null ? pct + '%' : '—'}</td>
+                <td class="col-letter center">
+                    <span class="letter-badge" style="color:${gSt?.color || '#374f6b'};background:${gSt?.bg || '#f1f5f9'};border-color:${gSt?.border || '#e2e8f0'};">${gSt?.letter || '—'}</span>
+                </td>
+            </tr>`;
+        }).join('');
+
+        return `
+        <div class="subject-section">
+            <div class="subject-header" style="background:${color.accent};">
+                <div class="subject-initial">${esc(subject.charAt(0).toUpperCase())}</div>
+                <div class="subject-name">${esc(subject)}</div>
+                ${avg !== null ? `<div class="subject-avg-pill">${avg}%&nbsp;&nbsp;${st?.letter || ''}</div>` : ''}
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th class="col-title">Assignment</th>
+                        <th class="col-date">Date</th>
+                        <th class="col-type">Type</th>
+                        <th class="col-score center">Score</th>
+                        <th class="col-pct center">Percentage</th>
+                        <th class="col-letter center">Grade</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="4" class="avg-label">Subject Average</td>
+                        <td class="center avg-val" style="color:${st?.color || '#374f6b'};">${avg !== null ? avg + '%' : '—'}</td>
+                        <td class="center">
+                            <span class="letter-badge avg-letter" style="color:${st?.color || '#374f6b'};background:${st?.bg || '#f1f5f9'};border-color:${st?.border || '#e2e8f0'};">${st?.letter || '—'}</span>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>`;
+    }).join('');
+
+    // ── Assemble full HTML document ──────────────────────────────────────
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grade Report — ${esc(studentName)} — ${esc(semName)}</title>
+    <style>
+        /* ── Reset & Base ── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #fff;
+            color: #0d1f35;
+            font-size: 11.5px;
+            line-height: 1.5;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        /* ── Report Header ── */
+        .report-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 24px 36px 20px;
+            border-bottom: 3px solid #1e1b4b;
+            background: #fff;
+        }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .logo { width: 52px; height: 52px; object-fit: contain; }
+        .brand { display: flex; flex-direction: column; }
+        .brand-name { font-size: 22px; font-weight: 900; color: #1e1b4b; letter-spacing: -0.5px; }
+        .brand-tagline { font-size: 10px; color: #818cf8; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 2px; }
+        .header-right { text-align: right; }
+        .report-title { font-size: 15px; font-weight: 800; color: #1e1b4b; text-transform: uppercase; letter-spacing: 1px; }
+        .report-date { font-size: 10px; color: #6b84a0; margin-top: 3px; font-weight: 500; }
+
+        /* ── Student Info Bar ── */
+        .student-bar {
+            background: #f4f7fb;
+            border-bottom: 1px solid #dce3ed;
+            padding: 14px 36px;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0;
+        }
+        .student-field { padding: 0 16px; }
+        .student-field:first-child { padding-left: 0; }
+        .student-field:not(:last-child) { border-right: 1px solid #dce3ed; }
+        .field-label {
+            font-size: 9px; text-transform: uppercase; letter-spacing: 1.2px;
+            font-weight: 700; color: #94a3b8; display: block; margin-bottom: 3px;
+        }
+        .field-value { font-size: 13px; font-weight: 800; color: #0d1f35; }
+
+        /* ── Section Label ── */
+        .section-label {
+            padding: 20px 36px 10px;
+            font-size: 9px; font-weight: 700; color: #94a3b8;
+            text-transform: uppercase; letter-spacing: 1.5px;
+        }
+
+        /* ── Subject Sections ── */
+        .subjects { padding: 0 36px; }
+        .subject-section {
+            margin-bottom: 28px;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            overflow: hidden;
+            page-break-inside: avoid;
+        }
+
+        /* Subject Header Bar */
+        .subject-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 11px 16px;
+            color: #fff;
+        }
+        .subject-initial {
+            width: 30px; height: 30px;
+            border-radius: 7px;
+            background: rgba(255,255,255,0.22);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 15px; font-weight: 900;
+            flex-shrink: 0;
+        }
+        .subject-name { font-size: 13px; font-weight: 800; flex: 1; }
+        .subject-avg-pill {
+            background: rgba(255,255,255,0.22);
+            padding: 3px 12px;
+            border-radius: 99px;
+            font-size: 12px; font-weight: 900;
+            letter-spacing: 0.5px;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+
+        /* Grade Table */
+        table { width: 100%; border-collapse: collapse; }
+        thead th {
+            background: #f8fafc;
+            font-size: 9px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.8px;
+            color: #6b84a0;
+            padding: 8px 14px;
+            text-align: left;
+            border-bottom: 1px solid #e8edf4;
+        }
+        thead th.center { text-align: center; }
+
+        tbody tr:nth-child(even) { background: #fafbfc; }
+        tbody tr:last-child td { border-bottom: none; }
+        tbody td {
+            padding: 9px 14px;
+            border-bottom: 1px solid #f0f4f9;
+            font-size: 11px;
+            color: #0d1f35;
+            vertical-align: middle;
+        }
+        tbody td.center { text-align: center; }
+
+        /* Subject Average Footer Row */
+        tfoot td {
+            padding: 10px 14px;
+            background: #f0f4f9;
+            border-top: 2px solid #dce3ed;
+            font-weight: 700;
+            font-size: 11px;
+        }
+        .avg-label { text-align: right; color: #374f6b; font-style: italic; }
+        .avg-val { font-size: 14px; font-weight: 900; }
+
+        /* Column widths */
+        .col-title  { width: 28%; }
+        .col-date   { width: 12%; white-space: nowrap; }
+        .col-type   { width: 22%; }
+        .col-score  { width: 12%; }
+        .col-pct    { width: 12%; }
+        .col-letter { width: 10%; }
+
+        /* Letter badge */
+        .letter-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 5px;
+            border: 1.5px solid;
+            font-size: 12px;
+            font-weight: 900;
+        }
+        .avg-letter { font-size: 13px; padding: 4px 12px; }
+
+        /* Weight label */
+        .weight { color: #94a3b8; font-size: 9.5px; font-weight: 600; }
+
+        /* Admin tag */
+        .admin-tag {
+            display: inline-block;
+            font-size: 8px; font-weight: 700;
+            padding: 1px 5px;
+            background: #eff6ff; color: #2563eb;
+            border: 1px solid #bfdbfe;
+            border-radius: 3px;
+            vertical-align: middle;
+            margin-left: 5px;
+        }
+
+        /* ── Overall Average Block ── */
+        .overall-block {
+            margin: 24px 36px 28px;
+            border: 2px solid #1e1b4b;
+            border-radius: 10px;
+            overflow: hidden;
+            page-break-inside: avoid;
+        }
+        .overall-header {
+            background: #1e1b4b;
+            color: #fff;
+            padding: 10px 20px;
+            font-size: 10px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 1.5px;
+        }
+        .overall-body {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 18px 24px;
+            background: #f4f7fb;
+        }
+        .overall-left { display: flex; align-items: center; gap: 20px; }
+        .overall-avg-num { font-size: 52px; font-weight: 900; line-height: 1; }
+        .overall-pct-label { font-size: 20px; font-weight: 700; color: #6b84a0; align-self: flex-end; margin-bottom: 6px; }
+        .overall-standing { font-size: 14px; font-weight: 700; color: #374f6b; margin-top: 4px; }
+        .overall-sub-count { font-size: 10px; color: #94a3b8; font-weight: 500; margin-top: 2px; }
+        .overall-right { text-align: right; }
+        .overall-letter-badge {
+            display: inline-block;
+            width: 64px; height: 64px;
+            border-radius: 12px;
+            border: 3px solid;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 30px; font-weight: 900;
+        }
+
+        /* ── Footer ── */
+        .report-footer {
+            padding: 14px 36px;
+            border-top: 1px solid #dce3ed;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #94a3b8;
+            font-size: 9px;
+        }
+        .footer-brand { font-weight: 700; color: #818cf8; }
+
+        /* ── Print ── */
+        @media print {
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .subject-section { page-break-inside: avoid; }
+            .overall-block   { page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ── Report Header ── -->
+    <div class="report-header">
+        <div class="header-left">
+            <img src="${logoUrl}" alt="ConnectUs" class="logo" onerror="this.style.display='none'">
+            <div class="brand">
+                <div class="brand-name">ConnectUs</div>
+                <div class="brand-tagline">Academic Platform · Belize</div>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="report-title">Academic Grade Report</div>
+            <div class="report-date">Printed: ${printDate}</div>
+        </div>
+    </div>
+
+    <!-- ── Student Info Bar ── -->
+    <div class="student-bar">
+        <div class="student-field">
+            <span class="field-label">Student</span>
+            <span class="field-value">${esc(studentName)}</span>
+        </div>
+        <div class="student-field">
+            <span class="field-label">Class</span>
+            <span class="field-value">${esc(studentClass)}</span>
+        </div>
+        <div class="student-field">
+            <span class="field-label">School</span>
+            <span class="field-value">${esc(schoolName)}</span>
+        </div>
+        <div class="student-field">
+            <span class="field-label">Term / Period</span>
+            <span class="field-value">${esc(semName)}</span>
+        </div>
+    </div>
+
+    <!-- ── Section Label ── -->
+    <div class="section-label">Grades by Subject</div>
+
+    <!-- ── Subject Sections ── -->
+    <div class="subjects">
+        ${subjectSectionsHtml}
+    </div>
+
+    <!-- ── Overall Average ── -->
+    ${overall !== null ? `
+    <div class="overall-block">
+        <div class="overall-header">Term Overall Average</div>
+        <div class="overall-body">
+            <div class="overall-left">
+                <div>
+                    <div style="display:flex;align-items:flex-end;gap:4px;">
+                        <div class="overall-avg-num" style="color:${overallSt?.color || '#0d1f35'};">${overall}</div>
+                        <div class="overall-pct-label">%</div>
+                    </div>
+                    <div class="overall-standing">${standingTx}</div>
+                    <div class="overall-sub-count">${subCount} subject${subCount !== 1 ? 's' : ''} · ${allGrades.length} total assignment${allGrades.length !== 1 ? 's' : ''}</div>
+                </div>
+            </div>
+            <div class="overall-right">
+                <div class="overall-letter-badge" style="color:${overallSt?.color || '#374f6b'};background:${overallSt?.bg || '#f1f5f9'};border-color:${overallSt?.border || '#e2e8f0'};">
+                    ${overallSt?.letter || '—'}
+                </div>
+            </div>
+        </div>
+    </div>` : ''}
+
+    <!-- ── Footer ── -->
+    <div class="report-footer">
+        <div>Generated by <span class="footer-brand">ConnectUs</span> · Academic Management Platform</div>
+        <div>${esc(studentName)} · ${esc(semName)} · ${printDate}</div>
+    </div>
+
+</body>
+</html>`;
+
+    // ── Open print window ────────────────────────────────────────────────
+    const win = window.open('', '_blank');
+    if (!win) {
+        alert('Pop-ups are blocked. Please allow pop-ups for this site to print the grade report.');
+        return;
+    }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    // Brief delay lets the browser fully render before opening print dialog
+    setTimeout(() => { win.print(); }, 650);
+};
 
 // ── INITIALIZE ────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', loadGrades);
