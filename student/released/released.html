@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Enrollment Ended — ConnectUs</title>
+    
     <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
     
@@ -11,22 +12,27 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     
     <style>
-        /* Theme Variables based on Student Portal */
         :root {
-            --bg-body: #f8fafc;
+            /* Rich, deep themes based on modern login portals */
+            --bg-gradient-start: #0f172a; /* Deep Slate/Navy */
+            --bg-gradient-end: #1e293b;
             --bg-card: #ffffff;
+            
             --text-primary: #0f172a;
-            --text-secondary: #64748b;
+            --text-secondary: #475569;
             --border-color: #e2e8f0;
+            
             --brand-blue: #2563eb;
             --brand-blue-hover: #1d4ed8;
+            --brand-accent: #3b82f6;
         }
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
             font-family: 'DM Sans', sans-serif;
-            background: var(--bg-body);
+            /* Replaced the boring flat color with a rich, immersive gradient */
+            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
             color: var(--text-primary);
             min-height: 100vh;
             display: flex;
@@ -35,32 +41,45 @@
             justify-content: center;
             padding: 40px 20px;
             -webkit-font-smoothing: antialiased;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* Optional: Subtle background glow effect for that premium SaaS feel */
+        body::before {
+            content: '';
+            position: absolute;
+            top: -20%; left: -10%;
+            width: 50vw; height: 50vw;
+            background: radial-gradient(circle, rgba(59,130,246,0.1) 0%, transparent 70%);
+            z-index: 0;
         }
 
         .card {
             background: var(--bg-card);
-            border: 1px solid var(--border-color);
             border-radius: 24px;
             padding: 48px 40px;
             max-width: 440px;
             width: 100%;
             text-align: center;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 10px 15px -3px rgba(0, 0, 0, 0.02);
+            /* Massive, premium drop shadow to float over the dark background */
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
             position: relative;
+            z-index: 1;
         }
 
         .portal-label {
             font-size: 11px;
-            font-weight: 700;
+            font-weight: 800;
             text-transform: uppercase;
-            letter-spacing: 0.1em;
-            color: var(--text-secondary);
-            margin-bottom: 24px;
+            letter-spacing: 0.12em;
+            color: var(--brand-accent);
+            margin-bottom: 20px;
             display: block;
         }
 
         .logo {
-            height: 38px;
+            height: 42px;
             object-fit: contain;
             margin-bottom: 32px;
             display: block;
@@ -69,15 +88,16 @@
         }
 
         .icon-wrap {
-            width: 64px; height: 64px;
-            border-radius: 16px;
+            width: 68px; height: 68px;
+            border-radius: 18px;
             display: flex; align-items: center; justify-content: center;
             margin: 0 auto 20px;
-            font-size: 24px;
+            font-size: 28px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
         }
 
         .student-name {
-            font-size: 24px;
+            font-size: 26px;
             font-weight: 800;
             color: var(--text-primary);
             margin-bottom: 4px;
@@ -90,6 +110,10 @@
             color: var(--text-secondary);
             letter-spacing: 0.05em;
             margin-bottom: 24px;
+            background: #f1f5f9;
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 6px;
         }
 
         .divider {
@@ -99,7 +123,7 @@
         }
 
         .message {
-            font-size: 14.5px;
+            font-size: 15px;
             color: var(--text-secondary);
             font-weight: 500;
             line-height: 1.6;
@@ -110,7 +134,7 @@
             display: inline-flex;
             align-items: center;
             font-size: 12px;
-            font-weight: 700;
+            font-weight: 800;
             padding: 6px 16px;
             border-radius: 99px;
             border: 1px solid;
@@ -119,9 +143,10 @@
         }
 
         .contact-block {
-            background: #f1f5f9;
-            border-radius: 12px;
-            padding: 16px 20px;
+            background: #f8fafc;
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 18px 20px;
             margin-bottom: 32px;
             text-align: center;
         }
@@ -131,13 +156,13 @@
             color: var(--text-secondary);
             font-weight: 500;
             line-height: 1.5;
-            margin-bottom: 8px;
+            margin-bottom: 10px;
         }
 
         .contact-block a {
-            font-size: 13.5px;
+            font-size: 14px;
             font-weight: 700;
-            color: var(--text-primary);
+            color: var(--brand-blue);
             text-decoration: none;
             display: inline-flex;
             align-items: center;
@@ -145,7 +170,7 @@
             transition: color 0.2s ease;
         }
 
-        .contact-block a:hover { color: var(--brand-blue); }
+        .contact-block a:hover { color: var(--brand-blue-hover); text-decoration: underline; }
 
         .clear-btn {
             width: 100%;
@@ -154,37 +179,48 @@
             color: #ffffff;
             border: none;
             font-family: 'DM Sans', sans-serif; 
-            font-size: 14px; 
+            font-size: 15px; 
             font-weight: 700;
-            padding: 14px 20px; 
+            padding: 16px 20px; 
             border-radius: 12px; 
             cursor: pointer; 
-            transition: background 0.2s ease, transform 0.1s ease;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
         }
 
-        .clear-btn:hover { background: var(--brand-blue-hover); }
-        .clear-btn:active { transform: scale(0.98); }
-        .clear-btn:focus-visible { outline: 2px solid var(--brand-blue); outline-offset: 3px; }
+        .clear-btn:hover { 
+            background: var(--brand-blue-hover); 
+            box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3);
+            transform: translateY(-1px);
+        }
+        .clear-btn:active { transform: translateY(1px); }
 
-        /* Legal Footer matching the ConnectUs standard */
+        /* Themed Legal Footer for Dark Background */
         .legal-footer {
             margin-top: 40px;
-            font-size: 12.5px;
-            color: var(--text-secondary);
+            font-size: 13px;
+            color: #94a3b8; /* Light slate text for dark bg */
             font-weight: 500;
             text-align: center;
-            line-height: 1.6;
+            line-height: 1.8;
+            z-index: 1;
         }
         
         .legal-footer a {
-            color: var(--text-secondary);
+            color: #cbd5e1;
             text-decoration: none;
             transition: color 0.2s ease;
             font-weight: 600;
         }
 
         .legal-footer a:hover {
-            color: var(--text-primary);
+            color: #ffffff;
+        }
+
+        .kismet-branding {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #64748b;
         }
     </style>
 </head>
@@ -192,14 +228,17 @@
 
 <div class="card">
     <span class="portal-label">Student Portal</span>
+    
     <img src="../../assets/images/logo2.png" alt="ConnectUs" class="logo" onerror="this.style.display='none'">
 
     <div class="icon-wrap" id="iconWrap"></div>
 
     <div class="student-name" id="studentName">Student</div>
-    <div class="student-id"   id="studentId"></div>
-
-    <span class="reason-badge" id="reasonBadge"></span>
+    <div class="student-id" id="studentId"></div>
+    
+    <div style="margin-top: 16px;">
+        <span class="reason-badge" id="reasonBadge"></span>
+    </div>
 
     <hr class="divider">
 
@@ -208,7 +247,7 @@
     <div class="contact-block">
         <p>If you need to request a copy of your records, please reach out directly.</p>
         <a href="mailto:info@connectusonline.org">
-            <i class="fa-solid fa-envelope" aria-hidden="true" style="font-size:14px; color: var(--brand-blue);"></i>
+            <i class="fa-solid fa-envelope" aria-hidden="true"></i>
             info@connectusonline.org
         </a>
     </div>
@@ -220,7 +259,13 @@
 
 <div class="legal-footer">
     &copy; 2026 ConnectUs. All rights reserved.<br>
-    <a href="/terms.html">Terms of Service</a> &nbsp;&middot;&nbsp; <a href="/privacy.html">Privacy Policy</a>
+    
+    <a href="/terms/terms.html">Terms of Service</a> &nbsp;&middot;&nbsp; 
+    <a href="/terms/privacy.html">Privacy Policy</a>
+    
+    <div class="kismet-branding">
+        Powered by Kismet Code Digital
+    </div>
 </div>
 
 <script>
@@ -245,8 +290,9 @@ try {
 
 if (info.studentName) document.getElementById('studentName').textContent = info.studentName;
 if (info.studentId) {
-    // Adding the "ID:" prefix similar to the login page context
     document.getElementById('studentId').textContent = "ID: " + info.studentId;
+} else {
+    document.getElementById('studentId').style.display = 'none';
 }
 
 const reason = (info.reason || '').toLowerCase();
