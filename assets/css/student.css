@@ -160,46 +160,123 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 
 
 /* ==========================================================================
-   MOBILE & TABLET RESPONSIVE — SIDEBAR DRAWER
-   Applies only on screens narrower than 768px (md breakpoint).
-   Desktop layout is completely unaffected.
+   MOBILE & TABLET RESPONSIVE
+   All rules below are scoped to max-width: 767px.
+   Desktop layout (768px and above) is completely unaffected.
    ========================================================================== */
 
-/* ── SIDEBAR: fixed drawer on mobile, static on desktop ── */
+/* ── 1. FIX VIEWPORT HEIGHT ON iOS
+        iOS Safari reports 100vh as the full screen including the hidden
+        address bar and bottom toolbar, so content gets clipped behind chrome.
+        100dvh (dynamic viewport height) tracks the actual visible area.
+        Browsers that don't support dvh ignore this value and keep Tailwind's
+        100vh — so this is a safe, no-fallback-needed upgrade.          ── */
 @media (max-width: 767px) {
+    body {
+        height: 100dvh !important;
+    }
+}
+
+/* ── 2. FIX SCROLL INSIDE THE MAIN CONTENT AREA
+        In a flex column layout, flex children default to min-height: auto,
+        meaning they expand to fit content instead of being constrained by
+        their parent. This prevents overflow-y: auto from ever triggering.
+        min-height: 0 forces the child to respect its parent's bounds so
+        the inner scroll container actually scrolls.
+        -webkit-overflow-scrolling: touch enables smooth momentum scrolling
+        on iOS (without it, scrolling feels stuck or requires two fingers).
+        padding-bottom uses env(safe-area-inset-bottom) so content is never
+        hidden behind the iPhone home indicator.                         ── */
+@media (max-width: 767px) {
+    #dashboardMain {
+        min-height: 0;
+    }
+
+    #dashboardMain > div:last-child {
+        -webkit-overflow-scrolling: touch;
+        overflow-y: auto;
+        /* Base padding + safe area for iPhone home indicator */
+        padding-bottom: calc(1.75rem + env(safe-area-inset-bottom, 0px));
+    }
+}
+
+/* ── 3. SIDEBAR: FIXED DRAWER ON MOBILE
+        On desktop the sidebar is a normal flex child (static position).
+        On mobile it becomes a fixed overlay drawer that slides in from
+        the left. The container collapses to width:0 so main fills the
+        screen. The sidebar itself slides off-screen by default and slides
+        in when .sidebar-open is added by the JS toggle.                ── */
+@media (max-width: 767px) {
+    #layout-sidebar-container {
+        width: 0 !important;
+        flex-shrink: 0;
+    }
+
     #sidebar {
         position: fixed;
         top: 0;
         left: 0;
-        height: 100vh;
+        height: 100dvh;
         z-index: 50;
         transform: translateX(-100%);
         transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        /* Allow the sidebar itself to scroll if screen is very short */
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
     }
 
     #sidebar.sidebar-open {
         transform: translateX(0);
     }
-
-    /* Allow the main content to fill the full width on mobile */
-    #layout-sidebar-container {
-        width: 0 !important;
-        flex-shrink: 0;
-    }
 }
 
-/* ── OVERLAY: dark backdrop behind open sidebar on mobile ── */
+/* ── 4. OVERLAY (dark backdrop behind open sidebar)
+        Always present in the DOM (injected by JS).
+        NEVER toggled with display — only opacity and pointer-events.
+        pointer-events: none when hidden means it can NEVER intercept
+        taps on nav links or page content.                              ── */
 #sidebarOverlay {
-    display: none;
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.55);
     z-index: 40;
     opacity: 0;
+    pointer-events: none;
     transition: opacity 0.25s ease;
 }
 
 #sidebarOverlay.visible {
-    display: block;
     opacity: 1;
+    pointer-events: auto;
+}
+
+/* ── 5. SIDEBAR TEXT BRIGHTNESS ON MOBILE
+        Phone screens render the deep indigo background darker than
+        a monitor. Tailwind's text-slate-400 (#94a3b8) becomes near-
+        invisible. These rules boost nav text and icons to a readable
+        level. Active state colour is preserved via the .active rule.
+        Specificity (#sidebar .nav-item = 110) cleanly beats Tailwind
+        (.text-slate-400 = 10) with no !important needed.              ── */
+@media (max-width: 767px) {
+    #sidebar .nav-item {
+        color: rgba(255, 255, 255, 0.82);
+    }
+
+    #sidebar .nav-item:hover {
+        color: rgba(255, 255, 255, 0.96);
+    }
+
+    #sidebar .nav-item.active {
+        color: var(--sb-accent);
+    }
+
+    /* Fully restore icon opacity on mobile */
+    #sidebar .nav-item i {
+        opacity: 1 !important;
+    }
+
+    /* Brighten section header labels (Main Menu, Records & Reports, Account) */
+    #sidebar nav p {
+        color: rgba(255, 255, 255, 0.45) !important;
+    }
 }
