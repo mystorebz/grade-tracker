@@ -202,7 +202,7 @@ import {
 import { requireAuth, logout } from '../../assets/js/auth.js';
 import { calculateWeightedAverage, letterGrade } from '../../assets/js/utils.js';
 
-window.handleLogout = () => logout('../index.html');
+window.handleLogout = () => logout('../login.html');
 
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 
@@ -224,7 +224,7 @@ function infoItem(label, value, mono = false) {
 }
 
 // requireAuth validates session, fires student watcher for mid-session changes
-const session = requireAuth('student', '../index.html');
+const session = requireAuth('student', '../login.html');
 if (session) init();
 
 async function init() {
