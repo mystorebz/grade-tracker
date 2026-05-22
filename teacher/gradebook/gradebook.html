@@ -169,6 +169,98 @@
         .form-input:focus { border-color:#0ea871; box-shadow:0 0 0 3px rgba(14,168,113,0.15); }
         .reason-section { max-height:0; overflow:hidden; transition:max-height 0.25s ease; }
         .reason-section.visible { max-height:300px; }
+
+        /* ── MOBILE RESPONSIVE ────────────────────────────────────── */
+        @media (max-width: 767px) {
+
+            /* Prevent horizontal bleed */
+            body { overflow-x: hidden; }
+
+            /* Smooth iOS scroll */
+            .gb-scroll {
+                padding: 16px 14px;
+                -webkit-overflow-scrolling: touch;
+                overflow-y: auto;
+                padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+            }
+
+            /* Page header stacks vertically */
+            .gb-page-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+            }
+
+            /* Header action buttons wrap and fill width */
+            .gb-page-header > div {
+                width: 100%;
+                flex-wrap: wrap;
+            }
+
+            .gb-page-header .btn-sharp {
+                flex: 1;
+                justify-content: center;
+                min-width: 100px;
+            }
+
+            /* Stat cards: 2 columns on mobile instead of 4 */
+            .gb-stats {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+            }
+
+            /* Stat card compact */
+            .gb-stat-card {
+                padding: 12px 14px;
+            }
+
+            /* Controls: search full width, filters wrap below */
+            .gb-controls {
+                gap: 8px;
+            }
+
+            .gb-search {
+                min-width: 0;
+                flex: 1 1 100%;
+            }
+
+            /* Searchable filter dropdowns share row */
+            .sf-wrap {
+                flex: 1;
+                min-width: 0;
+            }
+
+            .sf-trigger {
+                min-width: 0;
+                width: 100%;
+            }
+
+            .sf-input {
+                width: 60px;
+            }
+
+            /* Count badge full width */
+            .gb-count-badge {
+                width: 100%;
+                justify-content: center;
+            }
+
+            /* Table header stacks */
+            .gb-table-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 6px;
+            }
+
+            /* Table scrolls horizontally — wrapper already has overflow-x:auto */
+            .gb-table-wrap { overflow: hidden; }
+
+            /* Modals: tighter padding on mobile */
+            .modal-overlay { padding: 8px; }
+
+            /* Edit grade modal score grid: keep 2 columns, they're short */
+            /* Grade weights modal add row: stack on very small screens */
+        }
     </style>
 </head>
 
@@ -281,7 +373,7 @@
                     </div>
                 </div>
 
-                <div style="overflow-x:auto;">
+                <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
                     <table class="gb-table">
                         <thead>
                             <tr>
@@ -386,7 +478,7 @@
         </div>
     </div>
 
-    <!-- ── GRADE WEIGHTS CONFIGURATION MODAL (SMART UX) ── -->
+    <!-- ── GRADE WEIGHTS CONFIGURATION MODAL ── -->
     <div id="gradeWeightsModal" class="modal-overlay hidden opacity-0">
         <div class="modal-box" id="gradeWeightsModalInner" style="width:100%;max-width:500px;max-height:90vh;display:flex;flex-direction:column;">
             <div class="modal-stripe"></div>
@@ -400,15 +492,13 @@
                 </div>
                 <button id="closeGradeWeightsBtn" class="modal-close"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            
+
             <div class="modal-body" style="flex:1;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:16px;background:#fafbfc;">
-                
-                <!-- Smart Math Helper Display -->
+
                 <div id="gwTotalWeight" style="padding:12px;border-radius:4px;font-size:12px;font-weight:600;text-align:center;border:1px solid #dce3ed;background:#f8fafb;color:#6b84a0;transition:all 0.2s;">
                     Total: 0%
                 </div>
 
-                <!-- Quick Add Row -->
                 <div style="background:#fff;border:1px solid #c5d0db;border-radius:4px;padding:16px;box-shadow:0 1px 2px rgba(13,31,53,0.05);">
                     <label class="field-label" style="color:#0ea871; margin-bottom: 8px;">Add Assessment Metric</label>
                     <div style="display:flex; gap:8px;">
@@ -421,12 +511,9 @@
                     </div>
                 </div>
 
-                <!-- List of Configured Types -->
                 <div style="display:flex;flex-direction:column;gap:8px;">
                     <label class="field-label" style="margin:0;">Active Metrics</label>
-                    <div id="gwList" style="display:flex;flex-direction:column;gap:8px;max-height:250px;overflow-y:auto;padding-right:4px;">
-                        <!-- JS will inject rows here -->
-                    </div>
+                    <div id="gwList" style="display:flex;flex-direction:column;gap:8px;max-height:250px;overflow-y:auto;padding-right:4px;"></div>
                     <p id="gwMsg" class="hidden" style="font-size:11.5px;font-weight:700;padding:10px 12px;border-radius:3px;text-align:center;margin:0;"></p>
                 </div>
             </div>
