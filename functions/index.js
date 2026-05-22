@@ -87,6 +87,7 @@ exports.mintAdminToken = onCall({ region: 'us-central1' }, async (request) => {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FUNCTION 2: mintTeacherToken
+// --- START: mintTeacherToken ---
 // ═══════════════════════════════════════════════════════════════════════════════
 exports.mintTeacherToken = onCall({ region: 'us-central1' }, async (request) => {
 
@@ -96,15 +97,39 @@ exports.mintTeacherToken = onCall({ region: 'us-central1' }, async (request) => 
         throw new HttpsError('invalid-argument', 'schoolId and pin are required.');
     }
 
-    const code     = String(pin).trim().toUpperCase();
+    // Hash the incoming pin exactly as entered (trim whitespace only, preserve case)
+    const pinTrimmed = String(pin).trim();
+    const pinHashed  = sha256Trim(pinTrimmed);
+
     const variants = [schoolId.toUpperCase(), schoolId.toLowerCase(), schoolId];
 
-    // Path 1: Global /teachers
+    // ── Path 1: Global /teachers ──────────────────────────────────────────────
     for (const sid of variants) {
-        const globalSnap = await db.collection('teachers')
+
+        // Step 1: Try hashed comparison first (new secure path)
+        let globalSnap = await db.collection('teachers')
             .where('currentSchoolId', '==', sid)
-            .where('pin', '==', code)
+            .where('pin', '==', pinHashed)
             .get();
+
+        // Step 2: Fall back to plain text comparison (migration path for existing pins)
+        if (globalSnap.empty) {
+            globalSnap = await db.collection('teachers')
+                .where('currentSchoolId', '==', sid)
+                .where('pin', '==', pinTrimmed)
+                .get();
+
+            // If plain text matched, silently upgrade the stored pin to a hash
+            if (!globalSnap.empty) {
+                try {
+                    await db.collection('teachers')
+                        .doc(globalSnap.docs[0].id)
+                        .update({ pin: pinHashed });
+                } catch (upgradeErr) {
+                    console.warn('[mintTeacherToken] Pin upgrade failed silently:', upgradeErr.message);
+                }
+            }
+        }
 
         if (!globalSnap.empty) {
             const teacherDoc  = globalSnap.docs[0];
@@ -130,14 +155,37 @@ exports.mintTeacherToken = onCall({ region: 'us-central1' }, async (request) => 
         }
     }
 
-    // Path 2: Legacy siloed /schools/{schoolId}/teachers
+    // ── Path 2: Legacy siloed /schools/{schoolId}/teachers ────────────────────
     for (const sid of variants) {
         try {
-            const legacySnap = await db
+            // Try hashed first
+            let legacySnap = await db
                 .collection('schools').doc(sid)
                 .collection('teachers')
-                .where('loginCode', '==', code)
+                .where('loginCode', '==', pinHashed)
                 .get();
+
+            // Fall back to plain text
+            if (legacySnap.empty) {
+                legacySnap = await db
+                    .collection('schools').doc(sid)
+                    .collection('teachers')
+                    .where('loginCode', '==', pinTrimmed)
+                    .get();
+
+                // Silently upgrade if plain text matched
+                if (!legacySnap.empty) {
+                    try {
+                        await db
+                            .collection('schools').doc(sid)
+                            .collection('teachers')
+                            .doc(legacySnap.docs[0].id)
+                            .update({ loginCode: pinHashed });
+                    } catch (upgradeErr) {
+                        console.warn('[mintTeacherToken] Legacy pin upgrade failed silently:', upgradeErr.message);
+                    }
+                }
+            }
 
             if (!legacySnap.empty) {
                 const teacherDoc = legacySnap.docs[0];
@@ -165,10 +213,12 @@ exports.mintTeacherToken = onCall({ region: 'us-central1' }, async (request) => 
 
     throw new HttpsError('unauthenticated', 'Invalid School ID or Teacher Code.');
 });
+// --- END: mintTeacherToken ---
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FUNCTION 3: mintStudentToken
+// --- START: mintStudentToken ---
 // ═══════════════════════════════════════════════════════════════════════════════
 exports.mintStudentToken = onCall({ region: 'us-central1' }, async (request) => {
 
@@ -192,7 +242,26 @@ exports.mintStudentToken = onCall({ region: 'us-central1' }, async (request) => 
 
     const studentData = studentSnap.data();
 
-    if (String(studentData.pin) !== String(pin)) {
+    // Hash the incoming pin exactly as entered (trim whitespace only, preserve case)
+    const pinTrimmed = String(pin).trim();
+    const pinHashed  = sha256Trim(pinTrimmed);
+
+    // Step 1: Try hashed comparison first (new secure path)
+    let pinMatched = studentData.pin === pinHashed;
+
+    // Step 2: Fall back to plain text comparison (migration path for existing pins)
+    if (!pinMatched && studentData.pin === pinTrimmed) {
+        pinMatched = true;
+
+        // Silently upgrade the stored pin to a hash
+        try {
+            await db.collection('students').doc(rawId).update({ pin: pinHashed });
+        } catch (upgradeErr) {
+            console.warn('[mintStudentToken] Pin upgrade failed silently:', upgradeErr.message);
+        }
+    }
+
+    if (!pinMatched) {
         throw new HttpsError('unauthenticated', 'Incorrect PIN.');
     }
 
@@ -220,6 +289,7 @@ exports.mintStudentToken = onCall({ region: 'us-central1' }, async (request) => 
 
     return { token };
 });
+// --- END: mintStudentToken ---
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
