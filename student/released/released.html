@@ -6,145 +6,193 @@
     <title>Enrollment Ended — ConnectUs</title>
     <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+    
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    
     <style>
+        /* Theme Variables based on Student Portal */
+        :root {
+            --bg-body: #f8fafc;
+            --bg-card: #ffffff;
+            --text-primary: #0f172a;
+            --text-secondary: #64748b;
+            --border-color: #e2e8f0;
+            --brand-blue: #2563eb;
+            --brand-blue-hover: #1d4ed8;
+        }
+
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
             font-family: 'DM Sans', sans-serif;
-            background: #f0f4f8;
-            color: #0d1f35;
+            background: var(--bg-body);
+            color: var(--text-primary);
             min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 32px 20px;
+            padding: 40px 20px;
+            -webkit-font-smoothing: antialiased;
         }
 
         .card {
-            background: #fff;
-            border: 1px solid #dce3ed;
-            border-radius: 16px;
-            padding: 44px 40px;
-            max-width: 480px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 48px 40px;
+            max-width: 440px;
             width: 100%;
             text-align: center;
-            box-shadow: 0 2px 12px rgba(13,31,53,0.08);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 10px 15px -3px rgba(0, 0, 0, 0.02);
+            position: relative;
+        }
+
+        .portal-label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+            display: block;
         }
 
         .logo {
-            height: 32px;
+            height: 38px;
             object-fit: contain;
-            margin-bottom: 28px;
+            margin-bottom: 32px;
             display: block;
             margin-left: auto;
             margin-right: auto;
         }
 
         .icon-wrap {
-            width: 60px; height: 60px;
-            border-radius: 14px;
+            width: 64px; height: 64px;
+            border-radius: 16px;
             display: flex; align-items: center; justify-content: center;
             margin: 0 auto 20px;
             font-size: 24px;
         }
 
         .student-name {
-            font-size: 20px;
+            font-size: 24px;
             font-weight: 800;
-            color: #0d1f35;
+            color: var(--text-primary);
             margin-bottom: 4px;
+            letter-spacing: -0.02em;
         }
 
         .student-id {
-            font-size: 11px;
+            font-size: 13px;
             font-family: 'DM Mono', monospace;
-            color: #9ab0c6;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
+            color: var(--text-secondary);
+            letter-spacing: 0.05em;
             margin-bottom: 24px;
         }
 
         .divider {
             border: none;
-            border-top: 1px solid #f0f4f8;
-            margin: 20px 0;
+            border-top: 1px solid var(--border-color);
+            margin: 24px 0;
         }
 
         .message {
-            font-size: 13.5px;
-            color: #374f6b;
+            font-size: 14.5px;
+            color: var(--text-secondary);
             font-weight: 500;
-            line-height: 1.7;
-            margin-bottom: 20px;
+            line-height: 1.6;
+            margin-bottom: 28px;
         }
 
         .reason-badge {
-            display: inline-block;
-            font-size: 10.5px;
+            display: inline-flex;
+            align-items: center;
+            font-size: 12px;
             font-weight: 700;
-            padding: 4px 12px;
+            padding: 6px 16px;
             border-radius: 99px;
             border: 1px solid;
-            margin-bottom: 20px;
             text-transform: uppercase;
-            letter-spacing: 0.06em;
+            letter-spacing: 0.05em;
         }
 
         .contact-block {
-            background: #eef4ff;
-            border: 1px solid #c7d9fd;
-            border-radius: 10px;
-            padding: 16px 18px;
-            margin-bottom: 24px;
-            text-align: left;
+            background: #f1f5f9;
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 32px;
+            text-align: center;
         }
 
         .contact-block p {
-            font-size: 12px;
-            color: #374f6b;
+            font-size: 13px;
+            color: var(--text-secondary);
             font-weight: 500;
-            line-height: 1.6;
+            line-height: 1.5;
             margin-bottom: 8px;
         }
 
         .contact-block a {
-            font-size: 12.5px;
+            font-size: 13.5px;
             font-weight: 700;
-            color: #2563eb;
+            color: var(--text-primary);
             text-decoration: none;
-            display: flex;
+            display: inline-flex;
             align-items: center;
-            gap: 6px;
+            gap: 8px;
+            transition: color 0.2s ease;
         }
 
-        .contact-block a:hover { text-decoration: underline; }
+        .contact-block a:hover { color: var(--brand-blue); }
 
         .clear-btn {
             width: 100%;
             display: flex; align-items: center; justify-content: center; gap: 8px;
-            background: #fff; border: 1px solid #dce3ed; color: #374f6b;
-            font-family: 'DM Sans', sans-serif; font-size: 12.5px; font-weight: 700;
-            padding: 12px 20px; border-radius: 8px; cursor: pointer; transition: all 0.15s;
+            background: var(--brand-blue);
+            color: #ffffff;
+            border: none;
+            font-family: 'DM Sans', sans-serif; 
+            font-size: 14px; 
+            font-weight: 700;
+            padding: 14px 20px; 
+            border-radius: 12px; 
+            cursor: pointer; 
+            transition: background 0.2s ease, transform 0.1s ease;
         }
 
-        .clear-btn:hover { background: #f8fafb; border-color: #b8c5d4; }
+        .clear-btn:hover { background: var(--brand-blue-hover); }
+        .clear-btn:active { transform: scale(0.98); }
+        .clear-btn:focus-visible { outline: 2px solid var(--brand-blue); outline-offset: 3px; }
 
-        .powered {
-            margin-top: 24px;
-            font-size: 11px;
-            color: #9ab0c6;
+        /* Legal Footer matching the ConnectUs standard */
+        .legal-footer {
+            margin-top: 40px;
+            font-size: 12.5px;
+            color: var(--text-secondary);
             font-weight: 500;
+            text-align: center;
+            line-height: 1.6;
+        }
+        
+        .legal-footer a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.2s ease;
+            font-weight: 600;
+        }
+
+        .legal-footer a:hover {
+            color: var(--text-primary);
         }
     </style>
 </head>
 <body>
 
 <div class="card">
-
-    <img src="../../assets/images/logo.png" alt="ConnectUs" class="logo" onerror="this.style.display='none'">
+    <span class="portal-label">Student Portal</span>
+    <img src="../../assets/images/logo2.png" alt="ConnectUs" class="logo" onerror="this.style.display='none'">
 
     <div class="icon-wrap" id="iconWrap"></div>
 
@@ -158,27 +206,26 @@
     <p class="message" id="messageText"></p>
 
     <div class="contact-block">
-        <p>To request access to your academic records or for any inquiries, contact ConnectUs directly.</p>
+        <p>If you need to request a copy of your records, please reach out directly.</p>
         <a href="mailto:info@connectusonline.org">
-            <i class="fa-solid fa-envelope" style="font-size:12px;"></i>
+            <i class="fa-solid fa-envelope" aria-hidden="true" style="font-size:14px; color: var(--brand-blue);"></i>
             info@connectusonline.org
         </a>
     </div>
 
     <button class="clear-btn" onclick="handleClear()">
-        <i class="fa-solid fa-arrow-right-from-bracket"></i> Close & Clear Session
+        Close & Clear Session <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
     </button>
-
 </div>
 
-<div class="powered">Powered by ConnectUs · National Academic Registry</div>
+<div class="legal-footer">
+    &copy; 2026 ConnectUs. All rights reserved.<br>
+    <a href="/terms.html">Terms of Service</a> &nbsp;&middot;&nbsp; <a href="/privacy.html">Privacy Policy</a>
+</div>
 
 <script>
-// ── No Firebase reads on this page — reads from sessionStorage only ────────
-
 function handleClear() {
     sessionStorage.removeItem('connectus_released');
-    // Also clear any lingering localStorage session data
     ['teacher', 'admin', 'student'].forEach(role => {
         localStorage.removeItem(`connectus_${role}_session`);
     });
@@ -190,18 +237,18 @@ function handleClear() {
 
 window.handleClear = handleClear;
 
-// ── Read from sessionStorage ──────────────────────────────────────────────
 let info = { studentName: '', studentId: '', reason: '' };
 try {
     const raw = sessionStorage.getItem('connectus_released');
     if (raw) info = JSON.parse(raw);
 } catch (_) {}
 
-// ── Populate name and ID ──────────────────────────────────────────────────
 if (info.studentName) document.getElementById('studentName').textContent = info.studentName;
-if (info.studentId)   document.getElementById('studentId').textContent   = info.studentId;
+if (info.studentId) {
+    // Adding the "ID:" prefix similar to the login page context
+    document.getElementById('studentId').textContent = "ID: " + info.studentId;
+}
 
-// ── Reason-specific icon, badge, and message ─────────────────────────────
 const reason = (info.reason || '').toLowerCase();
 
 let iconHtml    = '';
@@ -210,28 +257,28 @@ let badgeText   = '';
 let messageText = '';
 
 if (reason === 'graduated') {
-    iconHtml    = '<i class="fa-solid fa-graduation-cap" style="color:#0ea871;"></i>';
-    document.getElementById('iconWrap').style.background = '#edfaf4';
-    document.getElementById('iconWrap').style.border     = '1px solid #c6f0db';
-    badgeStyle  = 'background:#edfaf4;color:#0b8f5e;border-color:#c6f0db;';
+    iconHtml    = '<i class="fa-solid fa-graduation-cap" aria-hidden="true" style="color:#0ea871;"></i>';
+    document.getElementById('iconWrap').style.background = '#f0fdf4';
+    document.getElementById('iconWrap').style.border     = '1px solid #bbf7d0';
+    badgeStyle  = 'background:#f0fdf4;color:#15803d;border-color:#bbf7d0;';
     badgeText   = 'Graduated';
-    messageText = 'Congratulations on completing your studies. Your academic record has been preserved in the ConnectUs National Registry. Contact your school or ConnectUs to request a certified copy.';
+    messageText = 'Congratulations on completing your studies! Your enrollment is officially marked as complete.';
 
 } else if (reason === 'transferred') {
-    iconHtml    = '<i class="fa-solid fa-right-left" style="color:#2563eb;"></i>';
-    document.getElementById('iconWrap').style.background = '#eef4ff';
-    document.getElementById('iconWrap').style.border     = '1px solid #c7d9fd';
-    badgeStyle  = 'background:#eef4ff;color:#1d4ed8;border-color:#c7d9fd;';
+    iconHtml    = '<i class="fa-solid fa-right-left" aria-hidden="true" style="color:#2563eb;"></i>';
+    document.getElementById('iconWrap').style.background = '#eff6ff';
+    document.getElementById('iconWrap').style.border     = '1px solid #bfdbfe';
+    badgeStyle  = 'background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;';
     badgeText   = 'Transferred';
-    messageText = 'Your enrollment at your previous school has ended. Your academic records are on file in the ConnectUs National Registry and will travel with you to your new institution.';
+    messageText = 'Your enrollment at your previous school has successfully ended.';
 
 } else {
-    iconHtml    = '<i class="fa-solid fa-door-open" style="color:#6b84a0;"></i>';
-    document.getElementById('iconWrap').style.background = '#f4f7fb';
-    document.getElementById('iconWrap').style.border     = '1px solid #dce3ed';
-    badgeStyle  = 'background:#f4f7fb;color:#6b84a0;border-color:#dce3ed;';
+    iconHtml    = '<i class="fa-solid fa-door-open" aria-hidden="true" style="color:#64748b;"></i>';
+    document.getElementById('iconWrap').style.background = '#f8fafc';
+    document.getElementById('iconWrap').style.border     = '1px solid #e2e8f0';
+    badgeStyle  = 'background:#f8fafc;color:#475569;border-color:#e2e8f0;';
     badgeText   = 'Enrollment Ended';
-    messageText = 'Your enrollment at this school is no longer active. Your academic records remain preserved in the ConnectUs National Registry. Contact your school or ConnectUs for more information.';
+    messageText = 'Your enrollment at this institution is no longer active.';
 }
 
 document.getElementById('iconWrap').innerHTML  = iconHtml;
