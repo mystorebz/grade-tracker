@@ -385,12 +385,35 @@
 
         /* ── RESPONSIVE ───────────────────────────────────────────── */
         @media (max-width: 768px) {
-            .login-shell   { flex-direction: column; overflow-y: auto; height: auto; min-height: 100vh; }
+            /* Fix 1: unlock body scroll on mobile.
+               The global overflow: hidden is correct for dashboard pages
+               but kills scroll on the login page on small screens.       */
+            html, body {
+                overflow-y: auto;
+                height: auto;
+            }
+
+            .login-shell {
+                flex-direction: column;
+                overflow-y: auto;
+                height: auto;
+                min-height: 100dvh; /* dvh tracks real visible area on iOS */
+            }
+
             .brand-panel   { width: 100%; padding: 32px 28px; }
             .brand-headline { font-size: 26px; }
             .brand-features { display: none; }
-            .form-panel    { width: 100%; padding: 32px 28px; align-items: stretch; }
-            .form-card     { padding: 28px 24px; }
+
+            .form-panel {
+                width: 100%;
+                padding: 32px 28px;
+                align-items: stretch;
+                /* Fix 2: safe area inset so "Back to main site" clears
+                   the iPhone home indicator bar.                         */
+                padding-bottom: calc(32px + env(safe-area-inset-bottom, 0px));
+            }
+
+            .form-card { padding: 28px 24px; }
         }
     </style>
 </head>
