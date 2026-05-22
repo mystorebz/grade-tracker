@@ -160,58 +160,55 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 
 
 /* ==========================================================================
-   MOBILE & TABLET RESPONSIVE
-   All rules below are scoped to max-width: 767px.
-   Desktop layout (768px and above) is completely unaffected.
+   MOBILE & TABLET — max-width: 767px
+   Every rule below is scoped to mobile only.
+   Desktop (768px+) is completely unaffected by everything in this section.
    ========================================================================== */
 
-/* ── 1. FIX VIEWPORT HEIGHT ON iOS
-        iOS Safari reports 100vh as the full screen including the hidden
-        address bar and bottom toolbar, so content gets clipped behind chrome.
-        100dvh (dynamic viewport height) tracks the actual visible area.
-        Browsers that don't support dvh ignore this value and keep Tailwind's
-        100vh — so this is a safe, no-fallback-needed upgrade.          ── */
 @media (max-width: 767px) {
+
+    /* ── 1. VIEWPORT HEIGHT ──────────────────────────────────────────────
+       iOS Safari's 100vh includes the hidden address bar and bottom toolbar,
+       clipping content off-screen. 100dvh tracks the actual visible area.
+       Browsers that don't recognise dvh ignore this and keep Tailwind's
+       100vh — safe, no fallback needed.                                 ── */
     body {
         height: 100dvh !important;
     }
-}
 
-/* ── 2. FIX SCROLL INSIDE THE MAIN CONTENT AREA
-        In a flex column layout, flex children default to min-height: auto,
-        meaning they expand to fit content instead of being constrained by
-        their parent. This prevents overflow-y: auto from ever triggering.
-        min-height: 0 forces the child to respect its parent's bounds so
-        the inner scroll container actually scrolls.
-        -webkit-overflow-scrolling: touch enables smooth momentum scrolling
-        on iOS (without it, scrolling feels stuck or requires two fingers).
-        padding-bottom uses env(safe-area-inset-bottom) so content is never
-        hidden behind the iPhone home indicator.                         ── */
-@media (max-width: 767px) {
+    /* ── 2. MAIN CONTENT SCROLL ──────────────────────────────────────────
+       Flex children default to min-height: auto, expanding to fit content
+       and preventing overflow-y from triggering. min-height: 0 forces the
+       child to respect its parent's bounds so the scroll container works.
+       -webkit-overflow-scrolling: touch gives iOS momentum (smooth) scroll.
+       Safe area padding ensures nothing hides behind the home indicator.
+       .flex-1 inside dashboardMain is always the scrollable content div.  ── */
     #dashboardMain {
         min-height: 0;
     }
 
-    #dashboardMain > div:last-child {
+    #dashboardMain > .flex-1 {
         -webkit-overflow-scrolling: touch;
         overflow-y: auto;
-        /* Base padding + safe area for iPhone home indicator */
         padding-bottom: calc(1.75rem + env(safe-area-inset-bottom, 0px));
     }
-}
 
-/* ── 3. SIDEBAR: FIXED DRAWER ON MOBILE
-        On desktop the sidebar is a normal flex child (static position).
-        On mobile it becomes a fixed overlay drawer that slides in from
-        the left. The container collapses to width:0 so main fills the
-        screen. The sidebar itself slides off-screen by default and slides
-        in when .sidebar-open is added by the JS toggle.                ── */
-@media (max-width: 767px) {
+    /* ── 3. SIDEBAR CONTAINER ────────────────────────────────────────────
+       Collapse to zero width so #dashboardMain fills the full screen.
+       The sidebar itself is position: fixed (below) so it's out of flow
+       and doesn't need space in the flex layout.                        ── */
     #layout-sidebar-container {
         width: 0 !important;
         flex-shrink: 0;
     }
 
+    /* ── 4. SIDEBAR DRAWER ───────────────────────────────────────────────
+       Fixed, full-height, slides in from the left.
+       z-index: 50 keeps it above everything within its stacking context.
+       overflow: hidden on the aside + overflow-y: scroll on the nav (below)
+       is the correct iOS pattern — scroll on the inner element, not the
+       fixed outer wrapper.
+       height: 100dvh matches the body fix so it never overflows.       ── */
     #sidebar {
         position: fixed;
         top: 0;
@@ -220,63 +217,85 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
         z-index: 50;
         transform: translateX(-100%);
         transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        /* Allow the sidebar itself to scroll if screen is very short */
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
+        overflow: hidden;
+        /* Ensure sidebar width never exceeds screen width on tiny devices */
+        max-width: 85vw;
     }
 
     #sidebar.sidebar-open {
         transform: translateX(0);
     }
-}
 
-/* ── 4. OVERLAY (dark backdrop behind open sidebar)
-        Always present in the DOM (injected by JS).
-        NEVER toggled with display — only opacity and pointer-events.
-        pointer-events: none when hidden means it can NEVER intercept
-        taps on nav links or page content.                              ── */
-#sidebarOverlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.55);
-    z-index: 40;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.25s ease;
-}
+    /* Profile card at top — must not shrink, keeps its full height */
+    #sidebar > div:first-child {
+        flex-shrink: 0;
+    }
 
-#sidebarOverlay.visible {
-    opacity: 1;
-    pointer-events: auto;
-}
+    /* Logout block at bottom — must not shrink */
+    #sidebar > div:last-child {
+        flex-shrink: 0;
+    }
 
-/* ── 5. SIDEBAR TEXT BRIGHTNESS ON MOBILE
-        Phone screens render the deep indigo background darker than
-        a monitor. Tailwind's text-slate-400 (#94a3b8) becomes near-
-        invisible. These rules boost nav text and icons to a readable
-        level. Active state colour is preserved via the .active rule.
-        Specificity (#sidebar .nav-item = 110) cleanly beats Tailwind
-        (.text-slate-400 = 10) with no !important needed.              ── */
-@media (max-width: 767px) {
+    /* Nav scroll area — the ONLY element that scrolls inside the sidebar.
+       overflow-y: scroll (not auto) because iOS Safari silently fails
+       with auto inside fixed flex containers.
+       min-height: 0 forces the flex child to constrain to available space. */
+    #sidebar nav {
+        overflow-y: scroll;
+        -webkit-overflow-scrolling: touch;
+        min-height: 0;
+        flex: 1;
+    }
+
+    /* ── 5. OVERLAY ──────────────────────────────────────────────────────
+       z-index: 15 is the critical value.
+       #layout-sidebar-container has Tailwind's z-20 which, as a flex child
+       of body, creates a stacking context at level 20 in the root.
+       The overlay at z-index: 15 is BELOW that stacking context (15 < 20),
+       so the sidebar paints above it and all sidebar taps reach their links.
+       The overlay at 15 is still ABOVE #dashboardMain (z-index: auto = 0),
+       so it correctly dims the content area behind it.
+       Visibility controlled by opacity + pointer-events only — never by
+       display — so there is zero window where it can intercept taps.    ── */
+    #sidebarOverlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.55);
+        z-index: 15;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.25s ease;
+    }
+
+    #sidebarOverlay.visible {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    /* ── 6. SIDEBAR TEXT BRIGHTNESS ──────────────────────────────────────
+       Phone screens render the deep indigo sidebar darker than a monitor.
+       Tailwind's text-slate-400 (#94a3b8) is near-invisible on mobile.
+       !important guarantees these rules win over Tailwind regardless of
+       CDN load order. Active state colour is preserved separately.      ── */
     #sidebar .nav-item {
-        color: rgba(255, 255, 255, 0.82);
+        color: rgba(255, 255, 255, 0.88) !important;
     }
 
     #sidebar .nav-item:hover {
-        color: rgba(255, 255, 255, 0.96);
+        color: rgba(255, 255, 255, 0.98) !important;
     }
 
     #sidebar .nav-item.active {
-        color: var(--sb-accent);
+        color: var(--sb-accent) !important;
     }
 
-    /* Fully restore icon opacity on mobile */
+    /* Fully restore icon visibility */
     #sidebar .nav-item i {
         opacity: 1 !important;
     }
 
-    /* Brighten section header labels (Main Menu, Records & Reports, Account) */
-    #sidebar nav p {
-        color: rgba(255, 255, 255, 0.45) !important;
+    /* Section header labels: Main Menu, Records & Reports, Account */
+    #sidebar nav > p {
+        color: rgba(255, 255, 255, 0.5) !important;
     }
 }
