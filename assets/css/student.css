@@ -157,3 +157,49 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
     #dashboardMain { height: auto !important; overflow: visible !important; }
     body { background: #fff !important; overflow: visible !important; }
 }
+
+
+/* ==========================================================================
+   MOBILE & TABLET RESPONSIVE — SIDEBAR DRAWER
+   Applies only on screens narrower than 768px (md breakpoint).
+   Desktop layout is completely unaffected.
+   ========================================================================== */
+
+/* ── SIDEBAR: fixed drawer on mobile, static on desktop ── */
+@media (max-width: 767px) {
+    #sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100vh;
+        z-index: 50;
+        transform: translateX(-100%);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    #sidebar.sidebar-open {
+        transform: translateX(0);
+    }
+
+    /* Allow the main content to fill the full width on mobile */
+    #layout-sidebar-container {
+        width: 0 !important;
+        flex-shrink: 0;
+    }
+}
+
+/* ── OVERLAY: dark backdrop behind open sidebar on mobile ── */
+#sidebarOverlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 40;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+}
+
+#sidebarOverlay.visible {
+    display: block;
+    opacity: 1;
+}
