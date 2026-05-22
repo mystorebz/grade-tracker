@@ -52,9 +52,18 @@ function getWeight(type) {
     return r ? r.weight : null;
 }
 
-// ── 4. LOAD DATA (unchanged) ──────────────────────────────────────────────
+// ── 4. LOAD DATA ──────────────────────────────────────────────────────────
+// Refactored from 5 sequential awaits to 3 phases.
+// Phase 1: school doc (must be first — gives us semId).
+// Phase 2: semester doc + student's teacher doc + grades query all fire
+//          in parallel via Promise.all (3 round trips become 1).
+// Phase 3: fetch ONLY the specific teacher docs referenced in the student's
+//          actual grades, in parallel. Replaces the old getDocs(all teachers)
+//          collection scan which fetched every teacher regardless of need.
 async function loadGrades() {
     try {
+
+        // ── Phase 1: school doc ───────────────────────────────────────────
         const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
         const schoolData = schoolSnap.data() || {};
         const semId      = schoolData.activeSemesterId;
@@ -67,32 +76,32 @@ async function loadGrades() {
             return;
         }
 
-        const semSnap = await getDoc(doc(db, 'schools', session.schoolId, 'semesters', semId));
+        // ── Phase 2: semester + teacher rubric + grades — all in parallel ─
+        const tId = session.studentData?.teacherId;
+
+        const [semSnap, tSnap, gSnap] = await Promise.all([
+            getDoc(doc(db, 'schools', session.schoolId, 'semesters', semId)),
+            tId ? getDoc(doc(db, 'teachers', tId)) : Promise.resolve(null),
+            getDocs(query(
+                collection(db, 'students', session.studentId, 'grades'),
+                where('schoolId',   '==', session.schoolId),
+                where('semesterId', '==', semId)
+            ))
+        ]);
+
+        // Semester
         const semName = semSnap.data()?.name || 'Current Period';
         document.getElementById('activeSemesterDisplay').textContent = semName;
         document.getElementById('gbTerm').textContent = semName;
 
-        // Teacher rubric
-        const tId = session.studentData?.teacherId;
-        if (tId) {
-            const tSnap = await getDoc(doc(db, 'teachers', tId));
-            if (tSnap.exists()) {
-                const td     = tSnap.data();
-                teacherRubric  = td.gradeTypes || td.customGradeTypes || [];
-                teachersMap[tId] = td.name || 'Teacher';
-            }
+        // Student's assigned teacher rubric
+        if (tSnap && tSnap.exists()) {
+            const td         = tSnap.data();
+            teacherRubric    = td.gradeTypes || td.customGradeTypes || [];
+            teachersMap[tId] = td.name || 'Teacher';
         }
 
-        // All teachers (for admin-entered grades)
-        const tAllSnap = await getDocs(query(collection(db, 'teachers'), where('currentSchoolId','==', session.schoolId)));
-        tAllSnap.forEach(d => { teachersMap[d.id] = d.data().name; });
-
-        // Grades — global student path
-        const gSnap = await getDocs(query(
-            collection(db, 'students', session.studentId, 'grades'),
-            where('schoolId',   '==', session.schoolId),
-            where('semesterId', '==', semId)
-        ));
+        // Grades
         allGrades = gSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
         document.getElementById('gradesLoader').style.display = 'none';
@@ -100,6 +109,26 @@ async function loadGrades() {
         if (!allGrades.length) {
             document.getElementById('noCurrentGradesMsg').classList.remove('hidden');
             return;
+        }
+
+        // ── Phase 3: fetch only teachers referenced in this student's grades
+        // Skip admin-entered grades (those show adminName, not teachersMap).
+        // Skip any teacherId already in the map (e.g. the student's own teacher).
+        const extraTeacherIds = [
+            ...new Set(
+                allGrades
+                    .filter(g => !g.enteredByAdmin && g.teacherId && !teachersMap[g.teacherId])
+                    .map(g => g.teacherId)
+            )
+        ];
+
+        if (extraTeacherIds.length > 0) {
+            const extraSnaps = await Promise.all(
+                extraTeacherIds.map(id => getDoc(doc(db, 'teachers', id)))
+            );
+            extraSnaps.forEach((snap, i) => {
+                if (snap.exists()) teachersMap[extraTeacherIds[i]] = snap.data().name || 'Teacher';
+            });
         }
 
         // Group by subject & cache
