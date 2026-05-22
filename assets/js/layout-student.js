@@ -8,15 +8,15 @@ import { logout, requireAuth } from './auth.js';
  */
 export function injectStudentLayout(activePageId, pageTitle, pageSub) {
 
-    // Retrieve session data to populate sidebar dynamically from the secure student document
-    const session = requireAuth('student', '../login.html');
+    const session        = requireAuth('student', '../login.html');
     const studentName    = session?.studentData?.name || 'Loading...';
     const studentInitial = session?.studentData?.name ? session.studentData.name.charAt(0).toUpperCase() : 'S';
     const studentId      = session?.studentId || '—';
     const studentClass   = session?.studentData?.className || '—';
     const schoolId       = session?.schoolId || '—';
 
-    // 1. Sidebar HTML — structure, IDs, nav links all unchanged
+    // ── 1. SIDEBAR HTML ───────────────────────────────────────────────────
+    // Unchanged: every ID, every nav link, every class, the logout button.
     const sidebarHTML = `
       <aside id="sidebar" class="text-slate-300 flex flex-col shadow-2xl z-20 flex-shrink-0 h-screen" style="width:272px; background: linear-gradient(180deg, #1e1b4b 0%, #312e81 50%, #3730a3 100%); border-right: 1px solid rgba(255,255,255,0.04);">
         <div class="p-5 border-b border-white/5">
@@ -53,9 +53,9 @@ export function injectStudentLayout(activePageId, pageTitle, pageSub) {
       </aside>
     `;
 
-    // 2. Topbar HTML
-    // Hamburger button: flex md:hidden — visible on mobile only, never on desktop
-    // Semester pill: compacts gracefully on small screens, one ID only (activeSemesterDisplay)
+    // ── 2. TOPBAR HTML ────────────────────────────────────────────────────
+    // Hamburger: flex md:hidden — only appears on mobile, never on desktop.
+    // One activeSemesterDisplay ID — compacts gracefully on small screens.
     const topbarHTML = `
       <header class="topbar h-16 bg-white border-b border-slate-200 flex items-center px-4 md:px-8 z-10 justify-between flex-shrink-0 shadow-sm">
         <div class="flex items-center gap-3">
@@ -82,28 +82,35 @@ export function injectStudentLayout(activePageId, pageTitle, pageSub) {
     document.getElementById('layout-sidebar-container').innerHTML = sidebarHTML;
     document.getElementById('layout-topbar-container').innerHTML  = topbarHTML;
 
-    // 3. Inject overlay into body.
-    //    No inline styles — student.css controls everything via #sidebarOverlay and .visible.
-    //    This means pointer-events: none when hidden, so nav links are NEVER blocked.
+    // ── 3. OVERLAY ────────────────────────────────────────────────────────
+    // Appended to body. CSS gives it z-index: 15.
+    // WHY 15: #layout-sidebar-container has Tailwind's z-20, making it a
+    // flex-child stacking context at level 20 in the root. The overlay must
+    // be BELOW that (15 < 20) so the sidebar paints above it and receives
+    // taps. The overlay at 15 still covers #dashboardMain which has no
+    // numeric z-index (auto / effectively 0), so the dim effect works.
+    // Visibility is controlled ONLY by opacity + pointer-events in CSS —
+    // never by display — so there is zero window where it blocks taps.
     const overlay  = document.createElement('div');
     overlay.id     = 'sidebarOverlay';
     document.body.appendChild(overlay);
 
-    // 4. Active nav highlight
+    // ── 4. ACTIVE NAV ─────────────────────────────────────────────────────
     const activeNav = document.getElementById(`nav-${activePageId}`);
     if (activeNav) {
         activeNav.classList.remove('text-slate-400');
         activeNav.classList.add('active');
     }
 
-    // 5. Logout
+    // ── 5. LOGOUT ─────────────────────────────────────────────────────────
     document.getElementById('logoutBtn').addEventListener('click', () => {
         logout('../../student/login.html');
     });
 
-    // 6. Mobile sidebar open / close
-    //    openSidebar / closeSidebar only toggle CSS classes — nothing else.
-    //    Nav <a> links navigate naturally on their own; no extra listeners needed.
+    // ── 6. MOBILE SIDEBAR TOGGLE ──────────────────────────────────────────
+    // Only CSS classes are toggled — no body overflow manipulation,
+    // no display toggling, no setTimeout.
+    // Nav <a> links navigate on their own; no extra listeners needed.
     const sidebar   = document.getElementById('sidebar');
     const toggleBtn = document.getElementById('sidebarToggle');
 
