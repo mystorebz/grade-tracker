@@ -7,16 +7,16 @@ import { logout, requireAuth } from './auth.js';
  * @param {string} pageSub - The small subtitle for the topbar
  */
 export function injectStudentLayout(activePageId, pageTitle, pageSub) {
-    
+
     // Retrieve session data to populate sidebar dynamically from the secure student document
     const session = requireAuth('student', '../login.html');
-    const studentName = session?.studentData?.name || 'Loading...';
+    const studentName    = session?.studentData?.name || 'Loading...';
     const studentInitial = session?.studentData?.name ? session.studentData.name.charAt(0).toUpperCase() : 'S';
-    const studentId = session?.studentId || '—';
-    const studentClass = session?.studentData?.className || '—';
-    const schoolId = session?.schoolId || '—';
+    const studentId      = session?.studentId || '—';
+    const studentClass   = session?.studentData?.className || '—';
+    const schoolId       = session?.schoolId || '—';
 
-    // 1. The Family/Student Sidebar HTML
+    // 1. Sidebar HTML — structure, IDs, nav links all unchanged
     const sidebarHTML = `
       <aside id="sidebar" class="text-slate-300 flex flex-col shadow-2xl z-20 flex-shrink-0 h-screen" style="width:272px; background: linear-gradient(180deg, #1e1b4b 0%, #312e81 50%, #3730a3 100%); border-right: 1px solid rgba(255,255,255,0.04);">
         <div class="p-5 border-b border-white/5">
@@ -32,7 +32,7 @@ export function injectStudentLayout(activePageId, pageTitle, pageSub) {
           <a href="../home/home.html" id="nav-overview" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-house w-5 text-base opacity-90"></i> Dashboard</a>
           <a href="../grades/grades.html" id="nav-gradebook" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-book-open w-5 text-base opacity-70"></i> Current Grades</a>
           <a href="../history/history.html" id="nav-history" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-clock-rotate-left w-5 text-base opacity-70"></i> Academic History</a>
-          
+
           <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-3 mt-6 mb-2">Records & Reports</p>
           <a href="../analytics/evaluations.html" id="nav-analytics" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-star-half-stroke w-5 text-base opacity-70"></i> My Evaluations</a>
           <a href="../reports/reports.html" id="nav-reports" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-file-lines w-5 text-base opacity-70"></i> Reports</a>
@@ -53,9 +53,9 @@ export function injectStudentLayout(activePageId, pageTitle, pageSub) {
       </aside>
     `;
 
-    // 2. The Family/Student Topbar HTML
-    // — hamburger is only visible on mobile (flex md:hidden)
-    // — semester pill compacts on small screens
+    // 2. Topbar HTML
+    // Hamburger button: flex md:hidden — visible on mobile only, never on desktop
+    // Semester pill: compacts gracefully on small screens, one ID only (activeSemesterDisplay)
     const topbarHTML = `
       <header class="topbar h-16 bg-white border-b border-slate-200 flex items-center px-4 md:px-8 z-10 justify-between flex-shrink-0 shadow-sm">
         <div class="flex items-center gap-3">
@@ -80,11 +80,13 @@ export function injectStudentLayout(activePageId, pageTitle, pageSub) {
     `;
 
     document.getElementById('layout-sidebar-container').innerHTML = sidebarHTML;
-    document.getElementById('layout-topbar-container').innerHTML = topbarHTML;
+    document.getElementById('layout-topbar-container').innerHTML  = topbarHTML;
 
-    // 3. Inject the mobile overlay into the body
-    const overlay = document.createElement('div');
-    overlay.id = 'sidebarOverlay';
+    // 3. Inject overlay into body.
+    //    No inline styles — student.css controls everything via #sidebarOverlay and .visible.
+    //    This means pointer-events: none when hidden, so nav links are NEVER blocked.
+    const overlay  = document.createElement('div');
+    overlay.id     = 'sidebarOverlay';
     document.body.appendChild(overlay);
 
     // 4. Active nav highlight
@@ -99,29 +101,22 @@ export function injectStudentLayout(activePageId, pageTitle, pageSub) {
         logout('../../student/login.html');
     });
 
-    // 6. Mobile sidebar open/close logic
-    const sidebar      = document.getElementById('sidebar');
-    const toggleBtn    = document.getElementById('sidebarToggle');
+    // 6. Mobile sidebar open / close
+    //    openSidebar / closeSidebar only toggle CSS classes — nothing else.
+    //    Nav <a> links navigate naturally on their own; no extra listeners needed.
+    const sidebar   = document.getElementById('sidebar');
+    const toggleBtn = document.getElementById('sidebarToggle');
 
     function openSidebar() {
         sidebar.classList.add('sidebar-open');
         overlay.classList.add('visible');
-        document.body.style.overflow = 'hidden';
     }
 
     function closeSidebar() {
         sidebar.classList.remove('sidebar-open');
         overlay.classList.remove('visible');
-        document.body.style.overflow = '';
     }
 
     if (toggleBtn) toggleBtn.addEventListener('click', openSidebar);
     overlay.addEventListener('click', closeSidebar);
-
-    // Close sidebar automatically when a nav link is tapped on mobile
-    document.querySelectorAll('#sidebar .nav-item').forEach(item => {
-        item.addEventListener('click', () => {
-            if (window.innerWidth < 768) closeSidebar();
-        });
-    });
 }
