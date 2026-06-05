@@ -64,12 +64,6 @@ async function handleLogin() {
 
         const studentData = { id: studentSnap.id, ...studentSnap.data() };
 
-        if (String(studentData.pin) !== String(pin)) {
-            showError('Incorrect PIN. Please try again.');
-            setLoading(false);
-            return;
-        }
-
         // ── ENROLLMENT STATUS GATE ─────────────────────────────────────────────
         const status          = studentData.enrollmentStatus || 'Active';
         const currentSchoolId = studentData.currentSchoolId  || '';
