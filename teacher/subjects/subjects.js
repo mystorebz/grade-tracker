@@ -19,12 +19,14 @@ let rawSemesters = [];
 let isSemesterLocked = false;
 let currentSubjectName = null;
 let gradeDetailCache = {};
+let currentPanelTab = 'performance'; // NEW: tracks active tab inside the subject panel
 
 // UPDATED: Pull the gradeTypes array saved from the new Settings page
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 function getActiveSubjects() { return (session.teacherData.subjects || []).filter(s => !s.archived); }
 function getGradeTypes() { return session.teacherData.gradeTypes || session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
 function genId() { return 'sub_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 5); }
+function genAssignmentId() { return 'asg_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 5); }
 
 // Escapes HTML to prevent XSS in rendering
 function escHtml(str) {
@@ -35,6 +37,32 @@ function escHtml(str) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+// NEW: deterministic gradient per subject name so each tile has a stable identity colour
+const TILE_GRADIENTS = [
+    'from-teal-500 to-emerald-600',
+    'from-sky-500 to-blue-600',
+    'from-violet-500 to-purple-600',
+    'from-amber-500 to-orange-600',
+    'from-rose-500 to-pink-600',
+    'from-cyan-500 to-teal-600',
+    'from-indigo-500 to-violet-600',
+    'from-emerald-500 to-green-600'
+];
+function gradientFor(name) {
+    let hash = 0;
+    for (let i = 0; i < (name || '').length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+    return TILE_GRADIENTS[hash % TILE_GRADIENTS.length];
+}
+
+// NEW: read the assignment templates for a subject by name (safe fallback to [])
+function getSubjectByName(name) {
+    return (session.teacherData.subjects || []).find(s => s.name === name && !s.archived) || null;
+}
+function getAssignmentsForSubject(name) {
+    const sub = getSubjectByName(name);
+    return (sub && Array.isArray(sub.assignments)) ? sub.assignments : [];
 }
 
 // ── HELPER: resolve correct teacher document path (global vs legacy) ──────────
@@ -135,78 +163,102 @@ async function getAllGrades(semId) {
     return all;
 }
 
-// ── 4. RENDER MAIN SUBJECTS TABLE ───────────────────────────────────────────
+// ── 4. RENDER MAIN SUBJECTS GRID (TILES) ────────────────────────────────────
 async function loadSubjectsTab() {
-    const tbody = document.getElementById('subjectsTableBody');
-    tbody.innerHTML = `<tr><td colspan="9" class="px-6 py-16 text-center text-slate-400 font-semibold"><i class="fa-solid fa-spinner fa-spin text-teal-400 text-2xl mb-3 block"></i>Loading subjects...</td></tr>`;
-    
+    const grid = document.getElementById('subjectsGrid');
+    grid.innerHTML = `<div class="col-span-full flex flex-col items-center justify-center py-24 text-slate-400 font-semibold">
+        <i class="fa-solid fa-spinner fa-spin text-teal-400 text-3xl mb-4"></i>Loading subjects…
+    </div>`;
+
     const semId = document.getElementById('activeSemester').value;
     const semName = document.getElementById('activeSemester').options[document.getElementById('activeSemester').selectedIndex]?.text || '—';
-    
+
     const sbPeriod = document.getElementById('sb-period');
     if (sbPeriod) sbPeriod.textContent = semName;
 
     const allGrades = await getAllGrades(semId);
     const active = getActiveSubjects();
-    
+
     if (!active.length) {
-        tbody.innerHTML = `<tr><td colspan="9" class="px-6 py-16 text-center text-slate-400 italic font-semibold">No active subjects. Add subjects using the button above.</td></tr>`;
+        grid.innerHTML = `
+            <div class="col-span-full">
+                <div class="bg-white border-2 border-dashed border-teal-200 rounded-3xl py-20 px-6 text-center">
+                    <div class="w-16 h-16 mx-auto mb-5 bg-teal-50 text-teal-500 rounded-2xl flex items-center justify-center text-2xl">
+                        <i class="fa-solid fa-layer-group"></i>
+                    </div>
+                    <h3 class="font-black text-slate-700 text-lg mb-1.5">No subjects yet</h3>
+                    <p class="text-sm text-slate-400 font-semibold max-w-sm mx-auto mb-6">Create your first subject to start tracking performance and prepare assignments ahead of grading.</p>
+                    <button onclick="openSubjectFormModal()" class="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-black px-5 py-2.5 rounded-xl text-sm shadow-md shadow-teal-500/20 transition">
+                        <i class="fa-solid fa-plus"></i> Add your first subject
+                    </button>
+                </div>
+            </div>`;
         return;
     }
 
-    tbody.innerHTML = active.map(sub => {
+    grid.innerHTML = active.map(sub => {
         const sg = allGrades.filter(g => g.subject === sub.name);
         const stuIds = [...new Set(sg.map(g => g.studentId))];
         const stuAvgs = stuIds.map(sid => {
             const sg2 = sg.filter(g => g.studentId === sid);
-            // UPDATED: Using Teacher-Specific Grade Types
             return calculateWeightedAverage(sg2, session.teacherData.gradeTypes || getGradeTypes());
         }).filter(a => a !== null);
-        
+
         const classAvg = stuAvgs.length ? Math.round(stuAvgs.reduce((a, b) => a + b, 0) / stuAvgs.length) : null;
-        const allPcts = sg.map(g => g.max ? Math.round(g.score / g.max * 100) : 0);
-        const highest = allPcts.length ? Math.max(...allPcts) : null;
-        const lowest = allPcts.length ? Math.min(...allPcts) : null;
         const atRisk = stuAvgs.filter(a => a < 65).length;
         const lastGraded = sg.length ? sg.sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0].date : null;
-        
-        return `<tr class="gb-row">
-            <td class="px-6 py-4">
-                <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 bg-gradient-to-br from-teal-500 to-emerald-600 text-white rounded-xl flex items-center justify-center font-black text-sm shadow-sm">${sub.name.charAt(0)}</div>
-                    <div>
-                        <p class="font-black text-slate-700">${sub.name}</p>
-                        ${sub.description ? `<p class="text-xs text-slate-400 font-semibold">${sub.description}</p>` : ''}
-                    </div>
+        const asgCount = getAssignmentsForSubject(sub.name).length;
+        const gradient = gradientFor(sub.name);
+        const safeName = sub.name.replace(/'/g, "\\'");
+
+        return `
+        <button type="button" onclick="openSubjectPanel('${safeName}')"
+            class="subject-tile group text-left bg-white border border-slate-200 rounded-3xl p-5 shadow-sm hover:shadow-xl hover:border-teal-300 hover:-translate-y-1 transition-all duration-200 flex flex-col focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-offset-2">
+            <div class="flex items-start justify-between mb-4">
+                <div class="w-12 h-12 bg-gradient-to-br ${gradient} text-white rounded-2xl flex items-center justify-center font-black text-lg shadow-md flex-shrink-0">${escHtml(sub.name.charAt(0).toUpperCase())}</div>
+                ${atRisk
+                    ? `<span class="inline-flex items-center gap-1 text-[11px] font-black text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-full"><i class="fa-solid fa-triangle-exclamation text-[9px]"></i> ${atRisk} at risk</span>`
+                    : `<span class="text-teal-500 opacity-0 group-hover:opacity-100 transition-opacity"><i class="fa-solid fa-arrow-right"></i></span>`}
+            </div>
+            <h3 class="font-black text-slate-800 text-lg leading-tight">${escHtml(sub.name)}</h3>
+            <p class="text-xs text-slate-400 font-semibold mt-1 mb-4 line-clamp-2 min-h-[2rem]">${sub.description ? escHtml(sub.description) : 'No description'}</p>
+
+            <div class="mt-auto grid grid-cols-3 gap-2">
+                <div class="bg-slate-50 rounded-xl py-2 px-1 text-center border border-slate-100">
+                    <p class="text-[9px] font-black text-slate-400 uppercase tracking-wider">Students</p>
+                    <p class="text-base font-black text-slate-700">${stuIds.length}</p>
                 </div>
-            </td>
-            <td class="px-6 py-4 text-center"><span class="bg-teal-50 text-teal-700 font-black text-sm px-3 py-1 rounded-lg border border-teal-200">${stuIds.length}</span></td>
-            <td class="px-6 py-4 text-center"><span class="bg-slate-100 text-slate-600 font-bold text-xs px-3 py-1 rounded-lg border border-slate-200">${sg.length}</span></td>
-            <td class="px-6 py-4 text-center">${classAvg !== null ? `<span class="${gradeColorClass(classAvg)} font-black">${classAvg}% · ${letterGrade(classAvg)}</span>` : '<span class="text-slate-400">—</span>'}</td>
-            <td class="px-6 py-4 text-center">${highest !== null ? `<span class="g-a font-black">${highest}%</span>` : '<span class="text-slate-400">—</span>'}</td>
-            <td class="px-6 py-4 text-center">${lowest !== null ? `<span class="${gradeColorClass(lowest)} font-black">${lowest}%</span>` : '<span class="text-slate-400">—</span>'}</td>
-            <td class="px-6 py-4 text-center">${atRisk ? `<span class="font-black text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-lg text-xs">${atRisk}</span>` : '<span class="text-slate-400 font-semibold">0</span>'}</td>
-            <td class="px-6 py-4 text-slate-500 font-semibold text-xs">${lastGraded || '—'}</td>
-            <td class="px-6 py-4 text-right">
-                <button onclick="openSubjectPanel('${sub.name.replace(/'/g, '\\\'')}')" class="bg-teal-50 hover:bg-teal-600 hover:text-white text-teal-700 font-black px-4 py-2 rounded-lg text-xs transition border border-teal-200 hover:border-teal-600">View</button>
-            </td>
-        </tr>`;
+                <div class="bg-slate-50 rounded-xl py-2 px-1 text-center border border-slate-100">
+                    <p class="text-[9px] font-black text-slate-400 uppercase tracking-wider">Class avg</p>
+                    <p class="text-base font-black ${classAvg !== null ? gradeColorClass(classAvg) : 'text-slate-300'}">${classAvg !== null ? classAvg + '%' : '—'}</p>
+                </div>
+                <div class="bg-teal-50 rounded-xl py-2 px-1 text-center border border-teal-100">
+                    <p class="text-[9px] font-black text-teal-500 uppercase tracking-wider">Tasks</p>
+                    <p class="text-base font-black text-teal-700">${asgCount}</p>
+                </div>
+            </div>
+            <div class="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+                <span class="text-[11px] font-bold text-slate-400">${sg.length} grade${sg.length !== 1 ? 's' : ''} logged</span>
+                <span class="text-[11px] font-bold text-slate-400">${lastGraded ? 'Last: ' + lastGraded : 'Not graded'}</span>
+            </div>
+        </button>`;
     }).join('');
 }
 
 // ── 5. SUBJECT PANEL (SLIDE OUT) ────────────────────────────────────────────
 window.openSubjectPanel = async function(subjectName) {
     currentSubjectName = subjectName;
+    currentPanelTab = 'performance'; // always reset to Performance on open
     document.getElementById('spPanelTitle').textContent = subjectName;
     document.getElementById('subjectPanelBody').innerHTML = '<div class="flex justify-center py-16"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-teal-500"></i></div>';
-    
+
     // Reset Filters
     document.getElementById('spFilterClass').value = '';
     document.getElementById('spFilterStudent').value = '';
     document.getElementById('spFilterStanding').value = '';
     document.getElementById('spFilterType').value = '';
     document.getElementById('spSearchTitle').value = '';
-    
+
     // Populate Class Filter
     const classes = session.teacherData.classes || [session.teacherData.className || ''];
     const spClass = document.getElementById('spFilterClass');
@@ -215,9 +267,9 @@ window.openSubjectPanel = async function(subjectName) {
     // Populate Type Filter (Updated to use robust getGradeTypes handling object or string)
     const spType = document.getElementById('spFilterType');
     spType.innerHTML = '<option value="">All Types</option>' + getGradeTypes().map(t => `<option value="${t.name || t}">${t.name || t}</option>`).join('');
-    
+
     openOverlay('subjectPanel', 'subjectPanelInner', true);
-    
+
     const quickGradeBtn = document.getElementById('spQuickGradeBtn');
     if (isSemesterLocked) {
         quickGradeBtn.classList.add('hidden');
@@ -225,21 +277,56 @@ window.openSubjectPanel = async function(subjectName) {
         quickGradeBtn.classList.remove('hidden');
         quickGradeBtn.onclick = () => { window.location.href = '../grade_form/grade_form.html'; };
     }
-    
+
     const semId = document.getElementById('activeSemester').value;
     const semName = document.getElementById('activeSemester').options[document.getElementById('activeSemester').selectedIndex]?.text || '';
     document.getElementById('spPanelMeta').textContent = `${semName} · Loading...`;
-    
+
     const allGrades = await getAllGrades(semId);
     cachedSubjectGrades = allGrades.filter(g => g.subject === subjectName);
-    
+
     // Populate Student Filter based on enrolled
     const spStuFilter = document.getElementById('spFilterStudent');
     const stuIdsInSubj = [...new Set(cachedSubjectGrades.map(g => g.studentId))];
     spStuFilter.innerHTML = '<option value="">All Students</option>' + stuIdsInSubj.map(sid => `<option value="${sid}">${studentMap[sid]?.name || 'Unknown'}</option>`).join('');
-    
-    renderSubjectPanelData();
+
+    // NEW: refresh the assignments-tab count badge
+    updateAssignmentTabBadge();
+
+    switchPanelTab('performance');
 };
+
+// NEW: tab switcher inside the subject panel
+window.switchPanelTab = function(tab) {
+    currentPanelTab = tab;
+
+    const perfBtn = document.getElementById('spTabPerformance');
+    const asgBtn = document.getElementById('spTabAssignments');
+    const filters = document.getElementById('spFilterBar');
+
+    [perfBtn, asgBtn].forEach(b => {
+        if (!b) return;
+        b.classList.remove('sp-tab-active');
+    });
+
+    if (tab === 'performance') {
+        perfBtn?.classList.add('sp-tab-active');
+        if (filters) filters.classList.remove('hidden');
+        renderSubjectPanelData();
+    } else {
+        asgBtn?.classList.add('sp-tab-active');
+        if (filters) filters.classList.add('hidden'); // filters only apply to performance view
+        renderAssignmentsTab();
+    }
+};
+
+function updateAssignmentTabBadge() {
+    const badge = document.getElementById('spAsgCountBadge');
+    if (!badge) return;
+    const count = getAssignmentsForSubject(currentSubjectName).length;
+    badge.textContent = count;
+    badge.classList.toggle('hidden', count === 0);
+}
 
 function getFilteredSubjectData() {
     const fClass = document.getElementById('spFilterClass').value;
@@ -312,6 +399,7 @@ function getFilteredSubjectData() {
 }
 
 window.renderSubjectPanelData = function() {
+    if (currentPanelTab !== 'performance') return; // guard: only render when Performance tab is active
     const { sg, stuData, stuIds } = getFilteredSubjectData();
     
     const dist = { a: 0, b: 0, c: 0, d: 0, f: 0 };
@@ -442,6 +530,179 @@ window.renderSubjectPanelData = function() {
         </div>`;
 };
 
+// ── 5b. ASSIGNMENTS TAB (PREDEFINED TEMPLATES) ──────────────────────────────
+window.renderAssignmentsTab = function() {
+    if (currentPanelTab !== 'assignments') return;
+    const assignments = getAssignmentsForSubject(currentSubjectName);
+
+    const semName = document.getElementById('activeSemester').options[document.getElementById('activeSemester').selectedIndex]?.text || '';
+    document.getElementById('spPanelMeta').textContent = `${semName} · ${assignments.length} prepared task${assignments.length !== 1 ? 's' : ''}`;
+
+    const typeOptions = getGradeTypes().map(t => {
+        const v = t.name || t;
+        return `<option value="${escHtml(v)}">${escHtml(v)}</option>`;
+    }).join('');
+
+    const lockedNotice = isSemesterLocked
+        ? `<div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3 mb-5">
+               <i class="fa-solid fa-lock text-amber-500 text-lg"></i>
+               <p class="text-sm font-bold text-amber-700">This period is locked. You can still prepare assignments, but grading is read-only until an admin unlocks it.</p>
+           </div>`
+        : '';
+
+    const formCard = `
+        <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm mb-5">
+            <h4 class="text-xs font-black text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2"><i class="fa-solid fa-circle-plus text-teal-500"></i> Prepare a new assignment</h4>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div class="sm:col-span-2">
+                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Title <span class="text-red-500">*</span></label>
+                    <input type="text" id="asgTitle" placeholder="e.g. Chapter 5 Quiz" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Type <span class="text-red-500">*</span></label>
+                    <select id="asgType" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm cursor-pointer">
+                        <option value="">Select type…</option>
+                        ${typeOptions}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Out of (max) <span class="text-red-500">*</span></label>
+                    <input type="number" id="asgMax" min="1" step="1" placeholder="e.g. 50" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Date <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
+                    <input type="date" id="asgDate" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm cursor-pointer">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Description <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
+                    <input type="text" id="asgDesc" placeholder="e.g. Covers chapters 3–5" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm">
+                </div>
+                <div class="sm:col-span-2">
+                    <button onclick="addAssignment()" id="asgSaveBtn" class="w-full bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white font-black py-3 rounded-xl transition shadow-md text-sm flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-plus"></i> Add to ${escHtml(currentSubjectName)}
+                    </button>
+                    <p id="asgMsg" class="text-sm hidden font-bold p-2.5 mt-2 rounded-xl text-center"></p>
+                </div>
+            </div>
+        </div>`;
+
+    const listCard = assignments.length
+        ? `<div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+               <div class="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                   <h4 class="font-black text-slate-700 text-sm uppercase tracking-wider">Prepared assignments</h4>
+                   <span class="text-xs text-slate-400 font-bold">${assignments.length} ready to grade</span>
+               </div>
+               <div class="divide-y divide-slate-100">
+                   ${assignments.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')).map(a => `
+                   <div class="px-5 py-3.5 flex items-center justify-between gap-3 hover:bg-slate-50 transition">
+                       <div class="min-w-0">
+                           <div class="flex items-center gap-2 flex-wrap">
+                               <p class="font-black text-slate-700 text-sm truncate">${escHtml(a.title)}</p>
+                               <span class="text-[10px] font-black uppercase bg-teal-50 text-teal-600 border border-teal-200 px-2 py-0.5 rounded-md">${escHtml(a.type)}</span>
+                               <span class="text-[10px] font-black text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">/ ${a.maxScore}</span>
+                           </div>
+                           ${a.description ? `<p class="text-xs text-slate-400 font-semibold mt-0.5 truncate">${escHtml(a.description)}</p>` : ''}
+                           ${a.date ? `<p class="text-[11px] text-slate-400 font-bold mt-0.5"><i class="fa-regular fa-calendar mr-1"></i>${escHtml(a.date)}</p>` : ''}
+                       </div>
+                       <button onclick="deleteAssignment('${a.id}')" title="Remove assignment"
+                           class="flex-shrink-0 text-slate-300 hover:text-red-500 h-8 w-8 rounded-lg flex items-center justify-center hover:bg-red-50 transition">
+                           <i class="fa-solid fa-trash-can text-sm"></i>
+                       </button>
+                   </div>`).join('')}
+               </div>
+           </div>`
+        : `<div class="bg-white border-2 border-dashed border-slate-200 rounded-2xl py-14 px-6 text-center">
+               <div class="w-12 h-12 mx-auto mb-4 bg-teal-50 text-teal-500 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-clipboard-list"></i></div>
+               <p class="font-black text-slate-600 text-sm mb-1">No prepared assignments</p>
+               <p class="text-xs text-slate-400 font-semibold max-w-xs mx-auto">Add a quiz or test above. It'll appear in the grade form so you can grade students without retyping the title or points.</p>
+           </div>`;
+
+    document.getElementById('subjectPanelBody').innerHTML = lockedNotice + formCard + listCard;
+};
+
+window.addAssignment = async function() {
+    const title = document.getElementById('asgTitle').value.trim();
+    const type = document.getElementById('asgType').value;
+    const maxRaw = document.getElementById('asgMax').value;
+    const date = document.getElementById('asgDate').value || '';
+    const desc = document.getElementById('asgDesc').value.trim();
+    const max = parseInt(maxRaw, 10);
+
+    if (!title) { showMsg('asgMsg', 'Title is required.', true); return; }
+    if (!type) { showMsg('asgMsg', 'Please choose a type.', true); return; }
+    if (isNaN(max) || max < 1) { showMsg('asgMsg', 'Max score must be a whole number of at least 1.', true); return; }
+
+    const sub = getSubjectByName(currentSubjectName);
+    if (!sub) { showMsg('asgMsg', 'Subject not found. Please refresh.', true); return; }
+
+    const btn = document.getElementById('asgSaveBtn');
+    const prevHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
+    btn.disabled = true;
+
+    try {
+        // Build the new subjects array immutably, attaching the assignment to the right subject
+        const subjects = (session.teacherData.subjects || []).map(s => {
+            if (s.id !== sub.id) return s;
+            const existing = Array.isArray(s.assignments) ? s.assignments : [];
+            // Prevent duplicate titles within the same subject (case-insensitive)
+            if (existing.some(a => (a.title || '').toLowerCase() === title.toLowerCase())) {
+                throw new Error('DUPLICATE');
+            }
+            const newAssignment = {
+                id: genAssignmentId(),
+                title,
+                type,
+                maxScore: max,
+                description: desc,
+                date,
+                createdAt: new Date().toISOString()
+            };
+            return { ...s, assignments: [...existing, newAssignment] };
+        });
+
+        await updateDoc(getTeacherRef(), { subjects });
+        session.teacherData.subjects = subjects;
+        setSessionData('teacher', session);
+
+        updateAssignmentTabBadge();
+        renderAssignmentsTab(); // re-render with the cleared form + new row
+    } catch (e) {
+        if (e.message === 'DUPLICATE') {
+            showMsg('asgMsg', 'An assignment with that title already exists for this subject.', true);
+        } else {
+            console.error('[Subjects] addAssignment:', e);
+            showMsg('asgMsg', 'Could not save. Please try again.', true);
+        }
+        btn.innerHTML = prevHtml;
+        btn.disabled = false;
+    }
+};
+
+window.deleteAssignment = async function(assignmentId) {
+    const sub = getSubjectByName(currentSubjectName);
+    if (!sub) return;
+    if (!confirm('Remove this prepared assignment? Grades already recorded with this title are not affected.')) return;
+
+    try {
+        const subjects = (session.teacherData.subjects || []).map(s => {
+            if (s.id !== sub.id) return s;
+            const existing = Array.isArray(s.assignments) ? s.assignments : [];
+            return { ...s, assignments: existing.filter(a => a.id !== assignmentId) };
+        });
+
+        await updateDoc(getTeacherRef(), { subjects });
+        session.teacherData.subjects = subjects;
+        setSessionData('teacher', session);
+
+        updateAssignmentTabBadge();
+        renderAssignmentsTab();
+    } catch (e) {
+        console.error('[Subjects] deleteAssignment:', e);
+        alert('Could not remove the assignment. Please try again.');
+    }
+};
+
 window.closeSubjectPanel = function() { closeOverlay('subjectPanel', 'subjectPanelInner', true); };
 
 // ── 6. ASSIGNMENT DETAIL MODAL ──────────────────────────────────────────────
@@ -504,7 +765,7 @@ async function saveSubject() {
             return;
         }
         
-        newSubs.push({ id: genId(), name, description: desc, archived: false, archivedAt: null });
+        newSubs.push({ id: genId(), name, description: desc, archived: false, archivedAt: null, assignments: [] });
         
         // CHANGED: use getTeacherRef() for global/legacy compatibility
         await updateDoc(getTeacherRef(), { subjects: newSubs });
