@@ -20,6 +20,7 @@ let currentTeacherData = null;
 let claimedTeacherDoc = null;
 let slipData          = { name: '', id: '', pin: '' };
 let dynamicEvalTypes  = new Set();
+let schoolClasses     = [];   // ← class names from schools/{id}/classes subcollection
 
 const tbody = document.getElementById('teachersTableBody');
 
@@ -61,14 +62,39 @@ function isProfileComplete(t) {
     );
 }
 
-function getClassOptions() {
-    const type = (session.schoolType || '').toLowerCase();
-    if (type === 'highschool' || type === 'secondary') {
-        return ['First Form', 'Second Form', 'Third Form', 'Fourth Form', 'Fifth Form', 'Sixth Form'];
-    } else if (type === 'juniorcollege' || type === 'tertiary') {
-        return ['Year 1 — Semester 1', 'Year 1 — Semester 2', 'Year 2 — Semester 1', 'Year 2 — Semester 2'];
+// ── Load the school's class list (single source of truth) ───────────────────
+async function loadSchoolClasses() {
+    try {
+        const snap = await getDocs(collection(db, 'schools', session.schoolId, 'classes'));
+        schoolClasses = snap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.name || '').localeCompare(b.name || ''))
+            .map(c => c.name)
+            .filter(Boolean);
+    } catch (e) {
+        console.error('[Teachers] loadSchoolClasses:', e);
+        schoolClasses = [];
     }
-    return ['Infant 1', 'Infant 2', 'Standard 1', 'Standard 2', 'Standard 3', 'Standard 4', 'Standard 5', 'Standard 6'];
+}
+
+// Returns the admin-defined class names. Any class a teacher is already
+// assigned to is merged in too, so legacy assignments never silently vanish.
+function getClassOptions(extra = []) {
+    const merged = [...schoolClasses];
+    extra.forEach(c => { if (c && !merged.includes(c)) merged.push(c); });
+    return merged;
+}
+
+// Shared empty-state markup when the school has no classes defined yet
+function classEmptyHtml() {
+    return `
+        <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 text-center">
+            <i class="fa-solid fa-layer-group text-amber-400 text-xl mb-2"></i>
+            <p class="text-[12px] font-bold text-amber-800 mb-0.5">No classes set up yet</p>
+            <p class="text-[11px] font-semibold text-amber-700 leading-relaxed">
+                Add your school's classes on the <strong>Classes</strong> page first, then come back to assign this teacher.
+            </p>
+        </div>`;
 }
 
 function blankTeacherDoc(overrides = {}) {
@@ -232,7 +258,14 @@ document.getElementById('searchInput')?.addEventListener('input', renderTable);
 function populateClassCheckboxes(containerId = 'classCheckboxGroup', checked = []) {
     const group = document.getElementById(containerId);
     if (!group) return;
-    group.innerHTML = getClassOptions().map(c => `
+
+    const options = getClassOptions(checked);
+    if (!options.length) {
+        group.innerHTML = classEmptyHtml();
+        return;
+    }
+
+    group.innerHTML = options.map(c => `
         <label class="flex items-center gap-2 cursor-pointer select-none">
             <input type="checkbox" class="class-checkbox accent-[#2563eb]" value="${escHtml(c)}" ${checked.includes(c) ? 'checked' : ''}>
             <span class="text-[12px] font-semibold text-[#374f6b]">${escHtml(c)}</span>
@@ -451,6 +484,7 @@ document.getElementById('saveTeacherBtn').addEventListener('click', async () => 
     if (!firstName || !lastName) { showMsg('First and last name are required.'); return; }
     if (!email)                  { showMsg('Email address is required for PIN recovery.'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showMsg('Please enter a valid email address.'); return; }
+    if (!schoolClasses.length)   { showMsg('No classes exist yet. Add classes on the Classes page first.'); return; }
     if (selectedClasses.length === 0) { showMsg('You must assign the teacher to at least one class.'); return; }
 
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processing...';
@@ -654,30 +688,36 @@ async function renderOverviewTab() {
         });
     } catch (_) {}
 
-    const classCheckboxes = getClassOptions().map(c => {
-        const isAssigned   = classes.includes(c);
-        const studentCount = studentsByClass[c] || 0;
-        const isLocked     = isAssigned && hasActiveTerm && studentCount > 0;
+    // Merge in any class this teacher already holds, even if it's no longer
+    // in the school's master list, so existing assignments stay editable.
+    const classOptions = getClassOptions(classes);
 
-        if (isLocked) {
+    const classCheckboxes = classOptions.length
+        ? classOptions.map(c => {
+            const isAssigned   = classes.includes(c);
+            const studentCount = studentsByClass[c] || 0;
+            const isLocked     = isAssigned && hasActiveTerm && studentCount > 0;
+
+            if (isLocked) {
+                return `
+                    <label class="flex items-center gap-2 select-none cursor-not-allowed" title="Cannot remove — ${studentCount} active student${studentCount !== 1 ? 's' : ''} in ${activeTermName}">
+                        <input type="checkbox" class="manage-class-checkbox accent-[#2563eb]"
+                            value="${escHtml(c)}" checked disabled>
+                        <span class="text-[12px] font-semibold text-[#374f6b]">${escHtml(c)}</span>
+                        <span class="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded ml-auto">
+                            <i class="fa-solid fa-lock text-[8px]"></i> ${studentCount} student${studentCount !== 1 ? 's' : ''}
+                        </span>
+                    </label>`;
+            }
+
             return `
-                <label class="flex items-center gap-2 select-none cursor-not-allowed" title="Cannot remove — ${studentCount} active student${studentCount !== 1 ? 's' : ''} in ${activeTermName}">
+                <label class="flex items-center gap-2 cursor-pointer select-none">
                     <input type="checkbox" class="manage-class-checkbox accent-[#2563eb]"
-                        value="${escHtml(c)}" checked disabled>
+                        value="${escHtml(c)}" ${isAssigned ? 'checked' : ''}>
                     <span class="text-[12px] font-semibold text-[#374f6b]">${escHtml(c)}</span>
-                    <span class="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded ml-auto">
-                        <i class="fa-solid fa-lock text-[8px]"></i> ${studentCount} student${studentCount !== 1 ? 's' : ''}
-                    </span>
                 </label>`;
-        }
-
-        return `
-            <label class="flex items-center gap-2 cursor-pointer select-none">
-                <input type="checkbox" class="manage-class-checkbox accent-[#2563eb]"
-                    value="${escHtml(c)}" ${isAssigned ? 'checked' : ''}>
-                <span class="text-[12px] font-semibold text-[#374f6b]">${escHtml(c)}</span>
-            </label>`;
-    }).join('');
+        }).join('')
+        : classEmptyHtml();
 
     pane.innerHTML = `
         <div class="flex items-center justify-between mb-4">
@@ -736,10 +776,10 @@ async function renderOverviewTab() {
         <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm">
             <div class="flex items-center justify-between mb-3">
                 <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Assigned Classes</h4>
-                <button onclick="window.saveClassAssignment()"
+                ${classOptions.length ? `<button onclick="window.saveClassAssignment()"
                     class="text-[11px] font-bold text-[#2563eb] bg-[#eef4ff] border border-[#c7d9fd] px-3 py-1.5 rounded hover:bg-[#dbeafe] transition">
                     <i class="fa-solid fa-floppy-disk mr-1"></i> Save
-                </button>
+                </button>` : ''}
             </div>
             <div class="grid grid-cols-2 gap-2" id="manageClassCheckboxes">
                 ${classCheckboxes}
@@ -1637,4 +1677,8 @@ document.getElementById('exportCsvBtn').addEventListener('click', () => {
 });
 
 // ── BOOT ──────────────────────────────────────────────────────────────────
-loadTeachers();
+async function boot() {
+    await loadSchoolClasses();   // class list ready before any modal can open
+    loadTeachers();
+}
+boot();
