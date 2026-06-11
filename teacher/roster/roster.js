@@ -1226,7 +1226,7 @@ window.saveAndGenerateReportCard = async function() {
         await setDoc(doc(db, 'students', currentStudentId, 'evaluations', docId), payload);
         await window.loadStudentEvaluations(currentStudentId);
         window.closeReportCardModal();
-        generateFormalReportCardPDF(payload, semName, selectedRcType, selectedMidtermData);
+        await generateFormalReportCardPDF(payload, semName, selectedRcType, selectedMidtermData);
     } catch (e) {
         console.error('[Roster] saveAndGenerateReportCard:', e);
         alert('Failed to save. Please try again.');
@@ -1237,10 +1237,17 @@ window.saveAndGenerateReportCard = async function() {
 };
 
 // ── PDF generator ─────────────────────────────────────────────────────────
-function generateFormalReportCardPDF(ev, semName, reportType = 'term', midtermData = null) {
+async function generateFormalReportCardPDF(ev, semName, reportType = 'term', midtermData = null) {
     const student    = allStudentsCache.find(s => s.id === currentStudentId);
     if (!student)    return;
-    const schoolName = session.schoolName || 'ConnectUs School';
+    
+    let schoolName = '';
+    try {
+        const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
+        schoolName = schoolSnap.data()?.schoolName || '';
+    } catch (e) {
+        console.error("Error fetching school name:", e);
+    }
 
     // Filter grades by midterm date range if applicable
     let gradesToUse = [...currentStudentGradesCache];
