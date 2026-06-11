@@ -17,6 +17,7 @@ let rawSemesters        = [];
 let allGradesCache      = {};
 let currentQueryResults = [];
 let currentQueryMeta    = {};
+let resolvedSchoolName  = '';   // populated from the school doc in loadSemesters
 
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 function getGradeTypes() { return session.teacherData.gradeTypes || session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
@@ -145,6 +146,7 @@ async function loadSemesters() {
         try {
             const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
             activeId = schoolSnap.data()?.activeSemesterId || '';
+            resolvedSchoolName = schoolSnap.data()?.schoolName || '';
         } catch(e) {}
 
         const topSemSel = document.getElementById('activeSemester');
@@ -602,10 +604,11 @@ window.printReport = function() {
     const logoUrl      = new URL('../../assets/images/logo.png', window.location.href).href;
     const printDate    = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     const teacherName  = session.teacherData?.name || 'Teacher';
-    const schoolName   = session.schoolName || session.schoolId || 'ConnectUs School';
+    const schoolName   = resolvedSchoolName || session.schoolName || session.schoolId || 'ConnectUs School';
 
     let reportTitle = 'Academic Report';
     if (meta.mode === 'A' && meta.subMode === 'multi') reportTitle = 'Multi-Term Comparison';
+    else if (meta.mode === 'A' && meta.scope === 'student') reportTitle = 'Student Report Card';
     else if (meta.mode === 'A')                         reportTitle = 'Term Summary Report';
     else if (meta.scope === 'student')                  reportTitle = 'Student Academic Report';
 
@@ -623,34 +626,70 @@ window.printReport = function() {
     if (meta.mode === 'A') {
 
         if (meta.subMode === 'single') {
-            // Single term summary table
             const subjects = meta.subjects || [];
-            let rowsHtml   = '';
-            currentQueryResults.forEach(row => {
-                const oCol = row.overall !== null ? printColor(row.overall) : '#94a3b8';
-                rowsHtml += `<tr>
-                    <td style="font-weight:700;">${escHtml(row.studentName)}</td>
-                    ${subjects.map(s => {
-                        const avg = row.subjectAvgs[s] ?? null;
-                        const col = avg !== null ? printColor(avg) : '#94a3b8';
-                        return `<td class="center mono" style="color:${col};">${avg !== null ? avg + '%' : '—'}</td>`;
-                    }).join('')}
-                    <td class="center mono" style="color:${oCol};font-size:14px;font-weight:900;">${row.overall !== null ? row.overall + '%' : '—'}</td>
-                </tr>`;
-            });
 
-            bodyHtml = `
-            <div class="sem-block">
-                <div class="sem-title">${escHtml(meta.semText)}</div>
-                <table>
-                    <thead><tr>
-                        <th>Student</th>
-                        ${subjects.map(s => `<th class="center">${escHtml(s)}</th>`).join('')}
-                        <th class="center">Overall</th>
-                    </tr></thead>
-                    <tbody>${rowsHtml}</tbody>
-                </table>
-            </div>`;
+            if (meta.scope === 'student') {
+                // ── Individual student → report-card layout (subjects as rows) ──
+                const row = currentQueryResults[0] || { subjectAvgs: {}, overall: null, studentName: meta.scopeName };
+                let rcRows = subjects.map(s => {
+                    const avg = row.subjectAvgs[s] ?? null;
+                    const col = avg !== null ? printColor(avg) : '#94a3b8';
+                    return `<tr>
+                        <td style="font-weight:700;">${escHtml(s)}</td>
+                        <td class="center mono" style="color:${col};font-weight:800;">${avg !== null ? avg + '%' : '—'}</td>
+                        <td class="center" style="color:${col};font-weight:800;">${avg !== null ? letterGrade(avg) : '—'}</td>
+                    </tr>`;
+                }).join('');
+
+                const oCol = row.overall !== null ? printColor(row.overall) : '#94a3b8';
+                rcRows += `<tr class="avg-row">
+                    <td class="avg-label" style="text-align:left;">Overall Average</td>
+                    <td class="center avg-val" style="color:${oCol};">${row.overall !== null ? row.overall + '%' : '—'}</td>
+                    <td class="center avg-val" style="color:${oCol};">${row.overall !== null ? letterGrade(row.overall) : '—'}</td>
+                </tr>`;
+
+                bodyHtml = `
+                <div class="sem-block">
+                    <div class="sem-title">${escHtml(meta.semText)} — Report Card</div>
+                    <table>
+                        <thead><tr>
+                            <th>Subject</th>
+                            <th class="center">Grade</th>
+                            <th class="center">Letter</th>
+                        </tr></thead>
+                        <tbody>${rcRows}</tbody>
+                    </table>
+                </div>`;
+
+            } else {
+                // ── Class → summary table (students as rows, subjects as columns) ──
+                let rowsHtml = '';
+                currentQueryResults.forEach(row => {
+                    const oCol = row.overall !== null ? printColor(row.overall) : '#94a3b8';
+                    rowsHtml += `<tr>
+                        <td style="font-weight:700;">${escHtml(row.studentName)}</td>
+                        ${subjects.map(s => {
+                            const avg = row.subjectAvgs[s] ?? null;
+                            const col = avg !== null ? printColor(avg) : '#94a3b8';
+                            return `<td class="center mono" style="color:${col};">${avg !== null ? avg + '%' : '—'}</td>`;
+                        }).join('')}
+                        <td class="center mono" style="color:${oCol};font-size:14px;font-weight:900;">${row.overall !== null ? row.overall + '%' : '—'}</td>
+                    </tr>`;
+                });
+
+                bodyHtml = `
+                <div class="sem-block">
+                    <div class="sem-title">${escHtml(meta.semText)}</div>
+                    <table>
+                        <thead><tr>
+                            <th>Student</th>
+                            ${subjects.map(s => `<th class="center">${escHtml(s)}</th>`).join('')}
+                            <th class="center">Overall</th>
+                        </tr></thead>
+                        <tbody>${rowsHtml}</tbody>
+                    </table>
+                </div>`;
+            }
 
         } else {
             // Multi-term comparison table
@@ -860,7 +899,11 @@ window.printReport = function() {
         <div class="info-field"><span class="f-label">Term</span><span class="f-value">${escHtml(meta.semText)}</span></div>
     </div>
     <div class="section-label">
-        ${meta.mode === 'A' ? (meta.subMode === 'multi' ? 'Term-by-Term Comparison' : 'Subject Averages by Student') : 'Grade Entries'}
+        ${meta.mode === 'A'
+            ? (meta.subMode === 'multi'
+                ? 'Term-by-Term Comparison'
+                : (meta.scope === 'student' ? 'Grades by Subject' : 'Subject Averages by Student'))
+            : 'Grade Entries'}
     </div>
     <div class="content">${bodyHtml}</div>
     <div class="report-footer">
