@@ -21,6 +21,7 @@ let isSemesterLocked          = false;
 let gradeDetailCache          = {};
 let schoolLimit               = 50;
 let cachedEvaluations         = [];
+let schoolClasses             = []; // ← Live master list from schools/{id}/classes
 
 // ── Report card type state ────────────────────────────────────────────────
 let selectedRcType      = 'term';   // 'term' | 'midterm'
@@ -62,7 +63,31 @@ window.rcRatings = {
     effortResilience: 0, participation: 0, punctualityRating: 0
 };
 
-function getClasses()    { return session.teacherData.classes || [session.teacherData.className || '']; }
+// ── Load the school's class list (single source of truth) ─────────────────
+async function loadSchoolClasses() {
+    try {
+        const snap = await getDocs(collection(db, 'schools', session.schoolId, 'classes'));
+        schoolClasses = snap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.name || '').localeCompare(b.name || ''))
+            .map(c => c.name)
+            .filter(Boolean);
+    } catch (e) {
+        console.error('[Roster] loadSchoolClasses:', e);
+        schoolClasses = [];
+    }
+}
+
+// ── FIX: Intersect assigned classes with the live master list ─────────────
+// Accepts an `extra` array (like the student's legacy class) so existing data doesn't vanish.
+function getClasses(extra = []) {
+    const assigned = session.teacherData.classes || [session.teacherData.className || ''];
+    let validClasses = assigned.filter(c => schoolClasses.includes(c));
+    
+    extra.forEach(c => { if (c && !validClasses.includes(c)) validClasses.push(c); });
+    return validClasses.filter(Boolean);
+}
+
 function getGradeTypes() { return session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
 
 function generateStudentId() {
@@ -76,16 +101,22 @@ function generateStudentId() {
 // ── 3. INIT ───────────────────────────────────────────────────────────────
 async function init() {
     if (!session) return;
+    
+    // ── FIX: Load master list first ───────────────────────────────────────
+    await loadSchoolClasses();
+
     const searchInput = document.getElementById('searchInput');
     if (searchInput) searchInput.addEventListener('input', filterStudents);
 
     document.getElementById('displayTeacherName').textContent = session.teacherData.name;
     document.getElementById('teacherAvatar').textContent      = session.teacherData.name.charAt(0).toUpperCase();
     document.getElementById('sidebarSchoolId').textContent    = session.schoolId;
+    
+    const classes = getClasses();
+    
     document.getElementById('displayTeacherClasses').innerHTML =
-        getClasses().filter(Boolean).map(c => `<span class="class-pill">${c}</span>`).join('');
+        classes.map(c => `<span class="class-pill">${c}</span>`).join('') || '<span class="text-xs text-slate-400 italic">No assigned classes</span>';
 
-    const classes     = getClasses().filter(Boolean);
     const classFilter = document.getElementById('rf-class');
     if (classFilter) {
         classFilter.innerHTML = '<option value="">All Classes</option>' +
@@ -333,10 +364,23 @@ window.openAddStudentModal = function() {
     });
     document.getElementById('addStudentMsg').classList.add('hidden');
 
-    const classes = getClasses().filter(Boolean);
+    const classes = getClasses();
     const sel     = document.getElementById('sClass');
-    sel.innerHTML = '<option value="">— Select a Class —</option>' +
-        classes.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+    
+    // ── FIX: Empty State Guard ─────────────────────────────────────────────
+    if (classes.length === 0) {
+        sel.innerHTML = '<option value="">— No active classes available —</option>';
+        sel.disabled = true;
+        document.getElementById('sSearchBtn').disabled = true;
+        document.getElementById('saveStudentBtn').disabled = true;
+        showMsg('addStudentMsg', 'You currently have no active classes assigned. Please contact your administrator to assign classes to your account before enrolling students.', true);
+    } else {
+        sel.innerHTML = '<option value="">— Select a Class —</option>' +
+            classes.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+        sel.disabled = false;
+        document.getElementById('sSearchBtn').disabled = false;
+        document.getElementById('saveStudentBtn').disabled = false;
+    }
 
     openOverlay('addStudentModal', 'addStudentModalInner');
 };
@@ -551,8 +595,9 @@ window.openStudentPanel = async function(studentId) {
 
     openOverlay('studentPanel', 'studentPanelInner');
 
+    // ── FIX: Pass student's current class as `extra` to preserve legacy display ─
     const classSel = document.getElementById('editSClass');
-    const classes  = getClasses().filter(Boolean);
+    const classes  = getClasses([student?.className]); 
     classSel.innerHTML = classes.map(c =>
         `<option value="${escHtml(c)}" ${c === student?.className ? 'selected' : ''}>${escHtml(c)}</option>`
     ).join('');
@@ -1265,7 +1310,7 @@ function generateFormalReportCardPDF(ev, semName, reportType = 'term', midtermDa
     const enrichmentRows = [
         ['Character & Values',           'Honesty, integrity, and ethical behaviour in daily interactions',          ev.ratings.characterValues],
         ['Respect & Courtesy',           'Respectful treatment of peers, teachers, and the school environment',      ev.ratings.respectCourtesy],
-        ['Responsibility & Reliability', 'Taking ownership of tasks, duties, and personal belongings',              ev.ratings.responsibilityReliability],
+        ['Responsibility & Reliability', 'Taking ownership of tasks, duties, and personal belongings',               ev.ratings.responsibilityReliability],
         ['Cooperation & Teamwork',       'Working constructively with others in group and classroom settings',       ev.ratings.cooperationTeamwork],
         ['Leadership & Initiative',      'Volunteering, taking the lead, and showing self-driven motivation',        ev.ratings.leadershipInitiative],
         ['Cultural Awareness & Pride',   'Appreciation of Belizean and Caribbean culture, history, and heritage',   ev.ratings.culturalAwareness],
@@ -1469,7 +1514,7 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
             const evalSnap = await getDocs(query(collection(db, 'students', currentStudentId, 'evaluations'), where('schoolId', '==', session.schoolId)));
             const evaluations = [];
             evalSnap.forEach(d => evaluations.push({ id: d.id, ...d.data() }));
-            evaluations.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
+            evalSnap.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
 
             const bySemester = {};
             classGrades.forEach(g => {
