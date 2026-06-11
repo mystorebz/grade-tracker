@@ -15,6 +15,25 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <style>
+        /* Locked (template-driven) fields read as filled-but-fixed, not broken */
+        .gf-locked {
+            background: #f8fafb !important;
+            color: #6b84a0 !important;
+            cursor: not-allowed;
+        }
+        /* When every student is graded, the Mark-as-graded button glows ready */
+        .gf-mark-ready {
+            background: #0ea871 !important;
+            color: #fff !important;
+            border-color: #0ea871 !important;
+            box-shadow: 0 4px 14px rgba(14,168,113,0.3);
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .gf-subject-btn, .gf-asg-btn { transition: none !important; }
+        }
+    </style>
 </head>
 <body class="flex w-full h-screen overflow-hidden bg-[#f4f7fb] font-['DM_Sans']">
 
@@ -27,132 +46,208 @@
         <div class="flex-1 overflow-y-auto p-8 view-section">
             
             <div class="max-w-5xl mx-auto space-y-6">
-                
-                <div class="bg-white rounded-sm shadow-sm border border-[#dce3ed] overflow-hidden relative flex flex-col">
-                    <div class="h-[2px] bg-[#0ea871] w-full"></div>
-                    
-                    <div class="p-4 border-b border-[#f0f4f8] bg-[#f8fafb] flex items-center gap-3">
-                        <div class="w-7 h-7 bg-[#edfaf4] text-[#0ea871] border border-[#c6f0db] rounded-sm flex items-center justify-center">
-                            <i class="fa-solid fa-terminal text-[11px]"></i>
-                        </div>
+
+                <!-- Locked notice (semester locked) -->
+                <div id="lockedGradeNotice" class="hidden bg-[#fff0f3] border border-[#fecaca] border-l-4 border-l-[#e31b4a] rounded-sm p-4 shadow-sm">
+                    <div class="flex items-center gap-3">
+                        <i class="fa-solid fa-lock text-[#e31b4a] text-lg"></i>
                         <div>
-                            <h3 class="text-[12px] font-bold text-[#0d1f35] uppercase tracking-widest m-0 leading-tight">Data Entry Interface</h3>
-                        </div>
-                    </div>
-
-                    <div id="lockedGradeNotice" class="hidden mx-6 mt-6 bg-[#fff0f3] border border-[#fecaca] border-l-4 border-l-[#e31b4a] rounded-sm p-4 shadow-sm">
-                        <div class="flex items-center gap-3">
-                            <i class="fa-solid fa-lock text-[#e31b4a] text-lg"></i>
-                            <div>
-                                <h4 class="font-bold text-[#be123c] text-[13px] mb-0.5 m-0 uppercase tracking-widest">System Locked</h4>
-                                <p class="text-[12px] text-[#e31b4a] font-medium m-0">Your School Admin has locked this semester. Grades are read-only.</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div id="gradeSavedBanner" class="hidden mx-6 mt-6 bg-[#edfaf4] border border-[#c6f0db] border-l-4 border-l-[#0ea871] rounded-sm p-4 flex items-center justify-between transition-all">
-                        <div class="flex items-center gap-3">
-                            <i class="fa-solid fa-circle-check text-[#0ea871] text-lg"></i>
-                            <div>
-                                <p class="font-bold text-[#0d1f35] text-[13px] m-0">Record committed successfully.</p>
-                                <p class="text-[11px] text-[#0ea871] font-bold m-0 mt-0.5">Parameters preserved. Ready for next student.</p>
-                            </div>
-                        </div>
-                        <button id="closeBannerBtn" class="text-[#9ab0c6] hover:text-[#0d1f35] transition"><i class="fa-solid fa-xmark"></i></button>
-                    </div>
-
-                    <div id="enterGradeFormWrap" class="p-6">
-                        <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
-                            
-                            <div class="lg:col-span-3 space-y-5">
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                                    
-                                    <div class="relative">
-                                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Student <span class="text-[#e31b4a]">*</span></label>
-                                        <div class="relative">
-                                            <select id="agStudent" class="form-select w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] pr-8 focus:border-[#2563eb] focus:ring-0 transition outline-none appearance-none">
-                                                <option value="">Loading students...</option>
-                                            </select>
-                                            <div class="absolute right-2.5 top-2.5 text-[#9ab0c6] pointer-events-none"><i class="fa-solid fa-caret-down text-[10px]"></i></div>
-                                        </div>
-                                    </div>
-
-                                    <div class="relative">
-                                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Subject <span class="text-[#e31b4a]">*</span></label>
-                                        <div class="relative">
-                                            <select id="agSubject" class="form-select w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] pr-8 focus:border-[#2563eb] focus:ring-0 transition outline-none appearance-none">
-                                                <option value="">Select subject...</option>
-                                            </select>
-                                            <div class="absolute right-2.5 top-2.5 text-[#9ab0c6] pointer-events-none"><i class="fa-solid fa-caret-down text-[10px]"></i></div>
-                                        </div>
-                                    </div>
-
-                                    <div class="relative">
-                                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5 flex justify-between items-center">
-                                            <span>Grade Type <span class="text-[#e31b4a]">*</span></span>
-                                        </label>
-                                        <div class="relative">
-                                            <select id="agType" class="form-select w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] pr-8 focus:border-[#2563eb] focus:ring-0 transition outline-none appearance-none">
-                                                <option value="">Select type...</option>
-                                            </select>
-                                            <div class="absolute right-2.5 top-2.5 text-[#9ab0c6] pointer-events-none"><i class="fa-solid fa-caret-down text-[10px]"></i></div>
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Date</label>
-                                        <input type="date" id="agDate" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] focus:border-[#2563eb] focus:ring-0 transition outline-none cursor-pointer">
-                                    </div>
-                                </div>
-                                
-                                <div>
-                                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Assignment Title <span class="text-[#e31b4a]">*</span></label>
-                                    <input type="text" id="agTitle" placeholder="e.g. ENG-101 Midterm Paper" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] focus:border-[#2563eb] focus:ring-0 transition outline-none">
-                                </div>
-                                
-                                <div>
-                                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Record Notes <span class="text-[9px] font-bold normal-case text-[#2563eb] bg-[#eef4ff] border border-[#c7d9fd] px-1.5 py-0.5 rounded-sm ml-1 tracking-normal">Visible to Parents</span></label>
-                                    <textarea id="agNotes" placeholder="Optional context or feedback..." class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] h-20 resize-none focus:border-[#2563eb] focus:ring-0 transition outline-none"></textarea>
-                                </div>
-                            </div>
-                            
-                            <div class="lg:col-span-2 flex flex-col justify-between space-y-5">
-                                <div class="p-6 bg-[#f8fafb] border border-[#dce3ed] rounded-sm space-y-6 flex-1 flex flex-col justify-center">
-                                    <div class="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label class="block text-[10px] font-bold text-[#0d1f35] uppercase tracking-widest mb-2 text-center">Score</label>
-                                            <input type="number" id="agScore" placeholder="85" class="form-input w-full p-3 bg-white border border-[#0d1f35] rounded-sm text-3xl font-mono font-bold text-[#0d1f35] text-center focus:border-[#0ea871] focus:ring-0 transition outline-none">
-                                        </div>
-                                        <div>
-                                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-2 text-center">Out of (Max)</label>
-                                            <input type="number" id="agMax" value="100" class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded-sm text-3xl font-mono font-bold text-[#6b84a0] text-center focus:border-[#2563eb] focus:ring-0 transition outline-none">
-                                        </div>
-                                    </div>
-                                    
-                                    <div id="gradePreview" class="bg-white border border-[#dce3ed] rounded-sm p-4 hidden">
-                                        <div class="flex flex-col items-center gap-3 text-center">
-                                            <div class="flex items-center justify-center gap-4 w-full">
-                                                <span id="prevPct" class="text-3xl font-mono font-bold text-[#c5d0db]">—</span>
-                                                <span id="prevLetter" class="text-xl font-black px-4 py-1.5 rounded-sm border border-[#dce3ed] bg-[#f8fafb] text-[#9ab0c6] text-center min-w-[56px]">—</span>
-                                            </div>
-                                            <div class="w-full mt-1">
-                                                <div class="h-1.5 bg-[#dce3ed] rounded-none overflow-hidden w-full">
-                                                    <div id="prevBar" class="h-full rounded-none transition-all duration-300" style="width:0%"></div>
-                                                </div>
-                                                <p id="prevLabel" class="text-[10px] font-bold uppercase tracking-widest mt-2 text-[#9ab0c6] m-0">Awaiting Input</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <button id="saveGradeBtn" class="w-full bg-[#0d1f35] hover:bg-[#0ea871] text-white font-bold py-3 rounded-sm transition text-[13px] flex justify-center items-center gap-2 uppercase tracking-widest">
-                                    <i class="fa-solid fa-database text-[11px]"></i> Commit Record
-                                </button>
-                            </div>
-
+                            <h4 class="font-bold text-[#be123c] text-[13px] mb-0.5 m-0 uppercase tracking-widest">System Locked</h4>
+                            <p class="text-[12px] text-[#e31b4a] font-medium m-0">Your School Admin has locked this semester. Grades are read-only.</p>
                         </div>
                     </div>
                 </div>
+
+                <!-- ─────────────  STEP 1: SUBJECT PICKER  ───────────── -->
+                <section id="subjectPickerSection" class="bg-white rounded-sm shadow-sm border border-[#dce3ed] overflow-hidden">
+                    <div class="h-[2px] bg-[#0ea871] w-full"></div>
+                    <div class="p-4 border-b border-[#f0f4f8] bg-[#f8fafb] flex items-center gap-3">
+                        <div class="w-7 h-7 bg-[#edfaf4] text-[#0ea871] border border-[#c6f0db] rounded-sm flex items-center justify-center">
+                            <span class="text-[11px] font-bold">1</span>
+                        </div>
+                        <h3 class="text-[12px] font-bold text-[#0d1f35] uppercase tracking-widest m-0 leading-tight">Choose a subject</h3>
+                    </div>
+                    <div class="p-6">
+                        <div id="subjectPickerList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            <p class="text-[13px] text-[#6b84a0] italic font-semibold col-span-full text-center py-6"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading subjects…</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ─────────────  STEP 2: ASSIGNMENT PICKER  ───────────── -->
+                <section id="assignmentPickerSection" class="hidden bg-white rounded-sm shadow-sm border border-[#dce3ed] overflow-hidden">
+                    <div class="h-[2px] bg-[#0ea871] w-full"></div>
+                    <div class="p-4 border-b border-[#f0f4f8] bg-[#f8fafb] flex items-center justify-between gap-3">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <div class="w-7 h-7 bg-[#edfaf4] text-[#0ea871] border border-[#c6f0db] rounded-sm flex items-center justify-center flex-shrink-0">
+                                <span class="text-[11px] font-bold">2</span>
+                            </div>
+                            <h3 class="text-[12px] font-bold text-[#0d1f35] uppercase tracking-widest m-0 leading-tight truncate">
+                                Pick an assignment · <span id="assignmentPickerSubject" class="text-[#0ea871]">Subject</span>
+                            </h3>
+                        </div>
+                        <button onclick="resetSelection()" class="flex-shrink-0 flex items-center gap-1.5 text-[11px] font-bold text-[#6b84a0] hover:text-[#0d1f35] bg-white border border-[#dce3ed] px-3 py-1.5 rounded-sm transition">
+                            <i class="fa-solid fa-arrow-left text-[10px]"></i> Change subject
+                        </button>
+                    </div>
+                    <div class="p-6">
+                        <div id="assignmentPickerList" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+                    </div>
+                </section>
+
+                <!-- ─────────────  STEP 3: GRADING PANEL  ───────────── -->
+                <section id="gradingSection" class="hidden">
+                    <div class="bg-white rounded-sm shadow-sm border border-[#dce3ed] overflow-hidden relative flex flex-col">
+                        <div class="h-[2px] bg-[#0ea871] w-full"></div>
+
+                        <!-- Grading header -->
+                        <div class="p-4 border-b border-[#f0f4f8] bg-[#f8fafb] flex items-center justify-between gap-3 flex-wrap">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <div class="w-7 h-7 bg-[#edfaf4] text-[#0ea871] border border-[#c6f0db] rounded-sm flex items-center justify-center flex-shrink-0">
+                                    <i class="fa-solid fa-pen-to-square text-[11px]"></i>
+                                </div>
+                                <div class="min-w-0">
+                                    <h3 id="gfGradingTitle" class="text-[13px] font-bold text-[#0d1f35] m-0 leading-tight truncate">Grading</h3>
+                                    <p id="gfGradingMeta" class="text-[11px] text-[#6b84a0] font-semibold m-0 mt-0.5">0 of 0 graded</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <button id="gfEditLockBtn" onclick="toggleFieldLock()" class="hidden flex items-center gap-1.5 text-[11px] font-bold text-[#6b84a0] hover:text-[#0d1f35] bg-white border border-[#dce3ed] px-3 py-1.5 rounded-sm transition">
+                                    <i class="fa-solid fa-lock text-[10px]"></i> Edit fields
+                                </button>
+                                <button id="gfMarkGradedBtn" onclick="markAssignmentGraded()" class="hidden flex items-center gap-1.5 text-[11px] font-bold text-[#0ea871] bg-[#edfaf4] border border-[#c6f0db] hover:bg-[#0ea871] hover:text-white px-3 py-1.5 rounded-sm transition">
+                                    <i class="fa-solid fa-check text-[10px]"></i> Mark as graded
+                                </button>
+                                <button onclick="resetSelection()" class="flex items-center gap-1.5 text-[11px] font-bold text-[#6b84a0] hover:text-[#0d1f35] bg-white border border-[#dce3ed] px-3 py-1.5 rounded-sm transition">
+                                    <i class="fa-solid fa-rotate text-[10px]"></i> Switch / Reset
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Saved banner -->
+                        <div id="gradeSavedBanner" class="hidden mx-6 mt-6 bg-[#edfaf4] border border-[#c6f0db] border-l-4 border-l-[#0ea871] rounded-sm p-4 flex items-center justify-between transition-all">
+                            <div class="flex items-center gap-3">
+                                <i class="fa-solid fa-circle-check text-[#0ea871] text-lg"></i>
+                                <div>
+                                    <p class="font-bold text-[#0d1f35] text-[13px] m-0">Record committed successfully.</p>
+                                    <p class="text-[11px] text-[#0ea871] font-bold m-0 mt-0.5">Moved to the next ungraded student.</p>
+                                </div>
+                            </div>
+                            <button id="closeBannerBtn" class="text-[#9ab0c6] hover:text-[#0d1f35] transition"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+
+                        <!-- Body: form (left) + roster (right) -->
+                        <div class="p-6">
+                            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                                <!-- FORM (spans 2) -->
+                                <div class="lg:col-span-2 space-y-5">
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                                        <!-- Subject (display, set by picker) -->
+                                        <div class="relative">
+                                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Subject <span class="text-[#e31b4a]">*</span></label>
+                                            <div class="relative">
+                                                <select id="agSubject" class="form-select w-full p-2 bg-[#f8fafb] border border-[#dce3ed] rounded-sm text-[13px] text-[#6b84a0] pr-8 outline-none appearance-none cursor-not-allowed" disabled>
+                                                    <option value="">Select subject...</option>
+                                                </select>
+                                                <div class="absolute right-2.5 top-2.5 text-[#9ab0c6] pointer-events-none"><i class="fa-solid fa-lock text-[10px]"></i></div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Grade type -->
+                                        <div class="relative">
+                                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Grade Type <span class="text-[#e31b4a]">*</span></label>
+                                            <div class="relative">
+                                                <select id="agType" class="form-select w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] pr-8 focus:border-[#2563eb] focus:ring-0 transition outline-none appearance-none">
+                                                    <option value="">Select type...</option>
+                                                </select>
+                                                <div class="absolute right-2.5 top-2.5 text-[#9ab0c6] pointer-events-none"><i class="fa-solid fa-caret-down text-[10px]"></i></div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Title -->
+                                        <div class="sm:col-span-2">
+                                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Assignment Title <span class="text-[#e31b4a]">*</span></label>
+                                            <input type="text" id="agTitle" placeholder="e.g. ENG-101 Midterm Paper" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] focus:border-[#2563eb] focus:ring-0 transition outline-none">
+                                        </div>
+
+                                        <!-- Date -->
+                                        <div>
+                                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Date</label>
+                                            <input type="date" id="agDate" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] focus:border-[#2563eb] focus:ring-0 transition outline-none cursor-pointer">
+                                        </div>
+
+                                        <!-- Student -->
+                                        <div class="relative">
+                                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Student <span class="text-[#e31b4a]">*</span></label>
+                                            <div class="relative">
+                                                <select id="agStudent" class="form-select w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] pr-8 focus:border-[#2563eb] focus:ring-0 transition outline-none appearance-none">
+                                                    <option value="">Select student...</option>
+                                                </select>
+                                                <div class="absolute right-2.5 top-2.5 text-[#9ab0c6] pointer-events-none"><i class="fa-solid fa-caret-down text-[10px]"></i></div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Score / Max -->
+                                    <div class="p-5 bg-[#f8fafb] border border-[#dce3ed] rounded-sm">
+                                        <div class="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label class="block text-[10px] font-bold text-[#0d1f35] uppercase tracking-widest mb-2 text-center">Score</label>
+                                                <input type="number" id="agScore" min="0" placeholder="85" class="form-input w-full p-3 bg-white border border-[#0d1f35] rounded-sm text-3xl font-mono font-bold text-[#0d1f35] text-center focus:border-[#0ea871] focus:ring-0 transition outline-none">
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-2 text-center">Out of (Max)</label>
+                                                <input type="number" id="agMax" min="1" value="100" class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded-sm text-3xl font-mono font-bold text-[#6b84a0] text-center focus:border-[#2563eb] focus:ring-0 transition outline-none">
+                                            </div>
+                                        </div>
+
+                                        <div id="gradePreview" class="bg-white border border-[#dce3ed] rounded-sm p-4 hidden mt-4">
+                                            <div class="flex flex-col items-center gap-3 text-center">
+                                                <div class="flex items-center justify-center gap-4 w-full">
+                                                    <span id="prevPct" class="text-3xl font-mono font-bold text-[#c5d0db]">—</span>
+                                                    <span id="prevLetter" class="text-xl font-black px-4 py-1.5 rounded-sm border border-[#dce3ed] bg-[#f8fafb] text-[#9ab0c6] text-center min-w-[56px]">—</span>
+                                                </div>
+                                                <div class="w-full mt-1">
+                                                    <div class="h-1.5 bg-[#dce3ed] rounded-none overflow-hidden w-full">
+                                                        <div id="prevBar" class="h-full rounded-none transition-all duration-300" style="width:0%"></div>
+                                                    </div>
+                                                    <p id="prevLabel" class="text-[10px] font-bold uppercase tracking-widest mt-2 text-[#9ab0c6] m-0">Awaiting Input</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Notes -->
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Record Notes <span class="text-[9px] font-bold normal-case text-[#2563eb] bg-[#eef4ff] border border-[#c7d9fd] px-1.5 py-0.5 rounded-sm ml-1 tracking-normal">Visible to Parents</span></label>
+                                        <textarea id="agNotes" placeholder="Optional context or feedback..." class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] h-20 resize-none focus:border-[#2563eb] focus:ring-0 transition outline-none"></textarea>
+                                    </div>
+
+                                    <button id="saveGradeBtn" class="w-full bg-[#0d1f35] hover:bg-[#0ea871] text-white font-bold py-3 rounded-sm transition text-[13px] flex justify-center items-center gap-2 uppercase tracking-widest">
+                                        <i class="fa-solid fa-database text-[11px]"></i> Commit & Next
+                                    </button>
+                                </div>
+
+                                <!-- ROSTER CHECKLIST -->
+                                <div class="lg:col-span-1">
+                                    <div class="bg-[#f8fafb] border border-[#dce3ed] rounded-sm overflow-hidden h-full flex flex-col">
+                                        <div class="px-4 py-3 border-b border-[#dce3ed] bg-white flex items-center justify-between">
+                                            <h4 class="text-[10px] font-bold text-[#0d1f35] uppercase tracking-widest m-0">Roster</h4>
+                                            <span id="gfRosterProgress" class="text-[10px] font-bold text-[#6b84a0]">0 of 0 graded</span>
+                                        </div>
+                                        <div id="gfRosterList" class="p-2 space-y-0.5 overflow-y-auto flex-1 max-h-[28rem]"></div>
+                                        <div class="px-4 py-2.5 border-t border-[#dce3ed] bg-white">
+                                            <p class="text-[10px] text-[#9ab0c6] font-semibold m-0 leading-snug"><i class="fa-solid fa-circle-info mr-1"></i>Tap any student to jump to them. Green = already graded.</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
             </div>
 
         </div>
