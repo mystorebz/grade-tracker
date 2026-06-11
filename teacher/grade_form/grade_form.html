@@ -194,13 +194,14 @@
                                         <div class="grid grid-cols-2 gap-4">
                                             <div>
                                                 <label class="block text-[10px] font-bold text-[#0d1f35] uppercase tracking-widest mb-2 text-center">Score</label>
-                                                <input type="number" id="agScore" min="0" placeholder="85" class="form-input w-full p-3 bg-white border border-[#0d1f35] rounded-sm text-3xl font-mono font-bold text-[#0d1f35] text-center focus:border-[#0ea871] focus:ring-0 transition outline-none">
+                                                <input type="number" id="agScore" min="0" step="any" inputmode="decimal" placeholder="85" class="form-input w-full p-3 bg-white border border-[#0d1f35] rounded-sm text-3xl font-mono font-bold text-[#0d1f35] text-center focus:border-[#0ea871] focus:ring-0 transition outline-none">
                                             </div>
                                             <div>
                                                 <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-2 text-center">Out of (Max)</label>
-                                                <input type="number" id="agMax" min="1" value="100" class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded-sm text-3xl font-mono font-bold text-[#6b84a0] text-center focus:border-[#2563eb] focus:ring-0 transition outline-none">
+                                                <input type="number" id="agMax" min="1" step="any" inputmode="decimal" value="100" class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded-sm text-3xl font-mono font-bold text-[#6b84a0] text-center focus:border-[#2563eb] focus:ring-0 transition outline-none">
                                             </div>
                                         </div>
+                                        <p id="agScoreHint" class="hidden text-[11px] font-bold text-[#e31b4a] mt-3 text-center"></p>
 
                                         <div id="gradePreview" class="bg-white border border-[#dce3ed] rounded-sm p-4 hidden mt-4">
                                             <div class="flex flex-col items-center gap-3 text-center">
