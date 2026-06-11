@@ -813,7 +813,7 @@ window.printReport = function() {
         .report-title  { font-size:15px; font-weight:800; color:#0d1f35; text-transform:uppercase; letter-spacing:1px; }
         .report-sub    { font-size:11px; color:#2563eb; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; margin-top:3px; }
         .report-date   { font-size:10px; color:#6b84a0; margin-top:3px; font-weight:500; }
-        .info-bar      { background:#f4f7fb; border-bottom:1px solid #dce3ed; padding:14px 36px; display:grid; grid-template-columns:repeat(4,1fr); }
+        .info-bar      { background:#f4f7fb; border-bottom:1px solid #dce3ed; padding:14px 36px; display:grid; grid-template-columns:repeat(3,1fr); }
         .info-field            { padding:0 16px; }
         .info-field:first-child { padding-left:0; }
         .info-field:not(:last-child) { border-right:1px solid #dce3ed; }
@@ -844,10 +844,8 @@ window.printReport = function() {
 <body>
     <div class="report-header">
         <div class="header-left">
-            <img src="${logoUrl}" class="logo" alt="Logo" onerror="this.style.display='none'">
             <div>
-                <div class="brand-name">ConnectUs</div>
-                <div class="brand-tag">Academic Platform · Belize</div>
+                <div class="brand-name">${escHtml(schoolName)}</div>
             </div>
         </div>
         <div class="header-right">
@@ -859,8 +857,7 @@ window.printReport = function() {
     <div class="info-bar">
         <div class="info-field"><span class="f-label">Scope</span><span class="f-value">${escHtml(meta.scopeName)}</span></div>
         <div class="info-field"><span class="f-label">Teacher</span><span class="f-value">${escHtml(teacherName)}</span></div>
-        <div class="info-field"><span class="f-label">Period(s)</span><span class="f-value">${escHtml(meta.semText)}</span></div>
-        <div class="info-field"><span class="f-label">School</span><span class="f-value">${escHtml(schoolName)}</span></div>
+        <div class="info-field"><span class="f-label">Term</span><span class="f-value">${escHtml(meta.semText)}</span></div>
     </div>
     <div class="section-label">
         ${meta.mode === 'A' ? (meta.subMode === 'multi' ? 'Term-by-Term Comparison' : 'Subject Averages by Student') : 'Grade Entries'}
