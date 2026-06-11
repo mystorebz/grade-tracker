@@ -553,11 +553,15 @@ window.renderAssignmentsTab = function() {
     const formCard = `
         <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm mb-5">
             <h4 class="text-xs font-black text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2"><i class="fa-solid fa-circle-plus text-teal-500"></i> Prepare a new assignment</h4>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div class="sm:col-span-2">
-                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Title <span class="text-red-500">*</span></label>
-                    <input type="text" id="asgTitle" placeholder="e.g. Chapter 5 Quiz" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm">
-                </div>
+
+            <!-- Title -->
+            <div class="mb-3">
+                <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Title <span class="text-red-500">*</span></label>
+                <input type="text" id="asgTitle" placeholder="e.g. Chapter 5 Quiz" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm">
+            </div>
+
+            <!-- Type / Max / Date row -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
                 <div>
                     <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Type <span class="text-red-500">*</span></label>
                     <select id="asgType" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm cursor-pointer">
@@ -569,21 +573,31 @@ window.renderAssignmentsTab = function() {
                     <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Out of (max) <span class="text-red-500">*</span></label>
                     <input type="number" id="asgMax" min="1" step="1" placeholder="e.g. 50" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm">
                 </div>
-                <div>
+                <div class="col-span-2 sm:col-span-1">
                     <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Date <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
                     <input type="date" id="asgDate" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm cursor-pointer">
                 </div>
-                <div>
-                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Description <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
-                    <input type="text" id="asgDesc" placeholder="e.g. Covers chapters 3–5" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm">
-                </div>
-                <div class="sm:col-span-2">
-                    <button onclick="addAssignment()" id="asgSaveBtn" class="w-full bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white font-black py-3 rounded-xl transition shadow-md text-sm flex items-center justify-center gap-2">
-                        <i class="fa-solid fa-plus"></i> Add to ${escHtml(currentSubjectName)}
-                    </button>
-                    <p id="asgMsg" class="text-sm hidden font-bold p-2.5 mt-2 rounded-xl text-center"></p>
-                </div>
             </div>
+
+            <!-- Description (big, expandable) -->
+            <div class="mb-4">
+                <div class="flex items-center justify-between mb-1.5">
+                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider">Description <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
+                    <button type="button" id="asgDescExpandBtn" onclick="toggleDescExpand()" title="Expand description"
+                        class="flex items-center gap-1 text-[11px] font-black text-teal-600 hover:text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-2 py-1 rounded-lg transition">
+                        <i id="asgDescExpandIcon" class="fa-solid fa-down-left-and-up-right-to-center fa-rotate-90 text-[10px]"></i>
+                        <span id="asgDescExpandLabel">Expand</span>
+                    </button>
+                </div>
+                <textarea id="asgDesc" placeholder="Notes, instructions, topics covered, or a link to a Google Form — anything you want on record for this assignment."
+                    class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm resize-none transition-all duration-200 leading-relaxed"
+                    style="height: 7rem;"></textarea>
+            </div>
+
+            <button onclick="addAssignment()" id="asgSaveBtn" class="w-full bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white font-black py-3 rounded-xl transition shadow-md text-sm flex items-center justify-center gap-2">
+                <i class="fa-solid fa-plus"></i> Add to ${escHtml(currentSubjectName)}
+            </button>
+            <p id="asgMsg" class="text-sm hidden font-bold p-2.5 mt-2 rounded-xl text-center"></p>
         </div>`;
 
     const listCard = assignments.length
@@ -618,6 +632,27 @@ window.renderAssignmentsTab = function() {
            </div>`;
 
     document.getElementById('subjectPanelBody').innerHTML = lockedNotice + formCard + listCard;
+};
+
+// NEW: inline expand/collapse for the description textarea (grows in place, no popup)
+window.toggleDescExpand = function() {
+    const ta = document.getElementById('asgDesc');
+    const icon = document.getElementById('asgDescExpandIcon');
+    const label = document.getElementById('asgDescExpandLabel');
+    if (!ta) return;
+    const expanded = ta.dataset.expanded === 'true';
+    if (expanded) {
+        ta.style.height = '7rem';
+        ta.dataset.expanded = 'false';
+        if (icon) icon.className = 'fa-solid fa-down-left-and-up-right-to-center fa-rotate-90 text-[10px]';
+        if (label) label.textContent = 'Expand';
+    } else {
+        ta.style.height = '20rem';
+        ta.dataset.expanded = 'true';
+        if (icon) icon.className = 'fa-solid fa-up-right-and-down-left-from-center fa-rotate-90 text-[10px]';
+        if (label) label.textContent = 'Collapse';
+        ta.focus();
+    }
 };
 
 window.addAssignment = async function() {
@@ -833,7 +868,8 @@ window.printSubjectReport = function() {
         .header { display: flex; flex-direction: column; align-items: center; border-bottom: 2px solid #0d1f35; padding-bottom: 20px; margin-bottom: 24px; }
         .logo { max-height: 60px; max-width: 220px; object-fit: contain; margin-bottom: 12px; }
         
-        .header h1 { margin: 0 0 4px 0; font-size: 22px; color: #0d1f35; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 800; }
+        .header .school-name { margin: 0 0 10px 0; font-size: 26px; color: #0d1f35; font-weight: 900; letter-spacing: 0.02em; text-align: center; }
+        .header h1 { margin: 0 0 4px 0; font-size: 18px; color: #0d1f35; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 800; }
         .header h2 { margin: 0; font-size: 11px; color: #6b84a0; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; }
         
         .info-grid { background: #f8fafb; padding: 18px; border-radius: 4px; border: 1px solid #dce3ed; margin-bottom: 30px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
@@ -850,7 +886,8 @@ window.printSubjectReport = function() {
     ${unofficalBanner}
     
     <div class="header">
-        <img src="${session.logo || ''}" alt="${escHtml(schoolName)}" class="logo" onerror="this.style.display='none'">
+        <img src="${session.logo || ''}" alt="" class="logo" onerror="this.style.display='none'">
+        <p class="school-name">${escHtml(schoolName)}</p>
         <h1>Subject Report: ${escHtml(currentSubjectName)}</h1>
         <h2>${escHtml(session.teacherData.name)} • ACADEMIC RECORD</h2>
     </div>
