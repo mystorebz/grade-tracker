@@ -323,7 +323,8 @@ window.switchPanelTab = function(tab) {
 function updateAssignmentTabBadge() {
     const badge = document.getElementById('spAsgCountBadge');
     if (!badge) return;
-    const count = getAssignmentsForSubject(currentSubjectName).length;
+    // Count only active (not-yet-graded) assignments — that's what's left to act on in the grade form
+    const count = getAssignmentsForSubject(currentSubjectName).filter(a => !a.completed).length;
     badge.textContent = count;
     badge.classList.toggle('hidden', count === 0);
 }
@@ -600,36 +601,79 @@ window.renderAssignmentsTab = function() {
             <p id="asgMsg" class="text-sm hidden font-bold p-2.5 mt-2 rounded-xl text-center"></p>
         </div>`;
 
-    const listCard = assignments.length
-        ? `<div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+    // Split into active (still grading) and graded (marked complete)
+    const sorted = assignments.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    const activeList = sorted.filter(a => !a.completed);
+    const gradedList = sorted.filter(a => a.completed);
+
+    // Row renderer — `graded` controls the muted styling and which action button shows
+    const renderRow = (a, graded) => `
+        <div class="px-5 py-3.5 flex items-center justify-between gap-3 hover:bg-slate-50 transition ${graded ? 'opacity-70' : ''}">
+            <div class="min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                    ${graded ? '<i class="fa-solid fa-circle-check text-emerald-500 text-sm flex-shrink-0"></i>' : ''}
+                    <p class="font-black text-slate-700 text-sm truncate ${graded ? 'line-through decoration-slate-300' : ''}">${escHtml(a.title)}</p>
+                    <span class="text-[10px] font-black uppercase bg-teal-50 text-teal-600 border border-teal-200 px-2 py-0.5 rounded-md">${escHtml(a.type)}</span>
+                    <span class="text-[10px] font-black text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">/ ${a.maxScore}</span>
+                </div>
+                ${a.description ? `<p class="text-xs text-slate-400 font-semibold mt-0.5 truncate">${escHtml(a.description)}</p>` : ''}
+                ${a.date ? `<p class="text-[11px] text-slate-400 font-bold mt-0.5"><i class="fa-regular fa-calendar mr-1"></i>${escHtml(a.date)}</p>` : ''}
+            </div>
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+                ${graded
+                    ? `<button onclick="toggleAssignmentComplete('${a.id}')" title="Reopen for grading"
+                           class="flex items-center gap-1 text-[11px] font-black text-slate-500 hover:text-teal-700 bg-slate-100 hover:bg-teal-50 border border-slate-200 hover:border-teal-200 px-2.5 py-1.5 rounded-lg transition">
+                           <i class="fa-solid fa-rotate-left text-[10px]"></i> Reopen
+                       </button>`
+                    : `<button onclick="toggleAssignmentComplete('${a.id}')" title="Mark as graded — hides it from the grade form"
+                           class="flex items-center gap-1 text-[11px] font-black text-emerald-700 hover:text-white bg-emerald-50 hover:bg-emerald-600 border border-emerald-200 hover:border-emerald-600 px-2.5 py-1.5 rounded-lg transition">
+                           <i class="fa-solid fa-check text-[10px]"></i> Mark graded
+                       </button>`}
+                <button onclick="deleteAssignment('${a.id}')" title="Remove assignment"
+                    class="text-slate-300 hover:text-red-500 h-8 w-8 rounded-lg flex items-center justify-center hover:bg-red-50 transition">
+                    <i class="fa-solid fa-trash-can text-sm"></i>
+                </button>
+            </div>
+        </div>`;
+
+    const activeCard = activeList.length
+        ? `<div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm mb-5">
                <div class="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-                   <h4 class="font-black text-slate-700 text-sm uppercase tracking-wider">Prepared assignments</h4>
-                   <span class="text-xs text-slate-400 font-bold">${assignments.length} ready to grade</span>
+                   <h4 class="font-black text-slate-700 text-sm uppercase tracking-wider"><i class="fa-solid fa-list-check text-teal-500 mr-1.5"></i> Active assignments</h4>
+                   <span class="text-xs text-slate-400 font-bold">${activeList.length} shown in grade form</span>
                </div>
                <div class="divide-y divide-slate-100">
-                   ${assignments.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')).map(a => `
-                   <div class="px-5 py-3.5 flex items-center justify-between gap-3 hover:bg-slate-50 transition">
-                       <div class="min-w-0">
-                           <div class="flex items-center gap-2 flex-wrap">
-                               <p class="font-black text-slate-700 text-sm truncate">${escHtml(a.title)}</p>
-                               <span class="text-[10px] font-black uppercase bg-teal-50 text-teal-600 border border-teal-200 px-2 py-0.5 rounded-md">${escHtml(a.type)}</span>
-                               <span class="text-[10px] font-black text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">/ ${a.maxScore}</span>
-                           </div>
-                           ${a.description ? `<p class="text-xs text-slate-400 font-semibold mt-0.5 truncate">${escHtml(a.description)}</p>` : ''}
-                           ${a.date ? `<p class="text-[11px] text-slate-400 font-bold mt-0.5"><i class="fa-regular fa-calendar mr-1"></i>${escHtml(a.date)}</p>` : ''}
-                       </div>
-                       <button onclick="deleteAssignment('${a.id}')" title="Remove assignment"
-                           class="flex-shrink-0 text-slate-300 hover:text-red-500 h-8 w-8 rounded-lg flex items-center justify-center hover:bg-red-50 transition">
-                           <i class="fa-solid fa-trash-can text-sm"></i>
-                       </button>
-                   </div>`).join('')}
+                   ${activeList.map(a => renderRow(a, false)).join('')}
                </div>
            </div>`
-        : `<div class="bg-white border-2 border-dashed border-slate-200 rounded-2xl py-14 px-6 text-center">
+        : (assignments.length
+            ? `<div class="bg-white border border-slate-200 rounded-2xl p-6 text-center shadow-sm mb-5">
+                   <p class="text-sm font-black text-slate-600 mb-0.5">All assignments graded</p>
+                   <p class="text-xs text-slate-400 font-semibold">Nothing is waiting in the grade form for this subject. Add a new one above or reopen a graded one below.</p>
+               </div>`
+            : '');
+
+    const gradedCard = gradedList.length
+        ? `<div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+               <div class="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                   <h4 class="font-black text-slate-500 text-sm uppercase tracking-wider"><i class="fa-solid fa-circle-check text-emerald-500 mr-1.5"></i> Graded</h4>
+                   <span class="text-xs text-slate-400 font-bold">${gradedList.length} hidden from grade form</span>
+               </div>
+               <div class="divide-y divide-slate-100">
+                   ${gradedList.map(a => renderRow(a, true)).join('')}
+               </div>
+           </div>`
+        : '';
+
+    const emptyState = !assignments.length
+        ? `<div class="bg-white border-2 border-dashed border-slate-200 rounded-2xl py-14 px-6 text-center">
                <div class="w-12 h-12 mx-auto mb-4 bg-teal-50 text-teal-500 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-clipboard-list"></i></div>
                <p class="font-black text-slate-600 text-sm mb-1">No prepared assignments</p>
                <p class="text-xs text-slate-400 font-semibold max-w-xs mx-auto">Add a quiz or test above. It'll appear in the grade form so you can grade students without retyping the title or points.</p>
-           </div>`;
+           </div>`
+        : '';
+
+    const listCard = emptyState + activeCard + gradedCard;
 
     document.getElementById('subjectPanelBody').innerHTML = lockedNotice + formCard + listCard;
 };
@@ -691,6 +735,7 @@ window.addAssignment = async function() {
                 maxScore: max,
                 description: desc,
                 date,
+                completed: false,
                 createdAt: new Date().toISOString()
             };
             return { ...s, assignments: [...existing, newAssignment] };
@@ -711,6 +756,34 @@ window.addAssignment = async function() {
         }
         btn.innerHTML = prevHtml;
         btn.disabled = false;
+    }
+};
+
+window.toggleAssignmentComplete = async function(assignmentId) {
+    const sub = getSubjectByName(currentSubjectName);
+    if (!sub) return;
+
+    try {
+        const subjects = (session.teacherData.subjects || []).map(s => {
+            if (s.id !== sub.id) return s;
+            const existing = Array.isArray(s.assignments) ? s.assignments : [];
+            return {
+                ...s,
+                assignments: existing.map(a =>
+                    a.id === assignmentId ? { ...a, completed: !a.completed } : a
+                )
+            };
+        });
+
+        await updateDoc(getTeacherRef(), { subjects });
+        session.teacherData.subjects = subjects;
+        setSessionData('teacher', session);
+
+        updateAssignmentTabBadge();
+        renderAssignmentsTab();
+    } catch (e) {
+        console.error('[Subjects] toggleAssignmentComplete:', e);
+        alert('Could not update the assignment. Please try again.');
     }
 };
 
