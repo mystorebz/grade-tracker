@@ -15,6 +15,44 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+
+    <style>
+        /* Subject panel tabs */
+        .sp-tab {
+            position: relative;
+            font-weight: 900;
+            font-size: 0.8rem;
+            color: #94a3b8;
+            padding: 0.65rem 0.25rem;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            transition: color 0.15s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .sp-tab:hover { color: #475569; }
+        .sp-tab.sp-tab-active { color: #0f766e; }
+        .sp-tab.sp-tab-active::after {
+            content: '';
+            position: absolute;
+            left: 0; right: 0; bottom: -1px;
+            height: 2.5px;
+            background: linear-gradient(to right, #14b8a6, #10b981);
+            border-radius: 99px;
+        }
+        /* Clamp tile descriptions to two lines */
+        .line-clamp-2 {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .subject-tile { transition: none !important; }
+        }
+    </style>
 </head>
 <body class="flex w-full h-screen overflow-hidden bg-[#f0fdf8]">
 
@@ -25,39 +63,25 @@
         <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
 
         <div class="flex-1 overflow-y-auto p-7 view-section">
-            
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                <div class="p-6 border-b border-slate-100 flex flex-wrap gap-4 justify-between items-center bg-gradient-to-r from-white to-teal-50/30">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-teal-100 text-teal-600 rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-layer-group"></i></div>
-                        <div>
-                            <h3 class="font-black text-xl text-slate-800">Subjects Overview</h3>
-                            <p class="text-sm text-slate-400 font-semibold">Performance by subject for the active period</p>
-                        </div>
+
+            <!-- Header row -->
+            <div class="flex flex-wrap gap-4 justify-between items-center mb-6">
+                <div class="flex items-center gap-3">
+                    <div class="w-11 h-11 bg-gradient-to-br from-teal-500 to-emerald-600 text-white rounded-2xl flex items-center justify-center text-lg shadow-md"><i class="fa-solid fa-layer-group"></i></div>
+                    <div>
+                        <h2 class="font-black text-2xl text-slate-800 leading-tight">Subjects</h2>
+                        <p class="text-sm text-slate-400 font-semibold">Track performance and prepare assignments for each subject</p>
                     </div>
-                    <button onclick="openSubjectFormModal()" class="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-black px-5 py-2.5 rounded-xl text-sm shadow-md shadow-teal-500/20 transition">
-                        <i class="fa-solid fa-plus"></i> Add Subject
-                    </button>
                 </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left text-sm">
-                        <thead class="bg-slate-800 text-slate-200 text-xs uppercase tracking-wider">
-                            <tr>
-                                <th class="px-6 py-4 font-black">Subject</th>
-                                <th class="px-6 py-4 font-black text-center">Students</th>
-                                <th class="px-6 py-4 font-black text-center">Assignments</th>
-                                <th class="px-6 py-4 font-black text-center">Class Avg</th>
-                                <th class="px-6 py-4 font-black text-center">Highest</th>
-                                <th class="px-6 py-4 font-black text-center">Lowest</th>
-                                <th class="px-6 py-4 font-black text-center">At Risk</th>
-                                <th class="px-6 py-4 font-black">Last Graded</th>
-                                <th class="px-6 py-4 font-black text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="subjectsTableBody" class="divide-y divide-slate-100">
-                            <tr><td colspan="9" class="px-6 py-16 text-center text-slate-400 font-semibold"><i class="fa-solid fa-spinner fa-spin text-teal-400 text-2xl mb-3 block"></i>Loading subjects...</td></tr>
-                        </tbody>
-                    </table>
+                <button onclick="openSubjectFormModal()" class="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-black px-5 py-2.5 rounded-xl text-sm shadow-md shadow-teal-500/20 transition">
+                    <i class="fa-solid fa-plus"></i> Add Subject
+                </button>
+            </div>
+
+            <!-- Tiles grid -->
+            <div id="subjectsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                <div class="col-span-full flex flex-col items-center justify-center py-24 text-slate-400 font-semibold">
+                    <i class="fa-solid fa-spinner fa-spin text-teal-400 text-3xl mb-4"></i>Loading subjects…
                 </div>
             </div>
 
@@ -80,7 +104,18 @@
                 </div>
             </div>
 
-            <div class="px-7 py-4 bg-slate-50 border-b border-slate-200 flex flex-col gap-3 shadow-sm flex-shrink-0">
+            <!-- Tab bar -->
+            <div class="px-7 bg-white border-b border-slate-200 flex items-center gap-6 flex-shrink-0">
+                <button id="spTabPerformance" class="sp-tab sp-tab-active" onclick="switchPanelTab('performance')">
+                    <i class="fa-solid fa-chart-line"></i> Performance
+                </button>
+                <button id="spTabAssignments" class="sp-tab" onclick="switchPanelTab('assignments')">
+                    <i class="fa-solid fa-clipboard-list"></i> Assignments
+                    <span id="spAsgCountBadge" class="hidden ml-1 text-[10px] font-black bg-teal-100 text-teal-700 border border-teal-200 px-1.5 py-0.5 rounded-full leading-none">0</span>
+                </button>
+            </div>
+
+            <div id="spFilterBar" class="px-7 py-4 bg-slate-50 border-b border-slate-200 flex flex-col gap-3 shadow-sm flex-shrink-0">
                 <div class="flex gap-3 flex-wrap">
                     <div class="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-2 py-1.5 flex-1 min-w-[140px]">
                         <i class="fa-solid fa-chalkboard text-slate-400 text-xs"></i>
