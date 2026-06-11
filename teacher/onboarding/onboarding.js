@@ -33,6 +33,42 @@ if (tData?.requiresPinReset === false && tData?.securityQuestionsSet === true) {
     step2Container.classList.add('hidden');
 }
 
+// ── Security Question Mutually Exclusive Logic ───────────────────────────────
+function setupSecurityQuestionLogic() {
+    const q1 = document.getElementById('secQ1');
+    const q2 = document.getElementById('secQ2');
+    if (!q1 || !q2) return;
+
+    function updateOptions() {
+        const val1 = q1.value;
+        const val2 = q2.value;
+
+        Array.from(q1.options).forEach(opt => {
+            if (opt.value && opt.value === val2) {
+                opt.disabled = true;
+                opt.hidden = true;
+            } else {
+                opt.disabled = false;
+                opt.hidden = false;
+            }
+        });
+
+        Array.from(q2.options).forEach(opt => {
+            if (opt.value && opt.value === val1) {
+                opt.disabled = true;
+                opt.hidden = true;
+            } else {
+                opt.disabled = false;
+                opt.hidden = false;
+            }
+        });
+    }
+
+    q1.addEventListener('change', updateOptions);
+    q2.addEventListener('change', updateOptions);
+}
+setupSecurityQuestionLogic();
+
 // ── PHASE 1: PIN & SECURITY QUESTIONS ─────────────────────────────────────────
 document.getElementById('saveStep1Btn')?.addEventListener('click', async () => {
     const newPin     = document.getElementById('newPin').value.trim();
@@ -105,17 +141,17 @@ document.getElementById('saveStep1Btn')?.addEventListener('click', async () => {
 
 // ── PHASE 2: PROFILE INFORMATION ──────────────────────────────────────────────
 document.getElementById('saveStep2Btn')?.addEventListener('click', async () => {
-    const country  = document.getElementById('obCountry').value;
-    const district = document.getElementById('obDistrict').value;
-    const town     = document.getElementById('obTown').value.trim();
-    const years    = document.getElementById('obYears').value;
-    const msgEl    = document.getElementById('step2Msg');
-    const btn      = document.getElementById('saveStep2Btn');
+    const country       = document.getElementById('obCountry').value;
+    const stateProvince = document.getElementById('obStateProvince').value.trim();
+    const city          = document.getElementById('obCity').value.trim();
+    const years         = document.getElementById('obYears').value;
+    const msgEl         = document.getElementById('step2Msg');
+    const btn           = document.getElementById('saveStep2Btn');
 
     msgEl.classList.add('hidden');
 
-    if (!country || !district) {
-        msgEl.textContent = 'Country and District are required fields.';
+    if (!country) {
+        msgEl.textContent = 'Country is a required field.';
         msgEl.classList.remove('hidden');
         return;
     }
@@ -128,8 +164,8 @@ document.getElementById('saveStep2Btn')?.addEventListener('click', async () => {
             profileComplete: true,
             address: {
                 country,
-                district,
-                town:  town  || '',
+                stateProvince,
+                city,
                 years: years || ''
             }
         };
