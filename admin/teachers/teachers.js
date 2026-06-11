@@ -102,9 +102,9 @@ function blankTeacherDoc(overrides = {}) {
         employmentType:         '',
         gradeLevelSpec:         '',
         subjects: [
-            { id: `sub_${now}_1`, name: 'Mathematics',           archived: false, description: '' },
-            { id: `sub_${now}_2`, name: 'English Language Arts', archived: false, description: '' },
-            { id: `sub_${now}_3`, name: 'Science',               archived: false, description: '' }
+            { id: `sub_${now}_1`, name: 'Mathematics',           archived: false, description: '', assignments: [] },
+            { id: `sub_${now}_2`, name: 'English Language Arts', archived: false, description: '', assignments: [] },
+            { id: `sub_${now}_3`, name: 'Science',               archived: false, description: '', assignments: [] }
         ],
         classes:            [],
         className:          '',
@@ -983,7 +983,7 @@ document.getElementById('saveSubjectBtn').addEventListener('click', async () => 
 });
 
 async function addSubject(name, description = '') {
-    const newSubject = { id: `sub_${Date.now()}`, name, archived: false, description };
+    const newSubject = { id: `sub_${Date.now()}`, name, archived: false, description, assignments: [] };
     const updated    = [...(currentTeacherData.subjects || []), newSubject];
     try {
         await updateDoc(doc(db, 'teachers', currentTeacherId), { subjects: updated });
