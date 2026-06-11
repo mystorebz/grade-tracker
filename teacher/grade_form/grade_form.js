@@ -69,8 +69,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const scoreInput = document.getElementById('agScore');
     const maxInput   = document.getElementById('agMax');
-    if (scoreInput) scoreInput.addEventListener('input', updatePreview);
-    if (maxInput)   maxInput.addEventListener('input', updatePreview);
+    if (scoreInput) {
+        scoreInput.addEventListener('input', () => { sanitizeScore(); updatePreview(); });
+        // Block obviously invalid keystrokes (e, E, +, -) before they register
+        scoreInput.addEventListener('keydown', blockInvalidNumberKeys);
+    }
+    if (maxInput) {
+        maxInput.addEventListener('input', () => { sanitizeScore(); updatePreview(); });
+        maxInput.addEventListener('keydown', blockInvalidNumberKeys);
+    }
 
     const commitBtn = document.getElementById('saveGradeBtn');
     if (commitBtn) commitBtn.addEventListener('click', saveGrade);
@@ -260,16 +267,16 @@ window.selectAssignment = function(assignmentId) {
     selectedAssignment = a;
     fieldsUnlocked = false;
 
-    // Fill the locked fields
+    // Show the grading panel first so the dropdowns get populated, THEN set values
+    renderState();
+
     document.getElementById('agTitle').value = a.title || '';
     document.getElementById('agType').value = a.type || '';
     document.getElementById('agMax').value = a.maxScore || '';
-    // Notes default to the prepared description (teacher can edit per student, or clear)
     const notesEl = document.getElementById('agNotes');
     if (notesEl) notesEl.value = '';
 
     applyLockState();
-    renderState();
     updatePreview();
 };
 
@@ -278,6 +285,8 @@ window.selectManualEntry = function() {
     selectedAssignment = { manual: true, title: '', type: '', maxScore: 100 };
     fieldsUnlocked = true; // manual entry = fully editable
 
+    renderState();
+
     document.getElementById('agTitle').value = '';
     document.getElementById('agType').value = '';
     document.getElementById('agMax').value = 100;
@@ -285,7 +294,6 @@ window.selectManualEntry = function() {
     if (notesEl) notesEl.value = '';
 
     applyLockState();
-    renderState();
     updatePreview();
 };
 
@@ -359,24 +367,40 @@ function renderState() {
     assignmentPicker?.classList.add('hidden');
     gradingPanel?.classList.remove('hidden');
 
-    // populate the type dropdown (in case it's empty) and subject field
-    ensureTypeOptions();
-    document.getElementById('agSubject').value = selectedSubject;
+    // Populate the locked Subject select so it actually displays the chosen subject
+    const subjectSelect = document.getElementById('agSubject');
+    if (subjectSelect) {
+        subjectSelect.innerHTML = `<option value="${escHtml(selectedSubject)}">${escHtml(selectedSubject)}</option>`;
+        subjectSelect.value = selectedSubject;
+    }
+
+    // Populate the grade-type dropdown
+    populateTypeOptions();
+
+    // Populate the student dropdown from the roster
+    populateStudentOptions();
 
     updateGradingHeader();
     renderRoster();
     selectFirstUngradedStudent();
 }
 
-function ensureTypeOptions() {
+function populateTypeOptions() {
     const typeSelect = document.getElementById('agType');
     if (!typeSelect) return;
-    if (typeSelect.options.length <= 1) {
-        typeSelect.innerHTML = '<option value="">Select type...</option>' +
-            gradeTypeNames().map(n => `<option value="${escHtml(n)}">${escHtml(n)}</option>`).join('');
-        // re-apply current selection if any
-        if (selectedAssignment && selectedAssignment.type) typeSelect.value = selectedAssignment.type;
-    }
+    const current = selectedAssignment && selectedAssignment.type ? selectedAssignment.type : typeSelect.value;
+    typeSelect.innerHTML = '<option value="">Select type...</option>' +
+        gradeTypeNames().map(n => `<option value="${escHtml(n)}">${escHtml(n)}</option>`).join('');
+    if (current) typeSelect.value = current;
+}
+
+function populateStudentOptions() {
+    const studentSelect = document.getElementById('agStudent');
+    if (!studentSelect) return;
+    const current = studentSelect.value;
+    studentSelect.innerHTML = '<option value="">Select student...</option>' +
+        rosterStudents().map(s => `<option value="${escHtml(s.id)}">${escHtml(s.name)} (${escHtml(s.id)})</option>`).join('');
+    if (current) studentSelect.value = current;
 }
 
 function updateGradingHeader() {
@@ -472,7 +496,41 @@ function selectFirstUngradedStudent() {
     renderRoster();
 }
 
-// ── 8. LIVE PREVIEW ───────────────────────────────────────────────────────
+// ── 8. SCORE VALIDATION + LIVE PREVIEW ──────────────────────────────────────
+// Block letters and sign keys in number fields (decimals allowed)
+function blockInvalidNumberKeys(e) {
+    if (['e', 'E', '+', '-'].includes(e.key)) e.preventDefault();
+}
+
+// Keep score within [0, max]; show an inline hint when the typed value is out of range
+function sanitizeScore() {
+    const scoreEl = document.getElementById('agScore');
+    const maxEl   = document.getElementById('agMax');
+    const hintEl  = document.getElementById('agScoreHint');
+    if (!scoreEl || !maxEl) return;
+
+    let score = parseFloat(scoreEl.value);
+    let max   = parseFloat(maxEl.value);
+
+    // Max must be at least 1
+    if (!isNaN(max) && max < 1) { maxEl.value = 1; max = 1; }
+
+    let msg = '';
+    if (scoreEl.value !== '' && !isNaN(score)) {
+        if (score < 0) { scoreEl.value = 0; score = 0; msg = 'Score can’t be negative.'; }
+        if (!isNaN(max) && score > max) {
+            scoreEl.value = max;       // clamp to the max
+            score = max;
+            msg = `Score can’t exceed the max of ${max}.`;
+        }
+    }
+
+    if (hintEl) {
+        if (msg) { hintEl.textContent = msg; hintEl.classList.remove('hidden'); }
+        else { hintEl.classList.add('hidden'); }
+    }
+}
+
 function updatePreview() {
     const scoreEl = document.getElementById('agScore');
     const maxEl   = document.getElementById('agMax');
