@@ -599,6 +599,44 @@ async function saveGrade() {
     }
 
     try {
+        // ── NEW: CONVERT MANUAL ENTRY TO PREPARED ASSIGNMENT ──────────────
+        if (selectedAssignment && selectedAssignment.manual) {
+            const sub = getSubjectByName(subject);
+            if (sub) {
+                const existing = Array.isArray(sub.assignments) ? sub.assignments : [];
+                let matchedAsg = existing.find(a => (a.title || '').toLowerCase() === title.toLowerCase());
+                
+                // If it doesn't exist yet, build it identically to the Subjects page generator
+                if (!matchedAsg) {
+                    matchedAsg = {
+                        id: 'asg_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 5),
+                        title: title,
+                        type: type,
+                        maxScore: max,
+                        description: '', // Blank by default, notes are usually student-specific
+                        date: date,
+                        completed: false,
+                        createdAt: new Date().toISOString()
+                    };
+                    
+                    const subjects = (session.teacherData.subjects || []).map(s => {
+                        if (s.id !== sub.id) return s;
+                        return { ...s, assignments: [...existing, matchedAsg] };
+                    });
+
+                    await updateDoc(getTeacherRef(), { subjects });
+                    session.teacherData.subjects = subjects;
+                    setSessionData('teacher', session);
+                }
+                
+                // Update state in memory so the NEXT student graded uses this established template
+                selectedAssignment = matchedAsg;
+                fieldsUnlocked = false; 
+                applyLockState(); // Visuals update to show the fields are now locked to this template
+            }
+        }
+        // ──────────────────────────────────────────────────────────────────
+
         const record = {
             schoolId:    session.schoolId,
             teacherId:   session.teacherId,
