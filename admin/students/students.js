@@ -12,15 +12,10 @@ injectAdminLayout('students', 'School Directory', 'All enrolled students and the
 let allStudentsCache       = [];
 let allTeachersCache       = [];
 let rawSemesters           = [];
+let schoolClasses          = [];   // ← class names from schools/{id}/classes subcollection
 let currentStudentId       = null;
 let currentStudentGradesCache = [];
 let currentTeacherWeights  = ['Test', 'Quiz', 'Assignment', 'Midterm Exam', 'Final Exam'];
-
-const CLASSES = {
-    'Primary':        ['Infant 1', 'Infant 2', 'Standard 1', 'Standard 2', 'Standard 3', 'Standard 4', 'Standard 5', 'Standard 6'],
-    'High School':    ['First Form', 'Second Form', 'Third Form', 'Fourth Form'],
-    'Junior College': ['Year 1', 'Year 2']
-};
 
 const tbody              = document.getElementById('studentsTableBody');
 const filterClassSelect  = document.getElementById('filterStudentClass');
@@ -44,12 +39,38 @@ function escHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// ── Load the school's class list (single source of truth) ───────────────────
+async function loadSchoolClasses() {
+    try {
+        const snap = await getDocs(collection(db, 'schools', session.schoolId, 'classes'));
+        schoolClasses = snap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.name || '').localeCompare(b.name || ''))
+            .map(c => c.name)
+            .filter(Boolean);
+    } catch (e) {
+        console.error('[Students] loadSchoolClasses:', e);
+        schoolClasses = [];
+    }
+}
+
+// Returns the school's class names, merging in any extra (e.g. a class a
+// student already sits in) so legacy values never silently disappear.
+function getClassList(extra = []) {
+    const merged = [...schoolClasses];
+    extra.forEach(c => { if (c && !merged.includes(c)) merged.push(c); });
+    return merged;
+}
+
 // ── 4. LOAD DATA ──────────────────────────────────────────────────────────
 async function loadData() {
     try {
         const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
         rawSemesters  = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
     } catch (e) { console.error("Error loading semesters:", e); }
+
+    // Load the school's class list before building any class dropdown
+    await loadSchoolClasses();
 
     if (!tbody) return;
     tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-16 text-center text-slate-400 font-semibold"><i class="fa-solid fa-spinner fa-spin text-blue-500 text-2xl mb-3 block"></i>Loading directory...</td></tr>`;
@@ -77,9 +98,12 @@ async function loadData() {
         }
 
         if (filterClassSelect && filterClassSelect.options.length <= 2) {
-            const classList = CLASSES[session.schoolType || 'Primary'] || CLASSES['Primary'];
+            // Pull class names from the school's class list; fall back to any
+            // class names actually present on students so the filter still works.
+            const studentClasses = allStudentsCache.map(s => s.className).filter(Boolean);
+            const classList = getClassList(studentClasses);
             filterClassSelect.innerHTML = '<option value="">All Classes</option><option value="unassigned">Unassigned Only</option>' +
-                classList.map(c => `<option value="${c}">${c}</option>`).join('');
+                classList.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
         }
 
         renderTable();
@@ -695,9 +719,11 @@ window.openReassignModal = function () {
 
     const cSelect = document.getElementById('rsClass');
     if (cSelect) {
-        const classList = CLASSES[session.schoolType || 'Primary'] || CLASSES['Primary'];
+        // Class list comes from the school's class subcollection; merge in the
+        // student's current class so it always appears even if since renamed.
+        const classList = getClassList(s.className ? [s.className] : []);
         cSelect.innerHTML = '<option value="">-- Unassigned --</option>' +
-            classList.map(c => `<option value="${c}" ${s.className === c ? 'selected' : ''}>${c}</option>`).join('');
+            classList.map(c => `<option value="${escHtml(c)}" ${s.className === c ? 'selected' : ''}>${escHtml(c)}</option>`).join('');
     }
 
     // ── FIX: populate teacher dropdown filtered to the student's current class
