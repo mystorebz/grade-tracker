@@ -62,6 +62,41 @@ async function isEmailInUse(email, currentReqId) {
     return false;
 }
 
+// ── Security Question Mutually Exclusive Logic ───────────────────────────────
+function setupSecurityQuestionLogic() {
+    const q1 = document.getElementById('obSecQ1');
+    const q2 = document.getElementById('obSecQ2');
+    if (!q1 || !q2) return;
+
+    function updateOptions() {
+        const val1 = q1.value;
+        const val2 = q2.value;
+
+        Array.from(q1.options).forEach(opt => {
+            if (opt.value && opt.value === val2) {
+                opt.disabled = true;
+                opt.hidden = true;
+            } else {
+                opt.disabled = false;
+                opt.hidden = false;
+            }
+        });
+
+        Array.from(q2.options).forEach(opt => {
+            if (opt.value && opt.value === val1) {
+                opt.disabled = true;
+                opt.hidden = true;
+            } else {
+                opt.disabled = false;
+                opt.hidden = false;
+            }
+        });
+    }
+
+    q1.addEventListener('change', updateOptions);
+    q2.addEventListener('change', updateOptions);
+}
+
 // ── 1. Boot Sequence: Verify Request ID ───────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
     if (!reqId) {
@@ -84,15 +119,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         document.getElementById('obSchoolName').value = requestData.schoolName || '';
-        if (requestData.schoolType) {
-            const st = document.getElementById('obSchoolType');
-            for (let i = 0; i < st.options.length; i++) {
-                if (st.options[i].value === requestData.schoolType) st.selectedIndex = i;
-            }
-        }
 
         loadingState.classList.add('hidden');
         setupForm.classList.remove('hidden');
+
+        // Initialize mutual exclusivity for security dropdowns
+        setupSecurityQuestionLogic();
 
     } catch (error) {
         console.error(error);
@@ -103,8 +135,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ── 2. Initialize School Infrastructure ───────────────────────────────────────
 initializeBtn.addEventListener('click', async () => {
     const schoolName = document.getElementById('obSchoolName').value.trim();
-    const district   = document.getElementById('obDistrict').value;
-    const schoolType = document.getElementById('obSchoolType').value;
     const code       = document.getElementById('obAdminCode').value;
     const confirm    = document.getElementById('obAdminCodeConfirm').value;
     const secQ1      = document.getElementById('obSecQ1').value;
@@ -114,7 +144,7 @@ initializeBtn.addEventListener('click', async () => {
 
     obErrorMsg.classList.add('hidden');
 
-    if (!schoolName || !district || !schoolType || !code) {
+    if (!schoolName || !code) {
         showValidation("All fields are required."); return;
     }
     if (code !== confirm) {
@@ -163,8 +193,10 @@ initializeBtn.addEventListener('click', async () => {
         const schoolRef = doc(db, 'schools', newSchoolId);
         batch.set(schoolRef, {
             schoolName,
-            district,
-            schoolType,
+            schoolType:           requestData.schoolType || 'Unknown',
+            country:              requestData.country || '',
+            city:                 requestData.city || '',
+            stateProvince:        requestData.stateProvince || '',
             logo:                 '', // Added placeholder for the school logo
             superAdminId:         newSuperAdminId, 
             adminCode:            hashedCode,      
