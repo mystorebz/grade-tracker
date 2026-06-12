@@ -26,6 +26,7 @@ let teachersMap            = {};
 let currentViewGrades      = [];
 let schoolActiveSemesterId = null;
 let teacherRubricsCache    = {};
+let allSemestersCache      = [];   // for Class → Term grouping (id → name/order)
 
 // ── 2. UI HELPERS ─────────────────────────────────────────────────────────
 function getGradeStyle(p) {
@@ -70,68 +71,51 @@ function renderAcademicPassport(academicHistory) {
         return;
     }
 
+    // Past-school records are stored but not browsable in-app. The timeline is
+    // shown locked/greyed; full historical records are obtained by request.
     passportEl.innerHTML = `
-        <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-radius:16px;padding:24px 28px;margin-bottom:28px;color:#fff;box-shadow:0 10px 25px rgba(30,27,75,0.15)">
-            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
-                <div style="width:40px;height:40px;background:rgba(255,255,255,0.15);border-radius:10px;
-                            display:flex;align-items:center;justify-content:center;font-size:18px;">🎒</div>
-                <div>
-                    <h3 style="margin:0;font-size:15px;font-weight:800;letter-spacing:-0.2px;">Academic Passport</h3>
-                    <p style="margin:2px 0 0;font-size:11px;color:rgba(255,255,255,0.6);font-weight:500;
-                              text-transform:uppercase;letter-spacing:0.08em;">Lifelong School History</p>
+        <div style="position:relative;background:linear-gradient(135deg,#1e1b4b,#312e81);border-radius:16px;padding:24px 28px;margin-bottom:28px;color:#fff;box-shadow:0 10px 25px rgba(30,27,75,0.15);overflow:hidden;">
+            <div style="filter:blur(4px);opacity:0.5;pointer-events:none;user-select:none;">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+                    <div style="width:40px;height:40px;background:rgba(255,255,255,0.15);border-radius:10px;
+                                display:flex;align-items:center;justify-content:center;font-size:18px;">🎒</div>
+                    <div>
+                        <h3 style="margin:0;font-size:15px;font-weight:800;letter-spacing:-0.2px;">Academic Passport</h3>
+                        <p style="margin:2px 0 0;font-size:11px;color:rgba(255,255,255,0.6);font-weight:500;
+                                  text-transform:uppercase;letter-spacing:0.08em;">Lifelong School History</p>
+                    </div>
                 </div>
-                <div style="margin-left:auto;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);
-                            border-radius:8px;padding:4px 12px;font-size:11px;font-weight:700;
-                            color:rgba(255,255,255,0.75);font-family:monospace;letter-spacing:0.05em;">
-                    ${session.studentId}
+                <div style="display:flex;flex-direction:column;gap:0;">
+                    ${academicHistory.map((h, i) => `
+                    <div style="display:flex;gap:14px;align-items:flex-start;
+                                padding-bottom:${i < academicHistory.length - 1 ? '16px' : '0'};">
+                        <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">
+                            <div style="width:12px;height:12px;border-radius:50%;background:#a5b4fc;
+                                        border:2px solid rgba(255,255,255,0.4);flex-shrink:0;"></div>
+                            ${i < academicHistory.length - 1
+                                ? '<div style="width:2px;flex:1;min-height:20px;background:rgba(255,255,255,0.15);margin-top:4px;"></div>'
+                                : ''}
+                        </div>
+                        <div style="flex:1;padding-bottom:4px;">
+                            <p style="margin:0 0 2px;font-size:13px;font-weight:700;color:#e0e7ff;">
+                                ${h.schoolName || h.schoolId || 'Previous School'}
+                            </p>
+                        </div>
+                    </div>`).join('')}
                 </div>
             </div>
 
-            <div style="display:flex;flex-direction:column;gap:0;">
-                ${academicHistory.map((h, i) => `
-                <div style="display:flex;gap:14px;align-items:flex-start;
-                            padding-bottom:${i < academicHistory.length - 1 ? '16px' : '0'};">
-                    <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">
-                        <div style="width:12px;height:12px;border-radius:50%;background:#a5b4fc;
-                                    border:2px solid rgba(255,255,255,0.4);flex-shrink:0;"></div>
-                        ${i < academicHistory.length - 1
-                            ? '<div style="width:2px;flex:1;min-height:20px;background:rgba(255,255,255,0.15);margin-top:4px;"></div>'
-                            : ''}
-                    </div>
-                    <div style="flex:1;padding-bottom:4px;">
-                        <p style="margin:0 0 2px;font-size:13px;font-weight:700;color:#e0e7ff;">
-                            ${h.schoolName || h.schoolId || 'Unknown School'}
-                        </p>
-                        <p style="margin:0;font-size:11px;color:rgba(255,255,255,0.55);font-weight:500;">
-                            ${h.className ? `Class: ${h.className}` : ''}
-                            ${h.className && h.leftAt ? ' · ' : ''}
-                            ${h.leftAt
-                                ? `Left: ${new Date(h.leftAt).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' })}`
-                                : ''}
-                            ${h.gpa ? ` · GPA: ${h.gpa}` : ''}
-                        </p>
-                    </div>
-                    <div style="flex-shrink:0;">
-                        <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;
-                            background:${h.reason === 'Graduated'
-                                ? 'rgba(52,211,153,0.2)'
-                                : h.reason === 'Transferred'
-                                ? 'rgba(147,197,253,0.2)'
-                                : 'rgba(255,255,255,0.1)'};
-                            color:${h.reason === 'Graduated'
-                                ? '#6ee7b7'
-                                : h.reason === 'Transferred'
-                                ? '#93c5fd'
-                                : 'rgba(255,255,255,0.6)'};
-                            border:1px solid ${h.reason === 'Graduated'
-                                ? 'rgba(52,211,153,0.3)'
-                                : h.reason === 'Transferred'
-                                ? 'rgba(147,197,253,0.3)'
-                                : 'rgba(255,255,255,0.15)'};">
-                            ${h.reason || 'Enrolled'}
-                        </span>
-                    </div>
-                </div>`).join('')}
+            <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+                        text-align:center;padding:24px;background:rgba(30,27,75,0.55);">
+                <div style="width:46px;height:46px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);
+                            border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:12px;">
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+                <h3 style="margin:0 0 6px;font-size:15px;font-weight:800;">Records from Previous Schools are Locked</h3>
+                <p style="margin:0;font-size:12px;color:rgba(255,255,255,0.7);font-weight:500;max-width:420px;line-height:1.5;">
+                    Your records from other schools are securely stored but are not viewable here.
+                    To obtain an official copy of your full academic record, submit a records request to ConnectUs.
+                </p>
             </div>
         </div>`;
 }
@@ -150,9 +134,11 @@ async function initializeHistory() {
 
         const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
         const allSemesters = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
+        allSemestersCache = allSemesters;
 
         const activeSemObj = allSemesters.find(s => s.id === schoolActiveSemesterId);
-        document.getElementById('activeSemesterDisplay').textContent = activeSemObj ? activeSemObj.name : 'Unknown';
+        const activeSemEl = document.getElementById('activeSemesterDisplay');
+        if (activeSemEl) activeSemEl.textContent = activeSemObj ? activeSemObj.name : 'Unknown';
 
         if (!allSemesters.length) {
             historySemesterSelect.innerHTML = '<option value="">No periods available</option>';
@@ -161,12 +147,12 @@ async function initializeHistory() {
             return;
         }
 
-        historySemesterSelect.innerHTML = allSemesters.map(s =>
+        // Default to the full class-by-class view (all terms); the dropdown can
+        // still narrow to a single term if the student wants.
+        historySemesterSelect.innerHTML = '<option value="all">All Terms</option>' + allSemesters.map(s =>
             `<option value="${s.id}">${s.name}${s.id === schoolActiveSemesterId ? ' (Current)' : ''}</option>`
         ).join('');
-
-        const pastSemesters = allSemesters.filter(s => s.id !== schoolActiveSemesterId);
-        historySemesterSelect.value = pastSemesters.length ? pastSemesters[pastSemesters.length - 1].id : schoolActiveSemesterId;
+        historySemesterSelect.value = 'all';
 
         try {
             const globalStudentSnap = await getDoc(doc(db, 'students', session.studentId));
@@ -194,13 +180,16 @@ async function loadHistoricalGrades() {
     historyInfoCard.classList.add('hidden');
 
     try {
+        // Fetch ALL grades for the current school, then group by Class → Term.
+        // If a specific term is selected (not "all"), narrow to it in memory.
         const q = query(
             collection(db, 'students', session.studentId, 'grades'),
-            where('schoolId', '==', session.schoolId),
-            where('semesterId', '==', semId)
+            where('schoolId', '==', session.schoolId)
         );
         const gSnap = await getDocs(q);
-        currentViewGrades = gSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        let fetched = gSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (semId !== 'all') fetched = fetched.filter(g => g.semesterId === semId);
+        currentViewGrades = fetched;
 
         const tCount = {};
         let topId = null, topN = 0;
@@ -241,7 +230,7 @@ async function loadHistoricalGrades() {
     }
 }
 
-// ── 6. RENDER ACCORDIONS ──────────────────────────────────────────────────
+// ── 6. RENDER: Class -> Term -> Subjects ───────────────────────────────────
 function renderSubjectAccordions(grades) {
     if (!grades.length) {
         historySubjectsContainer.innerHTML = '';
@@ -249,88 +238,135 @@ function renderSubjectAccordions(grades) {
         return;
     }
 
-    const bySub = {};
+    // Per-subject weighted average using that subject's teacher rubric.
+    const subjectAvg = (gList) => {
+        const tId = gList[0]?.teacherId;
+        const rubric = tId ? (teacherRubricsCache[tId] || []) : [];
+        const a = calculateWeightedAverage(gList, rubric);
+        return a !== null ? a : 0;
+    };
+
+    const semName  = (id) => allSemestersCache.find(s => s.id === id)?.name || id || 'General';
+    const semOrder = (id) => {
+        const s = allSemestersCache.find(x => x.id === id);
+        return s ? (s.order ?? 0) : 9999;
+    };
+
+    // Group: Class -> Term -> Subject -> [grades]
+    const byClass = {};
     grades.forEach(g => {
-        const s = g.subject || 'Uncategorized';
-        if (!bySub[s]) bySub[s] = [];
-        bySub[s].push(g);
+        const cls = g.className || 'Unassigned Class';
+        const sem = g.semesterId || 'general';
+        const sub = g.subject || 'Uncategorized';
+        if (!byClass[cls]) byClass[cls] = {};
+        if (!byClass[cls][sem]) byClass[cls][sem] = {};
+        if (!byClass[cls][sem][sub]) byClass[cls][sem][sub] = [];
+        byClass[cls][sem][sub].push(g);
     });
 
-    historySubjectsContainer.innerHTML = Object.entries(bySub).map(([subject, gList]) => {
-        // Retrieve the specific teacher's rubric for this subject
-        const firstGrade = gList[0];
-        const tId = firstGrade?.teacherId;
-        const rubric = tId ? (teacherRubricsCache[tId] || []) : [];
+    historySubjectsContainer.innerHTML = Object.entries(byClass).map(([className, terms]) => {
+        const termIds = Object.keys(terms).sort((a, b) => semOrder(a) - semOrder(b));
 
-        const avgRaw = calculateWeightedAverage(gList, rubric);
-        const avg = avgRaw !== null ? avgRaw : 0;
-        const style = getGradeStyle(Math.round(avg));
+        const termBlocks = termIds.map(semId => {
+            const subjects = terms[semId];
+            let subjectAverages = [];
 
-        const rows = gList
-            .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-            .map(g => {
-                const pct      = g.max ? Math.round((g.score / g.max) * 100) : null;
-                const pColor   = pct !== null ? gradeColorText(pct) : 'text-slate-500';
-                const badge    = isNew(g.date, g.createdAt) ? `<span class="new-badge">New</span>` : '';
-                const hasNotes = g.notes || (g.historyLogs && g.historyLogs.length > 0);
+            const subjectRows = Object.entries(subjects).sort((a, b) => a[0].localeCompare(b[0])).map(([subject, gList]) => {
+                const avg = subjectAvg(gList);
+                subjectAverages.push(avg);
+                const style = getGradeStyle(Math.round(avg));
 
-                // Look up the weight for this specific assignment
-                const typeDef = rubric.find(t => t.name && g.type && t.name.toLowerCase() === g.type.toLowerCase());
-                const weightBadge = typeDef ? ` • ${typeDef.weight}% Weight` : '';
+                const rows = gList
+                    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+                    .map(g => {
+                        const pct      = g.max ? Math.round((g.score / g.max) * 100) : null;
+                        const pColor   = pct !== null ? gradeColorText(pct) : 'text-slate-500';
+                        const badge    = isNew(g.date, g.createdAt) ? `<span class="new-badge">New</span>` : '';
+                        const hasNotes = g.notes || (g.historyLogs && g.historyLogs.length > 0);
+                        const tId = g.teacherId;
+                        const rubric = tId ? (teacherRubricsCache[tId] || []) : [];
+                        const typeDef = rubric.find(t => t.name && g.type && t.name.toLowerCase() === g.type.toLowerCase());
+                        const weightBadge = typeDef ? ` • ${typeDef.weight}% Weight` : '';
+
+                        return `
+                        <div class="bg-white border border-slate-200 rounded-xl p-3 flex items-center justify-between hover:shadow-md transition cursor-pointer mb-2 last:mb-0"
+                             onclick="window.viewGradeDetails('${g.id}')">
+                            <div class="flex-1 min-w-0">
+                                <p class="font-black text-slate-800 text-sm truncate">${g.title} ${badge}</p>
+                                <p class="text-[11px] text-slate-400 font-bold mt-1 uppercase tracking-wider">${g.type}${weightBadge} • ${g.date}</p>
+                            </div>
+                            <div class="flex items-center gap-3 sm:gap-4 flex-shrink-0 ml-2">
+                                <div class="text-right">
+                                    <span class="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">Score</span>
+                                    <span class="font-black text-sm ${pColor}">${g.score}/${g.max || '?'}</span>
+                                </div>
+                                <div class="hidden sm:block text-right">
+                                    <span class="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">Pct</span>
+                                    <span class="font-black text-sm ${pColor}">${pct !== null ? pct + '%' : '—'}</span>
+                                </div>
+                                ${hasNotes
+                                    ? '<i class="fa-solid fa-comment-dots text-indigo-400 text-base ml-1"></i>'
+                                    : '<i class="fa-solid fa-chevron-right text-slate-300 ml-1"></i>'}
+                            </div>
+                        </div>`;
+                    }).join('');
 
                 return `
-                <div class="bg-white border border-slate-200 rounded-xl p-3 sm:p-4 flex items-center justify-between hover:shadow-md transition cursor-pointer mb-2 last:mb-0"
-                     onclick="window.viewGradeDetails('${g.id}')">
-                    <div class="flex-1 min-w-0">
-                        <p class="font-black text-slate-800 text-sm sm:text-base truncate">${g.title} ${badge}</p>
-                        <p class="text-xs text-slate-400 font-bold mt-1 uppercase tracking-wider">${g.type}${weightBadge} • ${g.date}</p>
-                    </div>
-                    <div class="flex items-center gap-3 sm:gap-5 flex-shrink-0 ml-2">
-                        <div class="text-right">
-                            <span class="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">Score</span>
-                            <span class="font-black text-sm sm:text-base ${pColor}">${g.score}/${g.max || '?'}</span>
+                <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden mb-2 last:mb-0">
+                    <div class="px-4 py-3 flex justify-between items-center cursor-pointer hover:bg-slate-50 transition"
+                         onclick="window.toggleAccordion(this)">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-lg flex items-center justify-center font-black text-xs">${subject.charAt(0)}</div>
+                            <span class="font-extrabold text-slate-800 text-sm">${subject}</span>
                         </div>
-                        <div class="hidden sm:block text-right">
-                            <span class="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">Pct</span>
-                            <span class="font-black text-sm sm:text-base ${pColor}">${pct !== null ? pct + '%' : '—'}</span>
+                        <div class="flex items-center gap-3">
+                            <span class="px-2.5 py-1 rounded-lg font-black text-xs border ${style.cls}">${Math.round(avg)}% • ${style.ltr}</span>
+                            <i class="fa-solid fa-chevron-down text-slate-400 transition-transform duration-200"></i>
                         </div>
-                        ${hasNotes
-                            ? '<i class="fa-solid fa-comment-dots text-indigo-400 text-lg drop-shadow-sm ml-1"></i>'
-                            : '<i class="fa-solid fa-chevron-right text-slate-300 ml-1"></i>'}
                     </div>
+                    <div class="subject-body"><div class="p-3 bg-slate-50 border-t border-slate-100">${rows}</div></div>
                 </div>`;
             }).join('');
 
+            const termAvg = subjectAverages.length
+                ? Math.round(subjectAverages.reduce((a, b) => a + b, 0) / subjectAverages.length)
+                : 0;
+            const termStyle = getGradeStyle(termAvg);
+
+            return `
+            <div class="mb-4 last:mb-0">
+                <div class="flex items-center justify-between mb-2 px-1">
+                    <span class="text-xs font-black text-slate-500 uppercase tracking-wider">
+                        <i class="fa-regular fa-calendar mr-1.5"></i>${semName(semId)}
+                    </span>
+                    <span class="px-2.5 py-1 rounded-lg font-black text-xs border ${termStyle.cls}">Term Avg: ${termAvg}% • ${termStyle.ltr}</span>
+                </div>
+                ${subjectRows}
+            </div>`;
+        }).join('');
+
+        let classCount = 0;
+        Object.values(terms).forEach(subs => Object.values(subs).forEach(gl => classCount += gl.length));
+
         return `
-        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden transition-shadow hover:shadow-md">
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden transition-shadow hover:shadow-md mb-4 last:mb-0">
             <div class="p-5 sm:p-6 border-b border-slate-100 flex justify-between items-center cursor-pointer bg-slate-50/50 hover:bg-slate-100/50 transition"
                  onclick="window.toggleAccordion(this)">
                 <div class="flex items-center gap-4">
-                    <div class="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-xl flex items-center justify-center font-black text-lg shadow-sm">
-                        ${subject.charAt(0)}
+                    <div class="w-12 h-12 bg-gradient-to-br from-slate-700 to-slate-900 text-white rounded-xl flex items-center justify-center font-black text-lg shadow-sm">
+                        <i class="fa-solid fa-graduation-cap"></i>
                     </div>
                     <div>
-                        <h3 class="text-lg sm:text-xl font-extrabold text-slate-800">${subject}</h3>
+                        <h3 class="text-lg sm:text-xl font-extrabold text-slate-800">${className}</h3>
                         <p class="text-xs text-slate-500 font-bold mt-1 uppercase tracking-wider">
-                            ${gList.length} Assignment${gList.length !== 1 ? 's' : ''}
+                            ${termIds.length} Term${termIds.length !== 1 ? 's' : ''} • ${classCount} Assignment${classCount !== 1 ? 's' : ''}
                         </p>
                     </div>
                 </div>
-                <div class="flex items-center gap-4">
-                    <div class="text-right hidden sm:block">
-                        <span class="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">Average</span>
-                        <span class="px-3 py-1.5 rounded-xl font-black text-sm border shadow-sm ${style.cls}">
-                            ${Math.round(avg)}% • ${style.ltr}
-                        </span>
-                    </div>
-                    <div class="sm:hidden px-3 py-1 rounded-xl font-black text-sm border shadow-sm ${style.cls}">
-                        ${Math.round(avg)}%
-                    </div>
-                    <i class="fa-solid fa-chevron-down text-slate-400 transition-transform duration-200 text-lg"></i>
-                </div>
+                <i class="fa-solid fa-chevron-down text-slate-400 transition-transform duration-200 text-lg"></i>
             </div>
             <div class="subject-body">
-                <div class="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 shadow-inner">${rows}</div>
+                <div class="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 shadow-inner">${termBlocks}</div>
             </div>
         </div>`;
     }).join('');
