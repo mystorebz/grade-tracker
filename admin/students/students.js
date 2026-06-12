@@ -597,7 +597,7 @@ window.openPrintStudentModal = function () {
 
 window.closePrintStudentModal = function () { closeOverlay('printStudentModal', 'printStudentModalInner'); };
 
-window.executeStudentPrint = function () {
+window.executeStudentPrint = async function () {
     const mode       = document.getElementById('psMode').value;
     const subjFilter = document.getElementById('psSubject').value;
     const termId     = document.getElementById('sPanelSemester')?.value;
@@ -620,7 +620,14 @@ window.executeStudentPrint = function () {
 
     const cumulativeAvg = gradesToPrint.length ? calculateWeightedAverage(gradesToPrint, currentTeacherWeights) : 0;
     const gpaLetter     = totalAssessments > 0 ? letterGrade(cumulativeAvg) : 'N/A';
-    const schoolName    = session.schoolName || 'ConnectUs School';
+    
+    let schoolName = session.schoolName || '';
+    try {
+        const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
+        if (schoolSnap.exists()) schoolName = schoolSnap.data().schoolName || schoolName;
+    } catch (e) {
+        console.error("Error fetching school name:", e);
+    }
 
     let gradesHtml = Object.keys(bySub).length === 0
         ? `<tr><td colspan="4" style="text-align:center;color:#64748b;font-style:italic;padding:40px;">No grades recorded.</td></tr>`
