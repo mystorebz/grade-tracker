@@ -53,13 +53,37 @@ function enableSearchableSelect(selectId) {
 
     // Create dropdown list container
     const dropdown = document.createElement('div');
-    dropdown.className = 'absolute left-0 right-0 mt-1 bg-white border border-slate-300 rounded-lg shadow-xl z-50 hidden max-h-60 overflow-y-auto';
+    dropdown.className = 'bg-white border border-slate-300 rounded-lg shadow-xl max-h-60 overflow-y-auto';
+    // FIX: render the panel in a fixed layer so it is never clipped by the
+    // Report Builder card's overflow:hidden. Positioned manually under the input.
+    dropdown.style.position = 'fixed';
+    dropdown.style.zIndex = '9999';
+    dropdown.style.display = 'none';
     
     wrapper.appendChild(input);
     wrapper.appendChild(icon);
-    wrapper.appendChild(dropdown);
+    document.body.appendChild(dropdown); // FIX: attach to body so card overflow can't clip it
 
     let isDropdownOpen = false;
+
+    // FIX: position the floating panel directly beneath the input every time it opens
+    const positionDropdown = () => {
+        const rect = input.getBoundingClientRect();
+        dropdown.style.left  = `${rect.left}px`;
+        dropdown.style.top   = `${rect.bottom + 4}px`;
+        dropdown.style.width = `${rect.width}px`;
+    };
+
+    const openDropdown = () => {
+        positionDropdown();
+        dropdown.style.display = 'block';
+        isDropdownOpen = true;
+    };
+
+    const closeDropdown = () => {
+        dropdown.style.display = 'none';
+        isDropdownOpen = false;
+    };
 
     const renderOptions = (filter = '') => {
         dropdown.innerHTML = '';
@@ -80,8 +104,7 @@ function enableSearchableSelect(selectId) {
                     e.stopPropagation();
                     select.value = opt.value;
                     input.value = opt.text;
-                    dropdown.classList.add('hidden');
-                    isDropdownOpen = false;
+                    closeDropdown();
                     select.dispatchEvent(new Event('change')); // Trigger existing logic
                 };
                 dropdown.appendChild(div);
@@ -105,20 +128,21 @@ function enableSearchableSelect(selectId) {
     input.addEventListener('focus', () => {
         input.value = ''; // Clear so they can type freely
         renderOptions('');
-        dropdown.classList.remove('hidden');
-        isDropdownOpen = true;
+        openDropdown();
     });
 
     input.addEventListener('input', () => {
-        dropdown.classList.remove('hidden');
-        isDropdownOpen = true;
+        openDropdown();
         renderOptions(input.value);
     });
 
+    // FIX: keep the floating panel aligned while open if the page scrolls/resizes
+    window.addEventListener('scroll', () => { if (isDropdownOpen) positionDropdown(); }, true);
+    window.addEventListener('resize', () => { if (isDropdownOpen) positionDropdown(); });
+
     document.addEventListener('click', (e) => {
-        if (!wrapper.contains(e.target)) {
-            dropdown.classList.add('hidden');
-            isDropdownOpen = false;
+        if (!wrapper.contains(e.target) && !dropdown.contains(e.target)) {
+            closeDropdown();
             syncValue(); // Snap back to selected value if they didn't pick anything
         }
     });
@@ -281,12 +305,13 @@ function populateSubjects() {
 // ── 6. INIT BUILDER DROPDOWNS ─────────────────────────────────────────────
 async function initializeBuilder() {
     try {
-        const [semSnap, tSnap, sSnap] = await Promise.all([
+        const [semSnap, tSnap, sSnap, cSnap] = await Promise.all([
             getDocs(collection(db, 'schools', session.schoolId, 'semesters')),
             getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId))),
             getDocs(query(collection(db, 'students'),
                 where('currentSchoolId', '==', session.schoolId),
-                where('enrollmentStatus', '==', 'Active')))
+                where('enrollmentStatus', '==', 'Active'))),
+            getDocs(collection(db, 'schools', session.schoolId, 'classes'))
         ]);
 
         allSemesters = semSnap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -311,12 +336,13 @@ async function initializeBuilder() {
             });
         }
 
-        const schoolType = session.schoolType || 'Primary';
-        CLASSES = schoolType === 'Primary'
-            ? ['Infant 1','Infant 2','Standard 1','Standard 2','Standard 3','Standard 4','Standard 5','Standard 6']
-            : schoolType === 'High School'
-            ? ['First Form','Second Form','Third Form','Fourth Form']
-            : ['Year 1','Year 2'];
+        // FIX: pull the real class list from schools/{id}/classes (the model used
+        // across the app) instead of hardcoded grade names. Sorted by order, then name.
+        CLASSES = cSnap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.name || '').localeCompare(b.name || ''))
+            .map(c => c.name)
+            .filter(Boolean);
 
         await loadLiveDashboard();
         populateSubjects();
@@ -353,7 +379,7 @@ document.getElementById('reportScope')?.addEventListener('change', e => {
         allTeachers.forEach(t => target.innerHTML += `<option value="${t.id}">${escHtml(t.name)}</option>`);
     } else if (scope === 'class') {
         document.getElementById('targetLabel').textContent = 'Select Class';
-        CLASSES.forEach(c => target.innerHTML += `<option value="${c}">${c}</option>`);
+        CLASSES.forEach(c => target.innerHTML += `<option value="${escHtml(c)}">${escHtml(c)}</option>`);
     } else if (scope === 'student') {
         document.getElementById('targetLabel').textContent = 'Select Student';
         allStudents.forEach(s => target.innerHTML += `<option value="${s.id}">${escHtml(s.name)} (${s.className || 'Unassigned'})</option>`);
