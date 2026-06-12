@@ -13,6 +13,7 @@ let allSemesters   = [];
 let allTeachers    = [];
 let allStudents    = [];
 let CLASSES        = [];
+let resolvedSchoolName = '';
 
 // ── 3. HELPERS ────────────────────────────────────────────────────────────
 function escHtml(s) {
@@ -294,6 +295,11 @@ async function initializeBuilder() {
         allTeachers  = tSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         allStudents  = sSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
+        try {
+            const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
+            resolvedSchoolName = schoolSnap.data()?.schoolName || '';
+        } catch (e) {}
+
         const reportPeriod = document.getElementById('reportPeriod');
         if (reportPeriod) {
             allSemesters.forEach(s => {
@@ -400,18 +406,10 @@ document.getElementById('generateBtn')?.addEventListener('click', async () => {
         }
 
         if (document.getElementById('reportTitle')) document.getElementById('reportTitle').textContent    = titleText;
-        
         if (document.getElementById('reportSubtitle')) document.getElementById('reportSubtitle').textContent = subtitleText;
 
-        let fetchedSchoolName = session.schoolName || '';
-        try {
-            const schoolDoc = await getDoc(doc(db, 'schools', session.schoolId));
-            if (schoolDoc.exists()) fetchedSchoolName = schoolDoc.data().schoolName || fetchedSchoolName;
-        } catch (e) {
-            console.error("Error fetching school name:", e);
-        }
-
-        if (document.getElementById('phSchoolName')) document.getElementById('phSchoolName').textContent = fetchedSchoolName;
+        if (document.getElementById('phSchoolName')) document.getElementById('phSchoolName').textContent = resolvedSchoolName || session.schoolName || 'ConnectUs School';
+        if (document.getElementById('pfSchoolName')) document.getElementById('pfSchoolName').textContent = resolvedSchoolName || session.schoolName || session.schoolId || 'this school';
         if (document.getElementById('phReportType')) document.getElementById('phReportType').textContent = titleText;
         if (document.getElementById('phMeta')) {
             document.getElementById('phMeta').innerHTML = `
@@ -868,114 +866,7 @@ function renderTable(scope, gradedStudents, allGrades, processedStudents) {
 }
 
 // ── 10. EXPORT & PRINT ────────────────────────────────────────────────────
-document.getElementById('printReportBtn')?.addEventListener('click', () => {
-    let reportTitle = 'Academic Report';
-    const scope = document.getElementById('reportScope')?.value;
-    const target = document.getElementById('reportTarget')?.options[document.getElementById('reportTarget').selectedIndex]?.text || '';
-    
-    if (scope === 'school') reportTitle = 'School-Wide Performance';
-    else if (scope === 'teacher') reportTitle = `Teacher Report — ${target}`;
-    else if (scope === 'class') reportTitle = `Class Report — ${target}`;
-    else if (scope === 'student') reportTitle = `Student Report — ${target}`;
-
-    let fetchedSchoolName = session.schoolName || '';
-    try {
-        const schoolDoc = await getDoc(doc(db, 'schools', session.schoolId));
-        if (schoolDoc.exists()) fetchedSchoolName = schoolDoc.data().schoolName || fetchedSchoolName;
-    } catch (e) {
-        console.error("Error fetching school name:", e);
-    }
-
-    const printDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    const periodName = document.getElementById('reportPeriod')?.options[document.getElementById('reportPeriod').selectedIndex]?.text || '';
-
-    // Create a printable wrapper directly in the body
-    const printWrapper = document.createElement('div');
-    printWrapper.id = 'print-wrapper';
-    printWrapper.style.cssText = `
-        display: none;
-        padding: 30px;
-        background: white;
-        color: #0d1f35;
-        font-family: 'Inter', sans-serif;
-    `;
-
-    printWrapper.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:flex-end; border-bottom:3px solid #0d1f35; padding-bottom:15px; margin-bottom:20px;">
-            <div>
-                <h1 style="font-size:24px; font-weight:900; margin:0;">${escHtml(fetchedSchoolName)}</h1>
-            </div>
-            <div style="text-align:right;">
-                <h2 style="font-size:16px; font-weight:800; text-transform:uppercase; margin:0;">${escHtml(reportTitle)}</h2>
-                <div style="font-size:12px; color:#6b84a0; font-weight:600; margin-top:4px;">Term: ${escHtml(periodName)}</div>
-                <div style="font-size:10px; color:#9ab0c6; margin-top:2px;">Printed: ${printDate}</div>
-            </div>
-        </div>
-        <div id="print-content-clone"></div>
-        <div style="margin-top:30px; padding-top:15px; border-top:1px solid #dce3ed; display:flex; justify-content:space-between; font-size:10px; color:#9ab0c6;">
-            <div>Generated by <span style="font-weight:700; color:#2563eb;">ConnectUs</span> · Admin Portal</div>
-            <div>${escHtml(fetchedSchoolName)}</div>
-        </div>
-    `;
-
-    // Clone the relevant report sections into the wrapper
-    const cloneTarget = printWrapper.querySelector('#print-content-clone');
-    const sectionsToClone = ['kpiCards', 'distributionSection', 'atRiskSection', 'subjectBody', 'teacherPerfSection'];
-    
-    sectionsToClone.forEach(id => {
-        const el = document.getElementById(id);
-        if (el && !el.classList.contains('hidden')) {
-            // Need to wrap certain sections to maintain their layout logic outside the main DOM
-            const sectionWrap = document.createElement('div');
-            sectionWrap.style.marginBottom = '24px';
-            
-            // Re-apply some basic Tailwind classes as inline styles for print
-            if (id === 'kpiCards') {
-                sectionWrap.style.display = 'grid';
-                sectionWrap.style.gridTemplateColumns = 'repeat(4, 1fr)';
-                sectionWrap.style.gap = '16px';
-            }
-            
-            sectionWrap.innerHTML = el.outerHTML;
-            cloneTarget.appendChild(sectionWrap);
-        }
-    });
-
-    const reportTable = document.getElementById('reportTableHead')?.closest('table');
-    if (reportTable) {
-        const tableWrap = document.createElement('div');
-        tableWrap.innerHTML = `<h3 style="font-size:14px; font-weight:800; margin-bottom:10px;">${escHtml(document.getElementById('tableTitle')?.textContent || 'Detailed Data')}</h3>` + reportTable.outerHTML;
-        cloneTarget.appendChild(tableWrap);
-    }
-
-    document.body.appendChild(printWrapper);
-
-    // Apply print-specific CSS temporarily
-    const printStyle = document.createElement('style');
-    printStyle.innerHTML = `
-        @media print {
-            body > *:not(#print-wrapper) { display: none !important; }
-            #print-wrapper { display: block !important; }
-            .kpi-card { border: 1px solid #dce3ed; padding: 15px; border-radius: 8px; display: flex; align-items: center; gap: 12px; page-break-inside: avoid; }
-            .kpi-icon { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-            .kpi-val { font-size: 24px; font-weight: 800; line-height: 1; }
-            .kpi-lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #6b84a0; margin-top: 4px; }
-            table { width: 100%; border-collapse: collapse; page-break-inside: auto; }
-            tr { page-break-inside: avoid; page-break-after: auto; }
-            thead { display: table-header-group; }
-            tfoot { display: table-footer-group; }
-            th, td { border: 1px solid #e2e8f0; padding: 8px; }
-            .gb-row td { border-bottom: 1px solid #e2e8f0; }
-        }
-    `;
-    document.head.appendChild(printStyle);
-
-    window.print();
-
-    // Cleanup
-    document.body.removeChild(printWrapper);
-    document.head.removeChild(printStyle);
-});
+document.getElementById('printReportBtn')?.addEventListener('click', () => window.print());
 
 document.getElementById('exportCsvBtn')?.addEventListener('click', () => {
     const rows = [];
