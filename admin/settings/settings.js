@@ -1,7 +1,7 @@
 import { db } from '../../assets/js/firebase-init.js';
 import {
     doc, getDoc, getDocs, setDoc, updateDoc,
-    collection, query, where, writeBatch
+    collection, query, where, writeBatch, arrayUnion
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
@@ -476,11 +476,30 @@ window.endOfYearReset = async function() {
 
         const docs    = snap.docs;
         let committed = 0;
+        const nowIso  = new Date().toISOString();
 
         for (let i = 0; i < docs.length; i += 499) {
             const chunk = docs.slice(i, i + 499);
             const batch = writeBatch(db);
-            chunk.forEach(d => batch.update(d.ref, { teacherId: '', className: '' }));
+            chunk.forEach(d => {
+                const data         = d.data();
+                const leavingClass = data.className || '';
+                const update       = { teacherId: '', className: '' };
+
+                // Stamp a year-boundary trail before clearing — only for students
+                // who actually had a class to leave. Matches roster.js classHistory shape.
+                if (leavingClass) {
+                    update.classHistory = arrayUnion({
+                        fromClass: leavingClass,
+                        toClass:   '',
+                        changedAt: nowIso,
+                        reason:    'End-of-Year Reset',
+                        schoolId:  session.schoolId
+                    });
+                }
+
+                batch.update(d.ref, update);
+            });
             await batch.commit();
             committed += chunk.length;
         }
