@@ -39,6 +39,18 @@ function escHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// Maps a student's cumulative average to standing colors used in the directory.
+// Bands: Doing Well ≥75 (green), Needs Watch 65–74 (amber), At Risk <65 (red),
+// and a neutral grey when the student has no grades yet (avg === null).
+function standingStyle(avg) {
+    if (avg === null || avg === undefined) {
+        return { accent: '#cbd5e1', badge: 'bg-slate-100 text-slate-400 border-slate-200', dot: '#cbd5e1', label: 'No grades yet' };
+    }
+    if (avg >= 75) return { accent: '#0ea871', badge: 'bg-green-50 text-green-700 border-green-200', dot: '#0ea871', label: 'Doing well' };
+    if (avg >= 65) return { accent: '#f59e0b', badge: 'bg-amber-50 text-amber-700 border-amber-200', dot: '#f59e0b', label: 'Needs watch' };
+    return { accent: '#e31b4a', badge: 'bg-red-50 text-red-700 border-red-200', dot: '#e31b4a', label: 'At risk' };
+}
+
 // ── Load the school's class list (single source of truth) ───────────────────
 async function loadSchoolClasses() {
     try {
@@ -92,6 +104,45 @@ async function loadData() {
             .filter(d => !d.data().archived)
             .map(d => ({ id: d.id, ...d.data(), teacherName: tm[d.data().teacherId] || '—' }));
 
+        // Compute each student's cumulative average so the directory can color-code
+        // standings. Mirrors the rollup used elsewhere: per-subject weighted average,
+        // then the mean across subjects. Teacher grade types drive the weighting.
+        const teacherWeightsById = {};
+        allTeachersCache.forEach(t => {
+            teacherWeightsById[t.id] = t.gradeTypes || t.customGradeTypes || currentTeacherWeights;
+        });
+        await Promise.all(allStudentsCache.map(async s => {
+            s.cumulativeAvg = null; // default: no grades yet
+            try {
+                const gSnap = await getDocs(query(
+                    collection(db, 'students', s.id, 'grades'),
+                    where('schoolId', '==', session.schoolId)
+                ));
+                const grades = gSnap.docs.map(d => d.data());
+                if (!grades.length) return;
+
+                const weights = teacherWeightsById[s.teacherId] || currentTeacherWeights;
+                const bySubj = {};
+                grades.forEach(g => {
+                    const sub = g.subject || 'Uncategorized';
+                    if (!bySubj[sub]) bySubj[sub] = [];
+                    bySubj[sub].push(g);
+                });
+
+                let sumAvgs = 0, totalSubjs = 0;
+                Object.values(bySubj).forEach(subGrades => {
+                    const subAvg = calculateWeightedAverage(subGrades, weights);
+                    if (subAvg !== null && subAvg !== undefined && !Number.isNaN(subAvg)) {
+                        sumAvgs += subAvg;
+                        totalSubjs++;
+                    }
+                });
+                if (totalSubjs > 0) s.cumulativeAvg = Math.round(sumAvgs / totalSubjs);
+            } catch (e) {
+                // Leave cumulativeAvg as null (renders as neutral "no grades yet")
+            }
+        }));
+
         if (filterTeacherSelect && filterTeacherSelect.options.length <= 1) {
             filterTeacherSelect.innerHTML = '<option value="">All Teachers</option>' +
                 allTeachersCache.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
@@ -137,13 +188,23 @@ function renderTable() {
             : '<span class="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase">Unassigned</span>';
         const displayStyle = (s.name || '').toLowerCase().includes(term) || s.id.toLowerCase().includes(term) ? '' : 'display:none;';
 
+        // Standing color coding (left accent on the row + dot/badge by the name)
+        const st = standingStyle(s.cumulativeAvg);
+        const avgBadge = s.cumulativeAvg !== null && s.cumulativeAvg !== undefined
+            ? `<span class="${st.badge} border font-black text-[10px] px-1.5 py-0.5 rounded">${s.cumulativeAvg}%</span>`
+            : `<span class="${st.badge} border font-bold text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded">No grades</span>`;
+
         return `
-        <tr class="trow border-b border-slate-100 hover:bg-slate-50 transition" style="${displayStyle}">
+        <tr class="trow border-b border-slate-100 hover:bg-slate-50 transition" style="${displayStyle}box-shadow: inset 4px 0 0 ${st.accent};" title="${st.label}">
             <td class="px-6 py-4">
                 <div class="flex items-center gap-3">
+                    <span style="width:9px;height:9px;border-radius:9999px;background:${st.dot};flex-shrink:0" title="${st.label}"></span>
                     <div class="h-10 w-10 bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-xl flex items-center justify-center font-black text-sm shadow-sm flex-shrink-0">${(s.name || '?').charAt(0).toUpperCase()}</div>
                     <div>
-                        <span class="font-black text-slate-700 block">${escHtml(s.name || 'Unnamed')}</span>
+                        <div class="flex items-center gap-2">
+                            <span class="font-black text-slate-700">${escHtml(s.name || 'Unnamed')}</span>
+                            ${avgBadge}
+                        </div>
                         <span class="font-mono text-[10px] text-slate-400">${s.id}</span>
                     </div>
                 </div>
