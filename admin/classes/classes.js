@@ -804,12 +804,20 @@ function renderPanelContent(tab) {
 }
 
 // ── 11. PRINT (unchanged behaviour, multi-teacher aware) ────────────────────
-window.executeClassPrint = function() {
+window.executeClassPrint = async function() {
     const data = classDataMap.get(currentClassName);
     if (!data) return;
 
-    const semName = globalPeriodSelect.options[globalPeriodSelect.selectedIndex]?.text || 'Active Term';
-    const schoolName = session.schoolName || 'ConnectUs School';
+const semName = globalPeriodSelect.options[globalPeriodSelect.selectedIndex]?.text || 'Active Term';
+    
+    let schoolName = session.schoolName || '';
+    try {
+        const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
+        if (schoolSnap.exists()) schoolName = schoolSnap.data().schoolName || schoolName;
+    } catch (e) {
+        console.error("Error fetching school name:", e);
+    }
+
     const { className, teachers, students, grades, classAvg, gradeTypes } = data;
     const teacherNames = teachers && teachers.length ? teachers.map(t => t.name).join(', ') : 'Unassigned';
 
