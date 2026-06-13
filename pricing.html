@@ -107,12 +107,6 @@
             border-color: #2563eb;
             box-shadow: 0 8px 32px rgba(37,99,235,0.15);
         }
-        .plan-card.pro {
-            background: #0f172a;
-            border-color: #1e293b;
-            color: #f1f5f9;
-        }
-
         /* price display */
         .price-monthly, .price-annual { transition: opacity 0.2s ease; }
         .price-annual { display: none; }
@@ -131,15 +125,11 @@
             margin: 20px 0 24px; padding: 20px;
             background: #f8faff; border-radius: 14px;
         }
-        .plan-card.pro .stat-row { background: #1e293b; }
         .stat-item { display: flex; align-items: center; justify-content: space-between; font-size: 14px; }
         .stat-label { font-weight: 700; color: #64748b; display: flex; align-items: center; gap: 8px; }
-        .plan-card.pro .stat-label { color: #94a3b8; }
         .stat-value { font-weight: 900; color: #1e293b; font-size: 15px; }
-        .plan-card.pro .stat-value { color: #f1f5f9; }
 
         .card-divider { height: 1px; background: #f1f5f9; margin: 0 0 20px; }
-        .plan-card.pro .card-divider { background: #1e293b; }
 
         /* badge */
         .popular-badge {
@@ -151,47 +141,6 @@
             box-shadow: 0 4px 12px rgba(37,99,235,0.3);
             white-space: nowrap;
         }
-
-        /* ── Pro card quote form ── */
-        .pro-form-label {
-            display: block;
-            font-size: 10px;
-            font-weight: 800;
-            color: #94a3b8;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            margin-bottom: 4px;
-        }
-        .pro-form-input {
-            width: 100%;
-            padding: 10px 14px;
-            background: #1e293b;
-            border: 1px solid #334155;
-            border-radius: 10px;
-            color: #f1f5f9;
-            font-size: 13px;
-            font-weight: 600;
-            outline: none;
-            transition: border-color 0.15s;
-            font-family: 'Nunito', sans-serif;
-        }
-        .pro-form-input::placeholder { color: #475569; }
-        .pro-form-input:focus { border-color: #3b82f6; }
-        .pro-form-input option { background: #1e293b; color: #f1f5f9; }
-        .pro-submit-btn {
-            width: 100%;
-            padding: 13px;
-            background: #fff;
-            color: #0f172a;
-            font-weight: 900;
-            font-size: 14px;
-            border: none;
-            border-radius: 12px;
-            cursor: pointer;
-            transition: background 0.2s;
-            font-family: 'Nunito', sans-serif;
-        }
-        .pro-submit-btn:hover { background: #e0e7ff; }
 
         /* ── Footer ── */
         footer { background: #0f172a; }
@@ -277,7 +226,7 @@
     <!-- PLAN CARDS -->
     <section class="py-14 px-4 bg-[#f8faff]">
         <div class="max-w-6xl mx-auto">
-            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 items-stretch">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 items-stretch max-w-5xl mx-auto">
 
                 <!-- STARTER -->
                 <div class="plan-card p-7 fade-up">
@@ -395,161 +344,6 @@
                     <div class="paypal-annual"  id="paypal-enterprise-annual"></div>
                 </div>
 
-                <!-- PRO / DISTRICTS — Quote form embedded -->
-                <div class="plan-card pro p-7 fade-up">
-                    <p class="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Pro</p>
-                    <h3 class="text-xl font-black text-white mb-1">Districts & Networks</h3>
-                    <p class="text-slate-400 text-xs font-semibold leading-relaxed mb-5">Multi-campus networks and districts with custom scale requirements. Tell us about your institution and we'll build a plan around you.</p>
-
-                    <div class="stat-row">
-                        <div class="stat-item">
-                            <span class="stat-label"><i class="fa-solid fa-user-graduate text-blue-400"></i> Students</span>
-                            <span class="stat-value">Unlimited</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label"><i class="fa-solid fa-chalkboard-user text-blue-400"></i> Teachers</span>
-                            <span class="stat-value">Unlimited</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label"><i class="fa-solid fa-key text-blue-400"></i> Admins</span>
-                            <span class="stat-value">Unlimited</span>
-                        </div>
-                    </div>
-
-                    <div class="card-divider"></div>
-
-                    <!-- Quote form — same IDs as landing.js expects -->
-                    <div id="registrationFormContainer" class="space-y-3">
-                        <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Get in Touch</p>
-
-                        <div class="grid grid-cols-2 gap-2">
-                            <div>
-                                <label class="pro-form-label">First Name *</label>
-                                <input type="text" id="firstName" placeholder="Maria" class="pro-form-input">
-                            </div>
-                            <div>
-                                <label class="pro-form-label">Last Name *</label>
-                                <input type="text" id="lastName" placeholder="Torres" class="pro-form-input">
-                            </div>
-                        </div>
-
-                        <div>
-                            <label class="pro-form-label">Role *</label>
-                            <select id="jobTitle" class="pro-form-input">
-                                <option value="">Select role</option>
-                                <option value="Principal">Principal</option>
-                                <option value="Vice Principal">Vice Principal</option>
-                                <option value="IT Director">IT Director</option>
-                                <option value="District Administrator">District Administrator</option>
-                                <option value="School Administrator">School Administrator</option>
-                                <option value="Teacher">Teacher</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label class="pro-form-label">Work Email *</label>
-                            <input type="email" id="workEmail" placeholder="you@school.edu" class="pro-form-input">
-                        </div>
-
-                        <div>
-                            <label class="pro-form-label">Phone *</label>
-                            <input type="tel" id="phone" placeholder="+501 600-0000" class="pro-form-input">
-                        </div>
-
-                        <div>
-                            <label class="pro-form-label">School / Institution Name *</label>
-                            <input type="text" id="schoolName" placeholder="e.g. Valley High School" class="pro-form-input">
-                        </div>
-
-                        <div class="grid grid-cols-2 gap-2">
-                            <div>
-                                <label class="pro-form-label">School Type *</label>
-                                <select id="schoolType" class="pro-form-input">
-                                    <option value="">Type</option>
-                                    <option value="Primary / Elementary">Primary</option>
-                                    <option value="Middle School">Middle</option>
-                                    <option value="High School / Secondary">Secondary</option>
-                                    <option value="Junior College">Junior College</option>
-                                    <option value="University / College">University</option>
-                                    <option value="Vocational / Technical">Vocational</option>
-                                    <option value="Other">Other</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="pro-form-label">Country *</label>
-                                <select id="country" class="pro-form-input">
-                                    <option value="">Country</option>
-                                    <option value="Belize">Belize</option>
-                                    <option value="United States">United States</option>
-                                    <option value="Canada">Canada</option>
-                                    <option value="United Kingdom">United Kingdom</option>
-                                    <option value="Jamaica">Jamaica</option>
-                                    <option value="Trinidad and Tobago">Trinidad and Tobago</option>
-                                    <option value="Barbados">Barbados</option>
-                                    <option value="Guyana">Guyana</option>
-                                    <option value="Other">Other</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div>
-                            <label class="pro-form-label">City *</label>
-                            <input type="text" id="city" placeholder="e.g. Belize City" class="pro-form-input">
-                        </div>
-
-                        <!-- Hidden field — stateProvince optional, set empty -->
-                        <input type="hidden" id="stateProvince" value="">
-
-                        <div class="grid grid-cols-2 gap-2">
-                            <div>
-                                <label class="pro-form-label">Est. Students *</label>
-                                <input type="number" id="studentsCount" placeholder="e.g. 500" min="1" class="pro-form-input">
-                            </div>
-                            <div>
-                                <label class="pro-form-label">Est. Teachers *</label>
-                                <input type="number" id="teachersCount" placeholder="e.g. 40" min="1" class="pro-form-input">
-                            </div>
-                        </div>
-
-                        <div>
-                            <label class="pro-form-label">Preferred Term *</label>
-                            <select id="contractTerm" class="pro-form-input">
-                                <option value="">Select term</option>
-                                <option value="6 Months">6 Months — Pilot</option>
-                                <option value="Annual">Annual — 1 year</option>
-                                <option value="Multi-Year">Multi-Year — 2 or 3 years</option>
-                            </select>
-                        </div>
-
-                        <div id="contractYearsWrap" class="hidden">
-                            <label class="pro-form-label">How many years? *</label>
-                            <select id="contractYears" class="pro-form-input">
-                                <option value="">Select</option>
-                                <option value="2">2 Years</option>
-                                <option value="3">3 Years</option>
-                            </select>
-                        </div>
-
-                        <!-- Hidden optional fields with default values for landing.js compatibility -->
-                        <input type="hidden" id="hearAboutUs" value="Pricing Page">
-                        <input type="hidden" id="message" value="">
-
-                        <button id="registerBtn" class="pro-submit-btn mt-2">
-                            Request a Custom Quote →
-                        </button>
-                        <p id="regMessage" class="text-xs text-center font-bold hidden mt-2 text-red-400"></p>
-                    </div>
-
-                    <div id="successScreen" class="hidden text-center py-6">
-                        <div class="text-5xl mb-3">🎉</div>
-                        <h3 class="text-lg font-black text-white mb-2">Request Received!</h3>
-                        <p class="text-slate-400 font-semibold text-xs leading-relaxed">
-                            We've received your inquiry and will be in touch at the email you provided.
-                        </p>
-                    </div>
-                </div>
-
             </div>
         </div>
     </section>
@@ -637,8 +431,7 @@
         renderPayPalButton('paypal-enterprise-annual',  PLANS.enterprise.annual);
     </script>
 
-    <!-- Quote form logic (landing.js handles registerBtn click) -->
-    <script type="module" src="assets/js/landing.js"></script>
+
 
 </body>
 </html>
