@@ -1,1723 +1,828 @@
-import { db } from '../../assets/js/firebase-init.js';
-import { collection, query, where, getDocs, getDoc, doc, updateDoc, addDoc, setDoc, arrayUnion, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { requireAuth } from '../../assets/js/auth.js';
-import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
-import { openOverlay, closeOverlay, showMsg, gradeColorClass, standingBadge, standingText, gradeFill, letterGrade, downloadCSV, calculateWeightedAverage } from '../../assets/js/utils.js';
-
-// ── 1. AUTH & LAYOUT ─────────────────────────────────────────────────────
-const session = requireAuth('teacher', '../login.html');
-if (session) {
-    injectTeacherLayout('students', 'My Roster', 'Manage students · PINs · academic standing', true);
-}
-
-// ── 2. STATE ─────────────────────────────────────────────────────────────
-let allStudentsCache          = [];
-let unassignedStudentsCache   = [];
-let studentMap                = {};
-let currentStudentId          = null;
-let currentStudentGradesCache = [];
-let rawSemesters              = [];
-let isSemesterLocked          = false;
-let gradeDetailCache          = {};
-let schoolLimit               = 50;
-let cachedEvaluations         = [];
-let resolvedSchoolName        = '';
-
-// ── Report card type state ────────────────────────────────────────────────
-let selectedRcType      = 'term';   // 'term' | 'midterm'
-let selectedMidtermData = null;     // midterm object from Firestore, or null
-
-const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
-
-// ── Evaluation star ratings ───────────────────────────────────────────────
-window.evalRatings = {
-    academicMastery: 0, taskExecution: 0, engagement: 0,
-    criticalThinking: 0, writtenCommunication: 0, oralParticipation: 0,
-    overallAcademicGrowth: 0, subjectMasteryAcrossTerms: 0, socialPeerDynamics: 0,
-    emotionalResilience: 0, selfRegulationEoy: 0, effortPersistenceYear: 0,
-    responseToFeedback: 0, readinessNextGrade: 0,
-    ruleAdherence: 0, conflictResolution: 0, respectAuthority: 0,
-    peerInteractions: 0, selfRegulation: 0, responseToCorrection: 0,
-    emotionalStability: 0,
-    academicProgressToDate: 0, workCompletionRate: 0, classParticipation: 0,
-    attentionFocus: 0, effortPersistence: 0, behaviourInClass: 0,
-    parentEngagement: 0, communicationQuality: 0, followThroughAgreements: 0,
-    responseToIntervention: 0, academicEffort: 0, focusAttention: 0,
-    independenceInTasks: 0, progressTowardsGoals: 0,
-    overallPerformance: 0, effortEngagement: 0, socialSkills: 0,
-    workQuality: 0, customProgressGoals: 0
-};
-
-// ── Report card ratings (updated enrichment fields) ───────────────────────
-window.rcRatings = {
-    // Enrichment & Character Development (new metrics)
-    characterValues:           0,
-    respectCourtesy:           0,
-    responsibilityReliability: 0,
-    cooperationTeamwork:       0,
-    leadershipInitiative:      0,
-    culturalAwareness:         0,
-    // Learning Behaviours & Social Growth (unchanged)
-    behavior: 0, organization: 0, respectfulness: 0, kindness: 0,
-    attitudeWork: 0, attitudePeers: 0, academicComprehension: 0,
-    effortResilience: 0, participation: 0, punctualityRating: 0
-};
-
-function getClasses()    { return session.teacherData.classes || [session.teacherData.className || '']; }
-function getGradeTypes() { return session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
-
-function generateStudentId() {
-    const year  = new Date().getFullYear().toString().slice(-2);
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let rand = '';
-    for (let i = 0; i < 5; i++) rand += chars.charAt(Math.floor(Math.random() * chars.length));
-    return `S${year}-${rand}`;
-}
-
-// ── 3. INIT ───────────────────────────────────────────────────────────────
-async function init() {
-    if (!session) return;
-    const searchInput = document.getElementById('searchInput');
-    if (searchInput) searchInput.addEventListener('input', filterStudents);
-
-    document.getElementById('displayTeacherName').textContent = session.teacherData.name;
-    document.getElementById('teacherAvatar').textContent      = session.teacherData.name.charAt(0).toUpperCase();
-    document.getElementById('sidebarSchoolId').textContent    = session.schoolId;
-    document.getElementById('displayTeacherClasses').innerHTML =
-        getClasses().filter(Boolean).map(c => `<span class="class-pill">${c}</span>`).join('');
-
-    const classes     = getClasses().filter(Boolean);
-    const classFilter = document.getElementById('rf-class');
-    if (classFilter) {
-        classFilter.innerHTML = '<option value="">All Classes</option>' +
-            classes.map(c => `<option value="${c}">${c}</option>`).join('');
-        if (classes.length <= 1) {
-            const wrap = document.getElementById('classFilterWrap');
-            if (wrap) wrap.style.display = 'none';
-        }
-    }
-
-    await Promise.all([fetchSchoolLimit(), loadSemesters()]);
-    await loadStudents();
-    window.buildStarGroups();
-}
-
-async function fetchSchoolLimit() {
-    try {
-        const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
-        if (schoolSnap.exists()) {
-            const planId   = schoolSnap.data().subscriptionPlan || 'starter';
-            const planSnap = await getDoc(doc(db, 'subscriptionPlans', planId));
-            if (planSnap.exists()) schoolLimit = planSnap.data().studentLimit || planSnap.data().limit || 50;
-        }
-    } catch (e) { console.error('[Roster] fetchSchoolLimit:', e); }
-}
-
-// ── 5. SEMESTERS ─────────────────────────────────────────────────────────
-async function loadSemesters() {
-    try {
-        const cacheKey = `connectus_semesters_${session.schoolId}`;
-        let rawSems    = [];
-        const cached   = localStorage.getItem(cacheKey);
-        if (cached) {
-            rawSems = JSON.parse(cached);
-        } else {
-            const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
-            rawSems = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order||0)-(b.order||0));
-            localStorage.setItem(cacheKey, JSON.stringify(rawSems));
-        }
-        rawSemesters = rawSems;
-
-        let activeId = '';
-        try {
-            const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
-            activeId = schoolSnap.data()?.activeSemesterId || '';
-            resolvedSchoolName = schoolSnap.data()?.schoolName || '';
-        } catch(e) {}
-
-        const semSel     = document.getElementById('activeSemester');
-        const sbPeriod   = document.getElementById('sb-period');
-        const evalSemSel = document.getElementById('evalSemester');
-        if (evalSemSel) evalSemSel.innerHTML = '';
-
-        if (semSel) {
-            semSel.innerHTML = '';
-            rawSemesters.forEach(s => {
-                const opt = document.createElement('option');
-                opt.value = s.id; opt.textContent = s.name;
-                if (s.id === activeId) opt.selected = true;
-                semSel.appendChild(opt);
-
-                if (evalSemSel) {
-                    const eOpt = document.createElement('option');
-                    eOpt.value = s.id; eOpt.textContent = s.name;
-                    if (s.id === activeId) eOpt.selected = true;
-                    evalSemSel.appendChild(eOpt);
-                }
-            });
-            checkLockStatus();
-            semSel.addEventListener('change', () => {
-                checkLockStatus(); loadStudents();
-                if (sbPeriod) sbPeriod.textContent = semSel.options[semSel.selectedIndex]?.text || '—';
-            });
-        }
-        updatePeriodLabel();
-        if (sbPeriod && semSel) sbPeriod.textContent = semSel.options[semSel.selectedIndex]?.text || '—';
-    } catch (e) { console.error('[Roster] loadSemesters:', e); }
-}
-
-function updatePeriodLabel() {
-    const semSel = document.getElementById('activeSemester');
-    const label  = document.getElementById('rosterPeriodLabel');
-    if (semSel && label) label.textContent = semSel.options[semSel.selectedIndex]?.text || '—';
-}
-
-function checkLockStatus() {
-    const semId      = document.getElementById('activeSemester')?.value;
-    const activeSem  = rawSemesters.find(s => s.id === semId);
-    isSemesterLocked = activeSem ? !!activeSem.isLocked : false;
-    const badge      = document.getElementById('topbarLockedBadge');
-    if (badge) {
-        isSemesterLocked ? badge.classList.remove('hidden') && badge.classList.add('flex')
-                         : badge.classList.add('hidden') && badge.classList.remove('flex');
-    }
-    updatePeriodLabel();
-}
-
-// ── 6. LOAD STUDENTS ──────────────────────────────────────────────────────
-async function loadStudents() {
-    const tbody = document.getElementById('studentsTableBody');
-    tbody.innerHTML = `<tr><td colspan="8"><div class="table-loader"><i class="fa-solid fa-spinner fa-spin"></i><p>Loading roster…</p></div></td></tr>`;
-
-    try {
-        const allActSnap = await getDocs(query(
-            collection(db, 'students'),
-            where('currentSchoolId', '==', session.schoolId),
-            where('enrollmentStatus', '==', 'Active')
-        ));
-        const allActive = allActSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        allStudentsCache        = allActive.filter(s => s.teacherId === session.teacherId);
-        unassignedStudentsCache = allActive.filter(s => !s.teacherId || !s.className);
-
-        studentMap = {};
-        allStudentsCache.forEach(s => { studentMap[s.id] = s.name; });
-
-        const sbStudents = document.getElementById('sb-students');
-        if (sbStudents) sbStudents.textContent = allStudentsCache.length;
-        const badge = document.getElementById('rosterCountBadge');
-        if (badge) badge.textContent = allStudentsCache.length;
-
-        if (!allStudentsCache.length) {
-            tbody.innerHTML = `<tr><td colspan="8"><div class="table-loader"><i class="fa-solid fa-user-plus" style="color:#c5d0db;"></i><p>No students yet — enroll your first student to get started.</p></div></td></tr>`;
-            const sbRisk0 = document.getElementById('sb-risk');
-            if (sbRisk0) { sbRisk0.textContent = '0'; sbRisk0.classList.remove('is-risk'); }
-            localStorage.setItem('connectus_sidebar_stats', JSON.stringify({ students: 0, risk: 0 }));
-            return;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Roster · Teacher Portal · ConnectUs</title>
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/teachers.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body { display:flex; width:100%; height:100vh; overflow:hidden; background:#f0fdf8; margin:0; font-family:'DM Sans',ui-sans-serif,system-ui,sans-serif; }
+        #dashboardMain { flex:1; display:flex; flex-direction:column; height:100%; overflow:hidden; min-width:0; }
+        .roster-scroll { flex:1; overflow-y:auto; padding:24px 28px 48px; background:#f0fdf8; }
+        .roster-page-header { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:20px; padding-bottom:18px; border-bottom:2px solid #0d1f35; }
+        .roster-page-title  { font-size:20px; font-weight:700; color:#0d1f35; letter-spacing:-0.4px; margin:0 0 3px; }
+        .roster-page-sub    { font-size:12px; color:#6b84a0; font-weight:400; margin:0; }
+        .roster-header-actions { display:flex; align-items:center; gap:8px; }
+        .btn-sharp         { display:inline-flex; align-items:center; gap:7px; padding:8px 16px; border-radius:4px; font-size:12.5px; font-weight:600; cursor:pointer; transition:background 0.12s,color 0.12s,border-color 0.12s; font-family:inherit; letter-spacing:0.01em; white-space:nowrap; }
+        .btn-sharp-outline { background:#fff; border:1px solid #c5d0db; color:#374f6b; }
+        .btn-sharp-outline:hover { background:#f2f5f8; border-color:#0d1f35; color:#0d1f35; }
+        .btn-sharp-primary { background:#0d1f35; border:1px solid #0d1f35; color:#fff; }
+        .btn-sharp-primary:hover { background:#0ea871; border-color:#0ea871; }
+        .btn-sharp-green   { background:#0ea871; border:1px solid #0ea871; color:#fff; }
+        .btn-sharp-green:hover { background:#0b8f5e; border-color:#0b8f5e; }
+        .roster-controls { display:flex; align-items:center; gap:10px; margin-bottom:0; flex-wrap:wrap; }
+        .control-group { display:flex; align-items:center; background:#fff; border:1px solid #c5d0db; border-radius:4px; overflow:hidden; }
+        .control-group-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:#6b84a0; padding:0 10px; border-right:1px solid #e8edf2; height:36px; display:flex; align-items:center; white-space:nowrap; background:#f8fafb; }
+        .control-select { border:none; outline:none; background:transparent; font-size:12.5px; font-weight:600; color:#0d1f35; font-family:inherit; padding:0 10px; height:36px; cursor:pointer; min-width:100px; }
+        .control-search { display:flex; align-items:center; background:#fff; border:1px solid #c5d0db; border-radius:4px; overflow:hidden; min-width:240px; }
+        .control-search-icon { padding:0 10px; color:#9ab0c6; font-size:12px; background:#f8fafb; height:36px; display:flex; align-items:center; border-right:1px solid #e8edf2; }
+        .control-search-input { flex:1; border:none; outline:none; font-size:12.5px; font-family:inherit; color:#0d1f35; font-weight:500; padding:0 12px; height:36px; background:transparent; }
+        .roster-table-wrap   { background:#fff; border:1px solid #c5d0db; border-radius:4px; overflow:hidden; margin-top:16px; }
+        .roster-table-header { display:flex; align-items:center; justify-content:space-between; padding:12px 20px; background:#0d1f35; border-bottom:1px solid #1a3050; }
+        .roster-count-badge  { font-size:11px; font-weight:700; background:rgba(14,168,113,0.18); color:#3fffa8; border:1px solid rgba(14,168,113,0.3); padding:2px 9px; border-radius:2px; font-family:'DM Mono',monospace; }
+        .roster-table-title  { font-size:11.5px; font-weight:700; color:rgba(255,255,255,0.85); text-transform:uppercase; letter-spacing:0.12em; }
+        .roster-table { width:100%; border-collapse:collapse; font-size:13px; }
+        .roster-table thead th { padding:10px 16px; text-align:left; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:#6b84a0; background:#f8fafb; border-bottom:2px solid #e2e8f0; white-space:nowrap; user-select:none; }
+        .roster-table thead th.text-center { text-align:center; }
+        .roster-table thead th.text-right  { text-align:right; }
+        .roster-table tbody tr { border-bottom:1px solid #f0f4f8; transition:background 0.1s; }
+        .roster-table tbody tr:hover { background:#f8fafb; }
+        .roster-table tbody tr:hover td:first-child { border-left:3px solid #0ea871; }
+        .roster-table tbody td { padding:12px 16px; color:#374f6b; vertical-align:middle; border-left:3px solid transparent; }
+        .roster-table tbody td:first-child { padding-left:13px; }
+        .student-cell    { display:flex; align-items:center; gap:11px; }
+        .student-initial { width:32px; height:32px; border-radius:4px; background:#0d1f35; color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+        .student-name    { font-size:13px; font-weight:700; color:#0d1f35; letter-spacing:-0.1px; }
+        .pin-badge       { display:inline-flex; align-items:center; padding:3px 10px; background:#f2f5f8; border:1px solid #c5d0db; border-radius:3px; font-family:'DM Mono',monospace; font-size:12px; font-weight:500; color:#0d1f35; letter-spacing:0.15em; }
+        .subject-count   { display:inline-flex; align-items:center; justify-content:center; min-width:28px; height:22px; padding:0 7px; background:#f2f5f8; border:1px solid #c5d0db; border-radius:3px; font-size:11px; font-weight:700; color:#374f6b; font-family:'DM Mono',monospace; }
+        .standing-label  { display:inline-flex; align-items:center; gap:5px; padding:3px 8px; border-radius:3px; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; white-space:nowrap; }
+        .sl-excelling { background:#dcfce7; color:#14532d; border:1px solid #bbf7d0; }
+        .sl-good      { background:#dbeafe; color:#1e3a8a; border:1px solid #bfdbfe; }
+        .sl-ontrack   { background:#ccfbf1; color:#134e4a; border:1px solid #99f6e4; }
+        .sl-attention { background:#fef3c7; color:#78350f; border:1px solid #fde68a; }
+        .sl-atrisk    { background:#fee2e2; color:#7f1d1d; border:1px solid #fecaca; }
+        .sl-none      { background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; }
+        .grade-num   { font-family:'DM Mono',monospace; font-size:13px; font-weight:500; }
+        .grade-green { color:#14532d; } .grade-blue { color:#1e3a8a; } .grade-teal { color:#134e4a; } .grade-amber { color:#78350f; } .grade-red { color:#7f1d1d; }
+        .row-action-btn { display:inline-flex; align-items:center; justify-content:center; gap:5px; padding:5px 12px; border-radius:3px; font-size:11.5px; font-weight:600; cursor:pointer; transition:background 0.12s,color 0.12s; font-family:inherit; border:1px solid; }
+        .row-btn-grade  { background:#edfaf4; border-color:#a7f3d0; color:#065f46; }
+        .row-btn-grade:hover { background:#0ea871; border-color:#0ea871; color:#fff; }
+        .row-btn-view   { background:#f8fafb; border-color:#c5d0db; color:#374f6b; }
+        .row-btn-view:hover { background:#0d1f35; border-color:#0d1f35; color:#fff; }
+        .modal-overlay { position:fixed; inset:0; background:rgba(13,31,53,0.65); z-index:50; display:flex; align-items:center; justify-content:center; padding:16px; transition:opacity 0.18s; }
+        .modal-overlay.hidden { display:none; }
+        .modal-overlay.opacity-0 { opacity:0; pointer-events:none; }
+        .modal-box { background:#fff; border:1px solid #c5d0db; border-radius:4px; box-shadow:0 20px 60px rgba(13,31,53,0.25); overflow:hidden; transform:scale(0.97); transition:transform 0.18s; }
+        .modal-box.modal-open { transform:scale(1); }
+        .modal-stripe { height:3px; background:linear-gradient(90deg,#0ea871,#0d1f35); }
+        .modal-header { display:flex; align-items:center; justify-content:space-between; padding:18px 24px; border-bottom:1px solid #e8edf2; background:#fafbfc; }
+        .modal-header-left { display:flex; align-items:center; gap:12px; }
+        .modal-icon  { width:34px; height:34px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:14px; }
+        .modal-title { font-size:16px; font-weight:700; color:#0d1f35; letter-spacing:-0.2px; }
+        .modal-close { width:30px; height:30px; display:flex; align-items:center; justify-content:center; background:transparent; border:1px solid transparent; border-radius:4px; color:#9ab0c6; cursor:pointer; transition:all 0.12s; font-size:14px; }
+        .modal-close:hover { background:#fee2e2; border-color:#fecaca; color:#dc2626; }
+        .modal-body { padding:22px 24px; background:#fafbfc; }
+        .field-label { display:block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:#6b84a0; margin-bottom:6px; }
+        .form-input  { width:100%; padding:9px 12px; background:#fff; border:1px solid #c5d0db; border-radius:3px; font-size:13px; color:#0d1f35; font-family:inherit; font-weight:500; outline:none; transition:border-color 0.12s,box-shadow 0.12s; box-sizing:border-box; }
+        .form-input:focus { border-color:#0ea871; box-shadow:0 0 0 3px rgba(14,168,113,0.15); }
+        #studentPanelInner { background:#f2f5f8; width:100%; max-width:1100px; height:92vh; display:flex; flex-direction:column; overflow:hidden; border-radius:4px; border:1px solid #c5d0db; box-shadow:0 24px 64px rgba(13,31,53,0.3); }
+        .panel-top-stripe  { height:3px; background:linear-gradient(90deg,#0ea871 0%,#0d1f35 100%); flex-shrink:0; }
+        .panel-header      { display:flex; align-items:center; justify-content:space-between; padding:16px 24px; border-bottom:1px solid #dce3ed; background:#fff; flex-shrink:0; flex-wrap:wrap; gap:10px; }
+        .panel-student-name { font-size:20px; font-weight:700; color:#0d1f35; letter-spacing:-0.4px; margin:0 0 2px; }
+        .panel-student-meta { font-size:12px; color:#6b84a0; font-weight:400; margin:0; }
+        .info-row        { display:flex; align-items:flex-start; padding:10px 0; border-bottom:1px solid #f0f4f8; }
+        .info-row:last-child { border-bottom:none; }
+        .info-row-label  { font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:#9ab0c6; width:90px; flex-shrink:0; padding-top:1px; }
+        .info-row-value  { font-size:13px; font-weight:600; color:#0d1f35; flex:1; }
+        .subject-body      { display:none; }
+        .subject-body.open { display:block; }
+        .table-loader { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 20px; gap:12px; color:#9ab0c6; }
+        .table-loader i { font-size:24px; color:#0ea871; }
+        .table-loader p { font-size:13px; margin:0; }
+        .star-btn  { font-size:22px; color:#dce3ed; background:none; border:none; cursor:pointer; padding:0 4px; transition:transform 0.1s,color 0.15s; }
+        .star-btn:hover { transform:scale(1.2); }
+        .star-active { color:#f59e0b; }
+        @media print {
+            .no-print { display:none !important; }
+            body { background:white !important; overflow:visible !important; height:auto !important; }
+            #layout-sidebar-container, #layout-topbar-container, #dashboardMain, .modal-overlay { display:none !important; }
         }
 
-        const semId     = document.getElementById('activeSemester')?.value;
-        const allGrades = semId ? await fetchAllStudentGrades(semId) : [];
-        let riskCount   = 0;
+        /* ── MOBILE RESPONSIVE ────────────────────────────────────────────── */
+        @media (max-width: 767px) {
 
-        tbody.innerHTML = allStudentsCache.map((s, i) => {
-            const sG           = allGrades.filter(g => g.studentId === s.id);
-            const subjectCount = new Set(sG.map(g => g.subject)).size;
-            const avg          = sG.length ? calculateWeightedAverage(sG, session.teacherData.gradeTypes || getGradeTypes()) : null;
-            if (avg !== null && avg < 65) riskCount++;
-            const avgDisplay = avg !== null
-                ? `<span class="grade-num ${gradeNumClass(avg)}">${avg}%</span>`
-                : `<span style="color:#9ab0c6;font-family:'DM Mono',monospace;">—</span>`;
-            const stdText  = standingText(avg);
-            const stdLabel = standingLabelHtml(avg);
+            /* Prevent horizontal bleed */
+            body { overflow-x: hidden; }
 
-            return `<tr class="trow" data-class="${escHtml(s.className||'')}" data-standing="${stdText}">
-                <td style="color:#9ab0c6;font-size:12px;font-family:'DM Mono',monospace;font-weight:500;width:44px;">${String(i+1).padStart(2,'0')}</td>
-                <td><div class="student-cell"><div class="student-initial">${s.name.charAt(0).toUpperCase()}</div><div>
-                    <span class="student-name">${escHtml(s.name)}</span>
-                    <p style="font-size:10px;font-family:'DM Mono',monospace;color:#9ab0c6;margin:1px 0 0;letter-spacing:0.05em;">${s.id}</p>
-                </div></div></td>
-                <td style="font-size:12.5px;font-weight:500;color:#374f6b;">${escHtml(s.className||'—')}</td>
-                <td style="font-size:12.5px;color:#6b84a0;font-weight:400;">${escHtml(s.parentPhone||'—')}</td>
-                <td style="text-align:center;"><span class="subject-count">${subjectCount||'—'}</span></td>
-                <td style="text-align:center;">${avgDisplay}</td>
-                <td>${stdLabel}</td>
-                <td style="text-align:right;"><div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;">
-                    <button onclick="quickGradeStudent('${s.id}')" class="row-action-btn row-btn-grade" title="Enter Grade"><i class="fa-solid fa-plus" style="font-size:10px;"></i></button>
-                    <button onclick="openStudentPanel('${s.id}')" class="row-action-btn row-btn-view"><i class="fa-solid fa-eye"></i> View</button>
-                </div></td>
-            </tr>`;
-        }).join('');
+            /* Smooth iOS scroll on main content area */
+            .roster-scroll {
+                padding: 16px 14px;
+                -webkit-overflow-scrolling: touch;
+                overflow-y: auto;
+                padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+            }
 
-        const sbRisk = document.getElementById('sb-risk');
-        if (sbRisk) { sbRisk.textContent = riskCount; sbRisk.classList.toggle('is-risk', riskCount > 0); }
-        localStorage.setItem('connectus_sidebar_stats', JSON.stringify({ students: allStudentsCache.length, risk: riskCount }));
-        applyRosterFilters();
+            /* Page header stacks vertically on mobile */
+            .roster-page-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+            }
 
-    } catch (e) {
-        console.error('[Roster] loadStudents:', e);
-        document.getElementById('studentsTableBody').innerHTML = `<tr><td colspan="8"><div class="table-loader"><i class="fa-solid fa-triangle-exclamation" style="color:#dc2626;"></i><p style="color:#dc2626;">Error loading roster. Please refresh the page.</p></div></td></tr>`;
-        localStorage.setItem('connectus_sidebar_stats', JSON.stringify({ students: 0, risk: 0 }));
-    }
-}
+            /* Action buttons wrap and fill width */
+            .roster-header-actions {
+                width: 100%;
+                flex-wrap: wrap;
+            }
 
-async function fetchAllStudentGrades(semId) {
-    const all = [];
-    await Promise.all(allStudentsCache.map(async s => {
-        try {
-            const q    = query(collection(db, 'students', s.id, 'grades'), where('schoolId', '==', session.schoolId), where('semesterId', '==', semId));
-            const snap = await getDocs(q);
-            snap.forEach(d => all.push({ id: d.id, studentId: s.id, studentName: s.name, ...d.data() }));
-        } catch (e) {}
-    }));
-    return all;
-}
+            .roster-header-actions .btn-sharp {
+                flex: 1;
+                justify-content: center;
+                min-width: 120px;
+            }
 
-// ── 7. STANDING HELPERS ───────────────────────────────────────────────────
-function standingLabelHtml(avg) {
-    if (avg === null) return `<span class="standing-label sl-none">No Data</span>`;
-    if (avg >= 90)    return `<span class="standing-label sl-excelling"><i class="fa-solid fa-circle-check" style="font-size:9px;"></i>Excelling</span>`;
-    if (avg >= 80)    return `<span class="standing-label sl-good"><i class="fa-solid fa-thumbs-up" style="font-size:9px;"></i>Good Standing</span>`;
-    if (avg >= 70)    return `<span class="standing-label sl-ontrack"><i class="fa-solid fa-arrow-right" style="font-size:9px;"></i>On Track</span>`;
-    if (avg >= 65)    return `<span class="standing-label sl-attention"><i class="fa-solid fa-eye" style="font-size:9px;"></i>Needs Attention</span>`;
-    return `<span class="standing-label sl-atrisk"><i class="fa-solid fa-triangle-exclamation" style="font-size:9px;"></i>At Risk</span>`;
-}
+            /* Controls wrap naturally on mobile */
+            .roster-controls {
+                gap: 8px;
+            }
 
-function gradeNumClass(avg) {
-    if (avg >= 90) return 'grade-green';
-    if (avg >= 80) return 'grade-blue';
-    if (avg >= 70) return 'grade-teal';
-    if (avg >= 65) return 'grade-amber';
-    return 'grade-red';
-}
+            /* Search fills full width */
+            .control-search {
+                min-width: 0;
+                width: 100%;
+                flex: 1 1 100%;
+            }
 
-// ── 8. FILTERS ────────────────────────────────────────────────────────────
-window.applyRosterFilters = function() {
-    const fClass    = document.getElementById('rf-class')?.value    || '';
-    const fStanding = document.getElementById('rf-standing')?.value || '';
-    document.querySelectorAll('#studentsTableBody tr.trow').forEach(r => {
-        let show = true;
-        if (fClass    && r.dataset.class    !== fClass)    show = false;
-        if (fStanding && r.dataset.standing !== fStanding) show = false;
-        r.dataset.hiddenByFilter = !show;
-        r.style.display = show ? '' : 'none';
-    });
-    filterStudents();
-};
+            /* Filter groups share a row */
+            .control-group {
+                flex: 1;
+                min-width: 0;
+            }
 
-function filterStudents() {
-    const term = (document.getElementById('searchInput')?.value || '').toLowerCase();
-    document.querySelectorAll('#studentsTableBody tr.trow').forEach(r => {
-        if (r.dataset.hiddenByFilter !== 'true')
-            r.style.display = r.textContent.toLowerCase().includes(term) ? '' : 'none';
-    });
-}
+            .control-select {
+                min-width: 0;
+                width: 100%;
+            }
 
-window.quickGradeStudent = function(studentId) {
-    if (isSemesterLocked) { alert('The current grading period is locked.'); return; }
-    const student = allStudentsCache.find(s => s.id === studentId);
-    if (!student?.className) {
-        alert(`"${student?.name || 'This student'}" is not assigned to a class yet.\n\nPlease open their record, assign them to a class, then try again.`);
-        return;
-    }
-    localStorage.setItem('connectus_quick_grade_student', studentId);
-    window.location.assign('../grade_form/grade_form.html');
-};
+            /* Table scrolls horizontally — already has overflow-x:auto wrapper */
+            .roster-table-wrap {
+                overflow: hidden;
+            }
 
-// ── 9. ENROLL / CLAIM STUDENT ─────────────────────────────────────────────
-window.openAddStudentModal = function() {
-    const searchQ = document.getElementById('sSearchQuery');
-    const searchR = document.getElementById('sSearchResults');
-    if (searchQ) searchQ.value = '';
-    if (searchR) { searchR.innerHTML = ''; searchR.classList.add('hidden'); }
+            /* Table header stacks on mobile */
+            .roster-table-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 6px;
+            }
 
-    ['sName','sEmail','sParentPhone','sParentName','sDob'].forEach(id => {
-        const el = document.getElementById(id); if (el) el.value = '';
-    });
-    document.getElementById('addStudentMsg').classList.add('hidden');
+            /* Student panel: full screen on mobile */
+            #studentPanelInner {
+                max-width: 100%;
+                height: 95vh;
+                border-radius: 4px;
+            }
 
-    const classes = getClasses().filter(Boolean);
-    const sel     = document.getElementById('sClass');
-    sel.innerHTML = '<option value="">— Select a Class —</option>' +
-        classes.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+            /* Student panel inner layout: stack sidebar above content */
+            #sViewMode {
+                flex-direction: column !important;
+                overflow-y: auto !important;
+                -webkit-overflow-scrolling: touch;
+            }
 
-    openOverlay('addStudentModal', 'addStudentModalInner');
-};
+            /* Sidebar goes full width, no right border */
+            #sViewMode > div:first-child {
+                width: 100% !important;
+                flex-shrink: 0 !important;
+                border-right: none !important;
+                border-bottom: 1px solid #dce3ed;
+                overflow-y: visible !important;
+                max-height: none !important;
+            }
 
-window.closeAddStudentModal = function() { closeOverlay('addStudentModal', 'addStudentModalInner'); };
+            /* Right content panel fills remaining space */
+            #sViewMode > div:last-child {
+                flex: 1;
+                min-height: 400px;
+                overflow: hidden;
+            }
 
-window.searchStudentRegistry = async function() {
-    const rawId      = (document.getElementById('sSearchQuery')?.value || '').trim().toUpperCase();
-    const resultsDiv = document.getElementById('sSearchResults');
+            /* Panel header wraps on mobile */
+            .panel-header {
+                padding: 12px 16px;
+            }
 
-    if (!rawId) { alert('Enter a Student Global ID to search.'); return; }
+            .panel-student-name {
+                font-size: 16px;
+            }
 
-    if (!/^S\d{2}-[A-Z0-9]{5}$/.test(rawId)) {
-        resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">Invalid format. Student ID should look like S26-XXXXX.</div>`;
-        resultsDiv.classList.remove('hidden'); return;
-    }
+            /* Modal overlays: tighter padding on mobile */
+            .modal-overlay {
+                padding: 8px;
+            }
 
-    resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#9ab0c6;font-size:12px;"><i class="fa-solid fa-spinner fa-spin" style="margin-right:6px;"></i>Searching National Registry…</div>`;
-    resultsDiv.classList.remove('hidden');
+            /* Eval modal grids: single column on mobile */
+            #evalModal .modal-body [style*="grid-template-columns:1fr 1fr"] {
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 12px !important;
+            }
 
-    const btn = document.getElementById('sSearchBtn');
-    btn.textContent = '…'; btn.disabled = true;
-
-    try {
-        const snap = await getDoc(doc(db, 'students', rawId));
-
-        if (!snap.exists()) {
-            resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#9ab0c6;font-size:12px;font-weight:600;">No student found with that ID. Fill in the form below to create a new identity.</div>`;
-            btn.textContent = 'Search'; btn.disabled = false; return;
-        }
-
-        const s = { id: snap.id, ...snap.data() };
-
-        if (s.currentSchoolId && s.currentSchoolId !== '') {
-            if (s.currentSchoolId !== session.schoolId) {
-                resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">This student is currently enrolled at another school. Their current school must close enrollment first.</div>`;
-                btn.textContent = 'Search'; btn.disabled = false; return;
-            } else {
-                if (s.teacherId && s.teacherId !== '') {
-                    resultsDiv.innerHTML = s.teacherId === session.teacherId
-                        ? `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">This student is already in your active roster!</div>`
-                        : `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">This student is already assigned to another teacher's roster at this school.</div>`;
-                    btn.textContent = 'Search'; btn.disabled = false; return;
-                }
+            /* Report card modal attendance grid: single column */
+            #reportCardModal .modal-body [style*="grid-template-columns:1fr 1fr 1fr"] {
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 10px !important;
             }
         }
-
-        const lastSchool  = s.academicHistory?.length
-            ? `Last school: ${s.academicHistory[s.academicHistory.length-1].schoolName || s.academicHistory[s.academicHistory.length-1].schoolId}`
-            : 'No prior enrollment';
-        const emailStatus = !s.email
-            ? `<span style="color:#d97706;font-weight:700;">⚠ No email on file</span>`
-            : `<span style="color:#059669;font-weight:600;">✓ Email on file</span>`;
-
-        resultsDiv.innerHTML = `
-        <div style="padding:14px 16px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
-            <div style="flex:1;min-width:0;">
-                <p style="font-weight:800;color:#0d1f35;font-size:14px;margin:0 0 3px;">${escHtml(s.name)}</p>
-                <p style="font-size:10.5px;font-family:'DM Mono',monospace;color:#9ab0c6;margin:0 0 3px;">${s.id}</p>
-                <p style="font-size:11px;font-weight:600;color:#374f6b;margin:0 0 2px;">${s.dob ? 'DOB: ' + s.dob + ' · ' : ''}${lastSchool}</p>
-                <p style="font-size:11px;margin:0;">${emailStatus}</p>
+    </style>
+</head>
+<body>
+    <div id="layout-sidebar-container" style="flex-shrink:0;height:100%;z-index:20;"></div>
+    <main id="dashboardMain">
+        <div id="layout-topbar-container" style="flex-shrink:0;z-index:10;"></div>
+        <div class="roster-scroll">
+            <div class="roster-page-header">
+                <div>
+                    <h1 class="roster-page-title">Class Roster</h1>
+                    <p class="roster-page-sub">Active enrolment · academic standing · parent contacts</p>
+                </div>
+                <div class="roster-header-actions no-print">
+                    <button onclick="exportRosterCSV()" class="btn-sharp btn-sharp-outline"><i class="fa-solid fa-file-csv" style="font-size:11px;"></i> Export CSV</button>
+                    <button onclick="printRoster()" class="btn-sharp btn-sharp-outline"><i class="fa-solid fa-print" style="font-size:11px;"></i> Print Roster</button>
+                    <button onclick="window.openPromoteModal()" class="btn-sharp btn-sharp-primary"><i class="fa-solid fa-arrow-up-right-dots" style="font-size:11px;"></i> Promote Students</button>
+                    <button onclick="openAddStudentModal()" class="btn-sharp btn-sharp-green"><i class="fa-solid fa-plus" style="font-size:11px;"></i> Add Student</button>
+                </div>
             </div>
-            <button onclick="window.claimSearchedStudent('${s.id}')"
-                    style="padding:7px 16px;background:#0ea871;border:none;border-radius:4px;color:#fff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap;flex-shrink:0;">
-                Claim Student
-            </button>
-        </div>`;
-
-    } catch (e) {
-        if (e.code === 'permission-denied') {
-            resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#9ab0c6;font-size:12px;font-weight:600;">No student found with that ID. Fill in the form below to create a new identity.</div>`;
-        } else {
-            console.error('[Roster] searchStudentRegistry:', e);
-            resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;">Search failed. Try again.</div>`;
-        }
-    }
-
-    btn.textContent = 'Search'; btn.disabled = false;
-};
-
-window.claimSearchedStudent = async function(studentId) {
-    const classVal = document.getElementById('sClass').value;
-    if (!classVal) { alert('Please select a class from the "Assign to Class" dropdown first, then claim.'); return; }
-
-    const btn = document.querySelector(`button[onclick="window.claimSearchedStudent('${studentId}')"]`);
-    if (btn) { btn.textContent = '…'; btn.disabled = true; }
-
-    try {
-        await updateDoc(doc(db, 'students', studentId), {
-            currentSchoolId: session.schoolId, teacherId: session.teacherId,
-            className: classVal, enrollmentStatus: 'Active'
-        });
-        window.closeAddStudentModal();
-        await loadStudents();
-    } catch (e) {
-        console.error('[Roster] claimSearchedStudent:', e);
-        alert('Error claiming student. Please try again.');
-        if (btn) { btn.textContent = 'Claim Student'; btn.disabled = false; }
-    }
-};
-
-document.getElementById('saveStudentBtn').addEventListener('click', async () => {
-    const assignedClass = document.getElementById('sClass').value;
-    const name          = document.getElementById('sName').value.trim();
-    const email         = document.getElementById('sEmail')?.value.trim() || '';
-    const btn           = document.getElementById('saveStudentBtn');
-
-    if (!name)  { showMsg('addStudentMsg', 'Student name is required.', true); return; }
-    if (!email) { showMsg('addStudentMsg', 'Email address is required so the parent can recover their PIN.', true); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showMsg('addStudentMsg', 'Please enter a valid email address.', true); return; }
-
-    btn.textContent = 'Saving…'; btn.disabled = true;
-
-    try {
-        const targetEmail = email ? email.toLowerCase() : null;
-        if (targetEmail) {
-            const regSnap = await getDoc(doc(db, 'registered_emails', targetEmail));
-            if (regSnap.exists()) {
-                showMsg('addStudentMsg', 'This email address is already in use by another account.', true);
-                btn.textContent = 'Create New Student Identity'; btn.disabled = false; return;
-            }
-        }
-
-        const countSnap = await getDocs(query(
-            collection(db, 'students'),
-            where('currentSchoolId', '==', session.schoolId),
-            where('enrollmentStatus', '==', 'Active')
-        ));
-        if (countSnap.size >= schoolLimit) {
-            showMsg('addStudentMsg', `School capacity reached (${schoolLimit} max). Contact Admin to upgrade.`, true);
-            btn.textContent = 'Create New Student Identity'; btn.disabled = false; return;
-        }
-
-        const newId  = generateStudentId();
-        const batch  = writeBatch(db);
-
-        const studentRef = doc(db, 'students', newId);
-        batch.set(studentRef, {
-            studentIdNum: newId, name, email,
-            dob:          document.getElementById('sDob').value,
-            parentName:   document.getElementById('sParentName').value.trim(),
-            parentPhone:  document.getElementById('sParentPhone').value.trim(),
-            pin:          Math.floor(1000 + Math.random() * 9000).toString(),
-            teacherId:    session.teacherId,
-            className:    assignedClass || '',
-            currentSchoolId: session.schoolId,
-            enrollmentStatus: 'Active',
-            securityQuestionsSet: false,
-            medicalNotes: '', academicHistory: [], classHistory: [],
-            createdAt:    new Date().toISOString()
-        });
-
-        if (targetEmail) {
-            const emailRef = doc(db, 'registered_emails', targetEmail);
-            batch.set(emailRef, {
-                email: targetEmail, name, role: 'student',
-                referenceId: newId, createdAt: new Date().toISOString()
-            });
-        }
-
-        await batch.commit();
-        window.closeAddStudentModal();
-        await loadStudents();
-    } catch (e) {
-        console.error('[Roster] saveStudent:', e);
-        showMsg('addStudentMsg', 'Error saving student. Please try again.', true);
-    }
-
-    btn.textContent = 'Create New Student Identity'; btn.disabled = false;
-});
-
-// ── 10. STUDENT PANEL & TABS ──────────────────────────────────────────────
-window.switchStudentTab = function(tabName) {
-    const btnG = document.getElementById('tabBtnGrades');
-    const btnE = document.getElementById('tabBtnEvaluations');
-    const conG = document.getElementById('tabContentGrades');
-    const conE = document.getElementById('tabContentEvaluations');
-
-    if (tabName === 'grades') {
-        btnG.style.borderBottomColor = '#0ea871'; btnG.style.color = '#0d1f35';
-        btnE.style.borderBottomColor = 'transparent'; btnE.style.color = '#6b84a0';
-        conG.classList.remove('hidden'); conG.style.display = 'flex';
-        conE.classList.add('hidden');   conE.style.display = 'none';
-    } else {
-        btnE.style.borderBottomColor = '#0ea871'; btnE.style.color = '#0d1f35';
-        btnG.style.borderBottomColor = 'transparent'; btnG.style.color = '#6b84a0';
-        conE.classList.remove('hidden'); conE.style.display = 'flex';
-        conG.classList.add('hidden');    conG.style.display = 'none';
-    }
-};
-
-window.openStudentPanel = async function(studentId) {
-    currentStudentId = studentId;
-    const student    = allStudentsCache.find(s => s.id === studentId);
-
-    document.getElementById('sPanelName').textContent = student?.name || 'Student';
-    document.getElementById('sPanelMeta').textContent =
-        [student?.className, student?.parentPhone].filter(Boolean).join(' · ') || '—';
-
-    window.switchStudentTab('grades');
-
-    document.getElementById('sPanelLoader').style.display = 'flex';
-    document.getElementById('sViewMode').classList.add('hidden');
-
-    const qGBtn = document.getElementById('spQuickGradeBtn2');
-    if (qGBtn) {
-        if (!isSemesterLocked) {
-            qGBtn.style.display = 'inline-flex';
-            qGBtn.onclick = () => { window.closeStudentPanel(); window.quickGradeStudent(studentId); };
-        } else { qGBtn.style.display = 'none'; }
-    }
-
-    openOverlay('studentPanel', 'studentPanelInner');
-
-    const classSel = document.getElementById('editSClass');
-    const classes  = getClasses().filter(Boolean);
-    classSel.innerHTML = classes.map(c =>
-        `<option value="${escHtml(c)}" ${c === student?.className ? 'selected' : ''}>${escHtml(c)}</option>`
-    ).join('');
-    classSel.dataset.original = student?.className || '';
-    document.getElementById('editSClassReasonWrap').classList.add('hidden');
-    document.getElementById('editSClassReason').value = '';
-    document.getElementById('editClassMsg').classList.add('hidden');
-
-    document.getElementById('sInfoGrid').innerHTML = [
-        ['Name',         student?.name         || '—'],
-        ['Global ID',    student?.id           || '—'],
-        ['Email',        student?.email        || '<span style="color:#d97706;font-weight:700;">Not set</span>'],
-        ['DOB',          student?.dob          || '—'],
-        ['Parent Name',  student?.parentName   || '—'],
-        ['Parent Phone', student?.parentPhone  || '—'],
-        ['Enrolled',     student?.createdAt
-            ? new Date(student.createdAt).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' }) : '—']
-    ].map(([label, value]) => `
-        <div class="info-row">
-            <span class="info-row-label">${label}</span>
-            <span class="info-row-value" style="${label === 'Global ID' ? "font-family:'DM Mono',monospace;font-size:11.5px;" : ''}">${escHtml(value)}</span>
-        </div>`).join('');
-
-    const semId   = document.getElementById('activeSemester')?.value || '';
-    const semName = document.getElementById('activeSemester')?.options[document.getElementById('activeSemester')?.selectedIndex]?.text || '';
-    document.getElementById('sPanelSemName').textContent = semName;
-    document.getElementById('sPanelFilterSubject').value = '';
-    document.getElementById('sPanelFilterType').value    = '';
-
-    try {
-        const gradesSnap = await getDocs(query(collection(db, 'students', studentId, 'grades'), where('schoolId', '==', session.schoolId)));
-        currentStudentGradesCache = [];
-        gradesSnap.forEach(d => { const g = { id: d.id, ...d.data() }; if (g.semesterId === semId) currentStudentGradesCache.push(g); });
-
-        const subjSet = [...new Set(currentStudentGradesCache.map(g => g.subject || 'Uncategorized'))].sort();
-        document.getElementById('sPanelFilterSubject').innerHTML = '<option value="">All Subjects</option>' + subjSet.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
-        document.getElementById('sPanelFilterType').innerHTML    = '<option value="">All Types</option>' + getGradeTypes().map(t => `<option value="${escHtml(t.name || t)}">${escHtml(t.name || t)}</option>`).join('');
-        window.renderStudentGrades();
-        await window.loadStudentEvaluations(studentId);
-    } catch (e) { console.error('[Roster] openStudentPanel data load:', e); }
-
-    document.getElementById('sPanelLoader').style.display = 'none';
-    document.getElementById('sViewMode').classList.remove('hidden');
-};
-
-window.closeStudentPanel = function() { closeOverlay('studentPanel', 'studentPanelInner'); };
-
-window.renderStudentGrades = function() {
-    const fSubj = document.getElementById('sPanelFilterSubject').value;
-    const fType = document.getElementById('sPanelFilterType').value;
-    const by    = {};
-    currentStudentGradesCache.forEach(g => {
-        if (fSubj && g.subject !== fSubj) return;
-        if (fType && g.type   !== fType)  return;
-        const subj = g.subject || 'Uncategorized';
-        if (!by[subj]) by[subj] = [];
-        by[subj].push(g);
-    });
-
-    const container = document.getElementById('subjectAccordions');
-    const noG       = document.getElementById('noGradesMsg');
-    gradeDetailCache = {};
-
-    if (!Object.keys(by).length) { container.innerHTML = ''; noG.classList.remove('hidden'); return; }
-    noG.classList.add('hidden');
-
-    container.innerHTML = Object.entries(by).map(([subject, grades]) => {
-        const avg = calculateWeightedAverage(grades, session.teacherData.gradeTypes || getGradeTypes());
-        const rows = grades.sort((a,b) => (b.date||'').localeCompare(a.date||'')).map(g => {
-            gradeDetailCache[g.id] = g;
-            const pct   = g.max ? Math.round(g.score/g.max*100) : null;
-            const color = pct >= 75 ? '#065f46' : pct >= 65 ? '#78350f' : '#7f1d1d';
-            const bgCol = pct >= 90 ? '#dcfce7' : pct >= 80 ? '#dbeafe' : pct >= 70 ? '#ccfbf1' : pct >= 65 ? '#fef3c7' : '#fee2e2';
-            const bdCol = pct >= 90 ? '#bbf7d0' : pct >= 80 ? '#bfdbfe' : pct >= 70 ? '#99f6e4' : pct >= 65 ? '#fde68a' : '#fecaca';
-            const adminTag = g.enteredByAdmin ? `<span style="font-size:9px;font-weight:700;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;padding:1px 5px;border-radius:3px;margin-left:4px;">Admin</span>` : '';
-            return `<div onclick="window.openAssignmentModal('${g.id}')" style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #e8edf2;border-radius:3px;padding:10px 14px;cursor:pointer;" onmouseover="this.style.borderColor='#0ea871';this.style.background='#f8fefb'" onmouseout="this.style.borderColor='#e8edf2';this.style.background='#fff'">
-                <div style="flex:1;min-width:0;"><p style="font-size:12.5px;font-weight:600;color:#0d1f35;margin:0 0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(g.title||'Assessment')}${adminTag}</p><p style="font-size:11px;color:#9ab0c6;font-weight:400;margin:0;">${escHtml(g.type||'')}${g.date?' · '+g.date:''}</p></div>
-                <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:16px;"><span style="font-size:12px;font-weight:600;color:${color};font-family:'DM Mono',monospace;">${g.score}/${g.max||'?'}</span><span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:3px;background:${bgCol};border:1px solid ${bdCol};color:${color};font-family:'DM Mono',monospace;">${pct!==null?pct+'%':'—'}</span></div>
-            </div>`;
-        }).join('');
-
-        const avgR    = Math.round(avg);
-        const hdColor = avgR >= 90 ? '#14532d' : avgR >= 80 ? '#1e3a8a' : avgR >= 70 ? '#134e4a' : avgR >= 65 ? '#78350f' : '#7f1d1d';
-        const hdBg    = avgR >= 90 ? '#dcfce7' : avgR >= 80 ? '#dbeafe' : avgR >= 70 ? '#ccfbf1' : avgR >= 65 ? '#fef3c7' : '#fee2e2';
-        const hdBd    = avgR >= 90 ? '#bbf7d0' : avgR >= 80 ? '#bfdbfe' : avgR >= 70 ? '#99f6e4' : avgR >= 65 ? '#fde68a' : '#fecaca';
-
-        return `<div style="border:1px solid #dce3ed;border-radius:4px;overflow:hidden;background:#fff;">
-            <div onclick="window.toggleAccordion(this)" style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;cursor:pointer;background:#fff;" onmouseover="this.style.background='#f8fafb'" onmouseout="this.style.background='#fff'">
-                <div style="display:flex;align-items:center;gap:12px;"><div style="width:32px;height:32px;border-radius:4px;background:#0d1f35;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;">${escHtml(subject.charAt(0))}</div><div><p style="font-size:13px;font-weight:700;color:#0d1f35;margin:0;">${escHtml(subject)}</p><p style="font-size:10.5px;color:#9ab0c6;font-weight:400;margin:0;">${grades.length} assessment${grades.length!==1?'s':''}</p></div></div>
-                <div style="display:flex;align-items:center;gap:10px;"><span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:3px;background:${hdBg};border:1px solid ${hdBd};color:${hdColor};font-family:'DM Mono',monospace;">${avgR}% · ${letterGrade(avg)}</span><i class="fa-solid fa-chevron-down" style="font-size:11px;color:#9ab0c6;transition:transform 0.2s;"></i></div>
+            <div class="roster-controls no-print">
+                <div class="control-search">
+                    <div class="control-search-icon"><i class="fa-solid fa-magnifying-glass"></i></div>
+                    <input type="text" id="searchInput" placeholder="Search students…" class="control-search-input" oninput="filterStudents()">
+                </div>
+                <div class="control-group" id="classFilterWrap">
+                    <span class="control-group-label"><i class="fa-solid fa-chalkboard" style="margin-right:5px;"></i>Class</span>
+                    <select id="rf-class" class="control-select" onchange="applyRosterFilters()"><option value="">All Classes</option></select>
+                </div>
+                <div class="control-group">
+                    <span class="control-group-label"><i class="fa-solid fa-chart-bar" style="margin-right:5px;"></i>Standing</span>
+                    <select id="rf-standing" class="control-select" onchange="applyRosterFilters()">
+                        <option value="">All</option>
+                        <option value="excelling">Excelling (90–100)</option>
+                        <option value="good">Good Standing (80–89)</option>
+                        <option value="ontrack">On Track (70–79)</option>
+                        <option value="needsattention">Needs Attention (65–69)</option>
+                        <option value="atrisk">At Risk (&lt;65)</option>
+                        <option value="none">No Grades</option>
+                    </select>
+                </div>
             </div>
-            <div class="subject-body" style="border-top:1px solid #f0f4f8;"><div style="padding:10px 12px;background:#f8fafb;display:flex;flex-direction:column;gap:6px;">${rows}</div></div>
-        </div>`;
-    }).join('');
-};
+            <div class="roster-table-wrap">
+                <div class="roster-table-header">
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <span class="roster-table-title">Student Records</span>
+                        <span class="roster-count-badge" id="rosterCountBadge">0</span>
+                    </div>
+                    <div style="font-size:10px;color:rgba(255,255,255,0.4);font-weight:500;letter-spacing:0.06em;">ACADEMIC YEAR · <span id="rosterPeriodLabel">—</span></div>
+                </div>
+                <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+                    <table class="roster-table">
+                        <thead>
+                            <tr>
+                                <th style="width:44px;">#</th>
+                                <th>Student</th>
+                                <th>Class</th>
+                                <th>Parent Contact</th>
+                                <th class="text-center" style="width:80px;">Subjects</th>
+                                <th class="text-center" style="width:80px;">Avg</th>
+                                <th style="width:160px;">Standing</th>
+                                <th class="text-right" style="width:140px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="studentsTableBody">
+                            <tr><td colspan="8"><div class="table-loader"><i class="fa-solid fa-spinner fa-spin"></i><p>Loading roster…</p></div></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
 
-window.toggleAccordion = function(header) {
-    const body    = header.nextElementSibling;
-    body.classList.toggle('open');
-    const chevron = header.querySelector('.fa-chevron-down');
-    if (chevron) chevron.style.transform = body.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0)';
-};
+    <!-- ── ADD STUDENT MODAL ─────────────────────────────────────────────── -->
+    <div id="addStudentModal" class="modal-overlay hidden opacity-0">
+        <div class="modal-box" id="addStudentModalInner" style="width:100%;max-width:500px;max-height:90vh;overflow-y:auto;">
+            <div class="modal-stripe"></div>
+            <div class="modal-header" style="position:sticky;top:0;background:#fafbfc;z-index:10;">
+                <div class="modal-header-left">
+                    <div class="modal-icon" style="background:#edfaf4;color:#0ea871;border:1px solid #a7f3d0;"><i class="fa-solid fa-user-plus"></i></div>
+                    <span class="modal-title">Enroll or Claim Student</span>
+                </div>
+                <button onclick="closeAddStudentModal()" class="modal-close"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body" style="display:flex;flex-direction:column;gap:16px;">
+                <div style="background:#edfaf4;border:1px solid #a7f3d0;border-radius:3px;padding:14px;">
+                    <label class="field-label" style="color:#065f46;">Search National Registry First</label>
+                    <div style="display:flex;gap:8px;">
+                        <input type="text" id="sSearchQuery" placeholder="S26-XXXXX Student ID" class="form-input" style="flex:1;">
+                        <button id="sSearchBtn" onclick="window.searchStudentRegistry()" style="padding:9px 16px;background:#0ea871;border:none;border-radius:3px;color:#fff;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap;">Search</button>
+                    </div>
+                </div>
+                <div id="sSearchResults" class="hidden" style="border:1px solid #c5d0db;border-radius:3px;overflow:hidden;max-height:220px;overflow-y:auto;"></div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="flex:1;height:1px;background:#e8edf2;"></div>
+                    <span style="font-size:9.5px;font-weight:700;color:#9ab0c6;text-transform:uppercase;letter-spacing:0.1em;white-space:nowrap;">Or Create New Identity</span>
+                    <div style="flex:1;height:1px;background:#e8edf2;"></div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:14px;">
+                    <div><label class="field-label">Student Full Name <span style="color:#e31b4a;">*</span></label><input type="text" id="sName" class="form-input"></div>
+                    <div><label class="field-label">Date of Birth</label><input type="date" id="sDob" class="form-input"></div>
+                    <div style="border-top:1px solid #e8edf2;padding-top:14px;"><label class="field-label">Parent / Guardian Name</label><input type="text" id="sParentName" class="form-input"></div>
+                    <div><label class="field-label">Email Address <span style="color:#e31b4a;">*</span></label><input type="email" id="sEmail" class="form-input"></div>
+                    <div><label class="field-label">Parent / Guardian Phone</label><input type="tel" id="sParentPhone" class="form-input"></div>
+                </div>
+                <div style="padding-top:14px;border-top:1px solid #e8edf2;">
+                    <label class="field-label">Assign to Class <span style="color:#e31b4a;">*</span></label>
+                    <select id="sClass" class="form-input"></select>
+                </div>
+                <button id="saveStudentBtn" style="width:100%;padding:11px;background:#0ea871;border:none;border-radius:3px;color:#fff;font-size:13.5px;font-weight:700;font-family:inherit;cursor:pointer;">Create New Student Identity</button>
+                <p id="addStudentMsg" class="hidden" style="font-size:12px;font-weight:600;padding:10px 14px;border-radius:3px;text-align:center;"></p>
+            </div>
+        </div>
+    </div>
 
-// ── 10.5. CLASS-ONLY EDIT ─────────────────────────────────────────────────
-window.checkClassChange = function() {
-    const sel  = document.getElementById('editSClass');
-    const wrap = document.getElementById('editSClassReasonWrap');
-    if (sel.value !== sel.dataset.original && sel.dataset.original !== '') wrap.classList.remove('hidden');
-    else wrap.classList.add('hidden');
-};
-
-window.saveStudentClass = async function() {
-    const btn       = document.getElementById('saveClassBtn');
-    const newClass  = document.getElementById('editSClass').value;
-    const origClass = document.getElementById('editSClass').dataset.original;
-    const reason    = document.getElementById('editSClassReason').value.trim();
-
-    if (newClass !== origClass && origClass !== '' && !reason) {
-        showMsg('editClassMsg', 'Please provide a reason for the class change.', true); return;
-    }
-
-    btn.textContent = 'Saving…'; btn.disabled = true;
-
-    try {
-        const u = { className: newClass };
-
-        if (newClass !== origClass && origClass !== '') {
-            u.lastClassChangeReason = reason;
-            u.lastClassChangeDate   = new Date().toISOString();
-            u.classHistory = arrayUnion({
-                fromClass: origClass, toClass: newClass,
-                changedAt: new Date().toISOString(), reason, schoolId: session.schoolId
-            });
-        }
-
-        await updateDoc(doc(db, 'students', currentStudentId), u);
-
-        const idx = allStudentsCache.findIndex(s => s.id === currentStudentId);
-        if (idx !== -1) allStudentsCache[idx].className = newClass;
-        document.getElementById('editSClass').dataset.original = newClass;
-        document.getElementById('editSClassReasonWrap').classList.add('hidden');
-        document.getElementById('editSClassReason').value = '';
-        document.getElementById('sPanelMeta').textContent =
-            [newClass, allStudentsCache[idx]?.parentPhone].filter(Boolean).join(' · ') || '—';
-        showMsg('editClassMsg', 'Class updated.', false);
-        await loadStudents();
-    } catch (e) {
-        console.error('[Roster] saveStudentClass:', e);
-        showMsg('editClassMsg', 'Error saving. Please try again.', true);
-    }
-
-    btn.textContent = 'Save Class'; btn.disabled = false;
-};
-
-// ── 10.6. PIN RESET ───────────────────────────────────────────────────────
-window.sendPinResetEmail = async function() {
-    const student = allStudentsCache.find(s => s.id === currentStudentId);
-    if (!student?.email) {
-        alert('This student has no email on file. A PIN reset email cannot be sent.\n\nPlease contact the admin to update the student\'s email first.');
-        return;
-    }
-
-    const btn      = document.getElementById('pinResetEmailBtn');
-    const original = btn.innerHTML;
-    btn.innerHTML  = '<i class="fa-solid fa-spinner fa-spin"></i> Sending…';
-    btn.disabled   = true;
-
-    try {
-        await addDoc(collection(db, 'reset_vault'), {
-            email:     student.email,
-            name:      student.name,
-            roleLabel: 'Student Account',
-            userType:  'student',
-            studentId: currentStudentId,
-            expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-            createdAt: new Date().toISOString()
-        });
-        btn.innerHTML = '<i class="fa-solid fa-check"></i> Email Sent';
-        setTimeout(() => { btn.innerHTML = original; btn.disabled = false; }, 3000);
-    } catch (e) {
-        console.error('[Roster] sendPinResetEmail:', e);
-        alert('Failed to send reset email. Please try again.');
-        btn.innerHTML = original;
-        btn.disabled  = false;
-    }
-};
-
-// ── 11. EVALUATIONS ───────────────────────────────────────────────────────
-window.buildStarGroups = function() {
-    document.querySelectorAll('.rating-row').forEach(row => {
-        const field = row.dataset.field;
-        const group = row.querySelector('.star-group');
-        if (!group) return;
-        group.innerHTML = [1,2,3,4,5].map(n =>
-            `<button type="button" class="star-btn" data-val="${n}" data-field="${field}"
-              onmouseover="window.hoverStars('${field}',${n})"
-              onmouseout="window.renderStars('${field}')"
-              onclick="window.setRating('${field}',${n})">★</button>`
-        ).join('');
-        window.renderStars(field);
-    });
-};
-
-window.renderStars = function(field) {
-    const val = window.evalRatings[field] || 0;
-    document.querySelectorAll(`[data-field="${field}"]`).forEach(btn => {
-        if (btn.tagName === 'BUTTON') btn.classList.toggle('star-active', parseInt(btn.dataset.val) <= val);
-    });
-};
-
-window.hoverStars = function(field, val) {
-    document.querySelectorAll(`[data-field="${field}"]`).forEach(btn => {
-        if (btn.tagName === 'BUTTON') btn.classList.toggle('star-active', parseInt(btn.dataset.val) <= val);
-    });
-};
-
-window.setRating = function(field, val) {
-    window.evalRatings[field] = val;
-    window.renderStars(field);
-};
-
-window.openEvalModal = function() {
-    document.getElementById('evalDate').value = new Date().toISOString().split('T')[0];
-    document.querySelectorAll('.eval-section textarea, .eval-section select').forEach(el => el.value = '');
-    Object.keys(window.evalRatings).forEach(k => { window.evalRatings[k] = 0; window.renderStars(k); });
-    document.getElementById('evalType').value = 'academic';
-    window.toggleEvalType();
-    openOverlay('evalModal', 'evalModalInner');
-};
-
-window.closeEvalModal = function() { closeOverlay('evalModal', 'evalModalInner'); };
-
-window.toggleEvalType = function() {
-    const type = document.getElementById('evalType').value;
-    const allPanels = [
-        'type-academic', 'type-eoy', 'type-behavioral',
-        'type-midterm', 'type-parent-conference',
-        'type-learning-support', 'type-custom'
-    ];
-    allPanels.forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('hidden'); });
-    const map = {
-        academic:           'type-academic',
-        end_of_year:        'type-eoy',
-        behavioral:         'type-behavioral',
-        midterm_review:     'type-midterm',
-        parent_conference:  'type-parent-conference',
-        learning_support:   'type-learning-support',
-        custom:             'type-custom'
-    };
-    const target = map[type];
-    if (target) { const el = document.getElementById(target); if (el) el.classList.remove('hidden'); }
-
-    const semWrap = document.getElementById('evalSemesterWrap');
-    if (semWrap) {
-        if (type === 'end_of_year') semWrap.classList.add('hidden');
-        else semWrap.classList.remove('hidden');
-    }
-
-    const behOther = document.getElementById('evalBehOtherWrap');
-    if (behOther) behOther.classList.add('hidden');
-};
-
-window.toggleBehOther = function() {
-    const status    = document.getElementById('evalBehStatus')?.value;
-    const otherWrap = document.getElementById('evalBehOtherWrap');
-    if (otherWrap) otherWrap.classList.toggle('hidden', status !== 'Other');
-};
-
-window.saveEvaluation = async function() {
-    const type    = document.getElementById('evalType').value;
-    const semId   = document.getElementById('evalSemester').value;
-    const semName = document.getElementById('evalSemester').options[document.getElementById('evalSemester').selectedIndex].text;
-    const date    = document.getElementById('evalDate').value;
-    const btn     = document.getElementById('btnSubmitEval');
-
-    if (type !== 'end_of_year' && !semId) { alert('Please select a Grading Period.'); return; }
-    if (!date) { alert('Please ensure the Date is filled.'); return; }
-
-    let payload = {
-        type, schoolId: session.schoolId, teacherId: session.teacherId,
-        teacherName: session.teacherData.name, semesterId: semId,
-        semesterName: semName, date, createdAt: new Date().toISOString()
-    };
-
-    if (type === 'academic') {
-        const required = ['academicMastery','taskExecution','engagement','criticalThinking','writtenCommunication','oralParticipation'];
-        if (required.some(k => !window.evalRatings[k])) { alert('Please rate all Academic Progress metrics.'); return; }
-        payload.ratings = { mastery: window.evalRatings.academicMastery, execution: window.evalRatings.taskExecution, engagement: window.evalRatings.engagement, criticalThinking: window.evalRatings.criticalThinking, writtenCommunication: window.evalRatings.writtenCommunication, oralParticipation: window.evalRatings.oralParticipation };
-        payload.written = { strengths: document.getElementById('evalAcadStrengths').value.trim(), growth: document.getElementById('evalAcadGrowth').value.trim(), steps: document.getElementById('evalAcadSteps').value.trim() };
-
-    } else if (type === 'end_of_year') {
-        const required = ['overallAcademicGrowth','subjectMasteryAcrossTerms','socialPeerDynamics','emotionalResilience','selfRegulationEoy','effortPersistenceYear','responseToFeedback','readinessNextGrade'];
-        if (required.some(k => !window.evalRatings[k])) { alert('Please rate all End-of-Year metrics.'); return; }
-        payload.ratings = { overallAcademicGrowth: window.evalRatings.overallAcademicGrowth, subjectMasteryAcrossTerms: window.evalRatings.subjectMasteryAcrossTerms, socialPeerDynamics: window.evalRatings.socialPeerDynamics, emotionalResilience: window.evalRatings.emotionalResilience, selfRegulation: window.evalRatings.selfRegulationEoy, effortPersistenceYear: window.evalRatings.effortPersistenceYear, responseToFeedback: window.evalRatings.responseToFeedback, readinessNextGrade: window.evalRatings.readinessNextGrade };
-        payload.written = { narrative: document.getElementById('evalEoyNarrative').value.trim(), interventions: document.getElementById('evalEoyInterventions').value.trim() };
-        payload.status  = document.getElementById('evalEoyStatus').value;
-        if (!payload.status) { alert('Please select a Promotion Status.'); return; }
-        payload.semesterId   = 'full_year';
-        payload.semesterName = 'Full Academic Year';
-
-    } else if (type === 'behavioral') {
-        const required = ['ruleAdherence','conflictResolution','respectAuthority','peerInteractions','selfRegulation','responseToCorrection','emotionalStability'];
-        if (required.some(k => !window.evalRatings[k])) { alert('Please rate all Conduct metrics.'); return; }
-        payload.ratings = { ruleAdherence: window.evalRatings.ruleAdherence, conflictResolution: window.evalRatings.conflictResolution, respectAuthority: window.evalRatings.respectAuthority, peerInteractions: window.evalRatings.peerInteractions, selfRegulation: window.evalRatings.selfRegulation, responseToCorrection: window.evalRatings.responseToCorrection, emotionalStability: window.evalRatings.emotionalStability };
-        payload.written = { description: document.getElementById('evalBehDesc').value.trim(), prior: document.getElementById('evalBehPrior').value.trim(), actionPlan: document.getElementById('evalBehAction').value.trim() };
-        payload.status = document.getElementById('evalBehStatus').value || 'No Action';
-        if (payload.status === 'Other') {
-            const otherText = document.getElementById('evalBehOtherText')?.value.trim();
-            if (!otherText) { alert('Please describe the action taken.'); return; }
-            payload.status = `Other: ${otherText}`;
-        }
-
-    } else if (type === 'midterm_review') {
-        const required = ['academicProgressToDate','workCompletionRate','classParticipation','attentionFocus','effortPersistence','behaviourInClass'];
-        if (required.some(k => !window.evalRatings[k])) { alert('Please rate all Mid-Term metrics.'); return; }
-        payload.ratings = { academicProgressToDate: window.evalRatings.academicProgressToDate, workCompletionRate: window.evalRatings.workCompletionRate, classParticipation: window.evalRatings.classParticipation, attentionFocus: window.evalRatings.attentionFocus, effortPersistence: window.evalRatings.effortPersistence, behaviourInClass: window.evalRatings.behaviourInClass };
-        payload.written = { strengths: document.getElementById('evalMidStrengths')?.value.trim() || '', concerns: document.getElementById('evalMidConcerns')?.value.trim() || '', comments: document.getElementById('evalMidComments')?.value.trim() || '' };
-        payload.attendance = { daysAbsent: parseInt(document.getElementById('evalMidAbsent')?.value) || 0, daysLate: parseInt(document.getElementById('evalMidLate')?.value) || 0 };
-
-    } else if (type === 'parent_conference') {
-        const required = ['parentEngagement','communicationQuality','followThroughAgreements'];
-        if (required.some(k => !window.evalRatings[k])) { alert('Please rate all Parent Conference metrics.'); return; }
-        payload.ratings = { parentEngagement: window.evalRatings.parentEngagement, communicationQuality: window.evalRatings.communicationQuality, followThroughAgreements: window.evalRatings.followThroughAgreements };
-        payload.written = { summary: document.getElementById('evalPcSummary')?.value.trim() || '', agreements: document.getElementById('evalPcAgreements')?.value.trim() || '', followUp: document.getElementById('evalPcFollowUp')?.value.trim() || '' };
-        payload.parentPresent = document.getElementById('evalPcParentPresent')?.value || '';
-
-    } else if (type === 'learning_support') {
-        const required = ['responseToIntervention','academicEffort','focusAttention','independenceInTasks','progressTowardsGoals'];
-        if (required.some(k => !window.evalRatings[k])) { alert('Please rate all Learning Support metrics.'); return; }
-        payload.ratings = { responseToIntervention: window.evalRatings.responseToIntervention, academicEffort: window.evalRatings.academicEffort, focusAttention: window.evalRatings.focusAttention, independenceInTasks: window.evalRatings.independenceInTasks, progressTowardsGoals: window.evalRatings.progressTowardsGoals };
-        payload.written = { concerns: document.getElementById('evalLsConcerns')?.value.trim() || '', interventions: document.getElementById('evalLsInterventions')?.value.trim() || '', goals: document.getElementById('evalLsGoals')?.value.trim() || '' };
-        payload.supportLevel = document.getElementById('evalLsLevel')?.value || '';
-
-    } else if (type === 'custom') {
-        const customName = document.getElementById('evalCustomTypeName')?.value.trim();
-        if (!customName) { alert('Please enter a name for this evaluation.'); return; }
-        payload.customTypeName = customName;
-        payload.ratings = { overallPerformance: window.evalRatings.overallPerformance, effortEngagement: window.evalRatings.effortEngagement, socialSkills: window.evalRatings.socialSkills, workQuality: window.evalRatings.workQuality, progressTowardsGoals: window.evalRatings.customProgressGoals };
-        payload.written = { notes: document.getElementById('evalCustomNotes')?.value.trim() || '' };
-    }
-
-    btn.textContent = 'Saving...'; btn.disabled = true;
-    try {
-        await addDoc(collection(db, 'students', currentStudentId, 'evaluations'), payload);
-        window.closeEvalModal();
-        await window.loadStudentEvaluations(currentStudentId);
-    } catch (e) {
-        console.error('[Roster] saveEvaluation:', e);
-        alert('Failed to save evaluation.');
-    }
-    btn.textContent = 'Save to Formal Record'; btn.disabled = false;
-};
-
-window.loadStudentEvaluations = async function(studentId) {
-    const list  = document.getElementById('evaluationsList');
-    const noMsg = document.getElementById('noEvaluationsMsg');
-    list.innerHTML    = '';
-    cachedEvaluations = [];
-
-    try {
-        const snap = await getDocs(query(
-            collection(db, 'students', studentId, 'evaluations'),
-            where('schoolId', '==', session.schoolId)
-        ));
-        snap.forEach(d => cachedEvaluations.push({ id: d.id, ...d.data() }));
-        cachedEvaluations.sort((a,b) => new Date(b.date) - new Date(a.date));
-
-        if (!cachedEvaluations.length) {
-            noMsg.classList.remove('hidden');
-        } else {
-            noMsg.classList.add('hidden');
-            cachedEvaluations.forEach(ev => {
-                let badgeStyle = '', typeLabel = '', highlightText = '';
-
-                if (ev.type === 'academic') {
-                    badgeStyle = 'background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;';
-                    typeLabel  = 'Academic Progress';
-                } else if (ev.type === 'academic_report_card') {
-                    const isM  = ev.reportCardType === 'midterm';
-                    badgeStyle = isM
-                        ? 'background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;'
-                        : 'background:#edf7f1;color:#065f46;border:1px solid #a7f3d0;';
-                    typeLabel  = isM ? 'Midterm Report Card' : 'Report Card';
-                } else if (ev.type === 'end_of_year') {
-                    badgeStyle    = 'background:#fef3c7;color:#b45309;border:1px solid #fde68a;';
-                    typeLabel     = 'Comprehensive End-of-Year';
-                    highlightText = `<div style="margin-top:10px;padding:6px 10px;background:#f8fafb;border-radius:4px;font-size:11px;font-weight:700;color:#0d1f35;"><i class="fa-solid fa-award" style="color:#f59e0b;margin-right:5px;"></i> Status: ${escHtml(ev.status)}</div>`;
-                } else if (ev.type === 'behavioral') {
-                    badgeStyle    = 'background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;';
-                    typeLabel     = 'Behavioral & Conduct Intervention';
-                    highlightText = ev.status && ev.status !== 'No Action' ? `<div style="margin-top:10px;padding:6px 10px;background:#fff0f3;border-radius:4px;font-size:11px;font-weight:700;color:#be1240;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:5px;"></i> Action: ${escHtml(ev.status)}</div>` : '';
-                } else if (ev.type === 'midterm_review') {
-                    badgeStyle = 'background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;';
-                    typeLabel  = 'Mid-Term Review';
-                } else if (ev.type === 'parent_conference') {
-                    badgeStyle = 'background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;';
-                    typeLabel  = 'Parent Conference';
-                } else if (ev.type === 'learning_support') {
-                    badgeStyle = 'background:#fdf4ff;color:#9333ea;border:1px solid #e9d5ff;';
-                    typeLabel  = 'Learning Support Plan';
-                } else if (ev.type === 'custom') {
-                    badgeStyle = 'background:#f8fafc;color:#475569;border:1px solid #cbd5e1;';
-                    typeLabel  = ev.customTypeName || 'Custom Evaluation';
-                } else {
-                    badgeStyle = 'background:#f8fafc;color:#475569;border:1px solid #cbd5e1;';
-                    typeLabel  = ev.type || 'Evaluation';
-                }
-
-                const card = document.createElement('div');
-                card.style.cssText = 'background:#fff;border:1px solid #dce3ed;border-radius:4px;padding:16px;display:flex;flex-direction:column;gap:8px;';
-                card.innerHTML = `
-                    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+    <!-- ── ARCHIVE MODAL ─────────────────────────────────────────────────── -->
+    <div id="archiveModal" class="modal-overlay hidden opacity-0" style="z-index:70;">
+        <div class="modal-box" id="archiveModalInner" style="width:100%;max-width:480px;">
+            <div class="modal-stripe" style="background:linear-gradient(90deg,#dc2626,#9f1239);"></div>
+            <div class="modal-header">
+                <div class="modal-header-left">
+                    <div class="modal-icon" style="background:#fee2e2;color:#dc2626;border:1px solid #fecaca;"><i class="fa-solid fa-box-archive"></i></div>
+                    <span class="modal-title">Archive Student</span>
+                </div>
+                <button onclick="window.closeArchiveModal()" class="modal-close"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body" style="display:flex;flex-direction:column;gap:16px;">
+                <p style="font-size:13px;color:#374f6b;margin:0;line-height:1.6;">Select how you want to archive <strong id="archiveStudentName" style="color:#0d1f35;"></strong>.</p>
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                    <label style="display:flex;align-items:flex-start;gap:12px;padding:14px;border:1px solid #c5d0db;border-radius:4px;cursor:pointer;">
+                        <input type="radio" name="archiveType" id="optArchive" value="archive" checked onchange="window.toggleArchiveType()">
                         <div>
-                            <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:99px;text-transform:uppercase;letter-spacing:0.05em;${badgeStyle}">${typeLabel}</span>
-                            <h4 style="font-size:14px;font-weight:700;color:#0d1f35;margin:8px 0 2px;">${escHtml(ev.semesterName)}</h4>
-                            <p style="font-size:11px;color:#6b84a0;margin:0;">Filed by ${escHtml(ev.teacherName)} on ${ev.date}</p>
+                            <p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#0d1f35;">Internal Archive (Keep Enrolled)</p>
+                            <p style="margin:0;font-size:11.5px;color:#6b84a0;line-height:1.4;">Student is removed from active class rosters but remains tied to your school.</p>
+                        </div>
+                    </label>
+                    <label style="display:flex;align-items:flex-start;gap:12px;padding:14px;border:1px solid #c5d0db;border-radius:4px;cursor:pointer;">
+                        <input type="radio" name="archiveType" id="optRelease" value="release" onchange="window.toggleArchiveType()">
+                        <div>
+                            <p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#0d1f35;">Close Enrollment (Release Student)</p>
+                            <p style="margin:0;font-size:11.5px;color:#6b84a0;line-height:1.4;">Releases their Global ID so another school can claim them.</p>
+                        </div>
+                    </label>
+                </div>
+                <div id="releaseFields" class="hidden" style="display:flex;flex-direction:column;gap:14px;padding-top:8px;">
+                    <div><label class="field-label">Departure Reason (Required)</label>
+                        <select id="releaseReason" class="form-input">
+                            <option value="">Select reason...</option>
+                            <option value="Transferred">Transferred to Another School</option>
+                            <option value="Graduated">Graduated</option>
+                            <option value="Expelled">Expelled</option>
+                            <option value="Dropped Out">Dropped Out</option>
+                        </select>
+                    </div>
+                </div>
+                <div><label class="field-label">Notes (Optional)</label><textarea id="archiveNotes" class="form-input" style="height:70px;resize:none;"></textarea></div>
+                <button id="confirmArchiveBtn" style="width:100%;padding:11px;background:#dc2626;border:none;border-radius:3px;color:#fff;font-size:13.5px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;"><i class="fa-solid fa-box-archive"></i> Confirm Action</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── STUDENT PANEL ─────────────────────────────────────────────────── -->
+    <div id="studentPanel" class="modal-overlay hidden opacity-0" style="padding:12px;">
+        <div id="studentPanelInner">
+            <div class="panel-top-stripe"></div>
+            <div class="panel-header">
+                <div>
+                    <h2 id="sPanelName" class="panel-student-name">Student</h2>
+                    <p id="sPanelMeta" class="panel-student-meta">—</p>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <button id="spQuickGradeBtn2" class="btn-sharp btn-sharp-green"><i class="fa-solid fa-plus" style="font-size:11px;"></i> Enter Grade</button>
+                    <button onclick="window.promoteCurrentStudent()" class="btn-sharp btn-sharp-primary"><i class="fa-solid fa-arrow-up-right-dots" style="font-size:11px;"></i> Promote</button>
+                    <button onclick="window.closeStudentPanel()" class="modal-close"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            </div>
+            <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;position:relative;">
+                <div id="sPanelLoader" style="position:absolute;inset:0;background:rgba(255,255,255,0.85);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;">
+                    <i class="fa-solid fa-circle-notch fa-spin" style="font-size:28px;color:#0ea871;"></i>
+                    <span style="font-size:12px;color:#6b84a0;font-weight:500;">Loading student record…</span>
+                </div>
+                <div id="sViewMode" class="hidden" style="flex:1;display:flex;overflow:hidden;">
+                    <!-- LEFT SIDEBAR -->
+                    <div style="width:280px;flex-shrink:0;background:#fff;border-right:1px solid #dce3ed;overflow-y:auto;display:flex;flex-direction:column;">
+                        <div style="padding:20px 20px 0;">
+                            <span style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#6b84a0;display:block;margin-bottom:12px;">Profile</span>
+                            <div id="sInfoGrid" style="border-top:1px solid #f0f4f8;"></div>
+                        </div>
+                        <div style="margin:12px 16px 0;padding:14px;background:#f8fafb;border:1px solid #c5d0db;border-radius:4px;">
+                            <label class="field-label">Class Assignment</label>
+                            <select id="editSClass" class="form-input" onchange="window.checkClassChange()" style="margin-bottom:8px;"></select>
+                            <div id="editSClassReasonWrap" class="hidden" style="margin-bottom:8px;">
+                                <label class="field-label" style="color:#e31b4a;">Reason for Class Change *</label>
+                                <input type="text" id="editSClassReason" placeholder="Required" class="form-input" style="border-color:#fecaca;">
+                            </div>
+                            <button id="saveClassBtn" onclick="window.saveStudentClass()" style="width:100%;padding:7px;background:#0ea871;border:none;border-radius:3px;color:#fff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;">Save Class</button>
+                            <p id="editClassMsg" class="hidden" style="font-size:11px;font-weight:600;padding:6px;border-radius:3px;text-align:center;margin-top:6px;"></p>
+                        </div>
+                        <div style="margin:12px 16px 0;padding:14px;background:#f0f4ff;border:1px solid #c7d2fe;border-radius:4px;">
+                            <p style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#4f46e5;margin:0 0 6px;"><i class="fa-solid fa-key" style="margin-right:4px;"></i>Parent Login PIN</p>
+                            <p style="font-size:11px;color:#6b84a0;margin:0 0 10px;line-height:1.5;">Send the parent a secure reset link to set or recover their PIN.</p>
+                            <button id="pinResetEmailBtn" onclick="window.sendPinResetEmail()" style="width:100%;padding:7px;background:#4f46e5;border:none;border-radius:3px;color:#fff;font-size:11.5px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;"><i class="fa-solid fa-envelope"></i> Send PIN Reset Email</button>
+                        </div>
+                        <div style="margin:auto 16px 16px;padding-top:12px;border-top:1px solid #f0f4f8;margin-top:16px;">
+                            <button onclick="window.archiveStudent()" style="width:100%;padding:9px;background:#fffbeb;border:1px solid #fde68a;border-radius:3px;color:#78350f;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;"><i class="fa-solid fa-box-archive"></i> Archive This Student</button>
                         </div>
                     </div>
-                    ${highlightText}
-                `;
-                list.appendChild(card);
-            });
-        }
-    } catch (e) {
-        console.error('[Roster] loadStudentEvaluations:', e);
-        noMsg.classList.remove('hidden');
-    }
-};
-
-// ── 12. REPORT CARD ───────────────────────────────────────────────────────
-
-// ── RC star ratings ───────────────────────────────────────────────────────
-window.buildRcStarGroups = function() {
-    document.querySelectorAll('.rc-rating-row').forEach(row => {
-        const field = row.dataset.field;
-        const group = row.querySelector('.rc-star-group');
-        if (!group) return;
-        group.innerHTML = [1,2,3,4,5].map(n =>
-            `<button type="button" class="star-btn" data-val="${n}" data-rcfield="${field}"
-              onmouseover="window.hoverRcStars('${field}',${n})"
-              onmouseout="window.renderRcStars('${field}')"
-              onclick="window.setRcRating('${field}',${n})">★</button>`
-        ).join('');
-        window.renderRcStars(field);
-    });
-};
-
-window.renderRcStars = function(field) {
-    const val = window.rcRatings[field] || 0;
-    document.querySelectorAll(`[data-rcfield="${field}"]`).forEach(btn => {
-        if (btn.tagName === 'BUTTON') btn.classList.toggle('star-active', parseInt(btn.dataset.val) <= val);
-    });
-};
-
-window.hoverRcStars = function(field, val) {
-    document.querySelectorAll(`[data-rcfield="${field}"]`).forEach(btn => {
-        if (btn.tagName === 'BUTTON') btn.classList.toggle('star-active', parseInt(btn.dataset.val) <= val);
-    });
-};
-
-window.setRcRating = function(field, val) {
-    window.rcRatings[field] = val;
-    window.renderRcStars(field);
-};
-
-// ── Midterm availability check — fetches FRESH from Firestore (not cache) ─
-async function checkMidtermAvailability() {
-    if (selectedRcType !== 'midterm') return;
-
-    const semId = document.getElementById('rcSemester')?.value;
-    const info  = document.getElementById('rcMidtermInfo');
-    if (!info || !semId) return;
-
-    info.innerHTML = `<div style="padding:10px;text-align:center;color:#9ab0c6;font-size:12px;"><i class="fa-solid fa-spinner fa-spin" style="margin-right:6px;"></i>Checking midterm…</div>`;
-    info.classList.remove('hidden');
-
-    try {
-        // Always fetch directly from Firestore — never trust the localStorage cache for midterm data
-        const semSnap = await getDoc(doc(db, 'schools', session.schoolId, 'semesters', semId));
-
-        if (!semSnap.exists() || !semSnap.data().midterm) {
-            selectedMidtermData = null;
-            info.innerHTML = `
-                <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:3px;padding:12px;display:flex;align-items:flex-start;gap:10px;">
-                    <i class="fa-solid fa-triangle-exclamation" style="color:#d97706;margin-top:1px;flex-shrink:0;font-size:13px;"></i>
-                    <div>
-                        <p style="font-size:12px;font-weight:700;color:#78350f;margin:0 0 3px;">No midterm configured for this term</p>
-                        <p style="font-size:11px;color:#92400e;margin:0;line-height:1.5;">Ask your administrator to add a midterm date range to this grading period before generating a midterm report card.</p>
+                    <!-- RIGHT PANEL -->
+                    <div style="flex:1;display:flex;flex-direction:column;background:#f8fafb;overflow:hidden;min-width:0;">
+                        <div style="background:#fff;border-bottom:1px solid #dce3ed;display:flex;padding:0 20px;flex-shrink:0;">
+                            <button id="tabBtnGrades" onclick="window.switchStudentTab('grades')" style="padding:14px 16px;font-size:13px;font-weight:700;color:#0d1f35;border-bottom:2px solid #0ea871;background:none;cursor:pointer;border-top:none;border-left:none;border-right:none;">Grades &amp; Assessments</button>
+                            <button id="tabBtnEvaluations" onclick="window.switchStudentTab('evaluations')" style="padding:14px 16px;font-size:13px;font-weight:600;color:#6b84a0;border-bottom:2px solid transparent;background:none;cursor:pointer;border-top:none;border-left:none;border-right:none;transition:color 0.15s;">Formal Evaluations</button>
+                        </div>
+                        <!-- GRADES TAB -->
+                        <div id="tabContentGrades" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+                            <div style="padding:14px 20px;border-bottom:1px solid #dce3ed;background:#fff;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;flex-shrink:0;">
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <i class="fa-solid fa-graduation-cap" style="font-size:12px;color:#0ea871;"></i>
+                                    <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#374f6b;">Grade Records — <span id="sPanelSemName" style="color:#0ea871;"></span></span>
+                                </div>
+                                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                    <div class="control-group" style="border-radius:3px;">
+                                        <span class="control-group-label" style="font-size:9px;">Subject</span>
+                                        <select id="sPanelFilterSubject" onchange="window.renderStudentGrades()" class="control-select" style="min-width:80px;"><option value="">All</option></select>
+                                    </div>
+                                    <div class="control-group" style="border-radius:3px;">
+                                        <span class="control-group-label" style="font-size:9px;">Type</span>
+                                        <select id="sPanelFilterType" onchange="window.renderStudentGrades()" class="control-select" style="min-width:80px;"><option value="">All</option></select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="flex:1;overflow-y:auto;padding:16px 20px;">
+                                <div id="subjectAccordions" style="display:flex;flex-direction:column;gap:10px;"></div>
+                                <div id="noGradesMsg" class="hidden" style="padding:48px 20px;text-align:center;color:#9ab0c6;font-size:13px;">
+                                    <i class="fa-solid fa-folder-open" style="font-size:28px;display:block;margin-bottom:10px;color:#c5d0db;"></i>
+                                    No records match the current filters.
+                                </div>
+                            </div>
+                        </div>
+                        <!-- EVALUATIONS TAB -->
+                        <div id="tabContentEvaluations" class="hidden" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+                            <div style="padding:14px 20px;border-bottom:1px solid #dce3ed;background:#fff;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;flex-wrap:wrap;gap:8px;">
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <i class="fa-solid fa-clipboard-user" style="font-size:12px;color:#0d1f35;"></i>
+                                    <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#374f6b;">Formal History &amp; Reports</span>
+                                </div>
+                                <div style="display:flex;gap:8px;">
+                                    <button onclick="window.openReportCardModal()" class="btn-sharp btn-sharp-outline"><i class="fa-solid fa-file-invoice" style="font-size:11px;"></i> Generate Report Card</button>
+                                    <button onclick="window.openEvalModal()" class="btn-sharp btn-sharp-primary"><i class="fa-solid fa-plus" style="font-size:11px;"></i> New Evaluation</button>
+                                </div>
+                            </div>
+                            <div style="flex:1;overflow-y:auto;padding:16px 20px;">
+                                <div id="evaluationsList" style="display:flex;flex-direction:column;gap:12px;"></div>
+                                <div id="noEvaluationsMsg" class="hidden" style="padding:48px 20px;text-align:center;color:#9ab0c6;font-size:13px;">
+                                    <i class="fa-regular fa-file-lines" style="font-size:28px;display:block;margin-bottom:10px;color:#c5d0db;"></i>
+                                    No formal evaluations have been filed.
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                </div>`;
-        } else {
-            const semData = semSnap.data();
-            selectedMidtermData = semData.midterm;
-            const semName = semData.name || 'this term';
-            info.innerHTML = `
-                <div style="background:#edfaf4;border:1px solid #a7f3d0;border-radius:3px;padding:12px;display:flex;align-items:flex-start;gap:10px;">
-                    <i class="fa-solid fa-flag-checkered" style="color:#0ea871;margin-top:1px;flex-shrink:0;font-size:13px;"></i>
-                    <div>
-                        <p style="font-size:12px;font-weight:700;color:#065f46;margin:0 0 3px;">${escHtml(semData.midterm.name || 'Midterm')} — ${escHtml(semName)}</p>
-                        <p style="font-size:11px;color:#047857;margin:0;line-height:1.5;">Grades from <strong>${escHtml(semData.midterm.startDate)}</strong> to <strong>${escHtml(semData.midterm.endDate)}</strong> will be included in this report card.</p>
-                    </div>
-                </div>`;
-        }
-    } catch (e) {
-        console.error('[Roster] checkMidtermAvailability:', e);
-        selectedMidtermData = null;
-        info.innerHTML = `
-            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:3px;padding:12px;">
-                <p style="font-size:12px;font-weight:700;color:#b91c1c;margin:0;">Could not verify midterm. Please try again.</p>
-            </div>`;
-    }
-}
-
-// ── Report card type selector ─────────────────────────────────────────────
-window.selectRcType = function(type) {
-    selectedRcType = type;
-
-    const termBtn    = document.getElementById('rcTypeTerm');
-    const midtermBtn = document.getElementById('rcTypeMidterm');
-    const info       = document.getElementById('rcMidtermInfo');
-
-    if (type === 'term') {
-        if (termBtn)    { termBtn.style.background = '#0d1f35'; termBtn.style.borderColor = '#0d1f35'; termBtn.style.color = '#fff'; }
-        if (midtermBtn) { midtermBtn.style.background = '#fff'; midtermBtn.style.borderColor = '#c5d0db'; midtermBtn.style.color = '#6b84a0'; }
-        if (info) { info.innerHTML = ''; info.classList.add('hidden'); }
-        selectedMidtermData = null;
-    } else {
-        if (midtermBtn) { midtermBtn.style.background = '#0ea871'; midtermBtn.style.borderColor = '#0ea871'; midtermBtn.style.color = '#fff'; }
-        if (termBtn)    { termBtn.style.background = '#fff'; termBtn.style.borderColor = '#c5d0db'; termBtn.style.color = '#6b84a0'; }
-        checkMidtermAvailability();
-    }
-};
-
-// ── Open report card modal ────────────────────────────────────────────────
-window.openReportCardModal = function() {
-    // Reset type state
-    selectedRcType      = 'term';
-    selectedMidtermData = null;
-
-    // Reset type button visual to default (term selected)
-    const termBtn    = document.getElementById('rcTypeTerm');
-    const midtermBtn = document.getElementById('rcTypeMidterm');
-    if (termBtn)    { termBtn.style.background = '#0d1f35'; termBtn.style.borderColor = '#0d1f35'; termBtn.style.color = '#fff'; }
-    if (midtermBtn) { midtermBtn.style.background = '#fff'; midtermBtn.style.borderColor = '#c5d0db'; midtermBtn.style.color = '#6b84a0'; }
-
-    // Clear midterm info
-    const info = document.getElementById('rcMidtermInfo');
-    if (info) { info.innerHTML = ''; info.classList.add('hidden'); }
-
-    // Reset ratings and fields
-    Object.keys(window.rcRatings).forEach(k => { window.rcRatings[k] = 0; });
-    ['rcTotalSessions','rcDaysAbsent','rcDaysLate','rcComment'].forEach(id => {
-        const el = document.getElementById(id); if (el) el.value = '';
-    });
-
-    // Populate semester dropdown
-    const rcSem        = document.getElementById('rcSemester');
-    const activeSemVal = document.getElementById('activeSemester')?.value;
-    rcSem.innerHTML    = '';
-    rawSemesters.forEach(s => {
-        const opt = document.createElement('option');
-        opt.value = s.id; opt.textContent = s.name;
-        if (s.id === activeSemVal) opt.selected = true;
-        rcSem.appendChild(opt);
-    });
-
-    // Re-check midterm whenever semester changes
-    rcSem.onchange = () => checkMidtermAvailability();
-
-    openOverlay('reportCardModal', 'reportCardModalInner');
-    window.buildRcStarGroups();
-};
-
-window.closeReportCardModal = function() { closeOverlay('reportCardModal', 'reportCardModalInner'); };
-
-// ── Save & generate ───────────────────────────────────────────────────────
-window.saveAndGenerateReportCard = async function() {
-    const semId   = document.getElementById('rcSemester').value;
-    const semName = document.getElementById('rcSemester').options[document.getElementById('rcSemester').selectedIndex]?.text || '';
-    const btn     = document.getElementById('btnSaveGenerate');
-
-    if (!semId) { alert('Please select a grading period.'); return; }
-
-    if (selectedRcType === 'midterm' && !selectedMidtermData) {
-        alert('No midterm has been configured for this term.\n\nPlease ask your administrator to add a midterm date range to this grading period first.');
-        return;
-    }
-
-    const missingRatings = Object.entries(window.rcRatings).filter(([, v]) => !v);
-    if (missingRatings.length > 0) {
-        alert(`Please complete all ratings before generating the report card. ${missingRatings.length} field(s) still need a rating.`);
-        return;
-    }
-
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
-    btn.disabled  = true;
-
-    const payload = {
-        type:           'academic_report_card',
-        reportCardType: selectedRcType,
-        schoolId:       session.schoolId,
-        teacherId:      session.teacherId,
-        teacherName:    session.teacherData.name,
-        semesterId:     semId,
-        semesterName:   semName,
-        date:           new Date().toISOString().split('T')[0],
-        createdAt:      new Date().toISOString(),
-        attendance: {
-            totalSessions: parseInt(document.getElementById('rcTotalSessions').value) || 0,
-            daysAbsent:    parseInt(document.getElementById('rcDaysAbsent').value)    || 0,
-            daysLate:      parseInt(document.getElementById('rcDaysLate').value)      || 0
-        },
-        ratings: { ...window.rcRatings },
-        comment: document.getElementById('rcComment').value.trim()
-    };
-
-    if (selectedRcType === 'midterm' && selectedMidtermData) {
-        payload.midterm = selectedMidtermData;
-    }
-
-    try {
-        const docId = selectedRcType === 'midterm'
-            ? `${currentStudentId}_${semId}_midterm_rc`
-            : `${currentStudentId}_${semId}_rc`;
-
-        await setDoc(doc(db, 'students', currentStudentId, 'evaluations', docId), payload);
-        await window.loadStudentEvaluations(currentStudentId);
-        window.closeReportCardModal();
-        generateFormalReportCardPDF(payload, semName, selectedRcType, selectedMidtermData);
-    } catch (e) {
-        console.error('[Roster] saveAndGenerateReportCard:', e);
-        alert('Failed to save. Please try again.');
-    }
-
-    btn.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Save & Generate Report Card';
-    btn.disabled  = false;
-};
-
-// ── PDF generator ─────────────────────────────────────────────────────────
-function generateFormalReportCardPDF(ev, semName, reportType = 'term', midtermData = null) {
-    const student    = allStudentsCache.find(s => s.id === currentStudentId);
-    if (!student)    return;
-    const schoolName = resolvedSchoolName || session.schoolName || 'ConnectUs School';
-
-    // Filter grades by midterm date range if applicable
-    let gradesToUse = [...currentStudentGradesCache];
-    if (reportType === 'midterm' && midtermData?.startDate && midtermData?.endDate) {
-        const start = new Date(midtermData.startDate);
-        const end   = new Date(midtermData.endDate);
-        gradesToUse = gradesToUse.filter(g => {
-            if (!g.date) return false;
-            const d = new Date(g.date);
-            return d >= start && d <= end;
-        });
-    }
-
-    const reportTitle    = reportType === 'midterm' ? 'MIDTERM REPORT CARD' : 'OFFICIAL GRADE REPORT';
-    const reportSubtitle = reportType === 'midterm' && midtermData
-        ? `${midtermData.name || 'Midterm'} · ${semName} · ${midtermData.startDate} – ${midtermData.endDate}`
-        : semName;
-
-    const bySub = {};
-    gradesToUse.forEach(g => {
-        const sub = g.subject || 'Uncategorized';
-        if (!bySub[sub]) bySub[sub] = [];
-        bySub[sub].push(g);
-    });
-
-    const cumulativeAvg = gradesToUse.length
-        ? calculateWeightedAverage(gradesToUse, session.teacherData.gradeTypes || getGradeTypes())
-        : 0;
-    const gpaLetter = cumulativeAvg > 0 ? letterGrade(cumulativeAvg) : 'N/A';
-
-    // Rating helpers
-    const ratingLabel = v =>
-        v >= 5 ? 'Exceptional' :
-        v === 4 ? 'Developing Well' :
-        v === 3 ? 'Developing' :
-        v === 2 ? 'Needs Improvement' :
-        v >= 1  ? 'Unsatisfactory' : '—';
-
-    const starDisplay = v =>
-        [1,2,3,4,5].map(n =>
-            `<span style="color:${n <= v ? '#f59e0b' : '#dce3ed'};font-size:14px;">★</span>`
-        ).join('');
-
-    // Rating legend HTML — used in both enrichment and learning behaviours sections
-    const ratingLegendHtml = `
-        <div style="font-size:9px;color:#374f6b;background:#f8fafc;padding:7px 12px;border-radius:4px;margin-bottom:12px;border:1px solid #e2e8f0;line-height:2;">
-            <span style="color:#f59e0b;font-size:11px;">★★★★★</span> <strong>5 — Exceptional:</strong> Consistently exceeds expectations &nbsp;&nbsp;
-            <span style="color:#f59e0b;font-size:11px;">★★★★</span><span style="color:#dce3ed;font-size:11px;">★</span> <strong>4 — Developing Well:</strong> Frequently meets and sometimes exceeds &nbsp;&nbsp;
-            <span style="color:#f59e0b;font-size:11px;">★★★</span><span style="color:#dce3ed;font-size:11px;">★★</span> <strong>3 — Developing:</strong> Generally meets expectations with some guidance &nbsp;&nbsp;
-            <span style="color:#f59e0b;font-size:11px;">★★</span><span style="color:#dce3ed;font-size:11px;">★★★</span> <strong>2 — Needs Improvement:</strong> Partially meets, requires consistent support &nbsp;&nbsp;
-            <span style="color:#f59e0b;font-size:11px;">★</span><span style="color:#dce3ed;font-size:11px;">★★★★</span> <strong>1 — Unsatisfactory:</strong> Rarely meets expectations, requires immediate intervention
-        </div>`;
-
-    // Academic grades table
-    const gradesHtml = Object.keys(bySub).length === 0
-        ? `<tr><td colspan="3" style="text-align:center;padding:30px;color:#64748b;font-style:italic;">No grades recorded for this period.</td></tr>`
-        : Object.entries(bySub).sort((a,b) => a[0].localeCompare(b[0])).map(([sub, gList]) => {
-            const subAvg = calculateWeightedAverage(gList, session.teacherData.gradeTypes || getGradeTypes());
-            return `<tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:10px 15px;font-weight:700;color:#1e293b;">${escHtml(sub)}</td>
-                <td style="padding:10px 15px;text-align:center;font-weight:700;">${subAvg}%</td>
-                <td style="padding:10px 15px;text-align:center;font-weight:800;font-family:monospace;">${letterGrade(subAvg)}</td>
-            </tr>`;
-        }).join('');
-
-    // Enrichment & Character Development — with descriptors, stars, and label
-    const enrichmentRows = [
-        ['Character & Values',           'Honesty, integrity, and ethical behaviour in daily interactions',          ev.ratings.characterValues],
-        ['Respect & Courtesy',           'Respectful treatment of peers, teachers, and the school environment',      ev.ratings.respectCourtesy],
-        ['Responsibility & Reliability', 'Taking ownership of tasks, duties, and personal belongings',              ev.ratings.responsibilityReliability],
-        ['Cooperation & Teamwork',       'Working constructively with others in group and classroom settings',       ev.ratings.cooperationTeamwork],
-        ['Leadership & Initiative',      'Volunteering, taking the lead, and showing self-driven motivation',        ev.ratings.leadershipInitiative],
-        ['Cultural Awareness & Pride',   'Appreciation of Belizean and Caribbean culture, history, and heritage',   ev.ratings.culturalAwareness],
-    ].map(([label, desc, val]) => `
-        <tr style="border-bottom:1px solid #e2e8f0;">
-            <td style="padding:9px 15px;">
-                <p style="font-weight:700;color:#1e293b;margin:0 0 2px;font-size:12px;">${label}</p>
-                <p style="font-size:10px;color:#64748b;margin:0;font-style:italic;">${desc}</p>
-            </td>
-            <td style="padding:9px 15px;text-align:center;">${starDisplay(val || 0)}</td>
-            <td style="padding:9px 15px;text-align:center;font-size:11px;font-weight:700;color:#1e1b4b;">${ratingLabel(val || 0)}</td>
-        </tr>`).join('');
-
-    // Learning Behaviours — stars and label
-    const learningRows = [
-        ['Behavior',                      ev.ratings.behavior],
-        ['Organization',                  ev.ratings.organization],
-        ['Respectfulness',                ev.ratings.respectfulness],
-        ['Kindness',                      ev.ratings.kindness],
-        ['Attitude Towards Work',         ev.ratings.attitudeWork],
-        ['Attitude Towards Peers',        ev.ratings.attitudePeers],
-        ['Academic Comprehension',        ev.ratings.academicComprehension],
-        ['Effort & Resilience',           ev.ratings.effortResilience],
-        ['Participation & Engagement',    ev.ratings.participation],
-        ['Attendance & Punctuality',      ev.ratings.punctualityRating],
-    ].map(([label, val]) => `
-        <tr style="border-bottom:1px solid #e2e8f0;">
-            <td style="padding:9px 15px;font-weight:600;color:#334155;">${label}</td>
-            <td style="padding:9px 15px;text-align:center;">${starDisplay(val || 0)}</td>
-            <td style="padding:9px 15px;text-align:center;font-size:11px;font-weight:700;color:#1e1b4b;">${ratingLabel(val || 0)}</td>
-        </tr>`).join('');
-
-    const html = `<!DOCTYPE html><html><head><title>${reportTitle} — ${escHtml(student.name)}</title>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
-*{box-sizing:border-box;}
-body{font-family:'Nunito',sans-serif;padding:36px 44px;color:#0f172a;line-height:1.5;margin:0 auto;max-width:8.5in;font-size:13px;}
-.hf{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #1e1b4b;padding-bottom:16px;margin-bottom:18px;}
-.logo{max-height:72px;max-width:220px;object-fit:contain;}
-.ht{text-align:right;}
-.ht h1{margin:0 0 4px;font-size:22px;font-weight:900;text-transform:uppercase;color:#1e1b4b;}
-.ht h2{margin:0;font-size:12px;color:#64748b;font-weight:700;letter-spacing:2px;}
-.ht h3{margin:4px 0 0;font-size:11px;color:#94a3b8;font-weight:600;}
-.si{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:14px 18px;margin-bottom:20px;}
-.si-item{display:flex;flex-direction:column;gap:3px;}
-.il{font-size:9px;text-transform:uppercase;color:#64748b;font-weight:800;letter-spacing:1px;}
-.iv{font-size:14px;font-weight:800;color:#0f172a;}
-h3{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:#fff;background:#1e1b4b;padding:8px 12px;border-radius:4px;margin:0 0 10px;}
-table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:0;}
-th{background:#f1f5f9;color:#475569;padding:8px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;border-bottom:2px solid #cbd5e1;}
-th.c{text-align:center;}
-td{border-bottom:1px solid #e2e8f0;padding:8px 12px;color:#334155;}
-.att{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;}
-.ac{background:#f8fafc;border:1px solid #cbd5e1;padding:9px;text-align:center;border-radius:6px;}
-.al{display:block;font-size:9px;font-weight:800;color:#64748b;text-transform:uppercase;}
-.av{font-size:18px;font-weight:900;color:#1e1b4b;}
-.cb{border:1px solid #cbd5e1;border-radius:6px;padding:14px;background:#fff;min-height:70px;margin-bottom:20px;}
-.cl{font-size:10px;font-weight:800;color:#1e1b4b;text-transform:uppercase;margin-bottom:6px;display:block;}
-.fs{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:36px;}
-.sl{border-top:1px solid #000;padding-top:7px;font-size:11px;font-weight:700;text-align:center;color:#1e1b4b;}
-.sec{margin-bottom:22px;}
-</style></head><body>
-
-<div class="hf">
-    <div class="ht" style="text-align:left;">
-        <h1>${escHtml(schoolName)}</h1>
-        <h2>${reportTitle}</h2>
-        <h3>${escHtml(reportSubtitle)}</h3>
-    </div>
-</div>
-
-<div class="si">
-    <div class="si-item"><span class="il">Student Name</span><span class="iv">${escHtml(student.name)}</span></div>
-    <div class="si-item"><span class="il">Class</span><span class="iv">${escHtml(student.className||'Unassigned')}</span></div>
-    <div class="si-item"><span class="il">Teacher</span><span class="iv">${escHtml(ev.teacherName)}</span></div>
-    <div class="si-item"><span class="il">Grading Period</span><span class="iv">${escHtml(semName)}</span></div>
-    <div class="si-item"><span class="il">Date Issued</span><span class="iv">${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</span></div>
-    <div class="si-item"><span class="il">Period Average</span><span class="iv">${cumulativeAvg}% (${gpaLetter})</span></div>
-</div>
-
-<div class="sec">
-    <h3>Academic Performance</h3>
-    <table>
-        <thead><tr><th>Subject</th><th class="c">Average</th><th class="c">Grade</th></tr></thead>
-        <tbody>${gradesHtml}</tbody>
-    </table>
-</div>
-
-<div class="sec">
-    <h3>Enrichment &amp; Character Development</h3>
-    ${ratingLegendHtml}
-    <table>
-        <thead><tr><th>Metric</th><th class="c">Rating</th><th class="c">Assessment</th></tr></thead>
-        <tbody>${enrichmentRows}</tbody>
-    </table>
-</div>
-
-<div class="sec">
-    <h3>Learning Behaviours &amp; Social Growth</h3>
-    ${ratingLegendHtml}
-    <table>
-        <thead><tr><th>Metric</th><th class="c">Rating</th><th class="c">Assessment</th></tr></thead>
-        <tbody>${learningRows}</tbody>
-    </table>
-</div>
-
-<div class="att">
-    <div class="ac"><span class="al">Total Sessions</span><span class="av">${ev.attendance.totalSessions}</span></div>
-    <div class="ac"><span class="al">Days Absent</span><span class="av">${ev.attendance.daysAbsent}</span></div>
-    <div class="ac"><span class="al">Days Late</span><span class="av">${ev.attendance.daysLate}</span></div>
-</div>
-
-<div class="cb">
-    <span class="cl">Teacher's Comments</span>
-    <p style="margin:0;font-size:12px;color:#334155;white-space:pre-wrap;line-height:1.6;">${escHtml(ev.comment||'No comments recorded.')}</p>
-</div>
-
-<div class="fs">
-    <div class="sl">Teacher's Signature &amp; Date</div>
-    <div class="sl">Principal's Signature &amp; Date</div>
-</div>
-
-</body></html>`;
-
-    const w = window.open('', '_blank');
-    w.document.write(html);
-    w.document.close();
-    setTimeout(() => w.print(), 800);
-}
-
-// ── 13. ASSIGNMENT MODAL ──────────────────────────────────────────────────
-window.openAssignmentModal = function(gradeId) {
-    const g = gradeDetailCache[gradeId]; if (!g) return;
-    const pct       = g.max ? Math.round(g.score/g.max*100) : null;
-    const fill      = gradeFill(pct||0);
-    const color     = pct>=90?'#065f46':pct>=80?'#1e3a8a':pct>=70?'#134e4a':pct>=65?'#78350f':'#7f1d1d';
-    const bg        = pct>=90?'#dcfce7':pct>=80?'#dbeafe':pct>=70?'#ccfbf1':pct>=65?'#fef3c7':'#fee2e2';
-    const bd        = pct>=90?'#bbf7d0':pct>=80?'#bfdbfe':pct>=70?'#99f6e4':pct>=65?'#fde68a':'#fecaca';
-    const adminNote = g.enteredByAdmin ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:12px;margin-bottom:12px;"><p style="font-size:9.5px;font-weight:700;text-transform:uppercase;color:#2563eb;margin:0 0 4px;">Admin Entry</p><p style="font-size:12px;color:#374f6b;margin:0;">Entered by ${escHtml(g.adminName||'Admin')}</p></div>` : '';
-    document.getElementById('aModalTitle').textContent = g.title || 'Assessment Detail';
-    document.getElementById('aModalBody').innerHTML = `<div style="text-align:center;margin-bottom:20px;"><div style="font-size:42px;font-weight:700;color:${color};font-family:'DM Mono',monospace;line-height:1;">${g.score}<span style="font-size:20px;color:#9ab0c6;"> / ${g.max||'?'}</span></div>${pct!==null?`<div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-top:8px;"><span style="font-size:18px;font-weight:700;color:${color};font-family:'DM Mono',monospace;">${pct}%</span><span style="font-size:14px;font-weight:700;padding:4px 14px;border-radius:3px;background:${bg};border:1px solid ${bd};color:${color};">${letterGrade(pct)}</span></div><div style="margin:12px 20px 0;height:8px;background:#f0f4f8;border-radius:2px;overflow:hidden;"><div style="height:100%;width:${Math.min(pct,100)}%;background:${fill};transition:width 0.5s ease;"></div></div>`:''}</div>${adminNote}<div style="display:flex;flex-direction:column;gap:0;margin-bottom:16px;border:1px solid #e8edf2;border-radius:4px;overflow:hidden;">${[['Subject',g.subject||'—'],['Type',g.type||'—'],['Class',g.className||'—'],['Date',g.date||'—']].map(([l,v],i)=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;${i<3?'border-bottom:1px solid #f0f4f8;':''}background:#fff;"><span style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#9ab0c6;">${l}</span><span style="font-size:13px;font-weight:600;color:#0d1f35;">${escHtml(v)}</span></div>`).join('')}</div>${g.notes?`<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:14px;margin-bottom:14px;"><p style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#1e3a8a;margin:0 0 6px;">Notes</p><p style="font-size:12.5px;color:#374f6b;font-weight:400;margin:0;line-height:1.6;white-space:pre-wrap;">${escHtml(g.notes)}</p></div>`:''}`;
-    openOverlay('assignmentModal', 'assignmentModalInner');
-};
-
-window.closeAssignmentModal = function() { closeOverlay('assignmentModal', 'assignmentModalInner'); };
-
-// ── 14. ARCHIVE ───────────────────────────────────────────────────────────
-window.archiveStudent = function() {
-    const s = allStudentsCache.find(x => x.id === currentStudentId);
-    document.getElementById('archiveStudentName').textContent = s ? s.name : 'this student';
-    document.getElementById('optArchive').checked = true;
-    window.toggleArchiveType();
-    document.getElementById('releaseReason').value = '';
-    document.getElementById('archiveNotes').value  = '';
-    openOverlay('archiveModal', 'archiveModalInner');
-};
-
-window.closeArchiveModal = function() { closeOverlay('archiveModal', 'archiveModalInner'); };
-
-window.toggleArchiveType = function() {
-    const isRelease = document.getElementById('optRelease').checked;
-    const rf        = document.getElementById('releaseFields');
-    if (isRelease) rf.classList.remove('hidden');
-    else rf.classList.add('hidden');
-};
-
-document.getElementById('confirmArchiveBtn').addEventListener('click', async () => {
-    const isRelease     = document.getElementById('optRelease').checked;
-    const releaseReason = document.getElementById('releaseReason').value;
-    const notes         = document.getElementById('archiveNotes').value.trim();
-
-    if (isRelease && !releaseReason) { alert('Please select a departure reason to close enrollment.'); return; }
-
-    const btn = document.getElementById('confirmArchiveBtn');
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing…'; btn.disabled = true;
-
-    try {
-        const s     = allStudentsCache.find(x => x.id === currentStudentId);
-        const batch = writeBatch(db);
-
-        let finalStatus   = 'Archived';
-        let leaveSchool   = false;
-        let historyReason = 'Internally Archived';
-
-        if (isRelease) {
-            leaveSchool   = true;
-            historyReason = releaseReason;
-            if (releaseReason === 'Transferred')    finalStatus = 'Transferred';
-            else if (releaseReason === 'Graduated') finalStatus = 'Graduated';
-            else finalStatus = 'Archived';
-        }
-
-        let academicSnapshot = {};
-        try {
-            const gradeTypes = session.teacherData.gradeTypes || session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES;
-            const gradesSnap = await getDocs(query(collection(db, 'students', currentStudentId, 'grades'), where('schoolId', '==', session.schoolId)));
-            const classGrades = [];
-            gradesSnap.forEach(d => { const g = { id: d.id, ...d.data() }; if (g.className === (s?.className || '')) classGrades.push(g); });
-
-            const evalSnap = await getDocs(query(collection(db, 'students', currentStudentId, 'evaluations'), where('schoolId', '==', session.schoolId)));
-            const evaluations = [];
-            evalSnap.forEach(d => evaluations.push({ id: d.id, ...d.data() }));
-            evaluations.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
-
-            const bySemester = {};
-            classGrades.forEach(g => {
-                if (!g.semesterId) return;
-                const sem     = rawSemesters.find(rs => rs.id === g.semesterId);
-                const semName = sem?.name || g.semesterId;
-                if (!bySemester[semName]) bySemester[semName] = {};
-                const subj = g.subject || 'Uncategorized';
-                if (!bySemester[semName][subj]) bySemester[semName][subj] = [];
-                bySemester[semName][subj].push(g);
-            });
-
-            const semesters = {};
-            Object.entries(bySemester).forEach(([semName, subjects]) => {
-                semesters[semName] = {};
-                const allSemGrades = [];
-                Object.entries(subjects).forEach(([subj, grades]) => {
-                    semesters[semName][subj] = Math.round(calculateWeightedAverage(grades, gradeTypes));
-                    allSemGrades.push(...grades);
-                });
-                if (allSemGrades.length) semesters[semName]._overall = Math.round(calculateWeightedAverage(allSemGrades, gradeTypes));
-            });
-
-            academicSnapshot = { className: s?.className || '', semesters, evaluations, snapshotDate: new Date().toISOString() };
-        } catch (snapErr) { console.warn('[Roster] academicSnapshot warning:', snapErr.message); }
-
-        const snapshot = {
-            schoolId: session.schoolId, schoolName: session.schoolName || session.schoolId,
-            teacherId: s?.teacherId || '', className: s?.className || '',
-            leftAt: new Date().toISOString(), reason: historyReason,
-            ...(notes ? { notes } : {})
-        };
-
-        batch.update(doc(db, 'students', currentStudentId), {
-            enrollmentStatus: finalStatus,
-            currentSchoolId:  leaveSchool ? '' : session.schoolId,
-            teacherId: '', className: '',
-            academicHistory:  arrayUnion(snapshot),
-            lastClassName:    s?.className || '',
-            academicSnapshot,
-            ...(leaveSchool ? { archivedSchoolIds: arrayUnion(session.schoolId) } : {})
-        });
-
-        if (leaveSchool) {
-            batch.set(doc(collection(db, 'schools', session.schoolId, 'notifications')), {
-                type: 'student_enrollment_closed', studentId: currentStudentId,
-                studentName: s?.name || '', reason: historyReason,
-                closedBy: session.teacherData?.name || 'Teacher', closedAt: new Date().toISOString()
-            });
-        }
-
-        await batch.commit();
-        window.closeArchiveModal();
-        window.closeStudentPanel();
-        await loadStudents();
-    } catch (e) {
-        console.error('[Roster] archive:', e);
-        alert('Critical failure. Record preserved.');
-    }
-
-    btn.innerHTML = '<i class="fa-solid fa-box-archive"></i> Confirm Action'; btn.disabled = false;
-});
-
-// ── 14.5. PROMOTE / REPEAT ────────────────────────────────────────────────
-// Lets the teacher resolve her year-end roster: promote students to the next
-// class (auto-assigning the receiving teacher only when exactly one teacher
-// owns that class) or mark them as repeating. Both stamp classHistory using
-// the same shape as saveStudentClass.
-let promoteClassTeacherMap = {}; // className -> [{id, name}] of teachers who own it
-
-// Build a map of class -> teachers who teach it (one fetch, on demand).
-async function buildClassTeacherMap() {
-    promoteClassTeacherMap = {};
-    try {
-        const snap = await getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId)));
-        snap.forEach(d => {
-            const t = d.data();
-            if (t.archived) return;
-            const classes = t.classes || (t.className ? [t.className] : []);
-            classes.forEach(c => {
-                if (!c) return;
-                if (!promoteClassTeacherMap[c]) promoteClassTeacherMap[c] = [];
-                promoteClassTeacherMap[c].push({ id: d.id, name: t.name || d.id });
-            });
-        });
-    } catch (e) {
-        console.error('[Roster] buildClassTeacherMap:', e);
-        promoteClassTeacherMap = {};
-    }
-}
-
-// Open the promote modal. If singleStudentId is passed, only that student is
-// listed; otherwise the teacher's whole current roster is shown.
-window.openPromoteModal = async function(singleStudentId = null) {
-    const listEl = document.getElementById('promoteList');
-    const msgEl  = document.getElementById('promoteMsg');
-    if (msgEl) { msgEl.classList.add('hidden'); msgEl.textContent = ''; }
-
-    const students = singleStudentId
-        ? allStudentsCache.filter(s => s.id === singleStudentId)
-        : allStudentsCache.slice();
-
-    if (!students.length) {
-        if (listEl) listEl.innerHTML = `<p style="padding:20px;text-align:center;color:#9ab0c6;font-size:13px;">No students to promote.</p>`;
-        openOverlay('promoteModal', 'promoteModalInner');
-        return;
-    }
-
-    if (listEl) listEl.innerHTML = `<div style="padding:24px;text-align:center;color:#9ab0c6;"><i class="fa-solid fa-spinner fa-spin" style="font-size:18px;"></i></div>`;
-    openOverlay('promoteModal', 'promoteModalInner');
-
-    // Fetch the class->teacher map once for this session of the modal
-    await buildClassTeacherMap();
-
-    // Destination options: all school classes + Repeat
-    const classOptions = schoolClasses.map(c =>
-        `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
-
-    const rows = students.map(s => {
-        const curClass = s.className || '';
-        // default each student's destination to "choose"
-        return `
-        <div class="promote-row" data-student="${s.id}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid #e8edf2;border-radius:4px;background:#fff;margin-bottom:8px;">
-            <input type="checkbox" class="promote-check" data-student="${s.id}" ${students.length === 1 ? 'checked' : ''} style="width:16px;height:16px;flex-shrink:0;cursor:pointer;">
-            <div style="flex:1;min-width:0;">
-                <p style="font-size:13px;font-weight:700;color:#0d1f35;margin:0 0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(s.name)}</p>
-                <p style="font-size:10.5px;color:#9ab0c6;margin:0;">Current: ${escHtml(curClass || 'Unassigned')}</p>
+                </div>
             </div>
-            <select class="promote-dest form-input" data-student="${s.id}" data-current="${escHtml(curClass)}" style="width:auto;min-width:160px;flex-shrink:0;">
-                <option value="">— Choose —</option>
-                <option value="__repeat__">Repeat (stay in ${escHtml(curClass || 'same class')})</option>
-                ${classOptions}
-            </select>
-        </div>`;
-    }).join('');
+        </div>
+    </div>
 
-    if (listEl) listEl.innerHTML = rows;
-};
+    <!-- ── REPORT CARD MODAL ─────────────────────────────────────────────── -->
+    <div id="reportCardModal" class="modal-overlay hidden opacity-0" style="z-index:65;">
+        <div class="modal-box" id="reportCardModalInner" style="width:100%;max-width:680px;max-height:90vh;display:flex;flex-direction:column;">
+            <div class="modal-stripe" style="background:linear-gradient(90deg,#1e1b4b,#4f46e5);"></div>
+            <div class="modal-header" style="flex-shrink:0;">
+                <div class="modal-header-left">
+                    <div class="modal-icon" style="background:#eef2ff;color:#4f46e5;border:1px solid #c7d2fe;"><i class="fa-solid fa-file-invoice"></i></div>
+                    <span class="modal-title">Generate Report Card</span>
+                </div>
+                <button onclick="window.closeReportCardModal()" class="modal-close"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body" style="flex:1;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:20px;">
+                <div id="rcTypeSelector">
+                    <label class="field-label">Report Card Type</label>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px;">
+                        <button id="rcTypeTerm" onclick="window.selectRcType('term')"
+                            style="padding:12px 10px;border:2px solid #0d1f35;border-radius:4px;background:#0d1f35;color:#fff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all 0.15s;">
+                            <i class="fa-solid fa-file-invoice"></i> Term Report Card
+                        </button>
+                        <button id="rcTypeMidterm" onclick="window.selectRcType('midterm')"
+                            style="padding:12px 10px;border:2px solid #c5d0db;border-radius:4px;background:#fff;color:#6b84a0;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all 0.15s;">
+                            <i class="fa-solid fa-flag-checkered"></i> Midterm Report Card
+                        </button>
+                    </div>
+                </div>
+                <div>
+                    <label class="field-label">Grading Period</label>
+                    <select id="rcSemester" class="form-input"></select>
+                </div>
+                <div id="rcMidtermInfo" class="hidden"></div>
+                <div>
+                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin:0 0 12px;">Attendance Record</h3>
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+                        <div><label class="field-label">Total Sessions</label><input type="number" id="rcTotalSessions" class="form-input" placeholder="e.g. 130" min="0"></div>
+                        <div><label class="field-label">Days Absent</label><input type="number" id="rcDaysAbsent" class="form-input" placeholder="0" min="0"></div>
+                        <div><label class="field-label">Days Late</label><input type="number" id="rcDaysLate" class="form-input" placeholder="0" min="0"></div>
+                    </div>
+                </div>
+                <div>
+                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin:0 0 4px;">Enrichment &amp; Character Development</h3>
+                    <p style="font-size:11px;color:#9ab0c6;margin:0 0 10px;">1 = Unsatisfactory · 2 = Needs Improvement · 3 = Developing · 4 = Developing Well · 5 = Exceptional</p>
+                    <div style="background:#fff;border:1px solid #e8edf2;border-radius:4px;padding:12px;display:flex;flex-direction:column;gap:10px;">
+                        <div class="rc-rating-row" data-field="characterValues" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Character &amp; Values</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="respectCourtesy" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Respect &amp; Courtesy</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="responsibilityReliability" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Responsibility &amp; Reliability</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="cooperationTeamwork" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Cooperation &amp; Teamwork</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="leadershipInitiative" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Leadership &amp; Initiative</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="culturalAwareness" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Cultural Awareness &amp; Pride</span><div class="rc-star-group" style="display:flex;"></div></div>
+                    </div>
+                </div>
+                <div>
+                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin:0 0 4px;">Learning Behaviours &amp; Social Growth</h3>
+                    <p style="font-size:11px;color:#9ab0c6;margin:0 0 10px;">1 = Unsatisfactory · 2 = Needs Improvement · 3 = Developing · 4 = Developing Well · 5 = Exceptional</p>
+                    <div style="background:#fff;border:1px solid #e8edf2;border-radius:4px;padding:12px;display:flex;flex-direction:column;gap:10px;">
+                        <div class="rc-rating-row" data-field="behavior" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Behavior</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="organization" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Organization</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="respectfulness" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Respectfulness</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="kindness" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Kindness</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="attitudeWork" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Attitude Towards Work</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="attitudePeers" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Attitude Towards Peers</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="academicComprehension" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Academic Comprehension</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="effortResilience" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Effort &amp; Resilience</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="participation" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Participation &amp; Engagement</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rc-rating-row" data-field="punctualityRating" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Attendance &amp; Punctuality</span><div class="rc-star-group" style="display:flex;"></div></div>
+                    </div>
+                </div>
+                <div>
+                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin:0 0 12px;">Teacher's Comments</h3>
+                    <textarea id="rcComment" class="form-input" rows="3" placeholder="Enter formal comments for the report card…"></textarea>
+                </div>
+            </div>
+            <div style="padding:16px 24px;border-top:1px solid #e8edf2;background:#fafbfc;display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;">
+                <button onclick="window.closeReportCardModal()" class="btn-sharp btn-sharp-outline">Cancel</button>
+                <button onclick="window.saveAndGenerateReportCard()" id="btnSaveGenerate" class="btn-sharp btn-sharp-primary"><i class="fa-solid fa-file-pdf"></i> Save &amp; Generate Report Card</button>
+            </div>
+        </div>
+    </div>
 
-window.closePromoteModal = function() { closeOverlay('promoteModal', 'promoteModalInner'); };
+    <!-- ── EVAL MODAL ────────────────────────────────────────────────────── -->
+    <div id="evalModal" class="modal-overlay hidden opacity-0" style="z-index:60;">
+        <div class="modal-box" id="evalModalInner" style="width:100%;max-width:650px;max-height:90vh;display:flex;flex-direction:column;">
+            <div class="modal-stripe" style="background:linear-gradient(90deg,#0d1f35,#2563eb);"></div>
+            <div class="modal-header" style="flex-shrink:0;">
+                <div class="modal-header-left">
+                    <div class="modal-icon" style="background:#eef4ff;color:#2563eb;border:1px solid #c7d9fd;"><i class="fa-solid fa-file-signature"></i></div>
+                    <span class="modal-title">Student Evaluation</span>
+                </div>
+                <button onclick="window.closeEvalModal()" class="modal-close"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body" style="flex:1;overflow-y:auto;padding:24px;">
+                <div style="margin-bottom:20px;background:#fff;border:1px solid #c5d0db;padding:16px;border-radius:4px;">
+                    <label class="field-label">Evaluation Type</label>
+                    <select id="evalType" class="form-input" style="font-weight:700;color:#0d1f35;" onchange="window.toggleEvalType()">
+                        <option value="academic">Academic Progress</option>
+                        <option value="end_of_year">Comprehensive End-of-Year</option>
+                        <option value="behavioral">Behavioral &amp; Conduct Intervention</option>
+                        <option value="midterm_review">Mid-Term Review</option>
+                        <option value="parent_conference">Parent Conference Summary</option>
+                        <option value="learning_support">Learning Support Plan</option>
+                        <option value="custom">Custom Evaluation</option>
+                    </select>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+                    <div id="evalSemesterWrap">
+                        <label class="field-label">Grading Period</label>
+                        <select id="evalSemester" class="form-input"></select>
+                    </div>
+                    <div>
+                        <label class="field-label">Date of Evaluation</label>
+                        <input type="date" id="evalDate" class="form-input">
+                    </div>
+                </div>
+                <!-- Academic Progress -->
+                <div id="type-academic" class="eval-section">
+                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin-bottom:12px;">Quantitative Metrics</h3>
+                    <div style="background:#fff;border:1px solid #e8edf2;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
+                        <div class="rating-row" data-field="academicMastery" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Subject Mastery</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="taskExecution" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Task Completion &amp; Workmanship</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="engagement" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Classroom Engagement</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="criticalThinking" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Critical Thinking &amp; Problem Solving</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="writtenCommunication" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Written Communication</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="oralParticipation" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Oral Participation</span><div class="star-group" style="display:flex;"></div></div>
+                    </div>
+                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin-bottom:12px;">Qualitative Assessment</h3>
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <div><label class="field-label">Key Academic Strengths</label><textarea id="evalAcadStrengths" class="form-input" rows="2"></textarea></div>
+                        <div><label class="field-label">Areas for Growth</label><textarea id="evalAcadGrowth" class="form-input" rows="2"></textarea></div>
+                        <div><label class="field-label">Actionable Next Steps</label><textarea id="evalAcadSteps" class="form-input" rows="2"></textarea></div>
+                    </div>
+                </div>
+                <!-- End of Year -->
+                <div id="type-eoy" class="eval-section hidden">
+                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin-bottom:12px;">Summative Metrics</h3>
+                    <div style="background:#fff;border:1px solid #e8edf2;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
+                        <div class="rating-row" data-field="overallAcademicGrowth" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Overall Academic Growth</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="subjectMasteryAcrossTerms" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Subject Mastery Across Terms</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="socialPeerDynamics" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Social &amp; Peer Dynamics</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="emotionalResilience" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Emotional Resilience</span><div class="rc-star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="selfRegulationEoy" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Self-Regulation &amp; Impulse Control</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="effortPersistenceYear" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Effort &amp; Persistence Over the Year</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="responseToFeedback" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Response to Feedback &amp; Correction</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="readinessNextGrade" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#374f6b;">Readiness for Next Grade Level</span><div class="star-group" style="display:flex;"></div></div>
+                    </div>
+                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin-bottom:12px;">Formal Narrative</h3>
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <div><label class="field-label">Year-in-Review Narrative</label><textarea id="evalEoyNarrative" class="form-input" rows="3"></textarea></div>
+                        <div><label class="field-label">Recommended Interventions (Optional)</label><textarea id="evalEoyInterventions" class="form-input" rows="2"></textarea></div>
+                        <div style="background:#f8fafb;padding:12px;border:1px solid #c5d0db;border-radius:4px;">
+                            <label class="field-label" style="color:#0d1f35;">Promotion Status</label>
+                            <select id="evalEoyStatus" class="form-input">
+                                <option value="">— Select Status —</option>
+                                <option value="Promoted">Promoted</option>
+                                <option value="Promoted with Conditions">Promoted with Conditions</option>
+                                <option value="Retained">Retained</option>
+                                <option value="Graduated">Graduated</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <!-- Behavioral Intervention -->
+                <div id="type-behavioral" class="eval-section hidden">
+                    <h3 style="font-size:13px;font-weight:700;color:#dc2626;border-bottom:1px solid #fecaca;padding-bottom:6px;margin-bottom:12px;">Conduct Metrics</h3>
+                    <div style="background:#fff;border:1px solid #fecaca;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
+                        <div class="rating-row" data-field="ruleAdherence" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7f1d1d;">Rule Adherence</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="conflictResolution" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7f1d1d;">Conflict Resolution</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="respectAuthority" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7f1d1d;">Respect for Authority</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="peerInteractions" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7f1d1d;">Peer Interactions &amp; Social Skills</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="selfRegulation" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7f1d1d;">Self-Regulation &amp; Impulse Control</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="responseToCorrection" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7f1d1d;">Response to Correction</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="emotionalStability" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#7f1d1d;">Emotional Stability</span><div class="star-group" style="display:flex;"></div></div>
+                    </div>
+                    <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin-bottom:12px;">Incident Documentation</h3>
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <div><label class="field-label">Conduct Description</label><textarea id="evalBehDesc" class="form-input" rows="3"></textarea></div>
+                        <div><label class="field-label">Prior Interventions Attempted</label><textarea id="evalBehPrior" class="form-input" rows="2"></textarea></div>
+                        <div><label class="field-label">Corrective Action Plan</label><textarea id="evalBehAction" class="form-input" rows="2"></textarea></div>
+                        <div style="background:#fff0f3;padding:12px;border:1px solid #fecaca;border-radius:4px;">
+                            <label class="field-label" style="color:#be1240;">Action Taken</label>
+                            <select id="evalBehStatus" class="form-input" style="border-color:#fecaca;" onchange="window.toggleBehOther()">
+                                <option value="No Action">No Action Required</option>
+                                <option value="Verbal Warning">Verbal Warning</option>
+                                <option value="Formal Warning">Formal Warning</option>
+                                <option value="Parent Conference Required">Parent Conference Required</option>
+                                <option value="Disciplinary Probation">Disciplinary Probation</option>
+                                <option value="Suspension">Suspension</option>
+                                <option value="Other">Other (specify below)</option>
+                            </select>
+                            <div id="evalBehOtherWrap" class="hidden" style="margin-top:8px;">
+                                <input type="text" id="evalBehOtherText" class="form-input" placeholder="Describe the action taken…">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Mid-Term Review -->
+                <div id="type-midterm" class="eval-section hidden">
+                    <h3 style="font-size:13px;font-weight:700;color:#0369a1;border-bottom:1px solid #bae6fd;padding-bottom:6px;margin-bottom:12px;">Mid-Term Review Metrics</h3>
+                    <div style="background:#fff;border:1px solid #bae6fd;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
+                        <div class="rating-row" data-field="academicProgressToDate" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#075985;">Academic Progress to Date</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="workCompletionRate" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#075985;">Work Completion Rate</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="classParticipation" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#075985;">Classroom Participation</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="attentionFocus" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#075985;">Attention &amp; Focus</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="effortPersistence" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#075985;">Effort &amp; Persistence</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="behaviourInClass" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#075985;">Behaviour in Class</span><div class="star-group" style="display:flex;"></div></div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <div><label class="field-label">Academic Strengths This Period</label><textarea id="evalMidStrengths" class="form-input" rows="2"></textarea></div>
+                        <div><label class="field-label">Areas of Concern</label><textarea id="evalMidConcerns" class="form-input" rows="2"></textarea></div>
+                        <div><label class="field-label">General Comments</label><textarea id="evalMidComments" class="form-input" rows="2"></textarea></div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                            <div><label class="field-label">Days Absent (to date)</label><input type="number" id="evalMidAbsent" class="form-input" placeholder="0" min="0"></div>
+                            <div><label class="field-label">Days Late (to date)</label><input type="number" id="evalMidLate" class="form-input" placeholder="0" min="0"></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Parent Conference -->
+                <div id="type-parent-conference" class="eval-section hidden">
+                    <h3 style="font-size:13px;font-weight:700;color:#6d28d9;border-bottom:1px solid #ddd6fe;padding-bottom:6px;margin-bottom:12px;">Conference Metrics</h3>
+                    <div style="background:#fff;border:1px solid #ddd6fe;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
+                        <div class="rating-row" data-field="parentEngagement" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#4c1d95;">Parent Engagement Level</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="communicationQuality" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#4c1d95;">Communication Quality</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="followThroughAgreements" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#4c1d95;">Follow-Through on Prior Agreements</span><div class="star-group" style="display:flex;"></div></div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <div>
+                            <label class="field-label">Parent / Guardian Present</label>
+                            <select id="evalPcParentPresent" class="form-input">
+                                <option value="">— Select —</option>
+                                <option value="Mother">Mother</option>
+                                <option value="Father">Father</option>
+                                <option value="Both Parents">Both Parents</option>
+                                <option value="Guardian">Guardian</option>
+                                <option value="Not Present">Parent Not Present</option>
+                            </select>
+                        </div>
+                        <div><label class="field-label">Conference Summary</label><textarea id="evalPcSummary" class="form-input" rows="3"></textarea></div>
+                        <div><label class="field-label">Agreements &amp; Action Items</label><textarea id="evalPcAgreements" class="form-input" rows="2"></textarea></div>
+                        <div><label class="field-label">Follow-Up Required</label><textarea id="evalPcFollowUp" class="form-input" rows="2" placeholder="Leave blank if no follow-up needed"></textarea></div>
+                    </div>
+                </div>
+                <!-- Learning Support Plan -->
+                <div id="type-learning-support" class="eval-section hidden">
+                    <h3 style="font-size:13px;font-weight:700;color:#9333ea;border-bottom:1px solid #e9d5ff;padding-bottom:6px;margin-bottom:12px;">Intervention Metrics</h3>
+                    <div style="background:#fff;border:1px solid #e9d5ff;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
+                        <div class="rating-row" data-field="responseToIntervention" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#6b21a8;">Response to Intervention</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="academicEffort" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#6b21a8;">Academic Effort</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="focusAttention" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#6b21a8;">Focus &amp; Attention</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="independenceInTasks" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#6b21a8;">Independence in Tasks</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="progressTowardsGoals" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#6b21a8;">Progress Towards Goals</span><div class="star-group" style="display:flex;"></div></div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <div>
+                            <label class="field-label">Support Level</label>
+                            <select id="evalLsLevel" class="form-input">
+                                <option value="">— Select —</option>
+                                <option value="Tier 1 — Classroom Support">Tier 1 — Classroom Support</option>
+                                <option value="Tier 2 — Targeted Intervention">Tier 2 — Targeted Intervention</option>
+                                <option value="Tier 3 — Intensive Support">Tier 3 — Intensive Support</option>
+                            </select>
+                        </div>
+                        <div><label class="field-label">Learning Concerns</label><textarea id="evalLsConcerns" class="form-input" rows="2"></textarea></div>
+                        <div><label class="field-label">Interventions &amp; Strategies</label><textarea id="evalLsInterventions" class="form-input" rows="2"></textarea></div>
+                        <div><label class="field-label">Goals &amp; Success Indicators</label><textarea id="evalLsGoals" class="form-input" rows="2"></textarea></div>
+                    </div>
+                </div>
+                <!-- Custom Evaluation -->
+                <div id="type-custom" class="eval-section hidden">
+                    <h3 style="font-size:13px;font-weight:700;color:#475569;border-bottom:1px solid #cbd5e1;padding-bottom:6px;margin-bottom:12px;">Custom Evaluation Metrics</h3>
+                    <div style="background:#fff;border:1px solid #cbd5e1;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
+                        <div class="rating-row" data-field="overallPerformance" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#334155;">Overall Performance</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="effortEngagement" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#334155;">Effort &amp; Engagement</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="socialSkills" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#334155;">Social Skills</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="workQuality" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#334155;">Work Quality</span><div class="star-group" style="display:flex;"></div></div>
+                        <div class="rating-row" data-field="customProgressGoals" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;font-weight:600;color:#334155;">Progress Towards Goals</span><div class="star-group" style="display:flex;"></div></div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <div><label class="field-label">Evaluation Name <span style="color:#e31b4a;">*</span></label><input type="text" id="evalCustomTypeName" class="form-input" placeholder="e.g. Reading Fluency Check, Portfolio Review…"></div>
+                        <div><label class="field-label">Notes &amp; Observations</label><textarea id="evalCustomNotes" class="form-input" rows="4"></textarea></div>
+                    </div>
+                </div>
+            </div>
+            <div style="padding:16px 24px;border-top:1px solid #e8edf2;background:#fafbfc;display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;">
+                <button onclick="window.closeEvalModal()" class="btn-sharp btn-sharp-outline">Cancel</button>
+                <button onclick="window.saveEvaluation()" id="btnSubmitEval" class="btn-sharp btn-sharp-primary">Save to Formal Record</button>
+            </div>
+        </div>
+    </div>
 
-// Promote just the student whose panel is currently open.
-window.promoteCurrentStudent = function() {
-    if (!currentStudentId) return;
-    window.closeStudentPanel();
-    window.openPromoteModal(currentStudentId);
-};
+    <!-- ── ASSIGNMENT DETAIL MODAL ───────────────────────────────────────── -->
+    <div id="assignmentModal" class="modal-overlay hidden opacity-0" style="z-index:60;">
+        <div class="modal-box" id="assignmentModalInner" style="width:100%;max-width:460px;">
+            <div class="modal-stripe"></div>
+            <div class="modal-header">
+                <span id="aModalTitle" class="modal-title">Assignment Detail</span>
+                <button onclick="window.closeAssignmentModal()" class="modal-close"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body" id="aModalBody"></div>
+        </div>
+    </div>
 
-window.confirmPromotion = async function() {
-    const btn   = document.getElementById('confirmPromoteBtn');
-    const msgEl = document.getElementById('promoteMsg');
-    const rows  = Array.from(document.querySelectorAll('#promoteList .promote-row'));
+    <!-- ── PROMOTE / REPEAT MODAL ────────────────────────────────────────── -->
+    <div id="promoteModal" class="modal-overlay hidden opacity-0" style="z-index:68;">
+        <div class="modal-box" id="promoteModalInner" style="width:100%;max-width:600px;max-height:90vh;display:flex;flex-direction:column;">
+            <div class="modal-stripe"></div>
+            <div class="modal-header" style="flex-shrink:0;">
+                <div class="modal-header-left">
+                    <div class="modal-icon" style="background:#edfaf4;color:#0ea871;border:1px solid #a7f3d0;"><i class="fa-solid fa-arrow-up-right-dots"></i></div>
+                    <span class="modal-title">Promote / Advance Students</span>
+                </div>
+                <button onclick="window.closePromoteModal()" class="modal-close"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body" style="flex:1;overflow-y:auto;padding:20px 24px;">
+                <p style="font-size:12px;color:#6b84a0;margin:0 0 16px;line-height:1.6;">
+                    Tick the students who are moving on, then choose where each one goes.
+                    Choose <strong>Repeat</strong> to keep a student in their current class for the new year.
+                    Whoever you don't tick stays exactly where they are.
+                </p>
+                <div id="promoteList" style="display:flex;flex-direction:column;"></div>
+                <p id="promoteMsg" class="hidden" style="font-size:12px;font-weight:600;padding:10px 14px;border-radius:3px;text-align:center;margin-top:12px;"></p>
+            </div>
+            <div style="padding:16px 24px;border-top:1px solid #e8edf2;background:#fafbfc;display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;">
+                <button onclick="window.closePromoteModal()" class="btn-sharp btn-sharp-outline">Cancel</button>
+                <button onclick="window.confirmPromotion()" id="confirmPromoteBtn" class="btn-sharp btn-sharp-primary"><i class="fa-solid fa-arrow-up-right-dots"></i> Confirm Promotion</button>
+            </div>
+        </div>
+    </div>
 
-    // Gather selected rows with a chosen destination
-    const actions = [];
-    let needsChoice = false;
-
-    rows.forEach(row => {
-        const sid     = row.dataset.student;
-        const checked = row.querySelector('.promote-check')?.checked;
-        if (!checked) return;
-        const sel     = row.querySelector('.promote-dest');
-        const dest    = sel?.value || '';
-        const current = sel?.dataset.current || '';
-        if (!dest) { needsChoice = true; return; }
-        actions.push({ studentId: sid, dest, current });
-    });
-
-    if (needsChoice) {
-        if (msgEl) { msgEl.textContent = 'Please choose a destination (or Repeat) for every selected student.'; msgEl.classList.remove('hidden'); msgEl.style.color = '#dc2626'; }
-        return;
-    }
-    if (!actions.length) {
-        if (msgEl) { msgEl.textContent = 'Select at least one student and choose a destination.'; msgEl.classList.remove('hidden'); msgEl.style.color = '#dc2626'; }
-        return;
-    }
-
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing…'; }
-
-    try {
-        const nowIso = new Date().toISOString();
-        const batch  = writeBatch(db);
-        let unresolvedTeacher = 0;
-
-        actions.forEach(({ studentId, dest, current }) => {
-            const ref = doc(db, 'students', studentId);
-
-            if (dest === '__repeat__') {
-                // Repeat — stays in same class, stamp a year-boundary trail
-                batch.update(ref, {
-                    classHistory: arrayUnion({
-                        fromClass: current, toClass: current,
-                        changedAt: nowIso, reason: 'Repeated', schoolId: session.schoolId
-                    })
-                });
-            } else {
-                // Promote — move to destination class. Auto-assign receiving
-                // teacher only if exactly one teacher owns that class.
-                const owners = promoteClassTeacherMap[dest] || [];
-                const update = {
-                    className: dest,
-                    classHistory: arrayUnion({
-                        fromClass: current, toClass: dest,
-                        changedAt: nowIso, reason: 'Promoted', schoolId: session.schoolId
-                    })
-                };
-                if (owners.length === 1) {
-                    update.teacherId = owners[0].id;
-                } else {
-                    // zero or multiple owners — leave unassigned for that class
-                    update.teacherId = '';
-                    unresolvedTeacher++;
-                }
-                batch.update(ref, update);
-            }
-        });
-
-        await batch.commit();
-
-        window.closePromoteModal();
-        await loadStudents();
-
-        if (unresolvedTeacher > 0) {
-            alert(`Done. ${unresolvedTeacher} student(s) were moved to a class that doesn't have exactly one teacher assigned — they're in that class's unassigned pool until a teacher claims them.`);
-        }
-    } catch (e) {
-        console.error('[Roster] confirmPromotion:', e);
-        if (msgEl) { msgEl.textContent = 'Something went wrong. Please try again.'; msgEl.classList.remove('hidden'); msgEl.style.color = '#dc2626'; }
-    }
-
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-arrow-up-right-dots"></i> Confirm Promotion'; }
-};
-
-// ── 15. EXPORT ────────────────────────────────────────────────────────────
-window.exportRosterCSV = function() {
-    const rows = [['Global ID','Name','Class','Parent Phone','Parent PIN']];
-    allStudentsCache.forEach(s => rows.push([s.id, s.name, s.className||'', s.parentPhone||'', s.pin]));
-    downloadCSV(rows, `${session.schoolId}_roster.csv`);
-};
-
-window.printRoster = function() { window.print(); };
-
-// ── 16. XSS PROTECTION ───────────────────────────────────────────────────
-function escHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
-}
-
-// ── FIRE ──────────────────────────────────────────────────────────────────
-init();
+    <script type="module" src="roster.js"></script>
+</body>
+</html>
