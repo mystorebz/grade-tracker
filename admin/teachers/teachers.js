@@ -1391,10 +1391,9 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
         let semesterName        = '';
         let subjectAverages     = {};
         let studentCount        = 0;
-        let snapshotEvaluations = []; // ── FIX: collect existing evaluations for snapshot
+        let snapshotEvaluations = [];
 
         try {
-            // Get active semester
             const schoolSnap  = await getDoc(doc(db, 'schools', session.schoolId));
             const activeSemId = schoolSnap.exists() ? schoolSnap.data().activeSemesterId : null;
 
@@ -1406,7 +1405,6 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
                 }
             }
 
-            // Get all students this teacher had
             const studSnap = await getDocs(
                 query(collection(db, 'students'),
                     where('teacherId', '==', currentTeacherId),
@@ -1415,7 +1413,6 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
             const studentIds = studSnap.docs.map(d => d.id);
             studentCount     = studentIds.length;
 
-            // Fetch all grades for this term across all students
             if (studentIds.length && semesterId) {
                 const gradePromises = studentIds.map(sid =>
                     getDocs(query(
@@ -1429,7 +1426,6 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
                 const allGrades = [];
                 gradeResults.forEach(snap => snap.forEach(d => allGrades.push(d.data())));
 
-                // Group by subject and compute average
                 const gradeTypes = t.gradeTypes || t.customGradeTypes || ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
                 const bySubject  = {};
                 allGrades.forEach(g => {
@@ -1443,7 +1439,6 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
                 });
             }
 
-            // ── FIX: fetch all existing evaluations for this school into snapshot
             const evalSnap = await getDocs(query(
                 collection(db, 'teachers', currentTeacherId, 'evaluations'),
                 where('schoolId', '==', session.schoolId)
@@ -1455,7 +1450,6 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
             console.warn('[Teachers] snapshot computation warning:', snapErr.message);
         }
 
-        // ── FIX: build exit eval as named object so it can be included in snapshot
         const exitEvalData = {
             evaluatorId:      session.adminId || 'Admin',
             schoolId:         session.schoolId,
@@ -1467,7 +1461,6 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
             timestamp:        new Date().toISOString()
         };
 
-        // ── FIX: prepend exit eval to snapshot so it's included even before batch commits
         snapshotEvaluations.unshift(exitEvalData);
 
         const teachingSnapshot = {
@@ -1477,8 +1470,8 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
             classes:        getTeacherClasses(t),
             subjects:       getSubjectNames(t.subjects),
             studentCount,
-            subjectAverages,  // { Mathematics: 78, Science: 65, ... }
-            evaluations:    snapshotEvaluations, // ── FIX: evaluations saved in snapshot
+            subjectAverages,
+            evaluations:    snapshotEvaluations,
             snapshotDate:   new Date().toISOString()
         };
 
@@ -1489,12 +1482,17 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
 
         batch.update(tRef, {
             currentSchoolId:   '',
+            archived:          true,                          // ── FIX: marks teacher as archived so auth watcher and mintTeacherToken block access
             archivedSchoolIds: arrayUnion(session.schoolId),
-            teachingHistory:   arrayUnion(teachingSnapshot)   // ← snapshot appended
+            teachingHistory:   arrayUnion(teachingSnapshot)
         });
 
-        // ── FIX: reuse exitEvalData for the subcollection write
         batch.set(evalRef, exitEvalData);
+
+        // ── FIX: free the email so this teacher can be re-enrolled elsewhere ──
+        if (t.email) {
+            batch.delete(doc(db, 'registered_emails', t.email.toLowerCase().trim()));
+        }
 
         await batch.commit();
         window.closeExitModal();
@@ -1529,7 +1527,6 @@ window.printTeacherPortfolio = async (tId) => {
         const classesAssigned = getTeacherClasses(t).join(', ') || 'None';
         const subjectsAssigned = getSubjectNames(t.subjects).join(', ') || 'None';
 
-        // Teaching history section
         const history = t.teachingHistory || [];
         const historyHtml = history.length === 0
             ? `<p style="color:#94a3b8;font-style:italic;">No prior school history recorded yet.</p>`
