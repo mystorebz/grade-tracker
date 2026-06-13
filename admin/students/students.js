@@ -554,6 +554,7 @@ window.openStudentPanel = async function (studentId) {
         }
 
         window.renderAdminGrades();
+        window.renderClassHistory(student);
     } catch (e) {
         console.error(e);
     } finally {
@@ -951,6 +952,90 @@ document.getElementById('exportCsvBtn')?.addEventListener('click', () => {
     });
     document.body.appendChild(a); a.click(); a.remove();
 });
+
+// ── 12. CLASS HISTORY ─────────────────────────────────────────────────────
+window.renderClassHistory = function (student) {
+    const container = document.getElementById('classHistoryContainer');
+    if (!container) return;
+
+    // Only grades from this school
+    const schoolGrades = currentStudentGradesCache.filter(g => g.schoolId === session.schoolId);
+
+    if (!schoolGrades.length) {
+        container.innerHTML = `<div class="text-center py-16 bg-white rounded-xl border border-slate-200"><i class="fa-solid fa-clock-rotate-left text-4xl text-slate-300 mb-3"></i><p class="text-slate-400 font-semibold">No class history recorded yet.</p></div>`;
+        return;
+    }
+
+    // Group by className → semesterId → subject
+    const byClass = {};
+    schoolGrades.forEach(g => {
+        const cls  = g.className || 'Unclassified';
+        const semId = g.semesterId || 'unknown';
+        if (!byClass[cls]) byClass[cls] = {};
+        if (!byClass[cls][semId]) byClass[cls][semId] = {};
+        const subj = g.subject || 'Uncategorized';
+        if (!byClass[cls][semId][subj]) byClass[cls][semId][subj] = [];
+        byClass[cls][semId][subj].push(g);
+    });
+
+    // Build a semId → name lookup from rawSemesters
+    const semName = (semId) => {
+        const s = rawSemesters.find(r => r.id === semId);
+        return s ? s.name : semId;
+    };
+
+    container.innerHTML = Object.entries(byClass).map(([className, semesters]) => {
+        // Overall average across all grades in this class
+        const allClassGrades = Object.values(semesters).flatMap(s => Object.values(s).flat());
+        const classAvg = Math.round(calculateWeightedAverage(allClassGrades, currentTeacherWeights));
+        const ca = classAvg >= 75 ? 'text-green-700 bg-green-50 border-green-200' : classAvg >= 60 ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-red-700 bg-red-50 border-red-200';
+
+        const termBlocks = Object.entries(semesters).map(([semId, subjects]) => {
+            const allTermGrades = Object.values(subjects).flat();
+            const termAvg = Math.round(calculateWeightedAverage(allTermGrades, currentTeacherWeights));
+            const ta = termAvg >= 75 ? 'text-green-700 bg-green-50 border-green-200' : termAvg >= 60 ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-red-700 bg-red-50 border-red-200';
+
+            const subjectRows = Object.entries(subjects).map(([subject, grades]) => {
+                const subAvg = Math.round(calculateWeightedAverage(grades, currentTeacherWeights));
+                const sa = subAvg >= 75 ? 'text-green-600' : subAvg >= 60 ? 'text-amber-600' : 'text-red-600';
+                return `<div class="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0">
+                    <span class="text-xs font-semibold text-slate-600">${escHtml(subject)}</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold text-slate-400">${grades.length} entr${grades.length !== 1 ? 'ies' : 'y'}</span>
+                        <span class="font-black text-xs ${sa}">${subAvg}%</span>
+                    </div>
+                </div>`;
+            }).join('');
+
+            return `<div class="mb-3 last:mb-0">
+                <div class="flex items-center justify-between mb-1.5">
+                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">${escHtml(semName(semId))}</span>
+                    <span class="${ta} border font-black text-[10px] px-1.5 py-0.5 rounded">${termAvg}% Avg</span>
+                </div>
+                <div class="bg-slate-50 rounded-lg px-3 py-1">${subjectRows}</div>
+            </div>`;
+        }).join('');
+
+        return `<div class="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-sm">
+            <div class="flex items-center justify-between px-5 py-4 bg-slate-50 border-b border-slate-200 cursor-pointer" onclick="window.toggleSubjectAccordion(this)">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-slate-800 text-white rounded flex items-center justify-center font-black text-xs">${escHtml(className.charAt(0))}</div>
+                    <div>
+                        <p class="font-black text-slate-800 text-sm">${escHtml(className)}</p>
+                        <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">${Object.keys(semesters).length} term${Object.keys(semesters).length !== 1 ? 's' : ''} · ${allClassGrades.length} entries</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="${ca} border font-black text-xs px-2 py-1 rounded">${classAvg}% Overall</span>
+                    <i class="fa-solid fa-chevron-down text-slate-400" style="transition:transform 0.2s"></i>
+                </div>
+            </div>
+            <div class="subject-body border-t border-slate-200">
+                <div class="p-4">${termBlocks}</div>
+            </div>
+        </div>`;
+    }).join('');
+};
 
 // ── INITIALIZE ────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', loadData);
