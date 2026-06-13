@@ -21,7 +21,7 @@ let isSemesterLocked          = false;
 let gradeDetailCache          = {};
 let schoolLimit               = 50;
 let cachedEvaluations         = [];
-let schoolClasses             = []; // ← Live master list from schools/{id}/classes
+let resolvedSchoolName        = '';
 
 // ── Report card type state ────────────────────────────────────────────────
 let selectedRcType      = 'term';   // 'term' | 'midterm'
@@ -63,31 +63,7 @@ window.rcRatings = {
     effortResilience: 0, participation: 0, punctualityRating: 0
 };
 
-// ── Load the school's class list (single source of truth) ─────────────────
-async function loadSchoolClasses() {
-    try {
-        const snap = await getDocs(collection(db, 'schools', session.schoolId, 'classes'));
-        schoolClasses = snap.docs
-            .map(d => ({ id: d.id, ...d.data() }))
-            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.name || '').localeCompare(b.name || ''))
-            .map(c => c.name)
-            .filter(Boolean);
-    } catch (e) {
-        console.error('[Roster] loadSchoolClasses:', e);
-        schoolClasses = [];
-    }
-}
-
-// ── FIX: Intersect assigned classes with the live master list ─────────────
-// Accepts an `extra` array (like the student's legacy class) so existing data doesn't vanish.
-function getClasses(extra = []) {
-    const assigned = session.teacherData.classes || [session.teacherData.className || ''];
-    let validClasses = assigned.filter(c => schoolClasses.includes(c));
-    
-    extra.forEach(c => { if (c && !validClasses.includes(c)) validClasses.push(c); });
-    return validClasses.filter(Boolean);
-}
-
+function getClasses()    { return session.teacherData.classes || [session.teacherData.className || '']; }
 function getGradeTypes() { return session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
 
 function generateStudentId() {
@@ -101,22 +77,16 @@ function generateStudentId() {
 // ── 3. INIT ───────────────────────────────────────────────────────────────
 async function init() {
     if (!session) return;
-    
-    // ── FIX: Load master list first ───────────────────────────────────────
-    await loadSchoolClasses();
-
     const searchInput = document.getElementById('searchInput');
     if (searchInput) searchInput.addEventListener('input', filterStudents);
 
     document.getElementById('displayTeacherName').textContent = session.teacherData.name;
     document.getElementById('teacherAvatar').textContent      = session.teacherData.name.charAt(0).toUpperCase();
     document.getElementById('sidebarSchoolId').textContent    = session.schoolId;
-    
-    const classes = getClasses();
-    
     document.getElementById('displayTeacherClasses').innerHTML =
-        classes.map(c => `<span class="class-pill">${c}</span>`).join('') || '<span class="text-xs text-slate-400 italic">No assigned classes</span>';
+        getClasses().filter(Boolean).map(c => `<span class="class-pill">${c}</span>`).join('');
 
+    const classes     = getClasses().filter(Boolean);
     const classFilter = document.getElementById('rf-class');
     if (classFilter) {
         classFilter.innerHTML = '<option value="">All Classes</option>' +
@@ -162,6 +132,7 @@ async function loadSemesters() {
         try {
             const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
             activeId = schoolSnap.data()?.activeSemesterId || '';
+            resolvedSchoolName = schoolSnap.data()?.schoolName || '';
         } catch(e) {}
 
         const semSel     = document.getElementById('activeSemester');
@@ -364,23 +335,10 @@ window.openAddStudentModal = function() {
     });
     document.getElementById('addStudentMsg').classList.add('hidden');
 
-    const classes = getClasses();
+    const classes = getClasses().filter(Boolean);
     const sel     = document.getElementById('sClass');
-    
-    // ── FIX: Empty State Guard ─────────────────────────────────────────────
-    if (classes.length === 0) {
-        sel.innerHTML = '<option value="">— No active classes available —</option>';
-        sel.disabled = true;
-        document.getElementById('sSearchBtn').disabled = true;
-        document.getElementById('saveStudentBtn').disabled = true;
-        showMsg('addStudentMsg', 'You currently have no active classes assigned. Please contact your administrator to assign classes to your account before enrolling students.', true);
-    } else {
-        sel.innerHTML = '<option value="">— Select a Class —</option>' +
-            classes.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
-        sel.disabled = false;
-        document.getElementById('sSearchBtn').disabled = false;
-        document.getElementById('saveStudentBtn').disabled = false;
-    }
+    sel.innerHTML = '<option value="">— Select a Class —</option>' +
+        classes.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
 
     openOverlay('addStudentModal', 'addStudentModalInner');
 };
@@ -595,9 +553,8 @@ window.openStudentPanel = async function(studentId) {
 
     openOverlay('studentPanel', 'studentPanelInner');
 
-    // ── FIX: Pass student's current class as `extra` to preserve legacy display ─
     const classSel = document.getElementById('editSClass');
-    const classes  = getClasses([student?.className]); 
+    const classes  = getClasses().filter(Boolean);
     classSel.innerHTML = classes.map(c =>
         `<option value="${escHtml(c)}" ${c === student?.className ? 'selected' : ''}>${escHtml(c)}</option>`
     ).join('');
@@ -1226,7 +1183,7 @@ window.saveAndGenerateReportCard = async function() {
         await setDoc(doc(db, 'students', currentStudentId, 'evaluations', docId), payload);
         await window.loadStudentEvaluations(currentStudentId);
         window.closeReportCardModal();
-        await generateFormalReportCardPDF(payload, semName, selectedRcType, selectedMidtermData);
+        generateFormalReportCardPDF(payload, semName, selectedRcType, selectedMidtermData);
     } catch (e) {
         console.error('[Roster] saveAndGenerateReportCard:', e);
         alert('Failed to save. Please try again.');
@@ -1237,17 +1194,10 @@ window.saveAndGenerateReportCard = async function() {
 };
 
 // ── PDF generator ─────────────────────────────────────────────────────────
-async function generateFormalReportCardPDF(ev, semName, reportType = 'term', midtermData = null) {
+function generateFormalReportCardPDF(ev, semName, reportType = 'term', midtermData = null) {
     const student    = allStudentsCache.find(s => s.id === currentStudentId);
     if (!student)    return;
-    
-    let schoolName = '';
-    try {
-        const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
-        schoolName = schoolSnap.data()?.schoolName || '';
-    } catch (e) {
-        console.error("Error fetching school name:", e);
-    }
+    const schoolName = resolvedSchoolName || session.schoolName || 'ConnectUs School';
 
     // Filter grades by midterm date range if applicable
     let gradesToUse = [...currentStudentGradesCache];
@@ -1317,7 +1267,7 @@ async function generateFormalReportCardPDF(ev, semName, reportType = 'term', mid
     const enrichmentRows = [
         ['Character & Values',           'Honesty, integrity, and ethical behaviour in daily interactions',          ev.ratings.characterValues],
         ['Respect & Courtesy',           'Respectful treatment of peers, teachers, and the school environment',      ev.ratings.respectCourtesy],
-        ['Responsibility & Reliability', 'Taking ownership of tasks, duties, and personal belongings',               ev.ratings.responsibilityReliability],
+        ['Responsibility & Reliability', 'Taking ownership of tasks, duties, and personal belongings',              ev.ratings.responsibilityReliability],
         ['Cooperation & Teamwork',       'Working constructively with others in group and classroom settings',       ev.ratings.cooperationTeamwork],
         ['Leadership & Initiative',      'Volunteering, taking the lead, and showing self-driven motivation',        ev.ratings.leadershipInitiative],
         ['Cultural Awareness & Pride',   'Appreciation of Belizean and Caribbean culture, history, and heritage',   ev.ratings.culturalAwareness],
@@ -1382,8 +1332,7 @@ td{border-bottom:1px solid #e2e8f0;padding:8px 12px;color:#334155;}
 </style></head><body>
 
 <div class="hf">
-    <img src="${session.logo||''}" alt="${escHtml(schoolName)}" class="logo" onerror="this.style.display='none'">
-    <div class="ht">
+    <div class="ht" style="text-align:left;">
         <h1>${escHtml(schoolName)}</h1>
         <h2>${reportTitle}</h2>
         <h3>${escHtml(reportSubtitle)}</h3>
@@ -1521,7 +1470,7 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
             const evalSnap = await getDocs(query(collection(db, 'students', currentStudentId, 'evaluations'), where('schoolId', '==', session.schoolId)));
             const evaluations = [];
             evalSnap.forEach(d => evaluations.push({ id: d.id, ...d.data() }));
-            evalSnap.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
+            evaluations.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
 
             const bySemester = {};
             classGrades.forEach(g => {
@@ -1584,6 +1533,176 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
 
     btn.innerHTML = '<i class="fa-solid fa-box-archive"></i> Confirm Action'; btn.disabled = false;
 });
+
+// ── 14.5. PROMOTE / REPEAT ────────────────────────────────────────────────
+// Lets the teacher resolve her year-end roster: promote students to the next
+// class (auto-assigning the receiving teacher only when exactly one teacher
+// owns that class) or mark them as repeating. Both stamp classHistory using
+// the same shape as saveStudentClass.
+let promoteClassTeacherMap = {}; // className -> [{id, name}] of teachers who own it
+
+// Build a map of class -> teachers who teach it (one fetch, on demand).
+async function buildClassTeacherMap() {
+    promoteClassTeacherMap = {};
+    try {
+        const snap = await getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId)));
+        snap.forEach(d => {
+            const t = d.data();
+            if (t.archived) return;
+            const classes = t.classes || (t.className ? [t.className] : []);
+            classes.forEach(c => {
+                if (!c) return;
+                if (!promoteClassTeacherMap[c]) promoteClassTeacherMap[c] = [];
+                promoteClassTeacherMap[c].push({ id: d.id, name: t.name || d.id });
+            });
+        });
+    } catch (e) {
+        console.error('[Roster] buildClassTeacherMap:', e);
+        promoteClassTeacherMap = {};
+    }
+}
+
+// Open the promote modal. If singleStudentId is passed, only that student is
+// listed; otherwise the teacher's whole current roster is shown.
+window.openPromoteModal = async function(singleStudentId = null) {
+    const listEl = document.getElementById('promoteList');
+    const msgEl  = document.getElementById('promoteMsg');
+    if (msgEl) { msgEl.classList.add('hidden'); msgEl.textContent = ''; }
+
+    const students = singleStudentId
+        ? allStudentsCache.filter(s => s.id === singleStudentId)
+        : allStudentsCache.slice();
+
+    if (!students.length) {
+        if (listEl) listEl.innerHTML = `<p style="padding:20px;text-align:center;color:#9ab0c6;font-size:13px;">No students to promote.</p>`;
+        openOverlay('promoteModal', 'promoteModalInner');
+        return;
+    }
+
+    if (listEl) listEl.innerHTML = `<div style="padding:24px;text-align:center;color:#9ab0c6;"><i class="fa-solid fa-spinner fa-spin" style="font-size:18px;"></i></div>`;
+    openOverlay('promoteModal', 'promoteModalInner');
+
+    // Fetch the class->teacher map once for this session of the modal
+    await buildClassTeacherMap();
+
+    // Destination options: all school classes + Repeat
+    const classOptions = schoolClasses.map(c =>
+        `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+
+    const rows = students.map(s => {
+        const curClass = s.className || '';
+        // default each student's destination to "choose"
+        return `
+        <div class="promote-row" data-student="${s.id}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid #e8edf2;border-radius:4px;background:#fff;margin-bottom:8px;">
+            <input type="checkbox" class="promote-check" data-student="${s.id}" ${students.length === 1 ? 'checked' : ''} style="width:16px;height:16px;flex-shrink:0;cursor:pointer;">
+            <div style="flex:1;min-width:0;">
+                <p style="font-size:13px;font-weight:700;color:#0d1f35;margin:0 0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(s.name)}</p>
+                <p style="font-size:10.5px;color:#9ab0c6;margin:0;">Current: ${escHtml(curClass || 'Unassigned')}</p>
+            </div>
+            <select class="promote-dest form-input" data-student="${s.id}" data-current="${escHtml(curClass)}" style="width:auto;min-width:160px;flex-shrink:0;">
+                <option value="">— Choose —</option>
+                <option value="__repeat__">Repeat (stay in ${escHtml(curClass || 'same class')})</option>
+                ${classOptions}
+            </select>
+        </div>`;
+    }).join('');
+
+    if (listEl) listEl.innerHTML = rows;
+};
+
+window.closePromoteModal = function() { closeOverlay('promoteModal', 'promoteModalInner'); };
+
+// Promote just the student whose panel is currently open.
+window.promoteCurrentStudent = function() {
+    if (!currentStudentId) return;
+    window.closeStudentPanel();
+    window.openPromoteModal(currentStudentId);
+};
+
+window.confirmPromotion = async function() {
+    const btn   = document.getElementById('confirmPromoteBtn');
+    const msgEl = document.getElementById('promoteMsg');
+    const rows  = Array.from(document.querySelectorAll('#promoteList .promote-row'));
+
+    // Gather selected rows with a chosen destination
+    const actions = [];
+    let needsChoice = false;
+
+    rows.forEach(row => {
+        const sid     = row.dataset.student;
+        const checked = row.querySelector('.promote-check')?.checked;
+        if (!checked) return;
+        const sel     = row.querySelector('.promote-dest');
+        const dest    = sel?.value || '';
+        const current = sel?.dataset.current || '';
+        if (!dest) { needsChoice = true; return; }
+        actions.push({ studentId: sid, dest, current });
+    });
+
+    if (needsChoice) {
+        if (msgEl) { msgEl.textContent = 'Please choose a destination (or Repeat) for every selected student.'; msgEl.classList.remove('hidden'); msgEl.style.color = '#dc2626'; }
+        return;
+    }
+    if (!actions.length) {
+        if (msgEl) { msgEl.textContent = 'Select at least one student and choose a destination.'; msgEl.classList.remove('hidden'); msgEl.style.color = '#dc2626'; }
+        return;
+    }
+
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing…'; }
+
+    try {
+        const nowIso = new Date().toISOString();
+        const batch  = writeBatch(db);
+        let unresolvedTeacher = 0;
+
+        actions.forEach(({ studentId, dest, current }) => {
+            const ref = doc(db, 'students', studentId);
+
+            if (dest === '__repeat__') {
+                // Repeat — stays in same class, stamp a year-boundary trail
+                batch.update(ref, {
+                    classHistory: arrayUnion({
+                        fromClass: current, toClass: current,
+                        changedAt: nowIso, reason: 'Repeated', schoolId: session.schoolId
+                    })
+                });
+            } else {
+                // Promote — move to destination class. Auto-assign receiving
+                // teacher only if exactly one teacher owns that class.
+                const owners = promoteClassTeacherMap[dest] || [];
+                const update = {
+                    className: dest,
+                    classHistory: arrayUnion({
+                        fromClass: current, toClass: dest,
+                        changedAt: nowIso, reason: 'Promoted', schoolId: session.schoolId
+                    })
+                };
+                if (owners.length === 1) {
+                    update.teacherId = owners[0].id;
+                } else {
+                    // zero or multiple owners — leave unassigned for that class
+                    update.teacherId = '';
+                    unresolvedTeacher++;
+                }
+                batch.update(ref, update);
+            }
+        });
+
+        await batch.commit();
+
+        window.closePromoteModal();
+        await loadStudents();
+
+        if (unresolvedTeacher > 0) {
+            alert(`Done. ${unresolvedTeacher} student(s) were moved to a class that doesn't have exactly one teacher assigned — they're in that class's unassigned pool until a teacher claims them.`);
+        }
+    } catch (e) {
+        console.error('[Roster] confirmPromotion:', e);
+        if (msgEl) { msgEl.textContent = 'Something went wrong. Please try again.'; msgEl.classList.remove('hidden'); msgEl.style.color = '#dc2626'; }
+    }
+
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-arrow-up-right-dots"></i> Confirm Promotion'; }
+};
 
 // ── 15. EXPORT ────────────────────────────────────────────────────────────
 window.exportRosterCSV = function() {
