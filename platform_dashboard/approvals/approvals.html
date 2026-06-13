@@ -3,22 +3,100 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Approvals & Quotes | ConnectUs HQ</title>
-    
+    <title>Approvals & Subscriptions | ConnectUs HQ</title>
+
     <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
-    
     <link rel="stylesheet" href="../../assets/css/global.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
-</head>
-<body class="bg-slate-900 text-slate-300 font-sans antialiased min-h-screen flex overflow-hidden">
 
+    <style>
+        * { font-family: 'Nunito', sans-serif; }
+
+        .tab-active {
+            background: rgba(16,185,129,0.15);
+            color: #34d399;
+            border-color: rgba(16,185,129,0.3);
+        }
+        .tab-inactive {
+            color: #64748b;
+            border-color: transparent;
+        }
+        .tab-inactive:hover {
+            color: #94a3b8;
+            background: rgba(255,255,255,0.04);
+        }
+
+        /* Modal overlay */
+        .modal-overlay {
+            background: rgba(2,6,23,0.85);
+            backdrop-filter: blur(6px);
+        }
+
+        /* Info row inside modals */
+        .info-row {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            gap: 12px;
+        }
+        .info-row:last-child { border-bottom: none; }
+        .info-label {
+            font-size: 10px;
+            font-weight: 800;
+            color: #475569;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            flex-shrink: 0;
+            padding-top: 1px;
+        }
+        .info-value {
+            font-size: 13px;
+            font-weight: 700;
+            color: #e2e8f0;
+            text-align: right;
+            word-break: break-all;
+        }
+
+        /* HQ form inputs */
+        .hq-input {
+            width: 100%;
+            padding: 10px 14px;
+            background: #020617;
+            border: 1.5px solid #1e293b;
+            border-radius: 10px;
+            color: #f1f5f9;
+            font-size: 13px;
+            font-weight: 600;
+            outline: none;
+            transition: border-color 0.15s;
+            font-family: 'Nunito', sans-serif;
+        }
+        .hq-input:focus { border-color: #10b981; }
+        .hq-input::placeholder { color: #334155; }
+        select.hq-input option { background: #0f172a; }
+
+        .hq-label {
+            display: block;
+            font-size: 10px;
+            font-weight: 800;
+            color: #475569;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-300 antialiased min-h-screen flex overflow-hidden">
+
+    <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
     <aside class="w-64 bg-slate-950 border-r border-slate-800 flex flex-col h-screen flex-shrink-0 relative z-20">
         <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-400 to-teal-600"></div>
-        <div class="h-20 flex flex-row items-center gap-3 px-6 border-b border-slate-800/50">
-            <img src="../../assets/images/logo.png" alt="ConnectUs" class="h-8 w-auto drop-shadow-md">
+        <div class="h-20 flex items-center gap-3 px-6 border-b border-slate-800/50">
+            <img src="../../assets/images/logo.png" alt="ConnectUs" class="h-8 w-auto">
             <div>
                 <h1 class="text-xl font-black text-white tracking-widest uppercase leading-none">ConnectUs <span class="text-emerald-400">HQ</span></h1>
                 <p id="hqAdminBadge" class="text-[9px] font-mono font-bold text-emerald-500 tracking-widest uppercase mt-0.5">Role: Owner</p>
@@ -29,7 +107,7 @@
             <a href="../index.html" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition">
                 <i class="fa-solid fa-chart-line w-5 text-center"></i> Overview
             </a>
-            <a href="approvals.html" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition text-emerald-400 bg-emerald-900/20 border border-emerald-800/30">
+            <a href="approvals.html" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-emerald-400 bg-emerald-900/20 border border-emerald-800/30 transition">
                 <i class="fa-solid fa-file-invoice-dollar w-5 text-center"></i> Approvals & Quotes
             </a>
             <a href="../schools/schools.html" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition">
@@ -50,184 +128,360 @@
                     <p id="hqAdminName" class="text-xs font-bold text-white leading-tight truncate">Admin</p>
                     <p id="hqAdminId" class="text-[10px] text-slate-500 font-mono mt-0.5">HQ-XXXXX</p>
                 </div>
-                <button id="logoutBtn" class="text-slate-400 hover:text-red-400 transition ml-2" title="Logout"><i class="fa-solid fa-power-off"></i></button>
+                <button id="logoutBtn" class="text-slate-400 hover:text-red-400 transition ml-2" title="Logout">
+                    <i class="fa-solid fa-power-off"></i>
+                </button>
             </div>
         </div>
     </aside>
 
-    <main class="flex-1 flex flex-col h-screen overflow-hidden bg-[#0f172a] relative z-10">
+    <!-- ── Main content ────────────────────────────────────────────────────── -->
+    <main class="flex-1 flex flex-col h-screen overflow-hidden bg-[#0f172a]">
+
         <header class="h-20 flex items-center justify-between px-8 border-b border-slate-800 bg-slate-900/50 backdrop-blur-md flex-shrink-0">
             <div>
-                <h2 class="text-xl font-black text-white tracking-wide">Approvals & Quotes</h2>
-                <p class="text-xs text-slate-400 font-semibold mt-1">Review school requests, log payments, and initialize access.</p>
+                <h2 class="text-xl font-black text-white tracking-wide">Approvals & Subscriptions</h2>
+                <p class="text-xs text-slate-400 font-semibold mt-1">Manage self-service PayPal subscribers and manual quote requests.</p>
             </div>
         </header>
 
         <div class="flex-1 overflow-y-auto p-8">
-            <div class="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden shadow-xl">
-                <div class="p-6 border-b border-slate-700 flex justify-between items-center bg-slate-900/50">
-                    <h3 class="font-black text-white text-lg">Pending Quote Requests</h3>
-                    <button id="refreshQuotesBtn" class="text-xs font-bold text-emerald-400 hover:text-emerald-300 transition flex items-center gap-2 border border-emerald-900 bg-emerald-900/20 px-3 py-1.5 rounded-lg">
-                        <i class="fa-solid fa-rotate-right"></i> Refresh
-                    </button>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="bg-slate-900/80 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-700">
-                                <th class="p-4 font-black">Date</th>
-                                <th class="p-4 font-black">School Name</th>
-                                <th class="p-4 font-black">Contact</th>
-                                <th class="p-4 font-black">Status</th>
-                                <th class="p-4 font-black text-right">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="quotesTableBody" class="text-sm"></tbody>
-                    </table>
+
+            <!-- Tab bar -->
+            <div class="flex items-center gap-2 mb-6">
+                <button id="tabPayPal" onclick="window.switchTab('paypal')"
+                    class="tab-active flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-black border transition">
+                    <i class="fa-brands fa-paypal"></i>
+                    Self-Service Subscriptions
+                    <span id="paypalBadge" class="hidden bg-emerald-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none"></span>
+                </button>
+                <button id="tabManual" onclick="window.switchTab('manual')"
+                    class="tab-inactive flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-black border transition">
+                    <i class="fa-solid fa-file-invoice-dollar"></i>
+                    Quote Requests
+                    <span id="manualBadge" class="hidden bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none"></span>
+                </button>
+            </div>
+
+            <!-- ── PayPal Subscriptions panel ──────────────────────────────── -->
+            <div id="paypalPanel">
+                <div class="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden shadow-xl">
+                    <div class="p-5 border-b border-slate-700 flex justify-between items-center bg-slate-900/50">
+                        <div>
+                            <h3 class="font-black text-white text-base">PayPal Self-Service Subscribers</h3>
+                            <p class="text-xs text-slate-500 font-semibold mt-0.5">Schools that subscribed directly through the pricing page.</p>
+                        </div>
+                        <button id="refreshPaypalBtn" class="text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1.5 border border-emerald-900 bg-emerald-900/20 px-3 py-1.5 rounded-lg transition">
+                            <i class="fa-solid fa-rotate-right"></i> Refresh
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-900/80 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-700">
+                                    <th class="p-4 font-black">Date</th>
+                                    <th class="p-4 font-black">Subscriber</th>
+                                    <th class="p-4 font-black">Plan</th>
+                                    <th class="p-4 font-black">Limits</th>
+                                    <th class="p-4 font-black">Renewal</th>
+                                    <th class="p-4 font-black text-right">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="paypalTableBody" class="text-sm"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
+
+            <!-- ── Manual Quotes panel ─────────────────────────────────────── -->
+            <div id="manualPanel" class="hidden">
+                <div class="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden shadow-xl">
+                    <div class="p-5 border-b border-slate-700 flex justify-between items-center bg-slate-900/50">
+                        <div>
+                            <h3 class="font-black text-white text-base">Manual Quote Requests</h3>
+                            <p class="text-xs text-slate-500 font-semibold mt-0.5">Schools that submitted a quote request form and require manual approval.</p>
+                        </div>
+                        <button id="refreshManualBtn" class="text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1.5 border border-emerald-900 bg-emerald-900/20 px-3 py-1.5 rounded-lg transition">
+                            <i class="fa-solid fa-rotate-right"></i> Refresh
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-900/80 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-700">
+                                    <th class="p-4 font-black">Date</th>
+                                    <th class="p-4 font-black">School</th>
+                                    <th class="p-4 font-black">Contact</th>
+                                    <th class="p-4 font-black">Status</th>
+                                    <th class="p-4 font-black text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="manualTableBody" class="text-sm"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </main>
 
-    <div id="paymentModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300 overflow-y-auto py-10">
-        <div class="bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 w-full max-w-5xl m-4 transform scale-95 transition-transform duration-300 overflow-hidden flex flex-col md:flex-row" id="paymentModalInner">
-            
-            <div class="md:w-2/3 p-8 border-b md:border-b-0 md:border-r border-slate-700 bg-slate-800/50">
-                <div class="flex justify-between items-start mb-6">
-                    <div>
-                        <h3 class="font-black text-2xl text-white">Quote Request Details</h3>
-                        <p id="vReqId" class="text-xs font-mono font-bold text-blue-400 mt-1 uppercase tracking-widest"></p>
+
+    <!-- ════════════════════════════════════════════════════════════════════════
+         PAYPAL SUBSCRIPTION MODAL
+    ════════════════════════════════════════════════════════════════════════════ -->
+    <div id="paypalModal" class="modal-overlay fixed inset-0 z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300 overflow-y-auto py-8 px-4">
+        <div id="paypalModalInner" class="bg-slate-800 border border-slate-700 rounded-3xl shadow-2xl w-full max-w-4xl transform scale-95 transition-transform duration-300 overflow-hidden">
+
+            <!-- Modal header -->
+            <div class="flex items-center justify-between px-8 py-6 border-b border-slate-700 bg-slate-900/60">
+                <div>
+                    <div class="flex items-center gap-3 mb-1">
+                        <i class="fa-brands fa-paypal text-blue-400 text-xl"></i>
+                        <h3 class="font-black text-xl text-white">PayPal Subscription</h3>
                     </div>
-                    <button id="closeModalBtnMobile" class="md:hidden text-slate-500 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+                    <p id="ppSubId" class="text-xs font-mono text-slate-500 uppercase tracking-widest"></p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span id="ppStatusBadge"></span>
+                    <button onclick="window.closePayPalModal()" class="text-slate-500 hover:text-white transition text-xl">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-0">
+
+                <!-- Left: Subscription details -->
+                <div class="p-8 border-b md:border-b-0 md:border-r border-slate-700">
+
+                    <!-- Subscriber info -->
+                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-user text-slate-600"></i> Subscriber
+                    </p>
+                    <div class="bg-slate-900/60 border border-slate-700/50 rounded-xl p-4 mb-6">
+                        <div class="info-row"><span class="info-label">Name</span><span class="info-value" id="ppName">—</span></div>
+                        <div class="info-row"><span class="info-label">Email</span><span class="info-value text-blue-400" id="ppEmail">—</span></div>
+                        <div class="info-row"><span class="info-label">School Name</span><span class="info-value text-slate-400 italic" id="ppSchool">—</span></div>
+                        <div class="info-row"><span class="info-label">School ID</span><span class="info-value font-mono text-emerald-400" id="ppGenSchool">—</span></div>
+                        <div class="info-row"><span class="info-label">Subscribed</span><span class="info-value" id="ppCreated">—</span></div>
+                    </div>
+
+                    <!-- Subscription info -->
+                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-credit-card text-slate-600"></i> Subscription
+                    </p>
+                    <div class="bg-slate-900/60 border border-slate-700/50 rounded-xl p-4">
+                        <div class="info-row"><span class="info-label">Plan</span><span class="info-value text-white" id="ppPlan">—</span></div>
+                        <div class="info-row"><span class="info-label">Billing</span><span class="info-value" id="ppBilling">—</span></div>
+                        <div class="info-row"><span class="info-label">Renewal Date</span><span class="info-value text-emerald-400" id="ppRenewal">—</span></div>
+                        <div class="info-row"><span class="info-label">PayPal Sub ID</span><span class="info-value font-mono text-[11px] text-slate-400" id="ppPaypalId">—</span></div>
+                    </div>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                    <div class="bg-slate-900 border border-slate-700 rounded-xl p-5">
-                        <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 border-b border-slate-800 pb-2"><i class="fa-solid fa-user mr-1"></i> Contact Info</p>
-                        <p class="text-sm font-bold text-white mb-1" id="vName">-</p>
-                        <p class="text-xs text-slate-400 mb-3" id="vRole">-</p>
-                        <p class="text-xs text-slate-300 mb-1"><i class="fa-solid fa-envelope w-4 text-slate-500"></i> <span id="vEmail">-</span></p>
-                        <p class="text-xs text-slate-300"><i class="fa-solid fa-phone w-4 text-slate-500"></i> <span id="vPhone">-</span></p>
+                <!-- Right: Actions -->
+                <div class="p-8 bg-slate-900/40 flex flex-col gap-6">
+
+                    <!-- Adjust limits -->
+                    <div>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                            <i class="fa-solid fa-sliders text-emerald-500"></i> Adjust Plan Limits
+                        </p>
+                        <div class="grid grid-cols-3 gap-3 mb-3">
+                            <div>
+                                <label class="hq-label">Students</label>
+                                <input type="number" id="ppStudentLimit" class="hq-input text-center" min="1">
+                            </div>
+                            <div>
+                                <label class="hq-label">Teachers</label>
+                                <input type="number" id="ppTeacherLimit" class="hq-input text-center" min="1">
+                            </div>
+                            <div>
+                                <label class="hq-label">Admins</label>
+                                <input type="number" id="ppAdminLimit" class="hq-input text-center" min="1">
+                            </div>
+                        </div>
+                        <button id="ppSaveLimitsBtn" class="w-full bg-emerald-700 hover:bg-emerald-600 text-white font-black py-2.5 rounded-xl transition text-sm flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-floppy-disk"></i> Save Limits
+                        </button>
+                        <p class="text-[10px] font-semibold text-slate-500 mt-2 text-center">
+                            If the school is already live, limits update on both the quote and school records.
+                        </p>
                     </div>
 
-                    <div class="bg-slate-900 border border-slate-700 rounded-xl p-5">
-                        <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 border-b border-slate-800 pb-2"><i class="fa-solid fa-school mr-1"></i> School Info</p>
-                        <p class="text-sm font-bold text-white mb-1" id="vSchoolName">-</p>
-                        <p class="text-xs text-slate-400 mb-3" id="vSchoolType">-</p>
-                        <p class="text-xs text-slate-300 mb-1"><i class="fa-solid fa-location-dot w-4 text-slate-500"></i> <span id="vLocation">-</span></p>
-                        <div class="flex gap-4 mt-3">
-                            <div class="bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700">
+                    <div class="border-t border-slate-700/50 pt-6">
+                        <!-- Update email -->
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                            <i class="fa-solid fa-envelope text-blue-500"></i> Onboarding Email
+                        </p>
+                        <div class="flex gap-2 mb-3">
+                            <input type="email" id="ppEditEmail" class="hq-input flex-1" placeholder="subscriber@email.com">
+                            <button id="ppSaveEmailBtn" class="bg-blue-700 hover:bg-blue-600 text-white font-bold px-4 rounded-xl transition text-xs flex-shrink-0">
+                                Update
+                            </button>
+                        </div>
+                        <button id="ppResendBtn" class="w-full bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white font-bold py-2.5 rounded-xl transition text-sm flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-paper-plane"></i> Resend Onboarding Link
+                        </button>
+                    </div>
+
+                    <!-- Save message -->
+                    <p id="ppSaveMsg" class="text-xs font-bold hidden"></p>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ════════════════════════════════════════════════════════════════════════
+         MANUAL QUOTE MODAL
+    ════════════════════════════════════════════════════════════════════════════ -->
+    <div id="manualModal" class="modal-overlay fixed inset-0 z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300 overflow-y-auto py-8 px-4">
+        <div id="manualModalInner" class="bg-slate-800 border border-slate-700 rounded-3xl shadow-2xl w-full max-w-5xl transform scale-95 transition-transform duration-300 overflow-hidden flex flex-col md:flex-row">
+
+            <!-- Left: Quote details -->
+            <div class="md:w-[58%] p-8 border-b md:border-b-0 md:border-r border-slate-700 bg-slate-800/50 overflow-y-auto max-h-[85vh]">
+                <div class="flex justify-between items-start mb-6">
+                    <div>
+                        <h3 class="font-black text-2xl text-white">Quote Request</h3>
+                        <p id="vReqId" class="text-xs font-mono font-bold text-blue-400 mt-1 uppercase tracking-widest"></p>
+                    </div>
+                    <button onclick="window.closeManualModal()" class="md:hidden text-slate-500 hover:text-white transition">
+                        <i class="fa-solid fa-xmark text-xl"></i>
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                    <div class="bg-slate-900 border border-slate-700 rounded-xl p-4">
+                        <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 pb-2 border-b border-slate-800">
+                            <i class="fa-solid fa-user mr-1"></i> Contact
+                        </p>
+                        <p class="text-sm font-bold text-white mb-1" id="vName">—</p>
+                        <p class="text-xs text-slate-400 mb-3" id="vRole">—</p>
+                        <p class="text-xs text-slate-300 mb-1"><i class="fa-solid fa-envelope w-4 text-slate-500"></i> <span id="vEmail">—</span></p>
+                        <p class="text-xs text-slate-300"><i class="fa-solid fa-phone w-4 text-slate-500"></i> <span id="vPhone">—</span></p>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-700 rounded-xl p-4">
+                        <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 pb-2 border-b border-slate-800">
+                            <i class="fa-solid fa-school mr-1"></i> School
+                        </p>
+                        <p class="text-sm font-bold text-white mb-1" id="vSchoolName">—</p>
+                        <p class="text-xs text-slate-400 mb-2" id="vSchoolType">—</p>
+                        <p class="text-xs text-slate-300 mb-2"><i class="fa-solid fa-location-dot w-4 text-slate-500"></i> <span id="vLocation">—</span></p>
+                        <div class="flex gap-3 mt-2">
+                            <div class="bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 text-center">
                                 <span class="text-[9px] block text-slate-500 uppercase font-bold">Students</span>
-                                <span class="text-sm font-black text-white" id="vStudents">-</span>
+                                <span class="text-sm font-black text-white" id="vStudents">—</span>
                             </div>
-                            <div class="bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700">
+                            <div class="bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 text-center">
                                 <span class="text-[9px] block text-slate-500 uppercase font-bold">Teachers</span>
-                                <span class="text-sm font-black text-white" id="vTeachers">-</span>
+                                <span class="text-sm font-black text-white" id="vTeachers">—</span>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="bg-slate-900 border border-slate-700 rounded-xl p-5 mb-6">
-                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 border-b border-slate-800 pb-2"><i class="fa-solid fa-file-contract mr-1"></i> Contract Details</p>
-                    <p class="text-sm font-bold text-white mb-1" id="vContractTerm">-</p>
-                    <p class="text-xs text-slate-400" id="vContractDuration">-</p>
+                <div class="bg-slate-900 border border-slate-700 rounded-xl p-4 mb-4">
+                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 pb-2 border-b border-slate-800">
+                        <i class="fa-solid fa-file-contract mr-1"></i> Contract
+                    </p>
+                    <p class="text-sm font-bold text-white mb-1" id="vContractTerm">—</p>
+                    <p class="text-xs text-slate-400" id="vContractDuration">—</p>
                 </div>
 
-                <div class="bg-slate-900 border border-slate-700 rounded-xl p-5">
-                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 border-b border-slate-800 pb-2"><i class="fa-solid fa-comment-dots mr-1"></i> Notes & Source</p>
-                    <p class="text-xs text-slate-400 font-bold mb-2">Source: <span class="text-slate-300 font-normal" id="vSource">-</span></p>
-                    <div class="bg-slate-800 p-3 rounded-lg text-sm text-slate-300 italic border border-slate-700" id="vMessage">No additional message provided.</div>
+                <div class="bg-slate-900 border border-slate-700 rounded-xl p-4">
+                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 pb-2 border-b border-slate-800">
+                        <i class="fa-solid fa-comment-dots mr-1"></i> Notes
+                    </p>
+                    <p class="text-xs text-slate-400 font-bold mb-2">Source: <span class="text-slate-300 font-normal" id="vSource">—</span></p>
+                    <div class="bg-slate-800 p-3 rounded-lg text-sm text-slate-300 italic border border-slate-700" id="vMessage">No message.</div>
                 </div>
             </div>
 
-            <div class="md:w-1/3 bg-slate-900 p-8 relative flex flex-col justify-between">
-                <button id="closeModalBtnDesktop" class="hidden md:block absolute top-6 right-6 text-slate-500 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
-                
+            <!-- Right: Actions -->
+            <div class="md:w-[42%] bg-slate-900 p-8 flex flex-col gap-0 relative overflow-y-auto max-h-[85vh]">
+                <button onclick="window.closeManualModal()" class="hidden md:block absolute top-6 right-6 text-slate-500 hover:text-white transition">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+
+                <!-- Log payment -->
                 <div id="paymentFormContainer">
-                    <h3 class="font-black text-lg text-emerald-400 border-b border-emerald-900/50 pb-3 mb-6"><i class="fa-solid fa-money-check-dollar mr-2"></i> Log Payment & Activate</h3>
-                    
+                    <h3 class="font-black text-lg text-emerald-400 border-b border-emerald-900/40 pb-3 mb-5">
+                        <i class="fa-solid fa-money-check-dollar mr-2"></i> Log Payment & Activate
+                    </h3>
                     <div class="space-y-4">
-                        
                         <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 text-indigo-400">Subscription Tier *</label>
-                            <select id="payPlan" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-indigo-500 transition">
+                            <label class="hq-label text-indigo-400">Subscription Tier *</label>
+                            <select id="payPlan" class="hq-input">
                                 <option value="">Loading plans...</option>
                             </select>
                             <p id="planLimitsDisplay" class="text-[10px] font-bold text-indigo-400 mt-2 hidden"></p>
                         </div>
-
-                        <div class="grid grid-cols-2 gap-4">
+                        <div class="grid grid-cols-2 gap-3">
                             <div>
-                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Amount (BZD)</label>
-                                <input type="number" id="payAmount" placeholder="e.g. 500" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition">
+                                <label class="hq-label">Amount (USD)</label>
+                                <input type="number" id="payAmount" placeholder="e.g. 99.99" class="hq-input">
                             </div>
-                            
                             <div>
-                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Billing Term</label>
-                                <select id="payCycle" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition">
+                                <label class="hq-label">Billing Term</label>
+                                <select id="payCycle" class="hq-input">
                                     <option value="Monthly">Monthly</option>
-                                    <option value="Annual">Annual Contract</option>
-                                    <option value="Multi-Year">Multi-Year Contract</option>
-                                    <option value="Other">Other (Custom)</option>
+                                    <option value="Annual">Annual</option>
+                                    <option value="Multi-Year">Multi-Year</option>
+                                    <option value="Other">Other</option>
                                 </select>
                             </div>
                         </div>
-
                         <div id="customCycleWrap" class="hidden">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Specify Custom Term</label>
-                            <input type="text" id="payCustomCycle" placeholder="e.g. 6 Months" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition">
+                            <label class="hq-label">Custom Term</label>
+                            <input type="text" id="payCustomCycle" placeholder="e.g. 6 Months" class="hq-input">
                         </div>
-
                         <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Internal Notes (Optional)</label>
-                            <textarea id="payNotes" placeholder="e.g. Wire transfer cleared..." class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-500 transition resize-none h-16"></textarea>
+                            <label class="hq-label">Internal Notes</label>
+                            <textarea id="payNotes" placeholder="e.g. Wire transfer cleared..." class="hq-input resize-none h-14"></textarea>
                         </div>
-
-                        <div class="pt-2 border-t border-slate-800">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Attach Bank Receipt / Invoice</label>
-                            <div class="relative">
-                                <input type="file" id="payReceipt" accept="image/*,.pdf" class="w-full p-2 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-400 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:uppercase file:tracking-wider file:bg-emerald-900/30 file:text-emerald-400 hover:file:bg-emerald-900/50 transition outline-none cursor-pointer">
-                            </div>
+                        <div>
+                            <label class="hq-label">Attach Receipt / Invoice</label>
+                            <input type="file" id="payReceipt" accept="image/*,.pdf"
+                                class="w-full p-2 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:uppercase file:bg-emerald-900/30 file:text-emerald-400 hover:file:bg-emerald-900/50 outline-none cursor-pointer transition">
                         </div>
                     </div>
-
-                    <div class="mt-6">
-                        <p id="paymentErrorMsg" class="text-xs font-bold text-red-400 bg-red-900/30 border border-red-800/50 p-3 rounded-lg text-center hidden mb-4"></p>
-                        <button id="confirmApproveBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-xl transition shadow-lg shadow-emerald-900/50 text-sm tracking-wide">
+                    <div class="mt-5">
+                        <p id="paymentErrorMsg" class="text-xs font-bold text-red-400 bg-red-900/20 border border-red-900/40 p-3 rounded-xl text-center hidden mb-4"></p>
+                        <button id="confirmApproveBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 rounded-xl transition shadow-lg shadow-emerald-900/40 text-sm">
                             Mark as Paid & Approve <i class="fa-solid fa-arrow-right ml-1"></i>
                         </button>
-                        <p class="text-[10px] text-center font-bold text-emerald-500 mt-3">This locks the tier limits and emails the onboarding link.</p>
+                        <p class="text-[10px] text-center font-bold text-emerald-600 mt-2">Locks tier limits and emails the onboarding link.</p>
                     </div>
                 </div>
 
+                <!-- Manage sent link -->
                 <div id="manageLinkContainer" class="hidden">
-                    <h3 class="font-black text-lg text-blue-400 border-b border-blue-900/50 pb-3 mb-6"><i class="fa-solid fa-link mr-2"></i> Manage Sent Link</h3>
-                    
-                    <div class="space-y-6">
+                    <h3 class="font-black text-lg text-blue-400 border-b border-blue-900/40 pb-3 mb-5">
+                        <i class="fa-solid fa-link mr-2"></i> Manage Sent Link
+                    </h3>
+                    <div class="space-y-5">
                         <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Update Recipient Email</label>
+                            <label class="hq-label">Update Recipient Email</label>
                             <div class="flex gap-2">
-                                <input type="email" id="editEmailInput" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-blue-500 transition">
-                                <button id="saveEmailBtn" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 rounded-xl transition shadow-md text-xs">Save</button>
+                                <input type="email" id="editEmailInput" class="hq-input flex-1">
+                                <button id="saveEmailBtn" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 rounded-xl transition text-xs flex-shrink-0">Save</button>
                             </div>
                         </div>
-
-                        <button id="resendLinkBtn" class="w-full bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white font-bold py-4 rounded-xl transition shadow-md text-sm tracking-wide flex justify-center items-center gap-2">
-                            <i class="fa-solid fa-paper-plane"></i> Resend Email Link
+                        <button id="resendLinkBtn" class="w-full bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white font-bold py-3.5 rounded-xl transition text-sm flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-paper-plane"></i> Resend Onboarding Email
                         </button>
-
-                        <div class="pt-4 border-t border-slate-800 mt-6">
+                        <div class="pt-4 border-t border-slate-800">
                             <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Danger Zone</p>
-                            <button id="revokeLinkBtn" class="w-full bg-red-900/20 border border-red-900/50 hover:bg-red-900/40 text-red-400 font-bold py-3 rounded-xl transition text-sm flex justify-center items-center gap-2">
-                                <i class="fa-solid fa-ban"></i> Revoke Approval (Cancel Link)
+                            <button id="revokeLinkBtn" class="w-full bg-red-900/20 border border-red-900/40 hover:bg-red-900/40 text-red-400 font-bold py-3 rounded-xl transition text-sm flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-ban"></i> Revoke Approval
                             </button>
-                            <p class="text-[10px] font-semibold text-slate-500 mt-2 text-center leading-relaxed">This flips the quote back to "Pending" and renders the sent link useless.</p>
+                            <p class="text-[10px] font-semibold text-slate-500 mt-2 text-center leading-relaxed">Renders the sent link useless and returns this quote to Pending.</p>
                         </div>
                     </div>
                 </div>
-
             </div>
+
         </div>
     </div>
 
