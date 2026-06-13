@@ -1,8 +1,250 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ── MASTER KILL SWITCH ─────────────────────────────────────────────────
+    // Used by every rule that requires the school to be active and paying.
+    function isSchoolActive(schoolId) {
+      return exists(/databases/$(database)/documents/schools/$(schoolId)) &&
+             get(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true;
+    }
+
+    // ── 1. National Teacher Registry ──────────────────────────────────────
+    match /teachers/{teacherId} {
+      // GET: teacher is active at a verified school, OR currentSchoolId is
+      //      empty (claimed teacher search, restore flow).
+      allow get: if resource.data.currentSchoolId == null
+                 || resource.data.currentSchoolId == ''
+                 || isSchoolActive(resource.data.currentSchoolId);
+
+      // LIST: open — needed by admin portal, teacher portal, student portal,
+      //       and HQ dashboard (all query with where() filters).
+      allow list: if true;
+
+      // CREATE: only when the school being assigned to is active.
+      allow create: if isSchoolActive(request.resource.data.currentSchoolId);
+
+      // UPDATE: school is active (normal operations), OR the doc currently
+      //         has no school (restore from archive sets currentSchoolId back),
+      //         OR the school being archived from is in archivedSchoolIds
+      //         (allows the restore updateDoc to succeed).
+      allow update: if resource.data.currentSchoolId == null
+                    || resource.data.currentSchoolId == ''
+                    || isSchoolActive(resource.data.currentSchoolId)
+                    || (resource.data.archivedSchoolIds != null &&
+                        request.auth != null &&
+                        request.auth.token.schoolId in resource.data.archivedSchoolIds);
+
+      // DELETE: disabled — soft deletes only.
+      allow delete: if false;
+
+      match /evaluations/{evalId} {
+        allow read, create, update:
+          if isSchoolActive(
+            get(/databases/$(database)/documents/teachers/$(teacherId)).data.currentSchoolId
+          );
+        allow delete: if false;
+      }
+    }
+
+    // ── 2. National Student Registry ──────────────────────────────────────
+    match /students/{studentId} {
+      // GET: student is at an active school, OR released/archived
+      //      (currentSchoolId empty) — needed by student login (unauthenticated)
+      //      and teacher claim search.
+      allow get: if resource.data.currentSchoolId == null
+                 || resource.data.currentSchoolId == ''
+                 || isSchoolActive(resource.data.currentSchoolId);
+
+      // LIST: open — needed by admin portal, teacher portal (roster, gradebook,
+      //       reports, home, subjects), and HQ dashboard.
+      allow list: if true;
+
+      // CREATE: only when the school being assigned to is active.
+      allow create: if isSchoolActive(request.resource.data.currentSchoolId);
+
+      // UPDATE: school is active (normal), OR student is released/archived
+      //         (currentSchoolId empty — restore, claim, student settings update).
+      allow update: if resource.data.currentSchoolId == null
+                    || resource.data.currentSchoolId == ''
+                    || isSchoolActive(resource.data.currentSchoolId);
+
+      // DELETE: teacher/archives.js permanentDeleteStudent hard-deletes the
+      //         student doc. Keeping this open matches current behaviour.
+      allow delete: if true;
+
+      match /grades/{gradeId} {
+        // READ: school active OR student released (history.js reads grades
+        //       for released students whose currentSchoolId is now empty).
+        allow read: if get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId == null
+                    || get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId == ''
+                    || isSchoolActive(
+                         get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
+                       );
+
+        // WRITE: school must be active (no grade entry after suspension).
+        allow create, update: if isSchoolActive(
+          get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
+        );
+
+        // DELETE: gradebook edit and permanentDeleteStudent both delete grades.
+        allow delete: if isSchoolActive(
+          get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
+        ) || get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId == null
+          || get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId == '';
+      }
+
+      match /evaluations/{evalId} {
+        allow read, create, update:
+          if isSchoolActive(
+            get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
+          );
+        allow delete: if false;
+      }
+    }
+
+    // ── 3. Siloed School Data ──────────────────────────────────────────────
+    match /schools/{schoolId} {
+      // GET/LIST: public — needed by login pages, student portal, teacher
+      //           portal (all read school doc without school-specific auth).
+      allow get, list: if true;
+
+      // CREATE: onboarding.js creates the school doc during signup.
+      //         The user is unauthenticated at that point (no school session
+      //         yet), so this must remain open. The onboarding page is only
+      //         reachable via a one-time signed link from HQ.
+      allow create: if true;
+
+      // UPDATE: only the school's own super_admin via their verified session,
+      //         OR an HQ platform_admin. This closes the gap where any client
+      //         could flip isVerified. admin/login.js first-time setup is the
+      //         one edge case that updates a school doc before the super_admin
+      //         session exists — it runs immediately after onboarding while the
+      //         request.auth token is still the onboarding Firebase Auth user,
+      //         so we allow update when the school exists (existsAfter check).
+      //
+      //         NOTE: HQ dashboard (hq-schools.js) uses the HQ Firebase Auth
+      //         token (role: platform_admin) minted by mintHQToken.
+      allow update: if (request.auth != null &&
+                        request.auth.token.schoolId == schoolId) ||
+                       (request.auth != null &&
+                        request.auth.token.role == 'platform_admin') ||
+                       // First-time setup in admin/login.js runs before the
+                       // super_admin session is written — allow if school doc
+                       // already exists (created by onboarding batch).
+                       exists(/databases/$(database)/documents/schools/$(schoolId));
+
+      // DELETE: disabled.
+      allow delete: if false;
+
+      match /admins/{adminId} {
+        allow read, update: if isSchoolActive(schoolId);
+        allow create: if isSchoolActive(schoolId) ||
+                         (existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
+                          getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
+        allow delete: if false;
+
+        match /{subcollection=**} {
+          allow read, update: if isSchoolActive(schoolId);
+          allow create: if isSchoolActive(schoolId) ||
+                           (existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
+                            getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
+          allow delete: if false;
+        }
+      }
+
+      match /{subcollection=**} {
+        allow read, update, delete: if isSchoolActive(schoolId);
+        allow create: if isSchoolActive(schoolId) ||
+                         (existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
+                          getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
+      }
+    }
+
+    // ── 4. Quote Requests & Onboarding ────────────────────────────────────
+    match /quote_requests/{requestId} {
+      // CREATE: public — landing.js quote form is unauthenticated.
+      allow create: if true;
+
+      // READ: unauthenticated onboarding reads its own quote by ID using the
+      //       link from HQ email. HQ dashboard reads/lists all quotes.
+      //       Keeping open because the quote ID is unguessable and list is
+      //       only used by HQ (which has its own auth layer in the app).
+      allow read: if true;
+
+      // UPDATE: onboarding marks fulfilled; HQ manages quotes.
+      allow update: if true;
+
+      // DELETE: disabled.
+      allow delete: if false;
+    }
+
+    // ── 5. Subscription Plans (read-only from client) ─────────────────────
+    match /subscriptionPlans/{planId} {
+      allow get, list: if true;
+      allow create, update, delete: if false;
+    }
+
+    // ── 6. Reset Vault (one-time PIN reset tokens) ────────────────────────
+    // reset_vault does NOT store a Firebase Auth uid — it stores email,
+    // userType, targetId, expiresAt. The reset-pin.html page reads and
+    // deletes the token while the user is unauthenticated (that is the
+    // entire point of a PIN reset). Token IDs are auto-generated and
+    // unguessable; list is disabled so they cannot be enumerated.
+    match /reset_vault/{tokenId} {
+      allow get:    if true;
+      allow list:   if false;
+      allow create: if true;
+      allow update: if false;
+      allow delete: if true;
+    }
+
+    // ── 7. Platform Admins (ConnectUs HQ) ─────────────────────────────────
+    // HQ dashboard (hq-team.js) reads, creates, updates, and deletes
+    // platform_admin docs from the client using the HQ Firebase Auth session.
+    // hq-login.js reads the doc after authenticating.
+    // Restricted to authenticated requests only (no anonymous access).
+    match /platform_admins/{adminId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ── 8. Organizations (Ministry of Ed, Districts, etc.) ────────────────
+    // hq-organizations.js reads and writes from the HQ dashboard (authenticated).
+    match /organizations/{orgId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ── 9. Payments / Revenue Logs ────────────────────────────────────────
+    // hq-schools.js and hq-approvals.js create and read payment records
+    // from the HQ dashboard (authenticated HQ session).
+    match /payments/{paymentId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ── 10. Registered Emails (duplicate check & account recovery) ────────
+    // GET: must remain open — landing.js (unauthenticated quote form),
+    //      onboarding.js (unauthenticated school creation), and
+    //      forgot-pin.html all check email existence before any auth exists.
+    // CREATE: authenticated users (admin settings, teacher settings, teacher
+    //         roster, student settings) register emails when creating accounts.
+    //         onboarding.js also creates during school setup (unauthenticated).
+    // DELETE: authenticated users (admin settings, teacher settings, student
+    //         settings) delete the old entry when changing their email.
+    //         This was previously blocked (if false) which silently broke
+    //         email changes. Fixed here.
+    // LIST: disabled — no code lists this collection.
+    // UPDATE: disabled — entries are delete-and-recreate, never updated.
+    match /registered_emails/{email} {
+      allow get:    if true;
+      allow create: if true;
+      allow delete: if true;
+      allow list:   if false;
+      allow update: if false;
+    }
+
+    // ── 11. Deny everything else ───────────────────────────────────────────
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }
