@@ -4,130 +4,394 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>School Setup | ConnectUs</title>
-    
+
     <link rel="stylesheet" href="../assets/css/global.css">
     <link rel="icon" type="image/png" sizes="32x32" href="../assets/images/favicon-32x32.png">
-    
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-</head>
-<body class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-[#f8faff] to-[#eef2ff] antialiased">
 
-    <div class="max-w-xl w-full">
+    <style>
+        * { font-family: 'Nunito', sans-serif; }
+
+        body {
+            background: linear-gradient(135deg, #f0f7ff 0%, #e8f0fe 50%, #f5f0ff 100%);
+            min-height: 100vh;
+        }
+
+        .card {
+            background: #ffffff;
+            border-radius: 24px;
+            box-shadow: 0 8px 40px rgba(37,99,235,0.10), 0 1px 4px rgba(0,0,0,0.04);
+            border: 1px solid #e0e7ff;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 11px 14px;
+            background: #f8faff;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #1e293b;
+            outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+            font-family: 'Nunito', sans-serif;
+        }
+        .form-input:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.10);
+            background: #fff;
+        }
+        .form-input::placeholder { color: #94a3b8; font-weight: 600; }
+        select.form-input option { background: #fff; color: #1e293b; }
+
+        .form-label {
+            display: block;
+            font-size: 11px;
+            font-weight: 800;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 6px;
+        }
+
+        .section-divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 28px 0 20px;
+        }
+        .section-divider span {
+            font-size: 11px;
+            font-weight: 900;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            white-space: nowrap;
+        }
+        .section-divider::before,
+        .section-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #e2e8f0;
+        }
+
+        .step-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            background: #2563eb;
+            color: #fff;
+            border-radius: 50%;
+            font-size: 11px;
+            font-weight: 900;
+            flex-shrink: 0;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            color: #fff;
+            font-weight: 900;
+            font-size: 15px;
+            border: none;
+            border-radius: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 16px rgba(37,99,235,0.30);
+            letter-spacing: 0.02em;
+            font-family: 'Nunito', sans-serif;
+        }
+        .submit-btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(37,99,235,0.38);
+        }
+        .submit-btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Subscription badge */
+        #subscriptionBadge {
+            background: linear-gradient(135deg, #ecfdf5, #f0fdf4);
+            border: 1.5px solid #a7f3d0;
+            border-radius: 16px;
+            padding: 16px 20px;
+            margin-bottom: 24px;
+        }
+
+        /* Loading dots animation */
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    </style>
+</head>
+<body class="flex items-start justify-center py-12 px-4">
+
+    <div class="w-full max-w-lg">
+
+        <!-- Logo & header -->
         <div class="text-center mb-8">
-            <img src="../assets/images/logo.png" alt="ConnectUs" class="h-16 w-auto mx-auto mb-4 drop-shadow-md">
-            <h1 class="text-3xl font-black text-blue-900 tracking-tight">Welcome to ConnectUs</h1>
-            <p class="text-slate-500 font-semibold mt-2">Let's configure your school's secure cloud environment.</p>
+            <img src="../assets/images/logo.png" alt="ConnectUs" class="h-14 w-auto mx-auto mb-4 drop-shadow-md">
+            <h1 class="text-3xl font-black text-blue-900 tracking-tight">School Setup</h1>
+            <p class="text-slate-500 font-semibold mt-1.5 text-sm">Configure your secure cloud environment — takes about 2 minutes.</p>
         </div>
 
-        <div class="bg-white rounded-3xl shadow-xl border border-blue-100 overflow-hidden relative">
-            <div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-600"></div>
-            
+        <div class="card overflow-hidden">
+
+            <!-- Top accent bar -->
+            <div class="h-1.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-indigo-500"></div>
+
+            <!-- Loading state -->
             <div id="loadingState" class="p-12 text-center">
-                <i class="fa-solid fa-circle-notch fa-spin text-4xl text-blue-500 mb-4"></i>
-                <p class="font-bold text-slate-600">Verifying your invitation link...</p>
+                <div class="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fa-solid fa-circle-notch fa-spin text-2xl text-blue-500"></i>
+                </div>
+                <p class="font-bold text-slate-600 text-sm">Verifying your invitation link...</p>
             </div>
 
-            <div id="setupForm" class="p-8 space-y-6 hidden">
-                <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl flex items-start gap-3">
-                    <i class="fa-solid fa-shield-check text-blue-600 mt-0.5 text-lg"></i>
-                    <div>
-                        <h4 class="font-black text-blue-900 text-sm">Secure Initialization</h4>
-                        <p class="text-xs text-slate-600 font-semibold mt-1">This will generate your isolated database and permanent School ID.</p>
-                    </div>
+            <!-- Setup form -->
+            <div id="setupForm" class="p-8 hidden">
+
+                <!-- Subscription badge (shown for PayPal subscribers only) -->
+                <div id="subscriptionBadge" class="hidden"></div>
+
+                <!-- ── SECTION 1: School Info ─────────────────────────── -->
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="step-badge">1</span>
+                    <h3 class="font-black text-slate-800 text-base">School Information</h3>
                 </div>
 
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Official School Name *</label>
-                        <input type="text" id="obSchoolName" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
+                        <label class="form-label">Official School Name *</label>
+                        <input type="text" id="obSchoolName" class="form-input" placeholder="e.g. Valley Academy">
                     </div>
 
-                    <div class="pt-4 border-t border-slate-100">
-                        <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Master Admin Code *</label>
-                        <p class="text-xs text-slate-400 font-semibold mb-2">This is the master password you will use to log into the Admin Dashboard.</p>
-                        <input type="password" id="obAdminCode" placeholder="Min. 6 characters" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 transition mb-3">
-                        <input type="password" id="obAdminCodeConfirm" placeholder="Confirm Admin Code" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 transition">
-                    </div>
+                    <!-- Extra fields — shown only for PayPal self-service subscribers -->
+                    <div id="paypalFieldsSection" class="hidden space-y-4">
+                        <div>
+                            <label class="form-label">School Type *</label>
+                            <select id="obSchoolType" class="form-input">
+                                <option value="">Select your school type</option>
+                                <option value="Primary / Elementary">Primary / Elementary</option>
+                                <option value="Middle School">Middle School</option>
+                                <option value="High School / Secondary">High School / Secondary</option>
+                                <option value="Junior College">Junior College</option>
+                                <option value="University / College">University / College</option>
+                                <option value="Vocational / Technical">Vocational / Technical</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
 
-                    <div class="pt-4 border-t border-slate-100">
-                        <div class="bg-amber-50 border border-amber-100 p-3 rounded-xl flex items-start gap-3 mb-4">
-                            <i class="fa-solid fa-key text-amber-500 mt-0.5 text-base"></i>
+                        <div class="grid grid-cols-2 gap-3">
                             <div>
-                                <h4 class="font-black text-amber-900 text-xs uppercase tracking-wide">Account Recovery</h4>
-                                <p class="text-xs text-slate-500 font-semibold mt-0.5">These two questions will verify your identity if you ever forget your PIN. Answers are not case-sensitive.</p>
+                                <label class="form-label">Country *</label>
+                                <select id="obCountry" class="form-input">
+                                    <option value="">Select country</option>
+                                    <option value="Belize">Belize</option>
+                                    <option value="United States">United States</option>
+                                    <option value="Canada">Canada</option>
+                                    <option value="United Kingdom">United Kingdom</option>
+                                    <option value="Jamaica">Jamaica</option>
+                                    <option value="Trinidad and Tobago">Trinidad and Tobago</option>
+                                    <option value="Barbados">Barbados</option>
+                                    <option value="Guyana">Guyana</option>
+                                    <option value="Guatemala">Guatemala</option>
+                                    <option value="Honduras">Honduras</option>
+                                    <option value="Mexico">Mexico</option>
+                                    <option value="Costa Rica">Costa Rica</option>
+                                    <option value="Panama">Panama</option>
+                                    <option value="El Salvador">El Salvador</option>
+                                    <option value="Nicaragua">Nicaragua</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="form-label">City / Town *</label>
+                                <input type="text" id="obCity" class="form-input" placeholder="e.g. Belize City">
                             </div>
                         </div>
 
-                        <div class="mb-4">
-                            <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Security Question 1 *</label>
-                            <select id="obSecQ1" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 transition mb-2">
-                                <option value="">Select a question...</option>
-                                <option value="What was the name of your first pet?">What was the name of your first pet?</option>
-                                <option value="What city were you born in?">What city were you born in?</option>
-                                <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
-                                <option value="What was the name of your primary school?">What was the name of your primary school?</option>
-                                <option value="What is the name of the street you grew up on?">What is the name of the street you grew up on?</option>
-                                <option value="What was your childhood nickname?">What was your childhood nickname?</option>
-                                <option value="What is your oldest sibling's middle name?">What is your oldest sibling's middle name?</option>
-                                <option value="What was the make of your first car?">What was the make of your first car?</option>
-                                <option value="In what village or town did your parents meet?">In what village or town did your parents meet?</option>
-                                <option value="What is the name of your favourite teacher?">What is the name of your favourite teacher?</option>
-                            </select>
-                            <input type="text" id="obSecA1" placeholder="Your answer" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
-                        </div>
-
                         <div>
-                            <label class="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Security Question 2 *</label>
-                            <select id="obSecQ2" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 transition mb-2">
-                                <option value="">Select a question...</option>
-                                <option value="What was the name of your first pet?">What was the name of your first pet?</option>
-                                <option value="What city were you born in?">What city were you born in?</option>
-                                <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
-                                <option value="What was the name of your primary school?">What was the name of your primary school?</option>
-                                <option value="What is the name of the street you grew up on?">What is the name of the street you grew up on?</option>
-                                <option value="What was your childhood nickname?">What was your childhood nickname?</option>
-                                <option value="What is your oldest sibling's middle name?">What is your oldest sibling's middle name?</option>
-                                <option value="What was the make of your first car?">What was the make of your first car?</option>
-                                <option value="In what village or town did your parents meet?">In what village or town did your parents meet?</option>
-                                <option value="What is the name of your favourite teacher?">What is the name of your favourite teacher?</option>
-                            </select>
-                            <input type="text" id="obSecA2" placeholder="Your answer" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition">
+                            <label class="form-label">Phone Number <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
+                            <input type="tel" id="obPhone" class="form-input" placeholder="e.g. +501 600-0000">
                         </div>
                     </div>
                 </div>
 
-                <p id="obErrorMsg" class="text-xs font-bold text-red-600 bg-red-50 border border-red-100 p-3 rounded-lg text-center hidden"></p>
+                <!-- ── SECTION 2: Admin Code ──────────────────────────── -->
+                <div class="section-divider">
+                    <span></span>
+                    <span>Admin Access</span>
+                    <span></span>
+                </div>
 
-                <button id="initializeBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl transition shadow-lg shadow-blue-500/30 text-sm tracking-wide">
-                    Initialize Infrastructure →
-                </button>
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="step-badge">2</span>
+                    <h3 class="font-black text-slate-800 text-base">Master Admin Code</h3>
+                </div>
+
+                <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-start gap-3 mb-4">
+                    <i class="fa-solid fa-shield-halved text-blue-500 mt-0.5 flex-shrink-0"></i>
+                    <p class="text-xs font-semibold text-slate-600 leading-relaxed">
+                        This code is the master password for your Admin Dashboard. Choose something strong and memorable — you cannot recover this without your security questions.
+                    </p>
+                </div>
+
+                <div class="space-y-3">
+                    <div>
+                        <label class="form-label">Admin Code *</label>
+                        <input type="password" id="obAdminCode" class="form-input" placeholder="Minimum 6 characters">
+                    </div>
+                    <div>
+                        <label class="form-label">Confirm Admin Code *</label>
+                        <input type="password" id="obAdminCodeConfirm" class="form-input" placeholder="Re-enter your code">
+                    </div>
+                </div>
+
+                <!-- ── SECTION 3: Security Questions ─────────────────── -->
+                <div class="section-divider">
+                    <span></span>
+                    <span>Account Recovery</span>
+                    <span></span>
+                </div>
+
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="step-badge">3</span>
+                    <h3 class="font-black text-slate-800 text-base">Security Questions</h3>
+                </div>
+
+                <div class="bg-amber-50 border border-amber-100 rounded-xl p-4 flex items-start gap-3 mb-5">
+                    <i class="fa-solid fa-key text-amber-500 mt-0.5 flex-shrink-0"></i>
+                    <p class="text-xs font-semibold text-slate-600 leading-relaxed">
+                        These two questions will verify your identity if you ever need to reset your Admin Code. Answers are not case-sensitive.
+                    </p>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="form-label">Security Question 1 *</label>
+                        <select id="obSecQ1" class="form-input mb-2">
+                            <option value="">Select a question...</option>
+                            <option value="What was the name of your first pet?">What was the name of your first pet?</option>
+                            <option value="What city were you born in?">What city were you born in?</option>
+                            <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
+                            <option value="What was the name of your primary school?">What was the name of your primary school?</option>
+                            <option value="What is the name of the street you grew up on?">What is the name of the street you grew up on?</option>
+                            <option value="What was your childhood nickname?">What was your childhood nickname?</option>
+                            <option value="What is your oldest sibling's middle name?">What is your oldest sibling's middle name?</option>
+                            <option value="What was the make of your first car?">What was the make of your first car?</option>
+                            <option value="In what village or town did your parents meet?">In what village or town did your parents meet?</option>
+                            <option value="What is the name of your favourite teacher?">What is the name of your favourite teacher?</option>
+                        </select>
+                        <input type="text" id="obSecA1" class="form-input" placeholder="Your answer">
+                    </div>
+
+                    <div>
+                        <label class="form-label">Security Question 2 *</label>
+                        <select id="obSecQ2" class="form-input mb-2">
+                            <option value="">Select a question...</option>
+                            <option value="What was the name of your first pet?">What was the name of your first pet?</option>
+                            <option value="What city were you born in?">What city were you born in?</option>
+                            <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
+                            <option value="What was the name of your primary school?">What was the name of your primary school?</option>
+                            <option value="What is the name of the street you grew up on?">What is the name of the street you grew up on?</option>
+                            <option value="What was your childhood nickname?">What was your childhood nickname?</option>
+                            <option value="What is your oldest sibling's middle name?">What is your oldest sibling's middle name?</option>
+                            <option value="What was the make of your first car?">What was the make of your first car?</option>
+                            <option value="In what village or town did your parents meet?">In what village or town did your parents meet?</option>
+                            <option value="What is the name of your favourite teacher?">What is the name of your favourite teacher?</option>
+                        </select>
+                        <input type="text" id="obSecA2" class="form-input" placeholder="Your answer">
+                    </div>
+                </div>
+
+                <!-- Error message -->
+                <p id="obErrorMsg" class="text-xs font-bold text-red-600 bg-red-50 border border-red-100 p-3 rounded-xl text-center hidden mt-5 leading-relaxed"></p>
+
+                <!-- Submit -->
+                <div class="mt-6">
+                    <button id="initializeBtn" class="submit-btn">
+                        Initialize My School →
+                    </button>
+                    <p class="text-[11px] text-center font-semibold text-slate-400 mt-3 leading-relaxed">
+                        By continuing you agree to ConnectUs
+                        <a href="https://connectusonline.org/terms/terms.html" target="_blank" class="text-blue-500 hover:underline font-bold">Terms of Service</a>
+                        and
+                        <a href="https://connectusonline.org/terms/privacy.html" target="_blank" class="text-blue-500 hover:underline font-bold">Privacy Policy</a>.
+                    </p>
+                </div>
+
             </div>
 
+            <!-- Success screen -->
             <div id="successScreen" class="p-10 text-center hidden">
-                <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-5">
-                    <i class="fa-solid fa-check"></i>
+                <div class="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-5">
+                    <i class="fa-solid fa-check text-emerald-600 text-3xl"></i>
                 </div>
-                <h3 class="font-black text-2xl text-slate-800 mb-2">School Activated!</h3>
-                <p class="text-sm text-slate-500 font-semibold mb-6">Your cloud infrastructure is live. Please save your official IDs below—you will need them to log in. Once logged in, navigate to the Classes tab to set up your specific class roster.</p>
-                
-                <div class="bg-slate-900 rounded-2xl p-6 mb-8 shadow-inner inline-block w-full max-w-sm text-left">
-                    <div class="mb-4 border-b border-slate-700 pb-4">
-                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Your School ID</p>
+
+                <h3 class="font-black text-2xl text-slate-800 mb-2">Your School is Live!</h3>
+                <p class="text-sm text-slate-500 font-semibold mb-6 leading-relaxed max-w-xs mx-auto">
+                    Your cloud infrastructure is ready. Save your credentials below — you will need them every time you log in.
+                </p>
+
+                <div class="bg-slate-900 rounded-2xl p-6 mb-6 text-left max-w-sm mx-auto">
+                    <div class="mb-4 pb-4 border-b border-slate-700">
+                        <p class="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1.5">Your School ID</p>
                         <p id="finalSchoolId" class="text-2xl font-mono font-black text-white tracking-widest"></p>
                     </div>
                     <div>
-                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Your Super Admin ID</p>
+                        <p class="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1.5">Your Super Admin ID</p>
                         <p id="finalAdminId" class="text-2xl font-mono font-black text-emerald-400 tracking-widest"></p>
                     </div>
                 </div>
 
-                <a href="../admin/login.html" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-black py-3 px-8 rounded-xl transition shadow-lg shadow-blue-500/30">
+                <div class="bg-amber-50 border border-amber-100 rounded-xl p-4 mb-6 max-w-sm mx-auto text-left">
+                    <div class="flex items-start gap-2">
+                        <i class="fa-solid fa-triangle-exclamation text-amber-500 mt-0.5 flex-shrink-0 text-sm"></i>
+                        <p class="text-xs font-semibold text-slate-600 leading-relaxed">
+                            <strong class="text-slate-800">Save these IDs.</strong> Take a screenshot or write them down. Your School ID is your login identifier — it never changes.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-8 max-w-sm mx-auto text-left">
+                    <p class="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-2">Next steps</p>
+                    <ul class="space-y-2">
+                        <li class="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                            <i class="fa-solid fa-circle-check text-blue-500 flex-shrink-0"></i>
+                            Log in with your School ID and Admin Code
+                        </li>
+                        <li class="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                            <i class="fa-solid fa-circle-check text-blue-500 flex-shrink-0"></i>
+                            Go to the <strong>Classes</strong> tab to set up your class roster
+                        </li>
+                        <li class="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                            <i class="fa-solid fa-circle-check text-blue-500 flex-shrink-0"></i>
+                            Add your teachers and enroll your students
+                        </li>
+                    </ul>
+                </div>
+
+                <a href="../admin/login.html"
+                   class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-black py-3.5 px-8 rounded-xl transition shadow-lg shadow-blue-500/25 text-sm">
+                    <i class="fa-solid fa-arrow-right-to-bracket"></i>
                     Go to Admin Login
                 </a>
             </div>
+
         </div>
+
+        <p class="text-center text-xs font-semibold text-slate-400 mt-6">
+            Need help? <a href="mailto:info@connectusonline.org" class="text-blue-500 hover:underline font-bold">info@connectusonline.org</a>
+        </p>
+
     </div>
 
     <script type="module" src="onboarding.js"></script>
