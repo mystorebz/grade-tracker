@@ -273,10 +273,15 @@ exports.mintStudentToken = onCall({ region: 'us-central1' }, async (request) => 
         try {
             const schoolSnap = await db.collection('schools').doc(schoolId).get();
             if (schoolSnap.exists) {
+                if (schoolSnap.data().isVerified !== true) {
+                    throw new HttpsError('permission-denied', 'School account is pending approval.');
+                }
                 schoolType = schoolSnap.data().schoolType || 'Primary';
                 schoolName = schoolSnap.data().schoolName || '';
             }
-        } catch (_) {}
+        } catch (e) {
+            if (e instanceof HttpsError) throw e;
+        }
     }
 
     const token = await mintToken(rawId, {
@@ -290,7 +295,6 @@ exports.mintStudentToken = onCall({ region: 'us-central1' }, async (request) => 
     return { token };
 });
 // --- END: mintStudentToken ---
-
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FUNCTION 4: mintHQToken
