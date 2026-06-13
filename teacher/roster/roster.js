@@ -21,11 +21,14 @@ let isSemesterLocked          = false;
 let gradeDetailCache          = {};
 let schoolLimit               = 50;
 let cachedEvaluations         = [];
-let resolvedSchoolName        = '';
+let schoolClasses             = []; // ← Live master list from schools/{id}/classes
 
 // ── Report card type state ────────────────────────────────────────────────
 let selectedRcType      = 'term';   // 'term' | 'midterm'
 let selectedMidtermData = null;     // midterm object from Firestore, or null
+
+// ── Promote state ─────────────────────────────────────────────────────────
+let promoteClassTeacherMap = {}; // className → [{id, name}]
 
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 
@@ -48,22 +51,42 @@ window.evalRatings = {
     workQuality: 0, customProgressGoals: 0
 };
 
-// ── Report card ratings (updated enrichment fields) ───────────────────────
+// ── Report card ratings ───────────────────────────────────────────────────
 window.rcRatings = {
-    // Enrichment & Character Development (new metrics)
     characterValues:           0,
     respectCourtesy:           0,
     responsibilityReliability: 0,
     cooperationTeamwork:       0,
     leadershipInitiative:      0,
     culturalAwareness:         0,
-    // Learning Behaviours & Social Growth (unchanged)
     behavior: 0, organization: 0, respectfulness: 0, kindness: 0,
     attitudeWork: 0, attitudePeers: 0, academicComprehension: 0,
     effortResilience: 0, participation: 0, punctualityRating: 0
 };
 
-function getClasses()    { return session.teacherData.classes || [session.teacherData.className || '']; }
+// ── Load the school's class list (single source of truth) ─────────────────
+async function loadSchoolClasses() {
+    try {
+        const snap = await getDocs(collection(db, 'schools', session.schoolId, 'classes'));
+        schoolClasses = snap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.name || '').localeCompare(b.name || ''))
+            .map(c => c.name)
+            .filter(Boolean);
+    } catch (e) {
+        console.error('[Roster] loadSchoolClasses:', e);
+        schoolClasses = [];
+    }
+}
+
+// ── FIX: Intersect assigned classes with the live master list ─────────────
+function getClasses(extra = []) {
+    const assigned = session.teacherData.classes || [session.teacherData.className || ''];
+    let validClasses = assigned.filter(c => schoolClasses.includes(c));
+    extra.forEach(c => { if (c && !validClasses.includes(c)) validClasses.push(c); });
+    return validClasses.filter(Boolean);
+}
+
 function getGradeTypes() { return session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
 
 function generateStudentId() {
@@ -77,16 +100,21 @@ function generateStudentId() {
 // ── 3. INIT ───────────────────────────────────────────────────────────────
 async function init() {
     if (!session) return;
+
+    await loadSchoolClasses();
+
     const searchInput = document.getElementById('searchInput');
     if (searchInput) searchInput.addEventListener('input', filterStudents);
 
     document.getElementById('displayTeacherName').textContent = session.teacherData.name;
     document.getElementById('teacherAvatar').textContent      = session.teacherData.name.charAt(0).toUpperCase();
     document.getElementById('sidebarSchoolId').textContent    = session.schoolId;
-    document.getElementById('displayTeacherClasses').innerHTML =
-        getClasses().filter(Boolean).map(c => `<span class="class-pill">${c}</span>`).join('');
 
-    const classes     = getClasses().filter(Boolean);
+    const classes = getClasses();
+
+    document.getElementById('displayTeacherClasses').innerHTML =
+        classes.map(c => `<span class="class-pill">${c}</span>`).join('') || '<span class="text-xs text-slate-400 italic">No assigned classes</span>';
+
     const classFilter = document.getElementById('rf-class');
     if (classFilter) {
         classFilter.innerHTML = '<option value="">All Classes</option>' +
@@ -96,6 +124,15 @@ async function init() {
             if (wrap) wrap.style.display = 'none';
         }
     }
+
+    // Close More menu on outside click
+    document.addEventListener('click', (e) => {
+        const menu = document.getElementById('rosterMoreMenu');
+        const btn  = document.getElementById('rosterMoreBtn');
+        if (menu && !menu.classList.contains('hidden') && !menu.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+            menu.classList.add('hidden');
+        }
+    });
 
     await Promise.all([fetchSchoolLimit(), loadSemesters()]);
     await loadStudents();
@@ -132,7 +169,6 @@ async function loadSemesters() {
         try {
             const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
             activeId = schoolSnap.data()?.activeSemesterId || '';
-            resolvedSchoolName = schoolSnap.data()?.schoolName || '';
         } catch(e) {}
 
         const semSel     = document.getElementById('activeSemester');
@@ -335,10 +371,22 @@ window.openAddStudentModal = function() {
     });
     document.getElementById('addStudentMsg').classList.add('hidden');
 
-    const classes = getClasses().filter(Boolean);
+    const classes = getClasses();
     const sel     = document.getElementById('sClass');
-    sel.innerHTML = '<option value="">— Select a Class —</option>' +
-        classes.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+
+    if (classes.length === 0) {
+        sel.innerHTML = '<option value="">— No active classes available —</option>';
+        sel.disabled = true;
+        document.getElementById('sSearchBtn').disabled = true;
+        document.getElementById('saveStudentBtn').disabled = true;
+        showMsg('addStudentMsg', 'You currently have no active classes assigned. Please contact your administrator to assign classes to your account before enrolling students.', true);
+    } else {
+        sel.innerHTML = '<option value="">— Select a Class —</option>' +
+            classes.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+        sel.disabled = false;
+        document.getElementById('sSearchBtn').disabled = false;
+        document.getElementById('saveStudentBtn').disabled = false;
+    }
 
     openOverlay('addStudentModal', 'addStudentModalInner');
 };
@@ -554,7 +602,7 @@ window.openStudentPanel = async function(studentId) {
     openOverlay('studentPanel', 'studentPanelInner');
 
     const classSel = document.getElementById('editSClass');
-    const classes  = getClasses().filter(Boolean);
+    const classes  = getClasses([student?.className]);
     classSel.innerHTML = classes.map(c =>
         `<option value="${escHtml(c)}" ${c === student?.className ? 'selected' : ''}>${escHtml(c)}</option>`
     ).join('');
@@ -844,7 +892,6 @@ window.saveEvaluation = async function() {
         if (required.some(k => !window.evalRatings[k])) { alert('Please rate all Academic Progress metrics.'); return; }
         payload.ratings = { mastery: window.evalRatings.academicMastery, execution: window.evalRatings.taskExecution, engagement: window.evalRatings.engagement, criticalThinking: window.evalRatings.criticalThinking, writtenCommunication: window.evalRatings.writtenCommunication, oralParticipation: window.evalRatings.oralParticipation };
         payload.written = { strengths: document.getElementById('evalAcadStrengths').value.trim(), growth: document.getElementById('evalAcadGrowth').value.trim(), steps: document.getElementById('evalAcadSteps').value.trim() };
-
     } else if (type === 'end_of_year') {
         const required = ['overallAcademicGrowth','subjectMasteryAcrossTerms','socialPeerDynamics','emotionalResilience','selfRegulationEoy','effortPersistenceYear','responseToFeedback','readinessNextGrade'];
         if (required.some(k => !window.evalRatings[k])) { alert('Please rate all End-of-Year metrics.'); return; }
@@ -854,7 +901,6 @@ window.saveEvaluation = async function() {
         if (!payload.status) { alert('Please select a Promotion Status.'); return; }
         payload.semesterId   = 'full_year';
         payload.semesterName = 'Full Academic Year';
-
     } else if (type === 'behavioral') {
         const required = ['ruleAdherence','conflictResolution','respectAuthority','peerInteractions','selfRegulation','responseToCorrection','emotionalStability'];
         if (required.some(k => !window.evalRatings[k])) { alert('Please rate all Conduct metrics.'); return; }
@@ -866,28 +912,24 @@ window.saveEvaluation = async function() {
             if (!otherText) { alert('Please describe the action taken.'); return; }
             payload.status = `Other: ${otherText}`;
         }
-
     } else if (type === 'midterm_review') {
         const required = ['academicProgressToDate','workCompletionRate','classParticipation','attentionFocus','effortPersistence','behaviourInClass'];
         if (required.some(k => !window.evalRatings[k])) { alert('Please rate all Mid-Term metrics.'); return; }
         payload.ratings = { academicProgressToDate: window.evalRatings.academicProgressToDate, workCompletionRate: window.evalRatings.workCompletionRate, classParticipation: window.evalRatings.classParticipation, attentionFocus: window.evalRatings.attentionFocus, effortPersistence: window.evalRatings.effortPersistence, behaviourInClass: window.evalRatings.behaviourInClass };
         payload.written = { strengths: document.getElementById('evalMidStrengths')?.value.trim() || '', concerns: document.getElementById('evalMidConcerns')?.value.trim() || '', comments: document.getElementById('evalMidComments')?.value.trim() || '' };
         payload.attendance = { daysAbsent: parseInt(document.getElementById('evalMidAbsent')?.value) || 0, daysLate: parseInt(document.getElementById('evalMidLate')?.value) || 0 };
-
     } else if (type === 'parent_conference') {
         const required = ['parentEngagement','communicationQuality','followThroughAgreements'];
         if (required.some(k => !window.evalRatings[k])) { alert('Please rate all Parent Conference metrics.'); return; }
         payload.ratings = { parentEngagement: window.evalRatings.parentEngagement, communicationQuality: window.evalRatings.communicationQuality, followThroughAgreements: window.evalRatings.followThroughAgreements };
         payload.written = { summary: document.getElementById('evalPcSummary')?.value.trim() || '', agreements: document.getElementById('evalPcAgreements')?.value.trim() || '', followUp: document.getElementById('evalPcFollowUp')?.value.trim() || '' };
         payload.parentPresent = document.getElementById('evalPcParentPresent')?.value || '';
-
     } else if (type === 'learning_support') {
         const required = ['responseToIntervention','academicEffort','focusAttention','independenceInTasks','progressTowardsGoals'];
         if (required.some(k => !window.evalRatings[k])) { alert('Please rate all Learning Support metrics.'); return; }
         payload.ratings = { responseToIntervention: window.evalRatings.responseToIntervention, academicEffort: window.evalRatings.academicEffort, focusAttention: window.evalRatings.focusAttention, independenceInTasks: window.evalRatings.independenceInTasks, progressTowardsGoals: window.evalRatings.progressTowardsGoals };
         payload.written = { concerns: document.getElementById('evalLsConcerns')?.value.trim() || '', interventions: document.getElementById('evalLsInterventions')?.value.trim() || '', goals: document.getElementById('evalLsGoals')?.value.trim() || '' };
         payload.supportLevel = document.getElementById('evalLsLevel')?.value || '';
-
     } else if (type === 'custom') {
         const customName = document.getElementById('evalCustomTypeName')?.value.trim();
         if (!customName) { alert('Please enter a name for this evaluation.'); return; }
@@ -928,41 +970,29 @@ window.loadStudentEvaluations = async function(studentId) {
             noMsg.classList.add('hidden');
             cachedEvaluations.forEach(ev => {
                 let badgeStyle = '', typeLabel = '', highlightText = '';
-
                 if (ev.type === 'academic') {
-                    badgeStyle = 'background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;';
-                    typeLabel  = 'Academic Progress';
+                    badgeStyle = 'background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;'; typeLabel = 'Academic Progress';
                 } else if (ev.type === 'academic_report_card') {
-                    const isM  = ev.reportCardType === 'midterm';
-                    badgeStyle = isM
-                        ? 'background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;'
-                        : 'background:#edf7f1;color:#065f46;border:1px solid #a7f3d0;';
+                    const isM = ev.reportCardType === 'midterm';
+                    badgeStyle = isM ? 'background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;' : 'background:#edf7f1;color:#065f46;border:1px solid #a7f3d0;';
                     typeLabel  = isM ? 'Midterm Report Card' : 'Report Card';
                 } else if (ev.type === 'end_of_year') {
-                    badgeStyle    = 'background:#fef3c7;color:#b45309;border:1px solid #fde68a;';
-                    typeLabel     = 'Comprehensive End-of-Year';
+                    badgeStyle = 'background:#fef3c7;color:#b45309;border:1px solid #fde68a;'; typeLabel = 'Comprehensive End-of-Year';
                     highlightText = `<div style="margin-top:10px;padding:6px 10px;background:#f8fafb;border-radius:4px;font-size:11px;font-weight:700;color:#0d1f35;"><i class="fa-solid fa-award" style="color:#f59e0b;margin-right:5px;"></i> Status: ${escHtml(ev.status)}</div>`;
                 } else if (ev.type === 'behavioral') {
-                    badgeStyle    = 'background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;';
-                    typeLabel     = 'Behavioral & Conduct Intervention';
+                    badgeStyle = 'background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;'; typeLabel = 'Behavioral & Conduct Intervention';
                     highlightText = ev.status && ev.status !== 'No Action' ? `<div style="margin-top:10px;padding:6px 10px;background:#fff0f3;border-radius:4px;font-size:11px;font-weight:700;color:#be1240;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:5px;"></i> Action: ${escHtml(ev.status)}</div>` : '';
                 } else if (ev.type === 'midterm_review') {
-                    badgeStyle = 'background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;';
-                    typeLabel  = 'Mid-Term Review';
+                    badgeStyle = 'background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;'; typeLabel = 'Mid-Term Review';
                 } else if (ev.type === 'parent_conference') {
-                    badgeStyle = 'background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;';
-                    typeLabel  = 'Parent Conference';
+                    badgeStyle = 'background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;'; typeLabel = 'Parent Conference';
                 } else if (ev.type === 'learning_support') {
-                    badgeStyle = 'background:#fdf4ff;color:#9333ea;border:1px solid #e9d5ff;';
-                    typeLabel  = 'Learning Support Plan';
+                    badgeStyle = 'background:#fdf4ff;color:#9333ea;border:1px solid #e9d5ff;'; typeLabel = 'Learning Support Plan';
                 } else if (ev.type === 'custom') {
-                    badgeStyle = 'background:#f8fafc;color:#475569;border:1px solid #cbd5e1;';
-                    typeLabel  = ev.customTypeName || 'Custom Evaluation';
+                    badgeStyle = 'background:#f8fafc;color:#475569;border:1px solid #cbd5e1;'; typeLabel = ev.customTypeName || 'Custom Evaluation';
                 } else {
-                    badgeStyle = 'background:#f8fafc;color:#475569;border:1px solid #cbd5e1;';
-                    typeLabel  = ev.type || 'Evaluation';
+                    badgeStyle = 'background:#f8fafc;color:#475569;border:1px solid #cbd5e1;'; typeLabel = ev.type || 'Evaluation';
                 }
-
                 const card = document.createElement('div');
                 card.style.cssText = 'background:#fff;border:1px solid #dce3ed;border-radius:4px;padding:16px;display:flex;flex-direction:column;gap:8px;';
                 card.innerHTML = `
@@ -972,9 +1002,7 @@ window.loadStudentEvaluations = async function(studentId) {
                             <h4 style="font-size:14px;font-weight:700;color:#0d1f35;margin:8px 0 2px;">${escHtml(ev.semesterName)}</h4>
                             <p style="font-size:11px;color:#6b84a0;margin:0;">Filed by ${escHtml(ev.teacherName)} on ${ev.date}</p>
                         </div>
-                    </div>
-                    ${highlightText}
-                `;
+                    </div>${highlightText}`;
                 list.appendChild(card);
             });
         }
@@ -985,8 +1013,6 @@ window.loadStudentEvaluations = async function(studentId) {
 };
 
 // ── 12. REPORT CARD ───────────────────────────────────────────────────────
-
-// ── RC star ratings ───────────────────────────────────────────────────────
 window.buildRcStarGroups = function() {
     document.querySelectorAll('.rc-rating-row').forEach(row => {
         const field = row.dataset.field;
@@ -1020,62 +1046,31 @@ window.setRcRating = function(field, val) {
     window.renderRcStars(field);
 };
 
-// ── Midterm availability check — fetches FRESH from Firestore (not cache) ─
 async function checkMidtermAvailability() {
     if (selectedRcType !== 'midterm') return;
-
     const semId = document.getElementById('rcSemester')?.value;
     const info  = document.getElementById('rcMidtermInfo');
     if (!info || !semId) return;
-
     info.innerHTML = `<div style="padding:10px;text-align:center;color:#9ab0c6;font-size:12px;"><i class="fa-solid fa-spinner fa-spin" style="margin-right:6px;"></i>Checking midterm…</div>`;
     info.classList.remove('hidden');
-
     try {
-        // Always fetch directly from Firestore — never trust the localStorage cache for midterm data
         const semSnap = await getDoc(doc(db, 'schools', session.schoolId, 'semesters', semId));
-
         if (!semSnap.exists() || !semSnap.data().midterm) {
             selectedMidtermData = null;
-            info.innerHTML = `
-                <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:3px;padding:12px;display:flex;align-items:flex-start;gap:10px;">
-                    <i class="fa-solid fa-triangle-exclamation" style="color:#d97706;margin-top:1px;flex-shrink:0;font-size:13px;"></i>
-                    <div>
-                        <p style="font-size:12px;font-weight:700;color:#78350f;margin:0 0 3px;">No midterm configured for this term</p>
-                        <p style="font-size:11px;color:#92400e;margin:0;line-height:1.5;">Ask your administrator to add a midterm date range to this grading period before generating a midterm report card.</p>
-                    </div>
-                </div>`;
+            info.innerHTML = `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:3px;padding:12px;display:flex;align-items:flex-start;gap:10px;"><i class="fa-solid fa-triangle-exclamation" style="color:#d97706;margin-top:1px;flex-shrink:0;font-size:13px;"></i><div><p style="font-size:12px;font-weight:700;color:#78350f;margin:0 0 3px;">No midterm configured for this term</p><p style="font-size:11px;color:#92400e;margin:0;line-height:1.5;">Ask your administrator to add a midterm date range to this grading period before generating a midterm report card.</p></div></div>`;
         } else {
-            const semData = semSnap.data();
-            selectedMidtermData = semData.midterm;
-            const semName = semData.name || 'this term';
-            info.innerHTML = `
-                <div style="background:#edfaf4;border:1px solid #a7f3d0;border-radius:3px;padding:12px;display:flex;align-items:flex-start;gap:10px;">
-                    <i class="fa-solid fa-flag-checkered" style="color:#0ea871;margin-top:1px;flex-shrink:0;font-size:13px;"></i>
-                    <div>
-                        <p style="font-size:12px;font-weight:700;color:#065f46;margin:0 0 3px;">${escHtml(semData.midterm.name || 'Midterm')} — ${escHtml(semName)}</p>
-                        <p style="font-size:11px;color:#047857;margin:0;line-height:1.5;">Grades from <strong>${escHtml(semData.midterm.startDate)}</strong> to <strong>${escHtml(semData.midterm.endDate)}</strong> will be included in this report card.</p>
-                    </div>
-                </div>`;
+            const semData = semSnap.data(); selectedMidtermData = semData.midterm;
+            info.innerHTML = `<div style="background:#edfaf4;border:1px solid #a7f3d0;border-radius:3px;padding:12px;display:flex;align-items:flex-start;gap:10px;"><i class="fa-solid fa-flag-checkered" style="color:#0ea871;margin-top:1px;flex-shrink:0;font-size:13px;"></i><div><p style="font-size:12px;font-weight:700;color:#065f46;margin:0 0 3px;">${escHtml(semData.midterm.name || 'Midterm')} — ${escHtml(semData.name || '')}</p><p style="font-size:11px;color:#047857;margin:0;line-height:1.5;">Grades from <strong>${escHtml(semData.midterm.startDate)}</strong> to <strong>${escHtml(semData.midterm.endDate)}</strong> will be included.</p></div></div>`;
         }
     } catch (e) {
-        console.error('[Roster] checkMidtermAvailability:', e);
-        selectedMidtermData = null;
-        info.innerHTML = `
-            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:3px;padding:12px;">
-                <p style="font-size:12px;font-weight:700;color:#b91c1c;margin:0;">Could not verify midterm. Please try again.</p>
-            </div>`;
+        console.error('[Roster] checkMidtermAvailability:', e); selectedMidtermData = null;
+        info.innerHTML = `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:3px;padding:12px;"><p style="font-size:12px;font-weight:700;color:#b91c1c;margin:0;">Could not verify midterm. Please try again.</p></div>`;
     }
 }
 
-// ── Report card type selector ─────────────────────────────────────────────
 window.selectRcType = function(type) {
     selectedRcType = type;
-
-    const termBtn    = document.getElementById('rcTypeTerm');
-    const midtermBtn = document.getElementById('rcTypeMidterm');
-    const info       = document.getElementById('rcMidtermInfo');
-
+    const termBtn = document.getElementById('rcTypeTerm'), midtermBtn = document.getElementById('rcTypeMidterm'), info = document.getElementById('rcMidtermInfo');
     if (type === 'term') {
         if (termBtn)    { termBtn.style.background = '#0d1f35'; termBtn.style.borderColor = '#0d1f35'; termBtn.style.color = '#fff'; }
         if (midtermBtn) { midtermBtn.style.background = '#fff'; midtermBtn.style.borderColor = '#c5d0db'; midtermBtn.style.color = '#6b84a0'; }
@@ -1088,310 +1083,75 @@ window.selectRcType = function(type) {
     }
 };
 
-// ── Open report card modal ────────────────────────────────────────────────
 window.openReportCardModal = function() {
-    // Reset type state
-    selectedRcType      = 'term';
-    selectedMidtermData = null;
-
-    // Reset type button visual to default (term selected)
-    const termBtn    = document.getElementById('rcTypeTerm');
-    const midtermBtn = document.getElementById('rcTypeMidterm');
+    selectedRcType = 'term'; selectedMidtermData = null;
+    const termBtn = document.getElementById('rcTypeTerm'), midtermBtn = document.getElementById('rcTypeMidterm');
     if (termBtn)    { termBtn.style.background = '#0d1f35'; termBtn.style.borderColor = '#0d1f35'; termBtn.style.color = '#fff'; }
     if (midtermBtn) { midtermBtn.style.background = '#fff'; midtermBtn.style.borderColor = '#c5d0db'; midtermBtn.style.color = '#6b84a0'; }
-
-    // Clear midterm info
     const info = document.getElementById('rcMidtermInfo');
     if (info) { info.innerHTML = ''; info.classList.add('hidden'); }
-
-    // Reset ratings and fields
     Object.keys(window.rcRatings).forEach(k => { window.rcRatings[k] = 0; });
-    ['rcTotalSessions','rcDaysAbsent','rcDaysLate','rcComment'].forEach(id => {
-        const el = document.getElementById(id); if (el) el.value = '';
-    });
-
-    // Populate semester dropdown
-    const rcSem        = document.getElementById('rcSemester');
-    const activeSemVal = document.getElementById('activeSemester')?.value;
-    rcSem.innerHTML    = '';
-    rawSemesters.forEach(s => {
-        const opt = document.createElement('option');
-        opt.value = s.id; opt.textContent = s.name;
-        if (s.id === activeSemVal) opt.selected = true;
-        rcSem.appendChild(opt);
-    });
-
-    // Re-check midterm whenever semester changes
+    ['rcTotalSessions','rcDaysAbsent','rcDaysLate','rcComment'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    const rcSem = document.getElementById('rcSemester'), activeSemVal = document.getElementById('activeSemester')?.value;
+    rcSem.innerHTML = '';
+    rawSemesters.forEach(s => { const opt = document.createElement('option'); opt.value = s.id; opt.textContent = s.name; if (s.id === activeSemVal) opt.selected = true; rcSem.appendChild(opt); });
     rcSem.onchange = () => checkMidtermAvailability();
-
     openOverlay('reportCardModal', 'reportCardModalInner');
     window.buildRcStarGroups();
 };
 
 window.closeReportCardModal = function() { closeOverlay('reportCardModal', 'reportCardModalInner'); };
 
-// ── Save & generate ───────────────────────────────────────────────────────
 window.saveAndGenerateReportCard = async function() {
-    const semId   = document.getElementById('rcSemester').value;
+    const semId = document.getElementById('rcSemester').value;
     const semName = document.getElementById('rcSemester').options[document.getElementById('rcSemester').selectedIndex]?.text || '';
-    const btn     = document.getElementById('btnSaveGenerate');
-
+    const btn = document.getElementById('btnSaveGenerate');
     if (!semId) { alert('Please select a grading period.'); return; }
-
-    if (selectedRcType === 'midterm' && !selectedMidtermData) {
-        alert('No midterm has been configured for this term.\n\nPlease ask your administrator to add a midterm date range to this grading period first.');
-        return;
-    }
-
+    if (selectedRcType === 'midterm' && !selectedMidtermData) { alert('No midterm has been configured for this term.\n\nPlease ask your administrator to add a midterm date range first.'); return; }
     const missingRatings = Object.entries(window.rcRatings).filter(([, v]) => !v);
-    if (missingRatings.length > 0) {
-        alert(`Please complete all ratings before generating the report card. ${missingRatings.length} field(s) still need a rating.`);
-        return;
-    }
-
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
-    btn.disabled  = true;
-
+    if (missingRatings.length > 0) { alert(`Please complete all ratings before generating the report card. ${missingRatings.length} field(s) still need a rating.`); return; }
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…'; btn.disabled = true;
     const payload = {
-        type:           'academic_report_card',
-        reportCardType: selectedRcType,
-        schoolId:       session.schoolId,
-        teacherId:      session.teacherId,
-        teacherName:    session.teacherData.name,
-        semesterId:     semId,
-        semesterName:   semName,
-        date:           new Date().toISOString().split('T')[0],
-        createdAt:      new Date().toISOString(),
-        attendance: {
-            totalSessions: parseInt(document.getElementById('rcTotalSessions').value) || 0,
-            daysAbsent:    parseInt(document.getElementById('rcDaysAbsent').value)    || 0,
-            daysLate:      parseInt(document.getElementById('rcDaysLate').value)      || 0
-        },
-        ratings: { ...window.rcRatings },
-        comment: document.getElementById('rcComment').value.trim()
+        type: 'academic_report_card', reportCardType: selectedRcType,
+        schoolId: session.schoolId, teacherId: session.teacherId, teacherName: session.teacherData.name,
+        semesterId: semId, semesterName: semName, date: new Date().toISOString().split('T')[0], createdAt: new Date().toISOString(),
+        attendance: { totalSessions: parseInt(document.getElementById('rcTotalSessions').value)||0, daysAbsent: parseInt(document.getElementById('rcDaysAbsent').value)||0, daysLate: parseInt(document.getElementById('rcDaysLate').value)||0 },
+        ratings: { ...window.rcRatings }, comment: document.getElementById('rcComment').value.trim()
     };
-
-    if (selectedRcType === 'midterm' && selectedMidtermData) {
-        payload.midterm = selectedMidtermData;
-    }
-
+    if (selectedRcType === 'midterm' && selectedMidtermData) payload.midterm = selectedMidtermData;
     try {
-        const docId = selectedRcType === 'midterm'
-            ? `${currentStudentId}_${semId}_midterm_rc`
-            : `${currentStudentId}_${semId}_rc`;
-
+        const docId = selectedRcType === 'midterm' ? `${currentStudentId}_${semId}_midterm_rc` : `${currentStudentId}_${semId}_rc`;
         await setDoc(doc(db, 'students', currentStudentId, 'evaluations', docId), payload);
         await window.loadStudentEvaluations(currentStudentId);
         window.closeReportCardModal();
-        generateFormalReportCardPDF(payload, semName, selectedRcType, selectedMidtermData);
-    } catch (e) {
-        console.error('[Roster] saveAndGenerateReportCard:', e);
-        alert('Failed to save. Please try again.');
-    }
-
-    btn.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Save & Generate Report Card';
-    btn.disabled  = false;
+        await generateFormalReportCardPDF(payload, semName, selectedRcType, selectedMidtermData);
+    } catch (e) { console.error('[Roster] saveAndGenerateReportCard:', e); alert('Failed to save. Please try again.'); }
+    btn.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Save & Generate Report Card'; btn.disabled = false;
 };
 
-// ── PDF generator ─────────────────────────────────────────────────────────
-function generateFormalReportCardPDF(ev, semName, reportType = 'term', midtermData = null) {
-    const student    = allStudentsCache.find(s => s.id === currentStudentId);
-    if (!student)    return;
-    const schoolName = resolvedSchoolName || session.schoolName || 'ConnectUs School';
-
-    // Filter grades by midterm date range if applicable
+async function generateFormalReportCardPDF(ev, semName, reportType = 'term', midtermData = null) {
+    const student = allStudentsCache.find(s => s.id === currentStudentId);
+    if (!student) return;
+    let schoolName = '';
+    try { const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId)); schoolName = schoolSnap.data()?.schoolName || ''; } catch (e) {}
     let gradesToUse = [...currentStudentGradesCache];
     if (reportType === 'midterm' && midtermData?.startDate && midtermData?.endDate) {
-        const start = new Date(midtermData.startDate);
-        const end   = new Date(midtermData.endDate);
-        gradesToUse = gradesToUse.filter(g => {
-            if (!g.date) return false;
-            const d = new Date(g.date);
-            return d >= start && d <= end;
-        });
+        const start = new Date(midtermData.startDate), end = new Date(midtermData.endDate);
+        gradesToUse = gradesToUse.filter(g => { if (!g.date) return false; const d = new Date(g.date); return d >= start && d <= end; });
     }
-
     const reportTitle    = reportType === 'midterm' ? 'MIDTERM REPORT CARD' : 'OFFICIAL GRADE REPORT';
-    const reportSubtitle = reportType === 'midterm' && midtermData
-        ? `${midtermData.name || 'Midterm'} · ${semName} · ${midtermData.startDate} – ${midtermData.endDate}`
-        : semName;
-
+    const reportSubtitle = reportType === 'midterm' && midtermData ? `${midtermData.name || 'Midterm'} · ${semName} · ${midtermData.startDate} – ${midtermData.endDate}` : semName;
     const bySub = {};
-    gradesToUse.forEach(g => {
-        const sub = g.subject || 'Uncategorized';
-        if (!bySub[sub]) bySub[sub] = [];
-        bySub[sub].push(g);
-    });
-
-    const cumulativeAvg = gradesToUse.length
-        ? calculateWeightedAverage(gradesToUse, session.teacherData.gradeTypes || getGradeTypes())
-        : 0;
+    gradesToUse.forEach(g => { const sub = g.subject || 'Uncategorized'; if (!bySub[sub]) bySub[sub] = []; bySub[sub].push(g); });
+    const cumulativeAvg = gradesToUse.length ? calculateWeightedAverage(gradesToUse, session.teacherData.gradeTypes || getGradeTypes()) : 0;
     const gpaLetter = cumulativeAvg > 0 ? letterGrade(cumulativeAvg) : 'N/A';
-
-    // Rating helpers
-    const ratingLabel = v =>
-        v >= 5 ? 'Exceptional' :
-        v === 4 ? 'Developing Well' :
-        v === 3 ? 'Developing' :
-        v === 2 ? 'Needs Improvement' :
-        v >= 1  ? 'Unsatisfactory' : '—';
-
-    const starDisplay = v =>
-        [1,2,3,4,5].map(n =>
-            `<span style="color:${n <= v ? '#f59e0b' : '#dce3ed'};font-size:14px;">★</span>`
-        ).join('');
-
-    // Rating legend HTML — used in both enrichment and learning behaviours sections
-    const ratingLegendHtml = `
-        <div style="font-size:9px;color:#374f6b;background:#f8fafc;padding:7px 12px;border-radius:4px;margin-bottom:12px;border:1px solid #e2e8f0;line-height:2;">
-            <span style="color:#f59e0b;font-size:11px;">★★★★★</span> <strong>5 — Exceptional:</strong> Consistently exceeds expectations &nbsp;&nbsp;
-            <span style="color:#f59e0b;font-size:11px;">★★★★</span><span style="color:#dce3ed;font-size:11px;">★</span> <strong>4 — Developing Well:</strong> Frequently meets and sometimes exceeds &nbsp;&nbsp;
-            <span style="color:#f59e0b;font-size:11px;">★★★</span><span style="color:#dce3ed;font-size:11px;">★★</span> <strong>3 — Developing:</strong> Generally meets expectations with some guidance &nbsp;&nbsp;
-            <span style="color:#f59e0b;font-size:11px;">★★</span><span style="color:#dce3ed;font-size:11px;">★★★</span> <strong>2 — Needs Improvement:</strong> Partially meets, requires consistent support &nbsp;&nbsp;
-            <span style="color:#f59e0b;font-size:11px;">★</span><span style="color:#dce3ed;font-size:11px;">★★★★</span> <strong>1 — Unsatisfactory:</strong> Rarely meets expectations, requires immediate intervention
-        </div>`;
-
-    // Academic grades table
-    const gradesHtml = Object.keys(bySub).length === 0
-        ? `<tr><td colspan="3" style="text-align:center;padding:30px;color:#64748b;font-style:italic;">No grades recorded for this period.</td></tr>`
-        : Object.entries(bySub).sort((a,b) => a[0].localeCompare(b[0])).map(([sub, gList]) => {
-            const subAvg = calculateWeightedAverage(gList, session.teacherData.gradeTypes || getGradeTypes());
-            return `<tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:10px 15px;font-weight:700;color:#1e293b;">${escHtml(sub)}</td>
-                <td style="padding:10px 15px;text-align:center;font-weight:700;">${subAvg}%</td>
-                <td style="padding:10px 15px;text-align:center;font-weight:800;font-family:monospace;">${letterGrade(subAvg)}</td>
-            </tr>`;
-        }).join('');
-
-    // Enrichment & Character Development — with descriptors, stars, and label
-    const enrichmentRows = [
-        ['Character & Values',           'Honesty, integrity, and ethical behaviour in daily interactions',          ev.ratings.characterValues],
-        ['Respect & Courtesy',           'Respectful treatment of peers, teachers, and the school environment',      ev.ratings.respectCourtesy],
-        ['Responsibility & Reliability', 'Taking ownership of tasks, duties, and personal belongings',              ev.ratings.responsibilityReliability],
-        ['Cooperation & Teamwork',       'Working constructively with others in group and classroom settings',       ev.ratings.cooperationTeamwork],
-        ['Leadership & Initiative',      'Volunteering, taking the lead, and showing self-driven motivation',        ev.ratings.leadershipInitiative],
-        ['Cultural Awareness & Pride',   'Appreciation of Belizean and Caribbean culture, history, and heritage',   ev.ratings.culturalAwareness],
-    ].map(([label, desc, val]) => `
-        <tr style="border-bottom:1px solid #e2e8f0;">
-            <td style="padding:9px 15px;">
-                <p style="font-weight:700;color:#1e293b;margin:0 0 2px;font-size:12px;">${label}</p>
-                <p style="font-size:10px;color:#64748b;margin:0;font-style:italic;">${desc}</p>
-            </td>
-            <td style="padding:9px 15px;text-align:center;">${starDisplay(val || 0)}</td>
-            <td style="padding:9px 15px;text-align:center;font-size:11px;font-weight:700;color:#1e1b4b;">${ratingLabel(val || 0)}</td>
-        </tr>`).join('');
-
-    // Learning Behaviours — stars and label
-    const learningRows = [
-        ['Behavior',                      ev.ratings.behavior],
-        ['Organization',                  ev.ratings.organization],
-        ['Respectfulness',                ev.ratings.respectfulness],
-        ['Kindness',                      ev.ratings.kindness],
-        ['Attitude Towards Work',         ev.ratings.attitudeWork],
-        ['Attitude Towards Peers',        ev.ratings.attitudePeers],
-        ['Academic Comprehension',        ev.ratings.academicComprehension],
-        ['Effort & Resilience',           ev.ratings.effortResilience],
-        ['Participation & Engagement',    ev.ratings.participation],
-        ['Attendance & Punctuality',      ev.ratings.punctualityRating],
-    ].map(([label, val]) => `
-        <tr style="border-bottom:1px solid #e2e8f0;">
-            <td style="padding:9px 15px;font-weight:600;color:#334155;">${label}</td>
-            <td style="padding:9px 15px;text-align:center;">${starDisplay(val || 0)}</td>
-            <td style="padding:9px 15px;text-align:center;font-size:11px;font-weight:700;color:#1e1b4b;">${ratingLabel(val || 0)}</td>
-        </tr>`).join('');
-
-    const html = `<!DOCTYPE html><html><head><title>${reportTitle} — ${escHtml(student.name)}</title>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
-*{box-sizing:border-box;}
-body{font-family:'Nunito',sans-serif;padding:36px 44px;color:#0f172a;line-height:1.5;margin:0 auto;max-width:8.5in;font-size:13px;}
-.hf{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #1e1b4b;padding-bottom:16px;margin-bottom:18px;}
-.logo{max-height:72px;max-width:220px;object-fit:contain;}
-.ht{text-align:right;}
-.ht h1{margin:0 0 4px;font-size:22px;font-weight:900;text-transform:uppercase;color:#1e1b4b;}
-.ht h2{margin:0;font-size:12px;color:#64748b;font-weight:700;letter-spacing:2px;}
-.ht h3{margin:4px 0 0;font-size:11px;color:#94a3b8;font-weight:600;}
-.si{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:14px 18px;margin-bottom:20px;}
-.si-item{display:flex;flex-direction:column;gap:3px;}
-.il{font-size:9px;text-transform:uppercase;color:#64748b;font-weight:800;letter-spacing:1px;}
-.iv{font-size:14px;font-weight:800;color:#0f172a;}
-h3{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:#fff;background:#1e1b4b;padding:8px 12px;border-radius:4px;margin:0 0 10px;}
-table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:0;}
-th{background:#f1f5f9;color:#475569;padding:8px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;border-bottom:2px solid #cbd5e1;}
-th.c{text-align:center;}
-td{border-bottom:1px solid #e2e8f0;padding:8px 12px;color:#334155;}
-.att{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;}
-.ac{background:#f8fafc;border:1px solid #cbd5e1;padding:9px;text-align:center;border-radius:6px;}
-.al{display:block;font-size:9px;font-weight:800;color:#64748b;text-transform:uppercase;}
-.av{font-size:18px;font-weight:900;color:#1e1b4b;}
-.cb{border:1px solid #cbd5e1;border-radius:6px;padding:14px;background:#fff;min-height:70px;margin-bottom:20px;}
-.cl{font-size:10px;font-weight:800;color:#1e1b4b;text-transform:uppercase;margin-bottom:6px;display:block;}
-.fs{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:36px;}
-.sl{border-top:1px solid #000;padding-top:7px;font-size:11px;font-weight:700;text-align:center;color:#1e1b4b;}
-.sec{margin-bottom:22px;}
-</style></head><body>
-
-<div class="hf">
-    <div class="ht" style="text-align:left;">
-        <h1>${escHtml(schoolName)}</h1>
-        <h2>${reportTitle}</h2>
-        <h3>${escHtml(reportSubtitle)}</h3>
-    </div>
-</div>
-
-<div class="si">
-    <div class="si-item"><span class="il">Student Name</span><span class="iv">${escHtml(student.name)}</span></div>
-    <div class="si-item"><span class="il">Class</span><span class="iv">${escHtml(student.className||'Unassigned')}</span></div>
-    <div class="si-item"><span class="il">Teacher</span><span class="iv">${escHtml(ev.teacherName)}</span></div>
-    <div class="si-item"><span class="il">Grading Period</span><span class="iv">${escHtml(semName)}</span></div>
-    <div class="si-item"><span class="il">Date Issued</span><span class="iv">${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</span></div>
-    <div class="si-item"><span class="il">Period Average</span><span class="iv">${cumulativeAvg}% (${gpaLetter})</span></div>
-</div>
-
-<div class="sec">
-    <h3>Academic Performance</h3>
-    <table>
-        <thead><tr><th>Subject</th><th class="c">Average</th><th class="c">Grade</th></tr></thead>
-        <tbody>${gradesHtml}</tbody>
-    </table>
-</div>
-
-<div class="sec">
-    <h3>Enrichment &amp; Character Development</h3>
-    ${ratingLegendHtml}
-    <table>
-        <thead><tr><th>Metric</th><th class="c">Rating</th><th class="c">Assessment</th></tr></thead>
-        <tbody>${enrichmentRows}</tbody>
-    </table>
-</div>
-
-<div class="sec">
-    <h3>Learning Behaviours &amp; Social Growth</h3>
-    ${ratingLegendHtml}
-    <table>
-        <thead><tr><th>Metric</th><th class="c">Rating</th><th class="c">Assessment</th></tr></thead>
-        <tbody>${learningRows}</tbody>
-    </table>
-</div>
-
-<div class="att">
-    <div class="ac"><span class="al">Total Sessions</span><span class="av">${ev.attendance.totalSessions}</span></div>
-    <div class="ac"><span class="al">Days Absent</span><span class="av">${ev.attendance.daysAbsent}</span></div>
-    <div class="ac"><span class="al">Days Late</span><span class="av">${ev.attendance.daysLate}</span></div>
-</div>
-
-<div class="cb">
-    <span class="cl">Teacher's Comments</span>
-    <p style="margin:0;font-size:12px;color:#334155;white-space:pre-wrap;line-height:1.6;">${escHtml(ev.comment||'No comments recorded.')}</p>
-</div>
-
-<div class="fs">
-    <div class="sl">Teacher's Signature &amp; Date</div>
-    <div class="sl">Principal's Signature &amp; Date</div>
-</div>
-
-</body></html>`;
-
+    const ratingLabel = v => v >= 5 ? 'Exceptional' : v === 4 ? 'Developing Well' : v === 3 ? 'Developing' : v === 2 ? 'Needs Improvement' : v >= 1 ? 'Unsatisfactory' : '—';
+    const starDisplay = v => [1,2,3,4,5].map(n => `<span style="color:${n <= v ? '#f59e0b' : '#dce3ed'};font-size:14px;">★</span>`).join('');
+    const ratingLegendHtml = `<div style="font-size:9px;color:#374f6b;background:#f8fafc;padding:7px 12px;border-radius:4px;margin-bottom:12px;border:1px solid #e2e8f0;line-height:2;"><span style="color:#f59e0b;font-size:11px;">★★★★★</span> <strong>5 — Exceptional</strong> &nbsp;&nbsp;<span style="color:#f59e0b;font-size:11px;">★★★★</span><span style="color:#dce3ed;font-size:11px;">★</span> <strong>4 — Developing Well</strong> &nbsp;&nbsp;<span style="color:#f59e0b;font-size:11px;">★★★</span><span style="color:#dce3ed;font-size:11px;">★★</span> <strong>3 — Developing</strong> &nbsp;&nbsp;<span style="color:#f59e0b;font-size:11px;">★★</span><span style="color:#dce3ed;font-size:11px;">★★★</span> <strong>2 — Needs Improvement</strong> &nbsp;&nbsp;<span style="color:#f59e0b;font-size:11px;">★</span><span style="color:#dce3ed;font-size:11px;">★★★★</span> <strong>1 — Unsatisfactory</strong></div>`;
+    const gradesHtml = Object.keys(bySub).length === 0 ? `<tr><td colspan="3" style="text-align:center;padding:30px;color:#64748b;font-style:italic;">No grades recorded for this period.</td></tr>` : Object.entries(bySub).sort((a,b) => a[0].localeCompare(b[0])).map(([sub, gList]) => { const subAvg = calculateWeightedAverage(gList, session.teacherData.gradeTypes || getGradeTypes()); return `<tr style="border-bottom:1px solid #e2e8f0;"><td style="padding:10px 15px;font-weight:700;color:#1e293b;">${escHtml(sub)}</td><td style="padding:10px 15px;text-align:center;font-weight:700;">${subAvg}%</td><td style="padding:10px 15px;text-align:center;font-weight:800;font-family:monospace;">${letterGrade(subAvg)}</td></tr>`; }).join('');
+    const enrichmentRows = [['Character & Values','Honesty, integrity, and ethical behaviour in daily interactions',ev.ratings.characterValues],['Respect & Courtesy','Respectful treatment of peers, teachers, and the school environment',ev.ratings.respectCourtesy],['Responsibility & Reliability','Taking ownership of tasks, duties, and personal belongings',ev.ratings.responsibilityReliability],['Cooperation & Teamwork','Working constructively with others in group and classroom settings',ev.ratings.cooperationTeamwork],['Leadership & Initiative','Volunteering, taking the lead, and showing self-driven motivation',ev.ratings.leadershipInitiative],['Cultural Awareness & Pride','Appreciation of Belizean and Caribbean culture, history, and heritage',ev.ratings.culturalAwareness]].map(([label, desc, val]) => `<tr style="border-bottom:1px solid #e2e8f0;"><td style="padding:9px 15px;"><p style="font-weight:700;color:#1e293b;margin:0 0 2px;font-size:12px;">${label}</p><p style="font-size:10px;color:#64748b;margin:0;font-style:italic;">${desc}</p></td><td style="padding:9px 15px;text-align:center;">${starDisplay(val||0)}</td><td style="padding:9px 15px;text-align:center;font-size:11px;font-weight:700;color:#1e1b4b;">${ratingLabel(val||0)}</td></tr>`).join('');
+    const learningRows = [['Behavior',ev.ratings.behavior],['Organization',ev.ratings.organization],['Respectfulness',ev.ratings.respectfulness],['Kindness',ev.ratings.kindness],['Attitude Towards Work',ev.ratings.attitudeWork],['Attitude Towards Peers',ev.ratings.attitudePeers],['Academic Comprehension',ev.ratings.academicComprehension],['Effort & Resilience',ev.ratings.effortResilience],['Participation & Engagement',ev.ratings.participation],['Attendance & Punctuality',ev.ratings.punctualityRating]].map(([label, val]) => `<tr style="border-bottom:1px solid #e2e8f0;"><td style="padding:9px 15px;font-weight:600;color:#334155;">${label}</td><td style="padding:9px 15px;text-align:center;">${starDisplay(val||0)}</td><td style="padding:9px 15px;text-align:center;font-size:11px;font-weight:700;color:#1e1b4b;">${ratingLabel(val||0)}</td></tr>`).join('');
+    const html = `<!DOCTYPE html><html><head><title>${reportTitle} — ${escHtml(student.name)}</title><style>@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');*{box-sizing:border-box;}body{font-family:'Nunito',sans-serif;padding:36px 44px;color:#0f172a;line-height:1.5;margin:0 auto;max-width:8.5in;font-size:13px;}.hf{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #1e1b4b;padding-bottom:16px;margin-bottom:18px;}.logo{max-height:72px;max-width:220px;object-fit:contain;}.ht{text-align:right;}.ht h1{margin:0 0 4px;font-size:22px;font-weight:900;text-transform:uppercase;color:#1e1b4b;}.ht h2{margin:0;font-size:12px;color:#64748b;font-weight:700;letter-spacing:2px;}.ht h3{margin:4px 0 0;font-size:11px;color:#94a3b8;font-weight:600;}.si{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:14px 18px;margin-bottom:20px;}.si-item{display:flex;flex-direction:column;gap:3px;}.il{font-size:9px;text-transform:uppercase;color:#64748b;font-weight:800;letter-spacing:1px;}.iv{font-size:14px;font-weight:800;color:#0f172a;}h3{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:#fff;background:#1e1b4b;padding:8px 12px;border-radius:4px;margin:0 0 10px;}table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:0;}th{background:#f1f5f9;color:#475569;padding:8px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;border-bottom:2px solid #cbd5e1;}th.c{text-align:center;}td{border-bottom:1px solid #e2e8f0;padding:8px 12px;color:#334155;}.att{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;}.ac{background:#f8fafc;border:1px solid #cbd5e1;padding:9px;text-align:center;border-radius:6px;}.al{display:block;font-size:9px;font-weight:800;color:#64748b;text-transform:uppercase;}.av{font-size:18px;font-weight:900;color:#1e1b4b;}.cb{border:1px solid #cbd5e1;border-radius:6px;padding:14px;background:#fff;min-height:70px;margin-bottom:20px;}.cl{font-size:10px;font-weight:800;color:#1e1b4b;text-transform:uppercase;margin-bottom:6px;display:block;}.fs{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:36px;}.sl{border-top:1px solid #000;padding-top:7px;font-size:11px;font-weight:700;text-align:center;color:#1e1b4b;}.sec{margin-bottom:22px;}</style></head><body><div class="hf"><img src="${session.logo||''}" alt="${escHtml(schoolName)}" class="logo" onerror="this.style.display='none'"><div class="ht"><h1>${escHtml(schoolName)}</h1><h2>${reportTitle}</h2><h3>${escHtml(reportSubtitle)}</h3></div></div><div class="si"><div class="si-item"><span class="il">Student Name</span><span class="iv">${escHtml(student.name)}</span></div><div class="si-item"><span class="il">Class</span><span class="iv">${escHtml(student.className||'Unassigned')}</span></div><div class="si-item"><span class="il">Teacher</span><span class="iv">${escHtml(ev.teacherName)}</span></div><div class="si-item"><span class="il">Grading Period</span><span class="iv">${escHtml(semName)}</span></div><div class="si-item"><span class="il">Date Issued</span><span class="iv">${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</span></div><div class="si-item"><span class="il">Period Average</span><span class="iv">${cumulativeAvg}% (${gpaLetter})</span></div></div><div class="sec"><h3>Academic Performance</h3><table><thead><tr><th>Subject</th><th class="c">Average</th><th class="c">Grade</th></tr></thead><tbody>${gradesHtml}</tbody></table></div><div class="sec"><h3>Enrichment &amp; Character Development</h3>${ratingLegendHtml}<table><thead><tr><th>Metric</th><th class="c">Rating</th><th class="c">Assessment</th></tr></thead><tbody>${enrichmentRows}</tbody></table></div><div class="sec"><h3>Learning Behaviours &amp; Social Growth</h3>${ratingLegendHtml}<table><thead><tr><th>Metric</th><th class="c">Rating</th><th class="c">Assessment</th></tr></thead><tbody>${learningRows}</tbody></table></div><div class="att"><div class="ac"><span class="al">Total Sessions</span><span class="av">${ev.attendance.totalSessions}</span></div><div class="ac"><span class="al">Days Absent</span><span class="av">${ev.attendance.daysAbsent}</span></div><div class="ac"><span class="al">Days Late</span><span class="av">${ev.attendance.daysLate}</span></div></div><div class="cb"><span class="cl">Teacher's Comments</span><p style="margin:0;font-size:12px;color:#334155;white-space:pre-wrap;line-height:1.6;">${escHtml(ev.comment||'No comments recorded.')}</p></div><div class="fs"><div class="sl">Teacher's Signature &amp; Date</div><div class="sl">Principal's Signature &amp; Date</div></div></body></html>`;
     const w = window.open('', '_blank');
     w.document.write(html);
     w.document.close();
@@ -1401,11 +1161,11 @@ td{border-bottom:1px solid #e2e8f0;padding:8px 12px;color:#334155;}
 // ── 13. ASSIGNMENT MODAL ──────────────────────────────────────────────────
 window.openAssignmentModal = function(gradeId) {
     const g = gradeDetailCache[gradeId]; if (!g) return;
-    const pct       = g.max ? Math.round(g.score/g.max*100) : null;
-    const fill      = gradeFill(pct||0);
-    const color     = pct>=90?'#065f46':pct>=80?'#1e3a8a':pct>=70?'#134e4a':pct>=65?'#78350f':'#7f1d1d';
-    const bg        = pct>=90?'#dcfce7':pct>=80?'#dbeafe':pct>=70?'#ccfbf1':pct>=65?'#fef3c7':'#fee2e2';
-    const bd        = pct>=90?'#bbf7d0':pct>=80?'#bfdbfe':pct>=70?'#99f6e4':pct>=65?'#fde68a':'#fecaca';
+    const pct = g.max ? Math.round(g.score/g.max*100) : null;
+    const fill = gradeFill(pct||0);
+    const color = pct>=90?'#065f46':pct>=80?'#1e3a8a':pct>=70?'#134e4a':pct>=65?'#78350f':'#7f1d1d';
+    const bg = pct>=90?'#dcfce7':pct>=80?'#dbeafe':pct>=70?'#ccfbf1':pct>=65?'#fef3c7':'#fee2e2';
+    const bd = pct>=90?'#bbf7d0':pct>=80?'#bfdbfe':pct>=70?'#99f6e4':pct>=65?'#fde68a':'#fecaca';
     const adminNote = g.enteredByAdmin ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:12px;margin-bottom:12px;"><p style="font-size:9.5px;font-weight:700;text-transform:uppercase;color:#2563eb;margin:0 0 4px;">Admin Entry</p><p style="font-size:12px;color:#374f6b;margin:0;">Entered by ${escHtml(g.adminName||'Admin')}</p></div>` : '';
     document.getElementById('aModalTitle').textContent = g.title || 'Assessment Detail';
     document.getElementById('aModalBody').innerHTML = `<div style="text-align:center;margin-bottom:20px;"><div style="font-size:42px;font-weight:700;color:${color};font-family:'DM Mono',monospace;line-height:1;">${g.score}<span style="font-size:20px;color:#9ab0c6;"> / ${g.max||'?'}</span></div>${pct!==null?`<div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-top:8px;"><span style="font-size:18px;font-weight:700;color:${color};font-family:'DM Mono',monospace;">${pct}%</span><span style="font-size:14px;font-weight:700;padding:4px 14px;border-radius:3px;background:${bg};border:1px solid ${bd};color:${color};">${letterGrade(pct)}</span></div><div style="margin:12px 20px 0;height:8px;background:#f0f4f8;border-radius:2px;overflow:hidden;"><div style="height:100%;width:${Math.min(pct,100)}%;background:${fill};transition:width 0.5s ease;"></div></div>`:''}</div>${adminNote}<div style="display:flex;flex-direction:column;gap:0;margin-bottom:16px;border:1px solid #e8edf2;border-radius:4px;overflow:hidden;">${[['Subject',g.subject||'—'],['Type',g.type||'—'],['Class',g.className||'—'],['Date',g.date||'—']].map(([l,v],i)=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;${i<3?'border-bottom:1px solid #f0f4f8;':''}background:#fff;"><span style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#9ab0c6;">${l}</span><span style="font-size:13px;font-weight:600;color:#0d1f35;">${escHtml(v)}</span></div>`).join('')}</div>${g.notes?`<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:14px;margin-bottom:14px;"><p style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#1e3a8a;margin:0 0 6px;">Notes</p><p style="font-size:12.5px;color:#374f6b;font-weight:400;margin:0;line-height:1.6;white-space:pre-wrap;">${escHtml(g.notes)}</p></div>`:''}`;
@@ -1435,276 +1195,241 @@ window.toggleArchiveType = function() {
 };
 
 document.getElementById('confirmArchiveBtn').addEventListener('click', async () => {
-    const isRelease     = document.getElementById('optRelease').checked;
+    const isRelease = document.getElementById('optRelease').checked;
     const releaseReason = document.getElementById('releaseReason').value;
-    const notes         = document.getElementById('archiveNotes').value.trim();
-
+    const notes = document.getElementById('archiveNotes').value.trim();
     if (isRelease && !releaseReason) { alert('Please select a departure reason to close enrollment.'); return; }
-
     const btn = document.getElementById('confirmArchiveBtn');
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing…'; btn.disabled = true;
-
     try {
-        const s     = allStudentsCache.find(x => x.id === currentStudentId);
+        const s = allStudentsCache.find(x => x.id === currentStudentId);
         const batch = writeBatch(db);
-
-        let finalStatus   = 'Archived';
-        let leaveSchool   = false;
-        let historyReason = 'Internally Archived';
-
+        let finalStatus = 'Archived', leaveSchool = false, historyReason = 'Internally Archived';
         if (isRelease) {
-            leaveSchool   = true;
-            historyReason = releaseReason;
-            if (releaseReason === 'Transferred')    finalStatus = 'Transferred';
+            leaveSchool = true; historyReason = releaseReason;
+            if (releaseReason === 'Transferred') finalStatus = 'Transferred';
             else if (releaseReason === 'Graduated') finalStatus = 'Graduated';
             else finalStatus = 'Archived';
         }
-
         let academicSnapshot = {};
         try {
             const gradeTypes = session.teacherData.gradeTypes || session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES;
             const gradesSnap = await getDocs(query(collection(db, 'students', currentStudentId, 'grades'), where('schoolId', '==', session.schoolId)));
             const classGrades = [];
             gradesSnap.forEach(d => { const g = { id: d.id, ...d.data() }; if (g.className === (s?.className || '')) classGrades.push(g); });
-
             const evalSnap = await getDocs(query(collection(db, 'students', currentStudentId, 'evaluations'), where('schoolId', '==', session.schoolId)));
             const evaluations = [];
             evalSnap.forEach(d => evaluations.push({ id: d.id, ...d.data() }));
-            evaluations.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
-
             const bySemester = {};
             classGrades.forEach(g => {
                 if (!g.semesterId) return;
-                const sem     = rawSemesters.find(rs => rs.id === g.semesterId);
+                const sem = rawSemesters.find(rs => rs.id === g.semesterId);
                 const semName = sem?.name || g.semesterId;
                 if (!bySemester[semName]) bySemester[semName] = {};
                 const subj = g.subject || 'Uncategorized';
                 if (!bySemester[semName][subj]) bySemester[semName][subj] = [];
                 bySemester[semName][subj].push(g);
             });
-
             const semesters = {};
             Object.entries(bySemester).forEach(([semName, subjects]) => {
                 semesters[semName] = {};
                 const allSemGrades = [];
-                Object.entries(subjects).forEach(([subj, grades]) => {
-                    semesters[semName][subj] = Math.round(calculateWeightedAverage(grades, gradeTypes));
-                    allSemGrades.push(...grades);
-                });
+                Object.entries(subjects).forEach(([subj, grades]) => { semesters[semName][subj] = Math.round(calculateWeightedAverage(grades, gradeTypes)); allSemGrades.push(...grades); });
                 if (allSemGrades.length) semesters[semName]._overall = Math.round(calculateWeightedAverage(allSemGrades, gradeTypes));
             });
-
             academicSnapshot = { className: s?.className || '', semesters, evaluations, snapshotDate: new Date().toISOString() };
         } catch (snapErr) { console.warn('[Roster] academicSnapshot warning:', snapErr.message); }
-
-        const snapshot = {
-            schoolId: session.schoolId, schoolName: session.schoolName || session.schoolId,
-            teacherId: s?.teacherId || '', className: s?.className || '',
-            leftAt: new Date().toISOString(), reason: historyReason,
-            ...(notes ? { notes } : {})
-        };
-
-        batch.update(doc(db, 'students', currentStudentId), {
-            enrollmentStatus: finalStatus,
-            currentSchoolId:  leaveSchool ? '' : session.schoolId,
-            teacherId: '', className: '',
-            academicHistory:  arrayUnion(snapshot),
-            lastClassName:    s?.className || '',
-            academicSnapshot,
-            ...(leaveSchool ? { archivedSchoolIds: arrayUnion(session.schoolId) } : {})
-        });
-
-        if (leaveSchool) {
-            batch.set(doc(collection(db, 'schools', session.schoolId, 'notifications')), {
-                type: 'student_enrollment_closed', studentId: currentStudentId,
-                studentName: s?.name || '', reason: historyReason,
-                closedBy: session.teacherData?.name || 'Teacher', closedAt: new Date().toISOString()
-            });
-        }
-
+        const snapshot = { schoolId: session.schoolId, schoolName: session.schoolName || session.schoolId, teacherId: s?.teacherId || '', className: s?.className || '', leftAt: new Date().toISOString(), reason: historyReason, ...(notes ? { notes } : {}) };
+        batch.update(doc(db, 'students', currentStudentId), { enrollmentStatus: finalStatus, currentSchoolId: leaveSchool ? '' : session.schoolId, teacherId: '', className: '', academicHistory: arrayUnion(snapshot), lastClassName: s?.className || '', academicSnapshot, ...(leaveSchool ? { archivedSchoolIds: arrayUnion(session.schoolId) } : {}) });
+        if (leaveSchool) { batch.set(doc(collection(db, 'schools', session.schoolId, 'notifications')), { type: 'student_enrollment_closed', studentId: currentStudentId, studentName: s?.name || '', reason: historyReason, closedBy: session.teacherData?.name || 'Teacher', closedAt: new Date().toISOString() }); }
         await batch.commit();
-        window.closeArchiveModal();
-        window.closeStudentPanel();
-        await loadStudents();
-    } catch (e) {
-        console.error('[Roster] archive:', e);
-        alert('Critical failure. Record preserved.');
-    }
-
+        window.closeArchiveModal(); window.closeStudentPanel(); await loadStudents();
+    } catch (e) { console.error('[Roster] archive:', e); alert('Critical failure. Record preserved.'); }
     btn.innerHTML = '<i class="fa-solid fa-box-archive"></i> Confirm Action'; btn.disabled = false;
 });
 
-// ── 14.5. PROMOTE / REPEAT ────────────────────────────────────────────────
-// Lets the teacher resolve her year-end roster: promote students to the next
-// class (auto-assigning the receiving teacher only when exactly one teacher
-// owns that class) or mark them as repeating. Both stamp classHistory using
-// the same shape as saveStudentClass.
-let promoteClassTeacherMap = {}; // className -> [{id, name}] of teachers who own it
+// ── 15. PROMOTE / REPEAT ─────────────────────────────────────────────────
 
-// Build a map of class -> teachers who teach it (one fetch, on demand).
+// Build className → [{id, name}] from all non-archived teachers at the school
 async function buildClassTeacherMap() {
     promoteClassTeacherMap = {};
     try {
-        const snap = await getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId)));
+        const snap = await getDocs(query(
+            collection(db, 'teachers'),
+            where('currentSchoolId', '==', session.schoolId)
+        ));
         snap.forEach(d => {
-            const t = d.data();
+            const t = { id: d.id, ...d.data() };
             if (t.archived) return;
             const classes = t.classes || (t.className ? [t.className] : []);
-            classes.forEach(c => {
-                if (!c) return;
-                if (!promoteClassTeacherMap[c]) promoteClassTeacherMap[c] = [];
-                promoteClassTeacherMap[c].push({ id: d.id, name: t.name || d.id });
+            classes.forEach(cls => {
+                if (!cls) return;
+                if (!promoteClassTeacherMap[cls]) promoteClassTeacherMap[cls] = [];
+                promoteClassTeacherMap[cls].push({ id: d.id, name: t.name });
             });
         });
-    } catch (e) {
-        console.error('[Roster] buildClassTeacherMap:', e);
-        promoteClassTeacherMap = {};
-    }
+    } catch (e) { console.error('[Roster] buildClassTeacherMap:', e); }
 }
 
-// Open the promote modal. If singleStudentId is passed, only that student is
-// listed; otherwise the teacher's whole current roster is shown.
+// Toggle the ⋯ More menu
+window.toggleRosterMoreMenu = function(e) {
+    e.stopPropagation();
+    const menu = document.getElementById('rosterMoreMenu');
+    if (menu) menu.classList.toggle('hidden');
+};
+
+// Open promote modal — singleStudentId scopes to one student; null = whole roster
 window.openPromoteModal = async function(singleStudentId = null) {
-    const listEl = document.getElementById('promoteList');
-    const msgEl  = document.getElementById('promoteMsg');
-    if (msgEl) { msgEl.classList.add('hidden'); msgEl.textContent = ''; }
+    const menu = document.getElementById('rosterMoreMenu');
+    if (menu) menu.classList.add('hidden');
+
+    await buildClassTeacherMap();
 
     const students = singleStudentId
         ? allStudentsCache.filter(s => s.id === singleStudentId)
-        : allStudentsCache.slice();
+        : allStudentsCache;
+
+    const list = document.getElementById('promoteList');
+    const msg  = document.getElementById('promoteMsg');
+    msg.classList.add('hidden');
 
     if (!students.length) {
-        if (listEl) listEl.innerHTML = `<p style="padding:20px;text-align:center;color:#9ab0c6;font-size:13px;">No students to promote.</p>`;
+        list.innerHTML = `<p style="font-size:13px;color:#9ab0c6;text-align:center;padding:24px 0;">No students to display.</p>`;
         openOverlay('promoteModal', 'promoteModalInner');
         return;
     }
 
-    if (listEl) listEl.innerHTML = `<div style="padding:24px;text-align:center;color:#9ab0c6;"><i class="fa-solid fa-spinner fa-spin" style="font-size:18px;"></i></div>`;
-    openOverlay('promoteModal', 'promoteModalInner');
+    const classOptions = [
+        `<option value="">— Choose —</option>`,
+        `<option value="__repeat__">↩ Repeat (stay in current class)</option>`,
+        ...schoolClasses.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`)
+    ].join('');
 
-    // Fetch the class->teacher map once for this session of the modal
-    await buildClassTeacherMap();
-
-    // Destination options: all school classes + Repeat
-    const classOptions = schoolClasses.map(c =>
-        `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
-
-    const rows = students.map(s => {
-        const curClass = s.className || '';
-        // default each student's destination to "choose"
-        return `
-        <div class="promote-row" data-student="${s.id}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid #e8edf2;border-radius:4px;background:#fff;margin-bottom:8px;">
-            <input type="checkbox" class="promote-check" data-student="${s.id}" ${students.length === 1 ? 'checked' : ''} style="width:16px;height:16px;flex-shrink:0;cursor:pointer;">
+    list.innerHTML = students.map(s => `
+        <div class="promote-row" data-student-id="${s.id}" data-current-class="${escHtml(s.className||'')}"
+             style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f0f4f8;">
+            <input type="checkbox" class="promote-check" style="width:16px;height:16px;cursor:pointer;flex-shrink:0;">
             <div style="flex:1;min-width:0;">
-                <p style="font-size:13px;font-weight:700;color:#0d1f35;margin:0 0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(s.name)}</p>
-                <p style="font-size:10.5px;color:#9ab0c6;margin:0;">Current: ${escHtml(curClass || 'Unassigned')}</p>
+                <p style="font-size:13px;font-weight:700;color:#0d1f35;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(s.name)}</p>
+                <p style="font-size:11px;color:#9ab0c6;margin:0;">Currently: ${escHtml(s.className||'Unassigned')}</p>
             </div>
-            <select class="promote-dest form-input" data-student="${s.id}" data-current="${escHtml(curClass)}" style="width:auto;min-width:160px;flex-shrink:0;">
-                <option value="">— Choose —</option>
-                <option value="__repeat__">Repeat (stay in ${escHtml(curClass || 'same class')})</option>
-                ${classOptions}
-            </select>
-        </div>`;
-    }).join('');
+            <select class="promote-dest form-input" style="width:180px;flex-shrink:0;font-size:12px;padding:6px 8px;">${classOptions}</select>
+        </div>
+    `).join('');
 
-    if (listEl) listEl.innerHTML = rows;
+    openOverlay('promoteModal', 'promoteModalInner');
 };
 
 window.closePromoteModal = function() { closeOverlay('promoteModal', 'promoteModalInner'); };
 
-// Promote just the student whose panel is currently open.
+// Called from sidebar "Promote / Advance" button — closes panel then opens modal for that one student
 window.promoteCurrentStudent = function() {
-    if (!currentStudentId) return;
     window.closeStudentPanel();
     window.openPromoteModal(currentStudentId);
 };
 
+// Commit all promote/repeat actions
 window.confirmPromotion = async function() {
-    const btn   = document.getElementById('confirmPromoteBtn');
-    const msgEl = document.getElementById('promoteMsg');
-    const rows  = Array.from(document.querySelectorAll('#promoteList .promote-row'));
+    const btn = document.getElementById('confirmPromoteBtn');
+    const msg = document.getElementById('promoteMsg');
+    msg.classList.add('hidden');
 
-    // Gather selected rows with a chosen destination
-    const actions = [];
-    let needsChoice = false;
+    const rows = document.querySelectorAll('.promote-row');
+    const toProcess = [];
 
     rows.forEach(row => {
-        const sid     = row.dataset.student;
         const checked = row.querySelector('.promote-check')?.checked;
         if (!checked) return;
-        const sel     = row.querySelector('.promote-dest');
-        const dest    = sel?.value || '';
-        const current = sel?.dataset.current || '';
-        if (!dest) { needsChoice = true; return; }
-        actions.push({ studentId: sid, dest, current });
+        const dest         = row.querySelector('.promote-dest')?.value || '';
+        const studentId    = row.dataset.studentId;
+        const currentClass = row.dataset.currentClass;
+        if (!dest) return; // "— Choose —" = skip this student
+        toProcess.push({ studentId, currentClass, dest });
     });
 
-    if (needsChoice) {
-        if (msgEl) { msgEl.textContent = 'Please choose a destination (or Repeat) for every selected student.'; msgEl.classList.remove('hidden'); msgEl.style.color = '#dc2626'; }
-        return;
-    }
-    if (!actions.length) {
-        if (msgEl) { msgEl.textContent = 'Select at least one student and choose a destination.'; msgEl.classList.remove('hidden'); msgEl.style.color = '#dc2626'; }
+    if (!toProcess.length) {
+        msg.textContent = 'Tick at least one student and choose a destination.';
+        msg.style.background = '#fee2e2'; msg.style.color = '#7f1d1d';
+        msg.classList.remove('hidden');
         return;
     }
 
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing…'; }
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing…';
+    btn.disabled  = true;
+
+    const changedAt  = new Date().toISOString();
+    let   batch      = writeBatch(db);
+    let   opCount    = 0;
+    let   unresolved = 0;
 
     try {
-        const nowIso = new Date().toISOString();
-        const batch  = writeBatch(db);
-        let unresolvedTeacher = 0;
-
-        actions.forEach(({ studentId, dest, current }) => {
-            const ref = doc(db, 'students', studentId);
+        for (const { studentId, currentClass, dest } of toProcess) {
+            const studentRef = doc(db, 'students', studentId);
 
             if (dest === '__repeat__') {
-                // Repeat — stays in same class, stamp a year-boundary trail
-                batch.update(ref, {
+                // Stays in same class — stamp a year-boundary classHistory entry only
+                batch.update(studentRef, {
                     classHistory: arrayUnion({
-                        fromClass: current, toClass: current,
-                        changedAt: nowIso, reason: 'Repeated', schoolId: session.schoolId
+                        fromClass: currentClass,
+                        toClass:   currentClass,
+                        changedAt,
+                        reason:    'Repeated',
+                        schoolId:  session.schoolId
                     })
                 });
             } else {
-                // Promote — move to destination class. Auto-assign receiving
-                // teacher only if exactly one teacher owns that class.
+                // Move to destination class; auto-assign teacher if exactly one owns it
                 const owners = promoteClassTeacherMap[dest] || [];
                 const update = {
                     className: dest,
                     classHistory: arrayUnion({
-                        fromClass: current, toClass: dest,
-                        changedAt: nowIso, reason: 'Promoted', schoolId: session.schoolId
+                        fromClass: currentClass,
+                        toClass:   dest,
+                        changedAt,
+                        reason:    'Promoted',
+                        schoolId:  session.schoolId
                     })
                 };
+
                 if (owners.length === 1) {
                     update.teacherId = owners[0].id;
                 } else {
-                    // zero or multiple owners — leave unassigned for that class
                     update.teacherId = '';
-                    unresolvedTeacher++;
+                    unresolved++;
                 }
-                batch.update(ref, update);
+
+                batch.update(studentRef, update);
             }
-        });
 
-        await batch.commit();
-
-        window.closePromoteModal();
-        await loadStudents();
-
-        if (unresolvedTeacher > 0) {
-            alert(`Done. ${unresolvedTeacher} student(s) were moved to a class that doesn't have exactly one teacher assigned — they're in that class's unassigned pool until a teacher claims them.`);
+            opCount++;
+            if (opCount >= 499) {
+                await batch.commit();
+                batch   = writeBatch(db);
+                opCount = 0;
+            }
         }
+
+        if (opCount > 0) await batch.commit();
+
+        await loadStudents();
+        window.closePromoteModal();
+
+        if (unresolved > 0) {
+            alert(`Promotion complete.\n\n${unresolved} student(s) were moved to their new class but could not be auto-assigned to a teacher because the destination class has no teacher or multiple teachers. Please assign them manually from the admin panel.`);
+        }
+
     } catch (e) {
         console.error('[Roster] confirmPromotion:', e);
-        if (msgEl) { msgEl.textContent = 'Something went wrong. Please try again.'; msgEl.classList.remove('hidden'); msgEl.style.color = '#dc2626'; }
+        msg.textContent = 'Error during promotion. Please try again.';
+        msg.style.background = '#fee2e2'; msg.style.color = '#7f1d1d';
+        msg.classList.remove('hidden');
     }
 
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-arrow-up-right-dots"></i> Confirm Promotion'; }
+    btn.innerHTML = '<i class="fa-solid fa-arrow-up-right-dots"></i> Confirm Promotion';
+    btn.disabled  = false;
 };
 
-// ── 15. EXPORT ────────────────────────────────────────────────────────────
+// ── 16. EXPORT ────────────────────────────────────────────────────────────
 window.exportRosterCSV = function() {
     const rows = [['Global ID','Name','Class','Parent Phone','Parent PIN']];
     allStudentsCache.forEach(s => rows.push([s.id, s.name, s.className||'', s.parentPhone||'', s.pin]));
@@ -1713,7 +1438,7 @@ window.exportRosterCSV = function() {
 
 window.printRoster = function() { window.print(); };
 
-// ── 16. XSS PROTECTION ───────────────────────────────────────────────────
+// ── 17. XSS PROTECTION ───────────────────────────────────────────────────
 function escHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
