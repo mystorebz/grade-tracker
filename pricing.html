@@ -12,7 +12,12 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="assets/css/global.css">
+    <link rel="stylesheet" href="assets/css/landing.css">
     <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- PayPal SDK — loaded once -->
+    <script src="https://www.paypal.com/sdk/js?client-id=BAAhXsbZgDW5jGo0Si8njtFHI2dGsZJPVxyoinNCz_HiewmcGQ6us-loylu319j9noes5xkUZ39n4TbCXQ&vault=true&intent=subscription" data-sdk-integration-source="button-factory"></script>
 
     <style>
         * { font-family: 'Nunito', sans-serif; }
@@ -21,7 +26,7 @@
         /* ── Nav ── */
         .navbar {
             position: sticky; top: 0; z-index: 50;
-            background: rgba(255,255,255,0.92);
+            background: rgba(255,255,255,0.95);
             backdrop-filter: blur(12px);
             border-bottom: 1px solid #e0e7ff;
             box-shadow: 0 1px 12px rgba(37,99,235,0.06);
@@ -39,12 +44,44 @@
             background: radial-gradient(circle, rgba(99,179,237,0.18) 0%, transparent 70%);
             top: -150px; right: -100px; pointer-events: none;
         }
-        .hero-bg::after {
-            content: '';
-            position: absolute;
-            width: 400px; height: 400px; border-radius: 50%;
-            background: radial-gradient(circle, rgba(37,99,235,0.1) 0%, transparent 70%);
-            bottom: -80px; left: -80px; pointer-events: none;
+
+        /* ── Toggle ── */
+        .billing-toggle {
+            display: inline-flex;
+            background: #f1f5f9;
+            border-radius: 999px;
+            padding: 4px;
+            gap: 2px;
+            border: 1px solid #e2e8f0;
+        }
+        .toggle-btn {
+            padding: 8px 24px;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 800;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            color: #64748b;
+            transition: all 0.2s ease;
+        }
+        .toggle-btn.active {
+            background: #fff;
+            color: #1e293b;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .save-badge {
+            display: inline-block;
+            background: #dcfce7;
+            color: #15803d;
+            font-size: 10px;
+            font-weight: 900;
+            padding: 2px 10px;
+            border-radius: 999px;
+            border: 1px solid #bbf7d0;
+            letter-spacing: 0.05em;
+            vertical-align: middle;
+            margin-left: 6px;
         }
 
         /* ── Included strip ── */
@@ -63,8 +100,8 @@
             transition: transform 0.25s ease, box-shadow 0.25s ease;
         }
         .plan-card:hover {
-            transform: translateY(-6px);
-            box-shadow: 0 20px 48px rgba(37,99,235,0.12);
+            transform: translateY(-4px);
+            box-shadow: 0 20px 48px rgba(37,99,235,0.1);
         }
         .plan-card.featured {
             border-color: #2563eb;
@@ -76,79 +113,33 @@
             color: #f1f5f9;
         }
 
-        /* login stats */
+        /* price display */
+        .price-monthly, .price-annual { transition: opacity 0.2s ease; }
+        .price-annual { display: none; }
+        body.annual .price-monthly { display: none; }
+        body.annual .price-annual { display: block; }
+
+        /* paypal containers */
+        .paypal-monthly { }
+        .paypal-annual  { display: none; }
+        body.annual .paypal-monthly { display: none; }
+        body.annual .paypal-annual  { display: block; }
+
+        /* stats */
         .stat-row {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin: 20px 0 24px;
-            padding: 20px;
-            background: #f8faff;
-            border-radius: 14px;
+            display: flex; flex-direction: column; gap: 10px;
+            margin: 20px 0 24px; padding: 20px;
+            background: #f8faff; border-radius: 14px;
         }
-        .plan-card.pro .stat-row {
-            background: #1e293b;
-        }
-        .stat-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            font-size: 14px;
-        }
-        .stat-label {
-            font-weight: 700;
-            color: #64748b;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
+        .plan-card.pro .stat-row { background: #1e293b; }
+        .stat-item { display: flex; align-items: center; justify-content: space-between; font-size: 14px; }
+        .stat-label { font-weight: 700; color: #64748b; display: flex; align-items: center; gap: 8px; }
         .plan-card.pro .stat-label { color: #94a3b8; }
-        .stat-value {
-            font-weight: 900;
-            color: #1e293b;
-            font-size: 15px;
-        }
+        .stat-value { font-weight: 900; color: #1e293b; font-size: 15px; }
         .plan-card.pro .stat-value { color: #f1f5f9; }
 
-        /* divider */
-        .card-divider {
-            height: 1px; background: #f1f5f9; margin: 0 0 20px;
-        }
+        .card-divider { height: 1px; background: #f1f5f9; margin: 0 0 20px; }
         .plan-card.pro .card-divider { background: #1e293b; }
-
-        /* standout feature */
-        .standout-feature {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 13px;
-            font-weight: 800;
-            color: #2563eb;
-            margin-bottom: 24px;
-        }
-        .plan-card.pro .standout-feature { color: #93c5fd; }
-
-        /* CTA button */
-        .cta-btn {
-            display: block; width: 100%; text-align: center;
-            padding: 14px 20px; border-radius: 14px;
-            font-weight: 900; font-size: 15px;
-            transition: all 0.2s ease; margin-top: auto;
-            text-decoration: none;
-        }
-        .cta-btn-outline {
-            border: 2px solid #bfdbfe; color: #2563eb; background: #eff6ff;
-        }
-        .cta-btn-outline:hover { background: #2563eb; color: #fff; border-color: #2563eb; }
-        .cta-btn-primary {
-            background: #2563eb; color: #fff;
-            box-shadow: 0 6px 20px rgba(37,99,235,0.3);
-        }
-        .cta-btn-primary:hover { background: #1d4ed8; }
-        .cta-btn-pro {
-            background: #fff; color: #0f172a; font-weight: 900;
-        }
-        .cta-btn-pro:hover { background: #e0e7ff; }
 
         /* badge */
         .popular-badge {
@@ -161,19 +152,52 @@
             white-space: nowrap;
         }
 
-        /* ── Final CTA ── */
-        .final-cta {
-            background: linear-gradient(135deg, #1d4ed8 0%, #0ea5e9 100%);
+        /* ── Pro card quote form ── */
+        .pro-form-label {
+            display: block;
+            font-size: 10px;
+            font-weight: 800;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 4px;
         }
+        .pro-form-input {
+            width: 100%;
+            padding: 10px 14px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 10px;
+            color: #f1f5f9;
+            font-size: 13px;
+            font-weight: 600;
+            outline: none;
+            transition: border-color 0.15s;
+            font-family: 'Nunito', sans-serif;
+        }
+        .pro-form-input::placeholder { color: #475569; }
+        .pro-form-input:focus { border-color: #3b82f6; }
+        .pro-form-input option { background: #1e293b; color: #f1f5f9; }
+        .pro-submit-btn {
+            width: 100%;
+            padding: 13px;
+            background: #fff;
+            color: #0f172a;
+            font-weight: 900;
+            font-size: 14px;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-family: 'Nunito', sans-serif;
+        }
+        .pro-submit-btn:hover { background: #e0e7ff; }
 
         /* ── Footer ── */
         footer { background: #0f172a; }
 
         /* ── Fade in ── */
-        .fade-up {
-            opacity: 0; transform: translateY(24px);
-            transition: opacity 0.5s ease, transform 0.5s ease;
-        }
+        .fade-up { opacity: 0; transform: translateY(24px); transition: opacity 0.5s ease, transform 0.5s ease; }
         .fade-up.visible { opacity: 1; transform: translateY(0); }
     </style>
 </head>
@@ -193,23 +217,30 @@
     </nav>
 
     <!-- HERO -->
-    <header class="hero-bg py-20 px-4 text-center">
+    <header class="hero-bg py-16 px-4 text-center">
         <div class="max-w-3xl mx-auto relative z-10">
-            <span class="inline-flex items-center gap-2 bg-blue-100 text-blue-700 text-xs font-black px-4 py-1.5 rounded-full border border-blue-200 mb-6">
-                ✅ &nbsp; No Surprises &nbsp;·&nbsp; No Hidden Fees &nbsp;·&nbsp; Custom Quote in 48 Hours
-            </span>
-            <h1 class="text-4xl md:text-5xl lg:text-6xl font-black text-blue-900 leading-tight mb-5 tracking-tight">
-                The right plan<br>
-                <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">for every school.</span>
+            <h1 class="text-4xl md:text-5xl lg:text-6xl font-black text-blue-900 leading-tight mb-4 tracking-tight">
+                Simple, transparent<br>
+                <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">pricing.</span>
             </h1>
-            <p class="text-lg text-slate-600 font-semibold leading-relaxed max-w-xl mx-auto">
-                Find the tier that matches your school's size, tell us about it, and we'll send you a custom quote within 24–48 hours.
+            <p class="text-lg text-slate-600 font-semibold leading-relaxed max-w-xl mx-auto mb-8">
+                Pick the plan that fits your school. Subscribe today and your portal is ready instantly.
             </p>
+
+            <!-- Billing toggle -->
+            <div class="flex items-center justify-center gap-3">
+                <div class="billing-toggle">
+                    <button class="toggle-btn active" id="toggleMonthly" onclick="setBilling('monthly')">Monthly</button>
+                    <button class="toggle-btn" id="toggleAnnual" onclick="setBilling('annual')">
+                        Annual <span class="save-badge">2 MONTHS FREE</span>
+                    </button>
+                </div>
+            </div>
         </div>
     </header>
 
     <!-- WHAT EVERY PLAN INCLUDES -->
-    <section class="py-12 px-4 bg-white">
+    <section class="py-10 px-4 bg-white">
         <div class="max-w-5xl mx-auto fade-up">
             <p class="text-center text-xs font-black text-blue-500 uppercase tracking-widest mb-6">What every plan includes</p>
             <div class="included-strip px-8 py-6">
@@ -244,7 +275,7 @@
     </section>
 
     <!-- PLAN CARDS -->
-    <section class="py-16 px-4 bg-[#f8faff]">
+    <section class="py-14 px-4 bg-[#f8faff]">
         <div class="max-w-6xl mx-auto">
             <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 items-stretch">
 
@@ -252,7 +283,18 @@
                 <div class="plan-card p-7 fade-up">
                     <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Starter</p>
                     <h3 class="text-xl font-black text-slate-800 mb-1">Small Academies</h3>
-                    <p class="text-slate-400 text-xs font-semibold leading-relaxed">Ideal for rural and small community schools getting started with digital grade management.</p>
+                    <p class="text-slate-400 text-xs font-semibold leading-relaxed mb-4">Ideal for rural and small community schools getting started with digital grade management.</p>
+
+                    <!-- Price -->
+                    <div class="price-monthly">
+                        <span class="text-4xl font-black text-slate-800">$49</span><span class="text-lg font-bold text-slate-400">.99</span>
+                        <span class="text-sm font-bold text-slate-400 ml-1">/ month</span>
+                    </div>
+                    <div class="price-annual">
+                        <span class="text-4xl font-black text-slate-800">$499</span><span class="text-lg font-bold text-slate-400">.90</span>
+                        <span class="text-sm font-bold text-slate-400 ml-1">/ year</span>
+                        <p class="text-xs font-bold text-green-600 mt-1">Save $99.98 vs monthly</p>
+                    </div>
 
                     <div class="stat-row">
                         <div class="stat-item">
@@ -270,11 +312,10 @@
                     </div>
 
                     <div class="card-divider"></div>
-                    <div class="standout-feature">
-                        <i class="fa-solid fa-circle-check"></i> Core Portal Access
-                    </div>
 
-                    <a href="index.html#register" class="cta-btn cta-btn-outline">Get a Quote →</a>
+                    <!-- PayPal buttons -->
+                    <div class="paypal-monthly" id="paypal-starter-monthly"></div>
+                    <div class="paypal-annual"  id="paypal-starter-annual"></div>
                 </div>
 
                 <!-- GROWTH (featured) -->
@@ -282,7 +323,18 @@
                     <div class="popular-badge">Most Popular</div>
                     <p class="text-xs font-black text-blue-400 uppercase tracking-widest mb-1 mt-3">Growth</p>
                     <h3 class="text-xl font-black text-slate-800 mb-1">Primary Schools</h3>
-                    <p class="text-slate-400 text-xs font-semibold leading-relaxed">For growing primary schools that need a reliable, full-featured platform from day one.</p>
+                    <p class="text-slate-400 text-xs font-semibold leading-relaxed mb-4">For growing primary schools that need a reliable, full-featured platform from day one.</p>
+
+                    <!-- Price -->
+                    <div class="price-monthly">
+                        <span class="text-4xl font-black text-slate-800">$99</span><span class="text-lg font-bold text-slate-400">.99</span>
+                        <span class="text-sm font-bold text-slate-400 ml-1">/ month</span>
+                    </div>
+                    <div class="price-annual">
+                        <span class="text-4xl font-black text-slate-800">$999</span><span class="text-lg font-bold text-slate-400">.90</span>
+                        <span class="text-sm font-bold text-slate-400 ml-1">/ year</span>
+                        <p class="text-xs font-bold text-green-600 mt-1">Save $199.98 vs monthly</p>
+                    </div>
 
                     <div class="stat-row">
                         <div class="stat-item">
@@ -300,18 +352,27 @@
                     </div>
 
                     <div class="card-divider"></div>
-                    <div class="standout-feature">
-                        <i class="fa-solid fa-circle-check"></i> Priority Support
-                    </div>
 
-                    <a href="index.html#register" class="cta-btn cta-btn-primary">Get a Quote →</a>
+                    <div class="paypal-monthly" id="paypal-growth-monthly"></div>
+                    <div class="paypal-annual"  id="paypal-growth-annual"></div>
                 </div>
 
                 <!-- ENTERPRISE -->
                 <div class="plan-card p-7 fade-up">
                     <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Enterprise</p>
                     <h3 class="text-xl font-black text-slate-800 mb-1">Large Schools</h3>
-                    <p class="text-slate-400 text-xs font-semibold leading-relaxed">For large secondary schools and campuses with bigger staff teams and broader admin needs.</p>
+                    <p class="text-slate-400 text-xs font-semibold leading-relaxed mb-4">For large secondary schools and campuses with bigger staff teams and broader admin needs.</p>
+
+                    <!-- Price -->
+                    <div class="price-monthly">
+                        <span class="text-4xl font-black text-slate-800">$199</span><span class="text-lg font-bold text-slate-400">.99</span>
+                        <span class="text-sm font-bold text-slate-400 ml-1">/ month</span>
+                    </div>
+                    <div class="price-annual">
+                        <span class="text-4xl font-black text-slate-800">$1,999</span><span class="text-lg font-bold text-slate-400">.90</span>
+                        <span class="text-sm font-bold text-slate-400 ml-1">/ year</span>
+                        <p class="text-xs font-bold text-green-600 mt-1">Save $399.98 vs monthly</p>
+                    </div>
 
                     <div class="stat-row">
                         <div class="stat-item">
@@ -329,18 +390,16 @@
                     </div>
 
                     <div class="card-divider"></div>
-                    <div class="standout-feature">
-                        <i class="fa-solid fa-circle-check"></i> Custom Training
-                    </div>
 
-                    <a href="index.html#register" class="cta-btn cta-btn-outline">Get a Quote →</a>
+                    <div class="paypal-monthly" id="paypal-enterprise-monthly"></div>
+                    <div class="paypal-annual"  id="paypal-enterprise-annual"></div>
                 </div>
 
-                <!-- PRO (dark) -->
+                <!-- PRO / DISTRICTS — Quote form embedded -->
                 <div class="plan-card pro p-7 fade-up">
                     <p class="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Pro</p>
                     <h3 class="text-xl font-black text-white mb-1">Districts & Networks</h3>
-                    <p class="text-slate-400 text-xs font-semibold leading-relaxed">Complete institutional power for multi-campus networks, districts, and large-scale deployments.</p>
+                    <p class="text-slate-400 text-xs font-semibold leading-relaxed mb-5">Multi-campus networks and districts with custom scale requirements. Tell us about your institution and we'll build a plan around you.</p>
 
                     <div class="stat-row">
                         <div class="stat-item">
@@ -358,40 +417,145 @@
                     </div>
 
                     <div class="card-divider"></div>
-                    <div class="standout-feature">
-                        <i class="fa-solid fa-circle-check"></i> Multi-Campus Portal
+
+                    <!-- Quote form — same IDs as landing.js expects -->
+                    <div id="registrationFormContainer" class="space-y-3">
+                        <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Get in Touch</p>
+
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="pro-form-label">First Name *</label>
+                                <input type="text" id="firstName" placeholder="Maria" class="pro-form-input">
+                            </div>
+                            <div>
+                                <label class="pro-form-label">Last Name *</label>
+                                <input type="text" id="lastName" placeholder="Torres" class="pro-form-input">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="pro-form-label">Role *</label>
+                            <select id="jobTitle" class="pro-form-input">
+                                <option value="">Select role</option>
+                                <option value="Principal">Principal</option>
+                                <option value="Vice Principal">Vice Principal</option>
+                                <option value="IT Director">IT Director</option>
+                                <option value="District Administrator">District Administrator</option>
+                                <option value="School Administrator">School Administrator</option>
+                                <option value="Teacher">Teacher</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="pro-form-label">Work Email *</label>
+                            <input type="email" id="workEmail" placeholder="you@school.edu" class="pro-form-input">
+                        </div>
+
+                        <div>
+                            <label class="pro-form-label">Phone *</label>
+                            <input type="tel" id="phone" placeholder="+501 600-0000" class="pro-form-input">
+                        </div>
+
+                        <div>
+                            <label class="pro-form-label">School / Institution Name *</label>
+                            <input type="text" id="schoolName" placeholder="e.g. Valley High School" class="pro-form-input">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="pro-form-label">School Type *</label>
+                                <select id="schoolType" class="pro-form-input">
+                                    <option value="">Type</option>
+                                    <option value="Primary / Elementary">Primary</option>
+                                    <option value="Middle School">Middle</option>
+                                    <option value="High School / Secondary">Secondary</option>
+                                    <option value="Junior College">Junior College</option>
+                                    <option value="University / College">University</option>
+                                    <option value="Vocational / Technical">Vocational</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="pro-form-label">Country *</label>
+                                <select id="country" class="pro-form-input">
+                                    <option value="">Country</option>
+                                    <option value="Belize">Belize</option>
+                                    <option value="United States">United States</option>
+                                    <option value="Canada">Canada</option>
+                                    <option value="United Kingdom">United Kingdom</option>
+                                    <option value="Jamaica">Jamaica</option>
+                                    <option value="Trinidad and Tobago">Trinidad and Tobago</option>
+                                    <option value="Barbados">Barbados</option>
+                                    <option value="Guyana">Guyana</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="pro-form-label">City *</label>
+                            <input type="text" id="city" placeholder="e.g. Belize City" class="pro-form-input">
+                        </div>
+
+                        <!-- Hidden field — stateProvince optional, set empty -->
+                        <input type="hidden" id="stateProvince" value="">
+
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="pro-form-label">Est. Students *</label>
+                                <input type="number" id="studentsCount" placeholder="e.g. 500" min="1" class="pro-form-input">
+                            </div>
+                            <div>
+                                <label class="pro-form-label">Est. Teachers *</label>
+                                <input type="number" id="teachersCount" placeholder="e.g. 40" min="1" class="pro-form-input">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="pro-form-label">Preferred Term *</label>
+                            <select id="contractTerm" class="pro-form-input">
+                                <option value="">Select term</option>
+                                <option value="6 Months">6 Months — Pilot</option>
+                                <option value="Annual">Annual — 1 year</option>
+                                <option value="Multi-Year">Multi-Year — 2 or 3 years</option>
+                            </select>
+                        </div>
+
+                        <div id="contractYearsWrap" class="hidden">
+                            <label class="pro-form-label">How many years? *</label>
+                            <select id="contractYears" class="pro-form-input">
+                                <option value="">Select</option>
+                                <option value="2">2 Years</option>
+                                <option value="3">3 Years</option>
+                            </select>
+                        </div>
+
+                        <!-- Hidden optional fields with default values for landing.js compatibility -->
+                        <input type="hidden" id="hearAboutUs" value="Pricing Page">
+                        <input type="hidden" id="message" value="">
+
+                        <button id="registerBtn" class="pro-submit-btn mt-2">
+                            Request a Custom Quote →
+                        </button>
+                        <p id="regMessage" class="text-xs text-center font-bold hidden mt-2 text-red-400"></p>
                     </div>
 
-                    <a href="index.html#register" class="cta-btn cta-btn-pro">Get a Quote →</a>
+                    <div id="successScreen" class="hidden text-center py-6">
+                        <div class="text-5xl mb-3">🎉</div>
+                        <h3 class="text-lg font-black text-white mb-2">Request Received!</h3>
+                        <p class="text-slate-400 font-semibold text-xs leading-relaxed">
+                            We've received your inquiry and will be in touch at the email you provided.
+                        </p>
+                    </div>
                 </div>
 
             </div>
-
-            <!-- Sub-note -->
-            <p class="text-center text-slate-400 text-xs font-bold mt-8 fade-up">
-                Need more than 300 students but not quite district scale? <a href="index.html#register" class="text-blue-500 hover:underline font-black">Tell us on the quote form</a> and we'll build around you.
-</p>
-        </div>
-    </section>
-
-    <!-- FINAL CTA -->
-    <section class="final-cta py-20 px-4">
-        <div class="max-w-2xl mx-auto text-center fade-up">
-            <h2 class="text-3xl md:text-4xl font-black text-white mb-4 leading-tight">
-                Found your plan?<br>Let's make it official.
-            </h2>
-            <p class="text-blue-100 font-semibold text-base mb-8 leading-relaxed max-w-lg mx-auto">
-                Fill out a short form and our team will send you a custom quote within 24–48 hours. No commitment, no pressure.
-            </p>
-            <a href="index.html#register"
-               class="inline-block bg-white hover:bg-blue-50 text-blue-700 font-black py-4 px-10 rounded-2xl transition shadow-xl text-lg">
-                Request a Free Quote →
-            </a>
         </div>
     </section>
 
     <!-- FOOTER -->
-    <footer class="py-10 px-4 text-center">
+    <footer class="py-10 px-4 text-center mt-auto">
         <div class="max-w-4xl mx-auto">
             <div class="flex items-center justify-center gap-3 mb-5">
                 <img src="assets/images/logo.png" alt="ConnectUs Logo" class="h-10 w-auto opacity-90">
@@ -400,19 +564,19 @@
             <div class="flex items-center justify-center gap-6 text-slate-400 text-sm font-semibold mb-8">
                 <a href="index.html#features"    class="hover:text-white transition">Features</a>
                 <a href="index.html#get-started" class="hover:text-white transition">Portals</a>
-                <a href="index.html#register"    class="hover:text-white transition">Get a Quote</a>
+                <a href="pricing.html"           class="hover:text-white transition">Pricing</a>
             </div>
             <div class="border-t border-white/10 pt-6">
                 <p class="text-slate-500 text-sm font-semibold">
                     © 2026 ConnectUs. All rights reserved. &nbsp;|&nbsp;
                     <a href="terms/terms.html"   class="hover:text-white transition">Terms of Service</a> &nbsp;|&nbsp;
-                    <a href="terms/privacy.html" class="hover:text-white transition">Privacy Policy</a> &nbsp;|&nbsp;
-                    <a href="pricing.html"        class="hover:text-white transition">Pricing</a>
+                    <a href="terms/privacy.html" class="hover:text-white transition">Privacy Policy</a>
                 </p>
             </div>
         </div>
     </footer>
 
+    <!-- Fade-in observer -->
     <script>
         const observer = new IntersectionObserver((entries) => {
             entries.forEach((entry, i) => {
@@ -423,7 +587,58 @@
             });
         }, { threshold: 0.08 });
         document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+
+        // ── Billing toggle ──
+        function setBilling(mode) {
+            document.body.classList.toggle('annual', mode === 'annual');
+            document.getElementById('toggleMonthly').classList.toggle('active', mode === 'monthly');
+            document.getElementById('toggleAnnual').classList.toggle('active', mode === 'annual');
+        }
     </script>
+
+    <!-- PayPal buttons — rendered after SDK loads -->
+    <script>
+        // ── Plan IDs ──
+        const PLANS = {
+            starter:    { monthly: 'P-0UL37863M97063045NIW37PI', annual: 'P-5J910723KW0535525NIW4G4A' },
+            growth:     { monthly: 'P-28435725CS726141KNIW4B6Q', annual: 'P-03P84578KM718651VNIW4HWY' },
+            enterprise: { monthly: 'P-0RT15498C13842600NIW4DRY', annual: 'P-70B49562LT272180NNIW4IPI' }
+        };
+
+        const BUTTON_STYLE = {
+            shape:  'rect',
+            color:  'blue',
+            layout: 'vertical',
+            label:  'subscribe'
+        };
+
+        function renderPayPalButton(containerId, planId) {
+            paypal.Buttons({
+                style: BUTTON_STYLE,
+                createSubscription: function(data, actions) {
+                    return actions.subscription.create({ plan_id: planId });
+                },
+                onApprove: function(data, actions) {
+                    // Subscription confirmed — redirect to onboarding with subscriptionID
+                    window.location.href = 'onboarding/onboarding.html?subscription=' + data.subscriptionID;
+                },
+                onError: function(err) {
+                    console.error('PayPal error:', err);
+                }
+            }).render('#' + containerId);
+        }
+
+        // Render all 6 buttons
+        renderPayPalButton('paypal-starter-monthly',    PLANS.starter.monthly);
+        renderPayPalButton('paypal-starter-annual',     PLANS.starter.annual);
+        renderPayPalButton('paypal-growth-monthly',     PLANS.growth.monthly);
+        renderPayPalButton('paypal-growth-annual',      PLANS.growth.annual);
+        renderPayPalButton('paypal-enterprise-monthly', PLANS.enterprise.monthly);
+        renderPayPalButton('paypal-enterprise-annual',  PLANS.enterprise.annual);
+    </script>
+
+    <!-- Quote form logic (landing.js handles registerBtn click) -->
+    <script type="module" src="assets/js/landing.js"></script>
 
 </body>
 </html>
