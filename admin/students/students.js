@@ -12,7 +12,7 @@ injectAdminLayout('students', 'School Directory', 'All enrolled students and the
 let allStudentsCache       = [];
 let allTeachersCache       = [];
 let rawSemesters           = [];
-let schoolClasses          = [];   // ← class names from schools/{id}/classes subcollection
+let schoolClasses          = [];
 let currentStudentId       = null;
 let currentStudentGradesCache = [];
 let currentTeacherWeights  = ['Test', 'Quiz', 'Assignment', 'Midterm Exam', 'Final Exam'];
@@ -39,9 +39,6 @@ function escHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// Maps a student's cumulative average to standing colors used in the directory.
-// Bands: Doing Well ≥75 (green), Needs Watch 65–74 (amber), At Risk <65 (red),
-// and a neutral grey when the student has no grades yet (avg === null).
 function standingStyle(avg) {
     if (avg === null || avg === undefined) {
         return { accent: '#cbd5e1', badge: 'bg-slate-100 text-slate-400 border-slate-200', dot: '#cbd5e1', label: 'No grades yet' };
@@ -51,7 +48,6 @@ function standingStyle(avg) {
     return { accent: '#e31b4a', badge: 'bg-red-50 text-red-700 border-red-200', dot: '#e31b4a', label: 'At risk' };
 }
 
-// ── Load the school's class list (single source of truth) ───────────────────
 async function loadSchoolClasses() {
     try {
         const snap = await getDocs(collection(db, 'schools', session.schoolId, 'classes'));
@@ -66,8 +62,6 @@ async function loadSchoolClasses() {
     }
 }
 
-// Returns the school's class names, merging in any extra (e.g. a class a
-// student already sits in) so legacy values never silently disappear.
 function getClassList(extra = []) {
     const merged = [...schoolClasses];
     extra.forEach(c => { if (c && !merged.includes(c)) merged.push(c); });
@@ -81,7 +75,6 @@ async function loadData() {
         rawSemesters  = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
     } catch (e) { console.error("Error loading semesters:", e); }
 
-    // Load the school's class list before building any class dropdown
     await loadSchoolClasses();
 
     if (!tbody) return;
@@ -104,15 +97,12 @@ async function loadData() {
             .filter(d => !d.data().archived)
             .map(d => ({ id: d.id, ...d.data(), teacherName: tm[d.data().teacherId] || '—' }));
 
-        // Compute each student's cumulative average so the directory can color-code
-        // standings. Mirrors the rollup used elsewhere: per-subject weighted average,
-        // then the mean across subjects. Teacher grade types drive the weighting.
         const teacherWeightsById = {};
         allTeachersCache.forEach(t => {
             teacherWeightsById[t.id] = t.gradeTypes || t.customGradeTypes || currentTeacherWeights;
         });
         await Promise.all(allStudentsCache.map(async s => {
-            s.cumulativeAvg = null; // default: no grades yet
+            s.cumulativeAvg = null;
             try {
                 const gSnap = await getDocs(query(
                     collection(db, 'students', s.id, 'grades'),
@@ -138,9 +128,7 @@ async function loadData() {
                     }
                 });
                 if (totalSubjs > 0) s.cumulativeAvg = Math.round(sumAvgs / totalSubjs);
-            } catch (e) {
-                // Leave cumulativeAvg as null (renders as neutral "no grades yet")
-            }
+            } catch (e) {}
         }));
 
         if (filterTeacherSelect && filterTeacherSelect.options.length <= 1) {
@@ -149,8 +137,6 @@ async function loadData() {
         }
 
         if (filterClassSelect && filterClassSelect.options.length <= 2) {
-            // Pull class names from the school's class list; fall back to any
-            // class names actually present on students so the filter still works.
             const studentClasses = allStudentsCache.map(s => s.className).filter(Boolean);
             const classList = getClassList(studentClasses);
             filterClassSelect.innerHTML = '<option value="">All Classes</option><option value="unassigned">Unassigned Only</option>' +
@@ -188,7 +174,6 @@ function renderTable() {
             : '<span class="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase">Unassigned</span>';
         const displayStyle = (s.name || '').toLowerCase().includes(term) || s.id.toLowerCase().includes(term) ? '' : 'display:none;';
 
-        // Standing color coding (left accent on the row + dot/badge by the name)
         const st = standingStyle(s.cumulativeAvg);
         const avgBadge = s.cumulativeAvg !== null && s.cumulativeAvg !== undefined
             ? `<span class="${st.badge} border font-black text-[10px] px-1.5 py-0.5 rounded">${s.cumulativeAvg}%</span>`
@@ -225,23 +210,18 @@ filterClassSelect?.addEventListener('change', renderTable);
 filterTeacherSelect?.addEventListener('change', renderTable);
 searchInput?.addEventListener('input', renderTable);
 
-// ── 6. ADD STUDENT MODAL (Search + Create combined) ───────────────────────
+// ── 6. ADD STUDENT MODAL ──────────────────────────────────────────────────
 window.openAddStudentModal = function () {
     const limit = session.studentLimit || 50;
     if (allStudentsCache.length >= limit) {
         alert(`You have reached your student limit of ${limit}. Please contact ConnectUs to upgrade your plan.`);
         return;
     }
-
-    // Reset search
     document.getElementById('sSearchQuery').value = '';
     document.getElementById('sSearchResults').innerHTML = '';
     document.getElementById('sSearchResults').classList.add('hidden');
-
-    // Reset create form
     document.getElementById('asForm').reset();
     document.getElementById('asMsg').classList.add('hidden');
-
     openOverlay('addStudentModal', 'addStudentModalInner');
 };
 
@@ -249,12 +229,10 @@ window.closeAddStudentModal = function () {
     closeOverlay('addStudentModal', 'addStudentModalInner');
 };
 
-// Allow Enter key in search
 document.getElementById('sSearchQuery')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') window.searchStudentRegistry();
 });
 
-// ── Search the national registry ──────────────────────────────────────────
 window.searchStudentRegistry = async function () {
     const rawId     = (document.getElementById('sSearchQuery').value || '').trim().toUpperCase();
     const resultsEl = document.getElementById('sSearchResults');
@@ -280,32 +258,25 @@ window.searchStudentRegistry = async function () {
         const snap = await getDoc(doc(db, 'students', rawId));
 
         if (!snap.exists()) {
-            // Not found — prompt to create new
-            resultsEl.innerHTML = `
-                <div class="py-3 px-4 text-xs font-semibold text-slate-500">
-                    No student found with that ID. Fill in the form below to create a new identity.
-                </div>`;
+            resultsEl.innerHTML = `<div class="py-3 px-4 text-xs font-semibold text-slate-500">No student found with that ID. Fill in the form below to create a new identity.</div>`;
             searchBtn.disabled = false;
             return;
         }
 
         const s = { id: snap.id, ...snap.data() };
 
-        // Already at this school
         if (s.currentSchoolId === session.schoolId) {
             resultsEl.innerHTML = `<div class="py-3 px-4 text-xs font-bold text-blue-600"><i class="fa-solid fa-circle-check mr-2"></i>This student is already enrolled at your school.</div>`;
             searchBtn.disabled = false;
             return;
         }
 
-        // At another school — blocked
         if (s.currentSchoolId && s.currentSchoolId !== '') {
             resultsEl.innerHTML = `<div class="py-3 px-4 text-xs font-bold text-red-500"><i class="fa-solid fa-lock mr-2"></i>This student is currently enrolled at another school. Their current school must close enrollment first.</div>`;
             searchBtn.disabled = false;
             return;
         }
 
-        // Unassigned — show profile with claim button
         const lastSchool  = s.academicHistory?.length
             ? `Last school: ${s.academicHistory[s.academicHistory.length - 1].schoolName || s.academicHistory[s.academicHistory.length - 1].schoolId}`
             : 'No prior enrollment on record';
@@ -329,10 +300,7 @@ window.searchStudentRegistry = async function () {
 
     } catch (e) {
         if (e.code === 'permission-denied') {
-            resultsEl.innerHTML = `
-                <div class="py-3 px-4 text-xs font-semibold text-slate-500">
-                    No student found with that ID. Fill in the form below to create a new identity.
-                </div>`;
+            resultsEl.innerHTML = `<div class="py-3 px-4 text-xs font-semibold text-slate-500">No student found with that ID. Fill in the form below to create a new identity.</div>`;
         } else {
             console.error('[Search Registry]', e);
             resultsEl.innerHTML = `<div class="py-3 px-4 text-xs font-bold text-red-500">Search failed. Please try again.</div>`;
@@ -341,7 +309,6 @@ window.searchStudentRegistry = async function () {
     }
 };
 
-// ── Claim an existing student ─────────────────────────────────────────────
 window.claimSearchedStudent = async function (studentId) {
     const btn = document.querySelector(`button[onclick="window.claimSearchedStudent('${studentId}')"]`);
     if (btn) { btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Enrolling...`; btn.disabled = true; }
@@ -362,7 +329,6 @@ window.claimSearchedStudent = async function (studentId) {
     }
 };
 
-// ── Create a brand new student identity ───────────────────────────────────
 document.getElementById('saveAddStudentBtn')?.addEventListener('click', async () => {
     const btn   = document.getElementById('saveAddStudentBtn');
     const msgEl = document.getElementById('asMsg');
@@ -385,7 +351,6 @@ document.getElementById('saveAddStudentBtn')?.addEventListener('click', async ()
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Creating Student...`;
 
     try {
-        // ── GLOBAL EMAIL CHECK ──
         const targetEmail = email ? email.toLowerCase() : null;
         if (targetEmail) {
             const regSnap = await getDoc(doc(db, 'registered_emails', targetEmail));
@@ -405,14 +370,10 @@ document.getElementById('saveAddStudentBtn')?.addEventListener('click', async ()
             try {
                 const existing = await getDoc(doc(db, 'students', studentId));
                 if (!existing.exists()) break;
-            } catch (e) {
-                // permission-denied means doc doesn't exist — safe to use this ID
-                break;
-            }
+            } catch (e) { break; }
             attempts++;
         } while (attempts < 5);
 
-        // ── BATCH WRITE: Create Student & Register Email ──
         const batch = writeBatch(db);
 
         const studentRef = doc(db, 'students', studentId);
@@ -432,7 +393,7 @@ document.getElementById('saveAddStudentBtn')?.addEventListener('click', async ()
             archived:             false,
             archivedAt:           null,
             archiveReason:        null,
-            archivedSchoolIds:    [],          // ── FIX: ensure field exists from creation
+            archivedSchoolIds:    [],
             requiresPinReset:     true,
             securityQuestionsSet: false,
             profileComplete:      false,
@@ -452,7 +413,6 @@ document.getElementById('saveAddStudentBtn')?.addEventListener('click', async ()
         }
 
         await batch.commit();
-
         window.closeAddStudentModal();
         await loadData();
 
@@ -529,19 +489,12 @@ window.openStudentPanel = async function (studentId) {
         semSelect.innerHTML = rawSemesters.map(s => `<option value="${s.id}" ${s.id === activeId ? 'selected' : ''}>${s.name}</option>`).join('');
         if (!rawSemesters.length) semSelect.innerHTML = '<option value="">No Terms Found</option>';
 
-        // Build class filter from this student's actual enrollment history
         const classSet = new Set();
-
-        // Current class
         if (student?.className) classSet.add(student.className);
-
-        // Past classes from classHistory array
         (student?.classHistory || []).forEach(h => {
             if (h.fromClass) classSet.add(h.fromClass);
             if (h.toClass)   classSet.add(h.toClass);
         });
-
-        // Classes stamped on grade documents
         currentStudentGradesCache.forEach(g => {
             if (g.className) classSet.add(g.className);
         });
@@ -574,7 +527,6 @@ window.renderAdminGrades = function () {
     const filterType  = document.getElementById('sPanelFilterType').value;
     const filterClass = document.getElementById('sPanelFilterClass')?.value || '';
 
-    // Filter by term first, then by class if selected
     let filteredGrades = currentStudentGradesCache.filter(g => g.semesterId === termId);
     if (filterClass) filteredGrades = filteredGrades.filter(g => g.className === filterClass);
 
@@ -682,14 +634,12 @@ window.executeStudentPrint = async function () {
 
     const cumulativeAvg = gradesToPrint.length ? calculateWeightedAverage(gradesToPrint, currentTeacherWeights) : 0;
     const gpaLetter     = totalAssessments > 0 ? letterGrade(cumulativeAvg) : 'N/A';
-    
+
     let schoolName = session.schoolName || '';
     try {
         const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
         if (schoolSnap.exists()) schoolName = schoolSnap.data().schoolName || schoolName;
-    } catch (e) {
-        console.error("Error fetching school name:", e);
-    }
+    } catch (e) { console.error("Error fetching school name:", e); }
 
     let gradesHtml = Object.keys(bySub).length === 0
         ? `<tr><td colspan="4" style="text-align:center;color:#64748b;font-style:italic;padding:40px;">No grades recorded.</td></tr>`
@@ -762,8 +712,6 @@ window.executeStudentPrint = async function () {
 };
 
 // ── 10. ARCHIVE & REASSIGN ────────────────────────────────────────────────
-
-// ── FIX: filter teacher dropdown to only teachers assigned to the selected class
 function updateReassignTeacherDropdown(selectedClass, currentTeacherId = '') {
     const tSelect = document.getElementById('rsTeacher');
     if (!tSelect) return;
@@ -787,20 +735,15 @@ window.openReassignModal = function () {
 
     const cSelect = document.getElementById('rsClass');
     if (cSelect) {
-        // Class list comes from the school's class subcollection; merge in the
-        // student's current class so it always appears even if since renamed.
         const classList = getClassList(s.className ? [s.className] : []);
         cSelect.innerHTML = '<option value="">-- Unassigned --</option>' +
             classList.map(c => `<option value="${escHtml(c)}" ${s.className === c ? 'selected' : ''}>${escHtml(c)}</option>`).join('');
     }
 
-    // ── FIX: populate teacher dropdown filtered to the student's current class
     updateReassignTeacherDropdown(s.className || '', s.teacherId || '');
-
     openOverlay('reassignStudentModal', 'reassignStudentModalInner');
 };
 
-// ── FIX: re-filter teachers whenever the class selection changes
 document.getElementById('rsClass')?.addEventListener('change', function () {
     updateReassignTeacherDropdown(this.value);
 });
@@ -852,13 +795,10 @@ document.getElementById('confirmArchiveBtn')?.addEventListener('click', async ()
     btn.disabled  = true;
 
     try {
-        // ── FIX: grab student from cache so we can save lastClassName before clearing it
         const studentToArchive = allStudentsCache.find(s => s.id === currentStudentId);
 
-        // ── FIX: build academic snapshot at archive time ───────────────────
         let academicSnapshot = {};
         try {
-            // Get teacher's gradeTypes before teacherId is cleared
             let gradeTypes = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
             if (studentToArchive?.teacherId) {
                 const tDoc = await getDoc(doc(db, 'teachers', studentToArchive.teacherId));
@@ -867,7 +807,6 @@ document.getElementById('confirmArchiveBtn')?.addEventListener('click', async ()
                 }
             }
 
-            // Fetch all grades and keep only those from the current class
             const gradesSnap = await getDocs(collection(db, 'students', currentStudentId, 'grades'));
             const classGrades = [];
             gradesSnap.forEach(d => {
@@ -875,7 +814,6 @@ document.getElementById('confirmArchiveBtn')?.addEventListener('click', async ()
                 if (g.className === studentToArchive?.className) classGrades.push(g);
             });
 
-            // Fetch all evaluations for this school
             const evalSnap = await getDocs(query(
                 collection(db, 'students', currentStudentId, 'evaluations'),
                 where('schoolId', '==', session.schoolId)
@@ -884,7 +822,6 @@ document.getElementById('confirmArchiveBtn')?.addEventListener('click', async ()
             evalSnap.forEach(d => evaluations.push({ id: d.id, ...d.data() }));
             evalSnap.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
 
-            // Group grades by semester name → subject, compute weighted averages
             const bySemester = {};
             classGrades.forEach(g => {
                 if (!g.semesterId) return;
@@ -919,16 +856,26 @@ document.getElementById('confirmArchiveBtn')?.addEventListener('click', async ()
             console.warn('[Archive] academic snapshot warning:', snapErr.message);
         }
 
-        await updateDoc(doc(db, 'students', currentStudentId), {
-            archived:             true,
-            archivedAt:           new Date().toISOString(),
-            archiveReason:        reason || 'Not specified',
-            teacherId:            '',
-            className:            '',
-            lastClassName:        studentToArchive?.className || '',  // ── FIX: preserve last class for archives display
-            archivedSchoolIds:    arrayUnion(session.schoolId),       // ── FIX: this is what makes the student appear in archives
-            academicSnapshot                                          // ── FIX: snapshot saved at archive time
+        // ── FIX: use writeBatch so email cleanup is atomic with the archive write ──
+        const batch = writeBatch(db);
+
+        batch.update(doc(db, 'students', currentStudentId), {
+            archived:          true,
+            archivedAt:        new Date().toISOString(),
+            archiveReason:     reason || 'Not specified',
+            teacherId:         '',
+            className:         '',
+            lastClassName:     studentToArchive?.className || '',
+            archivedSchoolIds: arrayUnion(session.schoolId),
+            academicSnapshot
         });
+
+        // ── FIX: free the email so this student can be re-enrolled elsewhere ──
+        if (studentToArchive?.email) {
+            batch.delete(doc(db, 'registered_emails', studentToArchive.email.toLowerCase().trim()));
+        }
+
+        await batch.commit();
         closeArchiveReasonModal();
         closeStudentPanel();
         loadData();
@@ -958,7 +905,6 @@ window.renderClassHistory = function (student) {
     const container = document.getElementById('classHistoryContainer');
     if (!container) return;
 
-    // Only grades from this school
     const schoolGrades = currentStudentGradesCache.filter(g => g.schoolId === session.schoolId);
 
     if (!schoolGrades.length) {
@@ -966,10 +912,9 @@ window.renderClassHistory = function (student) {
         return;
     }
 
-    // Group by className → semesterId → subject
     const byClass = {};
     schoolGrades.forEach(g => {
-        const cls  = g.className || 'Unclassified';
+        const cls   = g.className || 'Unclassified';
         const semId = g.semesterId || 'unknown';
         if (!byClass[cls]) byClass[cls] = {};
         if (!byClass[cls][semId]) byClass[cls][semId] = {};
@@ -978,14 +923,12 @@ window.renderClassHistory = function (student) {
         byClass[cls][semId][subj].push(g);
     });
 
-    // Build a semId → name lookup from rawSemesters
     const semName = (semId) => {
         const s = rawSemesters.find(r => r.id === semId);
         return s ? s.name : semId;
     };
 
     container.innerHTML = Object.entries(byClass).map(([className, semesters]) => {
-        // Overall average across all grades in this class
         const allClassGrades = Object.values(semesters).flatMap(s => Object.values(s).flat());
         const classAvg = Math.round(calculateWeightedAverage(allClassGrades, currentTeacherWeights));
         const ca = classAvg >= 75 ? 'text-green-700 bg-green-50 border-green-200' : classAvg >= 60 ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-red-700 bg-red-50 border-red-200';
