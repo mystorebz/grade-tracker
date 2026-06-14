@@ -76,7 +76,6 @@ function calculateNewRenewalDate(cycleType, currentExpirationString) {
 // ── Load Subscription Plans ──────────────────────────────────────────────
 async function loadSubscriptionPlans() {
     const renSelect = document.getElementById('renPlan');
-    const depSelect = document.getElementById('depPlan');
     try {
         const snap = await getDocs(collection(db, 'subscriptionPlans'));
         availablePlans = [];
@@ -90,7 +89,6 @@ async function loadSubscriptionPlans() {
         });
 
         if (renSelect) renSelect.innerHTML = options;
-        if (depSelect) depSelect.innerHTML = options;
     } catch (e) {
         console.error("Failed to load subscription plans:", e);
     }
@@ -312,10 +310,45 @@ window.openSchoolPanel = (schoolId) => {
     // 3. Populate Profile Tab (Core Info)
     document.getElementById('manageEmail').textContent      = currentSchool.contactEmail || 'N/A';
     document.getElementById('manageAdminId').textContent    = currentSchool.superAdminId || 'N/A';
-    document.getElementById('manageDistrict').textContent   = currentSchool.district     || 'N/A';
+    document.getElementById('managePhone').textContent      = currentSchool.phone        || 'N/A';
+    document.getElementById('manageDistrict').textContent   = currentSchool.district     || currentSchool.stateProvince || 'N/A';
     document.getElementById('manageType').textContent       = currentSchool.schoolType   || 'N/A';
 
-    // 4. Populate Subscription Tab Details
+    // City / Country
+    const cityCountryParts = [currentSchool.city, currentSchool.country].filter(Boolean);
+    document.getElementById('manageCityCountry').textContent = cityCountryParts.length ? cityCountryParts.join(', ') : 'N/A';
+
+    // Source badge
+    const sourceEl = document.getElementById('manageSource');
+    if (currentSchool.paypalSubscriptionId || (currentSchool.originalQuoteId && allSchools.find(s => s.id === currentSchool.id)?.source === 'paypal')) {
+        sourceEl.innerHTML = `<span class="bg-blue-900/40 text-blue-400 border border-blue-800 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider"><i class="fa-brands fa-paypal mr-1"></i>Self-Service</span>`;
+    } else {
+        sourceEl.innerHTML = `<span class="bg-slate-700/60 text-slate-400 border border-slate-600 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider">Manual Deploy</span>`;
+    }
+
+    // Quote / Sub reference
+    document.getElementById('manageQuoteId').textContent = currentSchool.originalQuoteId || '—';
+
+    // 4. Populate Subscription Details
+    // Status badge
+    const subStatusEl = document.getElementById('manageSubStatus');
+    const subStatus   = currentSchool.subscriptionStatus || (currentSchool.isVerified ? 'Active' : 'Suspended');
+    const statusColors = {
+        'Active':    'bg-emerald-900/40 text-emerald-400 border-emerald-800',
+        'Cancelled': 'bg-amber-900/40 text-amber-400 border-amber-800',
+        'Expired':   'bg-red-900/40 text-red-400 border-red-800',
+        'Suspended': 'bg-red-900/40 text-red-400 border-red-800',
+    };
+    const statusColor = statusColors[subStatus] || 'bg-slate-700/60 text-slate-400 border-slate-600';
+    subStatusEl.innerHTML = `<span class="${statusColor} border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider">${subStatus}</span>`;
+
+    // Status reason
+    document.getElementById('manageStatusReason').textContent = currentSchool.statusReason || '—';
+
+    // PayPal subscription ID
+    document.getElementById('managePaypalId').textContent = currentSchool.paypalSubscriptionId || '—';
+
+    // Remaining subscription fields
     document.getElementById('manageTier').textContent         = currentSchool.subscriptionName || 'Not Set';
     document.getElementById('manageBillingCycle').textContent = currentSchool.billingCycle     || 'Not Specified';
 
@@ -331,11 +364,14 @@ window.openSchoolPanel = (schoolId) => {
 
     // 5. Check Kill Switch State
     const toggleBtn = document.getElementById('toggleStatusBtn');
+    const reasonInput = document.getElementById('suspensionReasonInput');
+    if (reasonInput) reasonInput.value = '';
+
     if (currentSchool.isVerified === false) {
-        toggleBtn.className = "w-full bg-emerald-900/20 border border-emerald-900/50 hover:bg-emerald-900/40 text-emerald-400 font-black py-4 transition text-sm tracking-wide flex justify-center items-center gap-2";
+        toggleBtn.className = 'w-full bg-emerald-900/20 border border-emerald-900/50 hover:bg-emerald-900/40 text-emerald-400 font-black py-3 transition text-sm tracking-wide flex justify-center items-center gap-2 text-[10px] uppercase';
         toggleBtn.innerHTML = '<i class="fa-solid fa-power-off"></i> Restore Platform Access';
     } else {
-        toggleBtn.className = "w-full bg-red-900/20 border border-red-900/50 hover:bg-red-900/40 text-red-400 font-black py-4 transition text-sm tracking-wide flex justify-center items-center gap-2";
+        toggleBtn.className = 'w-full bg-red-900/20 border border-red-900/50 hover:bg-red-900/40 text-red-400 font-black py-3 transition text-sm tracking-wide flex justify-center items-center gap-2 text-[10px] uppercase';
         toggleBtn.innerHTML = '<i class="fa-solid fa-power-off"></i> Suspend Platform Access';
     }
 
@@ -642,14 +678,27 @@ if (toggleStatusBtn) {
 
         const isSuspended = currentSchool.isVerified === false;
         const newStatus   = isSuspended ? true : false;
+        const reasonInput = document.getElementById('suspensionReasonInput');
+        const reason      = reasonInput ? reasonInput.value.trim() : '';
 
         if (!newStatus) {
-            if (!confirm(`DANGER: Are you absolutely sure you want to SUSPEND ${currentSchool.schoolName}?\n\nThis will immediately log out all associated teachers, students, and administrators.`)) return;
+            // Suspending — reason required
+            if (!reason) {
+                reasonInput.classList.add('border-red-600');
+                reasonInput.focus();
+                reasonInput.placeholder = 'Reason is required before suspending.';
+                return;
+            }
+            if (!confirm(`SUSPEND ${currentSchool.schoolName}?\n\nReason: "${reason}"\n\nThis immediately locks out all users. Continue?`)) return;
+        } else {
+            if (!confirm(`RESTORE access for ${currentSchool.schoolName}?\n\nThis will re-enable all user logins.`)) return;
         }
 
-        const originalContent  = toggleStatusBtn.innerHTML;
+        if (reasonInput) reasonInput.classList.remove('border-red-600');
+
+        const originalContent    = toggleStatusBtn.innerHTML;
         toggleStatusBtn.disabled = true;
-        toggleStatusBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Executing Override...';
+        toggleStatusBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Executing...';
 
         try {
             const updatePayload = {
@@ -658,23 +707,36 @@ if (toggleStatusBtn) {
             };
 
             if (!newStatus) {
-                updatePayload.subscriptionStatus  = 'Expired';
+                updatePayload.subscriptionStatus  = 'Suspended';
                 updatePayload.subscriptionEndedAt = new Date().toISOString();
-                updatePayload.statusReason        = 'Manual Suspension';
+                updatePayload.statusReason        = reason || 'Manual Suspension';
             } else {
-                updatePayload.subscriptionStatus     = 'Active';
-                updatePayload.subscriptionEndedAt    = null;
-                updatePayload.statusReason           = null;
+                updatePayload.subscriptionStatus      = 'Active';
+                updatePayload.subscriptionEndedAt     = null;
+                updatePayload.statusReason            = null;
                 updatePayload.subscriptionActivatedAt = new Date().toISOString();
             }
 
             await updateDoc(doc(db, 'schools', currentSchool.id), updatePayload);
 
+            // Log a note automatically
+            const autoNote = {
+                note:         !newStatus
+                    ? `Access manually suspended. Reason: ${reason}`
+                    : `Access manually restored by HQ.`,
+                timestamp:    new Date().toISOString(),
+                loggedBy:     session.id,
+                loggedByName: session.name
+            };
+            await updateDoc(doc(db, 'schools', currentSchool.id), {
+                adminNotes: arrayUnion(autoNote)
+            });
+
             window.closeSchoolPanel();
             loadSchools();
         } catch (e) {
             console.error("Status Toggle Failed:", e);
-            alert("Failed to update school status.");
+            alert("Failed to update school status. Check console.");
         }
         toggleStatusBtn.disabled  = false;
         toggleStatusBtn.innerHTML = originalContent;
