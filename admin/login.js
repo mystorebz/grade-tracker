@@ -108,7 +108,57 @@ loginBtn.addEventListener('click', async () => {
             const authResult = await mintAdminToken({ schoolId: rawId, adminCode: codeIn });
             userCredential = await signInWithCustomToken(auth, authResult.data.token);
         } catch (authError) {
-            console.error('[Admin Login] Server rejected PIN:', authError);
+            console.error('[Admin Login] Server rejected:', authError);
+
+            // ── Suspended / expired school ────────────────────────────────────
+            // mintAdminToken throws 'failed-precondition' specifically for
+            // schools where isVerified === false. We fetch the school data
+            // here to populate the deactivated page with the right information.
+            if (authError?.code === 'functions/failed-precondition') {
+                try {
+                    // Try uppercase first (standard School ID format), then as-entered
+                    let schoolSnap = await getDoc(doc(db, 'schools', rawId.toUpperCase()));
+                    if (!schoolSnap.exists()) {
+                        schoolSnap = await getDoc(doc(db, 'schools', rawId));
+                    }
+
+                    if (!schoolSnap.exists()) {
+                        showLoginError('School ID not found. Please check and try again.');
+                        return;
+                    }
+
+                    const schoolData = schoolSnap.data();
+
+                    setSessionData('admin', {
+                        schoolId:           schoolSnap.id,
+                        role:               'super_admin',
+                        isSuperAdmin:       true,
+                        schoolName:         schoolData.schoolName         || '',
+                        contactEmail:       schoolData.contactEmail       || '',
+                        planName:           schoolData.subscriptionName   || schoolData.planName || '',
+                        subscriptionStatus: schoolData.subscriptionStatus || 'Expired',
+                        statusReason:       schoolData.statusReason       || '',
+                        nextRenewalDate:    schoolData.nextRenewalDate     || null,
+                        billingCycle:       schoolData.billingCycle        || '',
+                        activeSemesterId:   schoolData.activeSemesterId    || ''
+                    });
+
+                    window.location.replace('deactivated/deactivated.html');
+
+                } catch (fetchError) {
+                    console.error('[Admin Login] Failed to fetch suspended school data:', fetchError);
+                    showLoginError('Your account is currently inactive. Please contact support at info@connectusonline.org.');
+                }
+                return;
+            }
+
+            // ── School ID not found ───────────────────────────────────────────
+            if (authError?.code === 'functions/not-found') {
+                showLoginError('School ID not found. Please check and try again.');
+                return;
+            }
+
+            // ── Wrong admin code or any other auth rejection ──────────────────
             showLoginError('Incorrect Admin Code or School ID.');
             return;
         }
@@ -129,26 +179,6 @@ loginBtn.addEventListener('click', async () => {
         // 3. FETCH SCHOOL DATA
         const schoolSnap = await getDoc(doc(db, 'schools', schoolId));
         const schoolData = schoolSnap.data();
-
-        if (schoolData.isVerified !== true) {
-            // School is suspended/expired — set session and redirect to deactivated
-            // page so they see their subscription status and resubscribe options.
-            setSessionData('admin', {
-                schoolId,
-                role,
-                isSuperAdmin:       role === 'super_admin',
-                schoolName:         schoolData.schoolName         || '',
-                contactEmail:       schoolData.contactEmail       || '',
-                planName:           schoolData.subscriptionName   || schoolData.planName || '',
-                subscriptionStatus: schoolData.subscriptionStatus || 'Expired',
-                statusReason:       schoolData.statusReason       || '',
-                nextRenewalDate:    schoolData.nextRenewalDate     || null,
-                billingCycle:       schoolData.billingCycle        || '',
-                activeSemesterId:   schoolData.activeSemesterId    || ''
-            });
-            window.location.replace('deactivated/deactivated.html');
-            return;
-        }
 
         tempSchoolId   = schoolId;
         tempSchoolData = schoolData;
@@ -175,8 +205,7 @@ loginBtn.addEventListener('click', async () => {
             tempAdminData = adminSnap.data();
             tempAdminId   = adminId;
 
-            // ── CHANGE: set minimal session before redirecting so the deactivated
-            //            page can show the sub-admin's name and school ─────────────
+            // Archived sub-admin — redirect to deactivated page
             if (tempAdminData.isArchived === true) {
                 setSessionData('admin', {
                     schoolId,
@@ -204,7 +233,7 @@ loginBtn.addEventListener('click', async () => {
     }
 });
 
-// ── Force Reset Handler (UX FIXED) ────────────────────────────────────────────
+// ── Force Reset Handler ───────────────────────────────────────────────────────
 saveForceCodeBtn.addEventListener('click', async () => {
     const n = document.getElementById('newForceCode').value.trim();
     const c = document.getElementById('confirmForceCode').value.trim();
