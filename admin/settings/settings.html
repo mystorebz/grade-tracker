@@ -30,7 +30,13 @@
                             <i class="fa-solid fa-chart-pie text-indigo-500"></i>
                             <h3 class="font-black text-slate-800">Subscription & Usage</h3>
                         </div>
-                        <span id="planBadge" class="bg-indigo-100 text-indigo-700 font-black px-3 py-1 rounded uppercase tracking-widest text-[10px]">Loading...</span>
+                        <div class="flex items-center gap-3">
+                            <span id="planBadge" class="bg-indigo-100 text-indigo-700 font-black px-3 py-1 rounded uppercase tracking-widest text-[10px]">Loading...</span>
+                            <button id="manageSubBtn" onclick="window.openSubscriptionPanel()"
+                                class="bg-indigo-600 hover:bg-indigo-700 text-white font-black px-4 py-1.5 rounded-lg text-[10px] uppercase tracking-widest transition flex items-center gap-1.5 shadow-sm">
+                                <i class="fa-solid fa-sliders"></i> Manage
+                            </button>
+                        </div>
                     </div>
                     <div class="p-6">
                         <div class="flex justify-between items-center mb-6 bg-slate-50 p-4 rounded-xl border border-slate-100">
@@ -203,6 +209,159 @@
             </div>
         </div>
     </main>
+
+    <!-- ── Subscription Management Panel ─────────────────────────────────── -->
+    <div id="subPanelOverlay" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[50] hidden opacity-0 transition-opacity duration-300" onclick="window.closeSubscriptionPanel()"></div>
+
+    <div id="subSlidePanel" class="fixed top-0 right-0 bottom-0 w-full max-w-md bg-white border-l border-slate-200 shadow-2xl z-[60] transform translate-x-full transition-transform duration-300 flex flex-col overflow-hidden">
+
+        <!-- Panel header -->
+        <div class="px-6 py-5 border-b border-slate-100 bg-slate-50 flex items-center justify-between flex-shrink-0">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center">
+                    <i class="fa-solid fa-credit-card text-sm"></i>
+                </div>
+                <div>
+                    <h3 class="font-black text-slate-800 text-sm">Subscription Management</h3>
+                    <p class="text-[10px] font-semibold text-slate-400 mt-0.5">Billing, plan, and PayPal settings</p>
+                </div>
+            </div>
+            <button onclick="window.closeSubscriptionPanel()" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <!-- Scrollable content -->
+        <div class="flex-1 overflow-y-auto p-6 space-y-6">
+
+            <!-- Current plan -->
+            <div class="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 rounded-xl p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <p class="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Current Plan</p>
+                    <span id="spStatusBadge" class="text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider"></span>
+                </div>
+                <div class="flex items-end justify-between mb-4">
+                    <div>
+                        <p id="spPlanName" class="text-2xl font-black text-slate-800 leading-none mb-1">—</p>
+                        <p id="spBillingCycle" class="text-xs font-bold text-slate-500">—</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Renews</p>
+                        <p id="spRenewalDate" class="text-sm font-black text-slate-700">—</p>
+                        <p id="spRenewalCountdown" class="text-[10px] font-bold text-emerald-600 mt-0.5"></p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-3 gap-2 pt-4 border-t border-indigo-100">
+                    <div class="text-center">
+                        <p id="spStudentLimit" class="text-lg font-black text-slate-700">—</p>
+                        <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Students</p>
+                    </div>
+                    <div class="text-center border-x border-indigo-100">
+                        <p id="spTeacherLimit" class="text-lg font-black text-slate-700">—</p>
+                        <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Teachers</p>
+                    </div>
+                    <div class="text-center">
+                        <p id="spAdminLimit" class="text-lg font-black text-slate-700">—</p>
+                        <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Admins</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PayPal reference -->
+            <div>
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">PayPal Subscription ID</p>
+                <p id="spPaypalId" class="font-mono text-xs font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 break-all">—</p>
+            </div>
+
+            <!-- Manage billing -->
+            <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                <div class="px-4 py-3 bg-slate-50 border-b border-slate-100">
+                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                        <i class="fa-brands fa-paypal text-blue-500"></i> Manage Billing in PayPal
+                    </p>
+                </div>
+                <div class="p-4 space-y-3">
+                    <p class="text-xs font-semibold text-slate-500 leading-relaxed">
+                        Update your payment method, view payment history, or cancel your subscription directly in your PayPal account.
+                    </p>
+                    <a href="https://www.paypal.com/myaccount/autopay/" target="_blank" rel="noopener noreferrer"
+                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3 px-4 rounded-lg transition flex items-center justify-center gap-2 text-sm shadow-sm">
+                        <i class="fa-brands fa-paypal"></i>
+                        Open PayPal Billing &rarr;
+                    </a>
+                    <div class="bg-amber-50 border border-amber-100 rounded-lg p-3">
+                        <p class="text-[10px] font-bold text-amber-700 leading-relaxed">
+                            <i class="fa-solid fa-circle-info mr-1"></i>
+                            <strong>To cancel:</strong> In PayPal, go to Settings → Payments → Manage Automatic Payments → find ConnectUs → Cancel. Your access continues until your renewal date.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Upgrade / change plan -->
+            <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                <div class="px-4 py-3 bg-slate-50 border-b border-slate-100">
+                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                        <i class="fa-solid fa-arrow-up-right-dots text-emerald-500"></i> Upgrade or Change Plan
+                    </p>
+                </div>
+                <div class="p-4 space-y-3">
+                    <!-- Plan comparison cards -->
+                    <div class="space-y-2">
+                        <div id="spPlanCardStarter" class="plan-card-option flex items-center justify-between p-3 border rounded-lg transition cursor-default">
+                            <div>
+                                <p class="text-xs font-black text-slate-700">Starter</p>
+                                <p class="text-[10px] font-semibold text-slate-400">50 students · 10 teachers · $49.99/mo</p>
+                            </div>
+                            <span class="current-plan-tag hidden text-[9px] font-black text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full uppercase tracking-wider">Current</span>
+                        </div>
+                        <div id="spPlanCardGrowth" class="plan-card-option flex items-center justify-between p-3 border rounded-lg transition cursor-default">
+                            <div>
+                                <p class="text-xs font-black text-slate-700">Growth</p>
+                                <p class="text-[10px] font-semibold text-slate-400">150 students · 20 teachers · $99.99/mo</p>
+                            </div>
+                            <span class="current-plan-tag hidden text-[9px] font-black text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full uppercase tracking-wider">Current</span>
+                        </div>
+                        <div id="spPlanCardEnterprise" class="plan-card-option flex items-center justify-between p-3 border rounded-lg transition cursor-default">
+                            <div>
+                                <p class="text-xs font-black text-slate-700">Enterprise</p>
+                                <p class="text-[10px] font-semibold text-slate-400">300 students · 30 teachers · $199.99/mo</p>
+                            </div>
+                            <span class="current-plan-tag hidden text-[9px] font-black text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full uppercase tracking-wider">Current</span>
+                        </div>
+                    </div>
+
+                    <a href="../../pricing.html" target="_blank" rel="noopener noreferrer"
+                        class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3 px-4 rounded-lg transition flex items-center justify-center gap-2 text-sm shadow-sm">
+                        <i class="fa-solid fa-arrow-up-right-dots"></i>
+                        View All Plans &amp; Subscribe &rarr;
+                    </a>
+
+                    <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                        <p class="text-[10px] font-bold text-slate-500 leading-relaxed">
+                            <i class="fa-solid fa-circle-info mr-1 text-slate-400"></i>
+                            To change plans: cancel your current PayPal subscription, then subscribe to the new plan on our pricing page. Your School ID, Admin Code, and all data are preserved. Access restores within seconds of payment.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Support -->
+            <div class="flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-xl p-4">
+                <i class="fa-solid fa-headset text-blue-500 text-lg flex-shrink-0"></i>
+                <div>
+                    <p class="text-xs font-black text-blue-900">Need help with billing?</p>
+                    <a href="mailto:info@connectusonline.org" class="text-xs font-bold text-blue-600 hover:underline">info@connectusonline.org</a>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <style>
+        .plan-card-option { border-color: #e2e8f0; background: #fff; }
+        .plan-card-option.is-current { border-color: #6366f1; background: #eef2ff; }
+    </style>
 
     <script type="module" src="settings.js"></script>
 </body>
