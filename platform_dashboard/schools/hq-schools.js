@@ -76,6 +76,7 @@ function calculateNewRenewalDate(cycleType, currentExpirationString) {
 // ── Load Subscription Plans ──────────────────────────────────────────────
 async function loadSubscriptionPlans() {
     const renSelect = document.getElementById('renPlan');
+    const depSelect = document.getElementById('depPlan');
     try {
         const snap = await getDocs(collection(db, 'subscriptionPlans'));
         availablePlans = [];
@@ -89,6 +90,7 @@ async function loadSubscriptionPlans() {
         });
 
         if (renSelect) renSelect.innerHTML = options;
+        if (depSelect) depSelect.innerHTML = options;
     } catch (e) {
         console.error("Failed to load subscription plans:", e);
     }
@@ -310,45 +312,10 @@ window.openSchoolPanel = (schoolId) => {
     // 3. Populate Profile Tab (Core Info)
     document.getElementById('manageEmail').textContent      = currentSchool.contactEmail || 'N/A';
     document.getElementById('manageAdminId').textContent    = currentSchool.superAdminId || 'N/A';
-    document.getElementById('managePhone').textContent      = currentSchool.phone        || 'N/A';
-    document.getElementById('manageDistrict').textContent   = currentSchool.district     || currentSchool.stateProvince || 'N/A';
+    document.getElementById('manageDistrict').textContent   = currentSchool.district     || 'N/A';
     document.getElementById('manageType').textContent       = currentSchool.schoolType   || 'N/A';
 
-    // City / Country
-    const cityCountryParts = [currentSchool.city, currentSchool.country].filter(Boolean);
-    document.getElementById('manageCityCountry').textContent = cityCountryParts.length ? cityCountryParts.join(', ') : 'N/A';
-
-    // Source badge
-    const sourceEl = document.getElementById('manageSource');
-    if (currentSchool.paypalSubscriptionId || (currentSchool.originalQuoteId && allSchools.find(s => s.id === currentSchool.id)?.source === 'paypal')) {
-        sourceEl.innerHTML = `<span class="bg-blue-900/40 text-blue-400 border border-blue-800 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider"><i class="fa-brands fa-paypal mr-1"></i>Self-Service</span>`;
-    } else {
-        sourceEl.innerHTML = `<span class="bg-slate-700/60 text-slate-400 border border-slate-600 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider">Manual Deploy</span>`;
-    }
-
-    // Quote / Sub reference
-    document.getElementById('manageQuoteId').textContent = currentSchool.originalQuoteId || '—';
-
-    // 4. Populate Subscription Details
-    // Status badge
-    const subStatusEl = document.getElementById('manageSubStatus');
-    const subStatus   = currentSchool.subscriptionStatus || (currentSchool.isVerified ? 'Active' : 'Suspended');
-    const statusColors = {
-        'Active':    'bg-emerald-900/40 text-emerald-400 border-emerald-800',
-        'Cancelled': 'bg-amber-900/40 text-amber-400 border-amber-800',
-        'Expired':   'bg-red-900/40 text-red-400 border-red-800',
-        'Suspended': 'bg-red-900/40 text-red-400 border-red-800',
-    };
-    const statusColor = statusColors[subStatus] || 'bg-slate-700/60 text-slate-400 border-slate-600';
-    subStatusEl.innerHTML = `<span class="${statusColor} border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider">${subStatus}</span>`;
-
-    // Status reason
-    document.getElementById('manageStatusReason').textContent = currentSchool.statusReason || '—';
-
-    // PayPal subscription ID
-    document.getElementById('managePaypalId').textContent = currentSchool.paypalSubscriptionId || '—';
-
-    // Remaining subscription fields
+    // 4. Populate Subscription Tab Details
     document.getElementById('manageTier').textContent         = currentSchool.subscriptionName || 'Not Set';
     document.getElementById('manageBillingCycle').textContent = currentSchool.billingCycle     || 'Not Specified';
 
@@ -364,19 +331,24 @@ window.openSchoolPanel = (schoolId) => {
 
     // 5. Check Kill Switch State
     const toggleBtn = document.getElementById('toggleStatusBtn');
-    const reasonInput = document.getElementById('suspensionReasonInput');
-    if (reasonInput) reasonInput.value = '';
-
     if (currentSchool.isVerified === false) {
-        toggleBtn.className = 'w-full bg-emerald-900/20 border border-emerald-900/50 hover:bg-emerald-900/40 text-emerald-400 font-black py-3 transition text-sm tracking-wide flex justify-center items-center gap-2 text-[10px] uppercase';
+        toggleBtn.className = "w-full bg-emerald-900/20 border border-emerald-900/50 hover:bg-emerald-900/40 text-emerald-400 font-black py-4 transition text-sm tracking-wide flex justify-center items-center gap-2";
         toggleBtn.innerHTML = '<i class="fa-solid fa-power-off"></i> Restore Platform Access';
     } else {
-        toggleBtn.className = 'w-full bg-red-900/20 border border-red-900/50 hover:bg-red-900/40 text-red-400 font-black py-3 transition text-sm tracking-wide flex justify-center items-center gap-2 text-[10px] uppercase';
+        toggleBtn.className = "w-full bg-red-900/20 border border-red-900/50 hover:bg-red-900/40 text-red-400 font-black py-4 transition text-sm tracking-wide flex justify-center items-center gap-2";
         toggleBtn.innerHTML = '<i class="fa-solid fa-power-off"></i> Suspend Platform Access';
     }
 
     // 6. Render Notes
     renderAdminNotes();
+
+    // 7. Populate Edit School Info fields
+    document.getElementById('editSchoolName').value    = currentSchool.schoolName   || '';
+    document.getElementById('editContactName').value   = currentSchool.contactName  || '';
+    document.getElementById('editContactEmail').value  = currentSchool.contactEmail || '';
+    document.getElementById('editPhone').value         = currentSchool.phone        || '';
+    const editMsg = document.getElementById('editSchoolMsg');
+    if (editMsg) { editMsg.classList.add('hidden'); editMsg.textContent = ''; }
 
     // 7. Slide In the Panel
     const overlay = document.getElementById('schoolPanelOverlay');
@@ -678,27 +650,14 @@ if (toggleStatusBtn) {
 
         const isSuspended = currentSchool.isVerified === false;
         const newStatus   = isSuspended ? true : false;
-        const reasonInput = document.getElementById('suspensionReasonInput');
-        const reason      = reasonInput ? reasonInput.value.trim() : '';
 
         if (!newStatus) {
-            // Suspending — reason required
-            if (!reason) {
-                reasonInput.classList.add('border-red-600');
-                reasonInput.focus();
-                reasonInput.placeholder = 'Reason is required before suspending.';
-                return;
-            }
-            if (!confirm(`SUSPEND ${currentSchool.schoolName}?\n\nReason: "${reason}"\n\nThis immediately locks out all users. Continue?`)) return;
-        } else {
-            if (!confirm(`RESTORE access for ${currentSchool.schoolName}?\n\nThis will re-enable all user logins.`)) return;
+            if (!confirm(`DANGER: Are you absolutely sure you want to SUSPEND ${currentSchool.schoolName}?\n\nThis will immediately log out all associated teachers, students, and administrators.`)) return;
         }
 
-        if (reasonInput) reasonInput.classList.remove('border-red-600');
-
-        const originalContent    = toggleStatusBtn.innerHTML;
+        const originalContent  = toggleStatusBtn.innerHTML;
         toggleStatusBtn.disabled = true;
-        toggleStatusBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Executing...';
+        toggleStatusBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Executing Override...';
 
         try {
             const updatePayload = {
@@ -707,36 +666,23 @@ if (toggleStatusBtn) {
             };
 
             if (!newStatus) {
-                updatePayload.subscriptionStatus  = 'Suspended';
+                updatePayload.subscriptionStatus  = 'Expired';
                 updatePayload.subscriptionEndedAt = new Date().toISOString();
-                updatePayload.statusReason        = reason || 'Manual Suspension';
+                updatePayload.statusReason        = 'Manual Suspension';
             } else {
-                updatePayload.subscriptionStatus      = 'Active';
-                updatePayload.subscriptionEndedAt     = null;
-                updatePayload.statusReason            = null;
+                updatePayload.subscriptionStatus     = 'Active';
+                updatePayload.subscriptionEndedAt    = null;
+                updatePayload.statusReason           = null;
                 updatePayload.subscriptionActivatedAt = new Date().toISOString();
             }
 
             await updateDoc(doc(db, 'schools', currentSchool.id), updatePayload);
 
-            // Log a note automatically
-            const autoNote = {
-                note:         !newStatus
-                    ? `Access manually suspended. Reason: ${reason}`
-                    : `Access manually restored by HQ.`,
-                timestamp:    new Date().toISOString(),
-                loggedBy:     session.id,
-                loggedByName: session.name
-            };
-            await updateDoc(doc(db, 'schools', currentSchool.id), {
-                adminNotes: arrayUnion(autoNote)
-            });
-
             window.closeSchoolPanel();
             loadSchools();
         } catch (e) {
             console.error("Status Toggle Failed:", e);
-            alert("Failed to update school status. Check console.");
+            alert("Failed to update school status.");
         }
         toggleStatusBtn.disabled  = false;
         toggleStatusBtn.innerHTML = originalContent;
@@ -1096,6 +1042,119 @@ document.getElementById('executeDeployBtn').addEventListener('click', async () =
     btn.disabled  = false;
     btn.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i> Submit to Approvals →';
 });
+
+// ── Edit School Info ──────────────────────────────────────────────────────
+document.getElementById('saveSchoolInfoBtn').addEventListener('click', async () => {
+    if (!currentSchool) return;
+
+    const btn          = document.getElementById('saveSchoolInfoBtn');
+    const msgEl        = document.getElementById('editSchoolMsg');
+    const newName      = document.getElementById('editSchoolName').value.trim();
+    const newContact   = document.getElementById('editContactName').value.trim();
+    const newEmail     = document.getElementById('editContactEmail').value.trim().toLowerCase();
+    const newPhone     = document.getElementById('editPhone').value.trim();
+
+    // Basic validation
+    if (!newName)  { showEditMsg('School name is required.', true); return; }
+    if (!newEmail) { showEditMsg('Contact email is required.', true); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+        showEditMsg('Please enter a valid email address.', true); return;
+    }
+
+    btn.disabled  = true;
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Saving...';
+
+    try {
+        const currentEmail = (currentSchool.contactEmail || '').toLowerCase().trim();
+        const emailChanged = newEmail !== currentEmail;
+        const batch        = writeBatch(db);
+
+        // ── Handle email change ───────────────────────────────────────────
+        if (emailChanged) {
+            // Check if new email is already taken
+            const regSnap = await getDoc(doc(db, 'registered_emails', newEmail));
+            if (regSnap.exists()) {
+                showEditMsg('This email is already registered to another account.', true);
+                btn.disabled  = false;
+                btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Changes';
+                return;
+            }
+
+            // Reserve the new email
+            batch.set(doc(db, 'registered_emails', newEmail), {
+                email:       newEmail,
+                name:        newName || newContact,
+                role:        'admin',
+                referenceId: currentSchool.id,
+                updatedAt:   new Date().toISOString()
+            });
+
+            // Release the old email
+            if (currentEmail) {
+                batch.delete(doc(db, 'registered_emails', currentEmail));
+            }
+        }
+
+        // ── Update school doc ─────────────────────────────────────────────
+        batch.update(doc(db, 'schools', currentSchool.id), {
+            schoolName:   newName,
+            contactName:  newContact,
+            contactEmail: newEmail,
+            phone:        newPhone
+        });
+
+        // ── Auto-log a note ───────────────────────────────────────────────
+        const changeNote = {
+            note:         `School info updated by HQ. Name: "${newName}", Email: "${newEmail}", Contact: "${newContact}", Phone: "${newPhone}".`,
+            timestamp:    new Date().toISOString(),
+            loggedBy:     session.id,
+            loggedByName: session.name
+        };
+        batch.update(doc(db, 'schools', currentSchool.id), {
+            adminNotes: arrayUnion(changeNote)
+        });
+
+        await batch.commit();
+
+        // Update local state so panel reflects changes without reload
+        currentSchool.schoolName   = newName;
+        currentSchool.contactName  = newContact;
+        currentSchool.contactEmail = newEmail;
+        currentSchool.phone        = newPhone;
+
+        // Refresh display values in panel header and identifiers
+        document.getElementById('panelHeaderName').textContent = newName;
+        document.getElementById('manageEmail').textContent     = newEmail;
+        document.getElementById('managePhone').textContent     = newPhone || 'N/A';
+
+        // Update allSchools cache so table reflects change on close
+        const idx = allSchools.findIndex(s => s.id === currentSchool.id);
+        if (idx !== -1) Object.assign(allSchools[idx], { schoolName: newName, contactName: newContact, contactEmail: newEmail, phone: newPhone });
+
+        // Re-render notes to include the auto-log
+        if (!currentSchool.adminNotes) currentSchool.adminNotes = [];
+        currentSchool.adminNotes.push(changeNote);
+        renderAdminNotes();
+
+        showEditMsg('Changes saved successfully.', false);
+
+    } catch (e) {
+        console.error('[EditSchoolInfo] Failed:', e);
+        showEditMsg('Failed to save changes. Check console.', true);
+    }
+
+    btn.disabled  = false;
+    btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Changes';
+});
+
+function showEditMsg(text, isError) {
+    const el = document.getElementById('editSchoolMsg');
+    if (!el) return;
+    el.textContent  = text;
+    el.className    = `text-xs font-bold ${isError ? 'text-red-400' : 'text-emerald-400'}`;
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 5000);
+}
 
 // Init Data
 loadSubscriptionPlans().then(() => loadSchools());
