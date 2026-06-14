@@ -70,8 +70,12 @@ service cloud.firestore {
                     || isSchoolActive(resource.data.currentSchoolId);
 
       // DELETE: teacher/archives.js permanentDeleteStudent hard-deletes the
-      //         student doc. Keeping this open matches current behaviour.
-      allow delete: if true;
+      //         student doc. Must be authenticated AND the student is either
+      //         at an active school or has no current school (released).
+      allow delete: if request.auth != null &&
+                       (resource.data.currentSchoolId == null ||
+                        resource.data.currentSchoolId == '' ||
+                        isSchoolActive(resource.data.currentSchoolId));
 
       match /grades/{gradeId} {
         // READ: school active OR student released (history.js reads grades
@@ -116,23 +120,16 @@ service cloud.firestore {
       allow create: if true;
 
       // UPDATE: only the school's own super_admin via their verified session,
-      //         OR an HQ platform_admin. This closes the gap where any client
-      //         could flip isVerified. admin/login.js first-time setup is the
-      //         one edge case that updates a school doc before the super_admin
-      //         session exists — it runs immediately after onboarding while the
-      //         request.auth token is still the onboarding Firebase Auth user,
-      //         so we allow update when the school exists (existsAfter check).
+      //         OR an HQ platform_admin. mintAdminToken always issues tokens
+      //         with the schoolId claim, so first-time setup is covered by
+      //         the first clause — no escape hatch needed.
       //
       //         NOTE: HQ dashboard (hq-schools.js) uses the HQ Firebase Auth
       //         token (role: platform_admin) minted by mintHQToken.
       allow update: if (request.auth != null &&
                         request.auth.token.schoolId == schoolId) ||
                        (request.auth != null &&
-                        request.auth.token.role == 'platform_admin') ||
-                       // First-time setup in admin/login.js runs before the
-                       // super_admin session is written — allow if school doc
-                       // already exists (created by onboarding batch).
-                       exists(/databases/$(database)/documents/schools/$(schoolId));
+                        request.auth.token.role == 'platform_admin');
 
       // DELETE: disabled.
       allow delete: if false;
@@ -172,8 +169,18 @@ service cloud.firestore {
       //       only used by HQ (which has its own auth layer in the app).
       allow read: if true;
 
-      // UPDATE: onboarding marks fulfilled; HQ manages quotes.
-      allow update: if true;
+      // UPDATE: two legitimate paths —
+      //   (a) HQ (platform_admin) manages quotes from the dashboard.
+      //   (b) Unauthenticated onboarding.js marks the quote fulfilled and
+      //       writes generatedSchoolId after creating the school. This is
+      //       the ONLY field set onboarding is allowed to touch, and only
+      //       while the quote is still unfulfilled.
+      allow update: if (request.auth != null &&
+                        request.auth.token.role == 'platform_admin') ||
+                       (resource.data.fulfilled == false &&
+                        request.resource.data.fulfilled == true &&
+                        request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['fulfilled', 'generatedSchoolId']));
 
       // DELETE: disabled.
       allow delete: if false;
@@ -203,41 +210,45 @@ service cloud.firestore {
     // HQ dashboard (hq-team.js) reads, creates, updates, and deletes
     // platform_admin docs from the client using the HQ Firebase Auth session.
     // hq-login.js reads the doc after authenticating.
-    // Restricted to authenticated requests only (no anonymous access).
+    // Restricted to HQ platform_admin tokens only — school users (teachers,
+    // students, admins) authenticated via mintXToken cannot read or write.
     match /platform_admins/{adminId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if request.auth != null &&
+                            request.auth.token.role == 'platform_admin';
     }
 
     // ── 8. Organizations (Ministry of Ed, Districts, etc.) ────────────────
-    // hq-organizations.js reads and writes from the HQ dashboard (authenticated).
+    // hq-organizations.js reads and writes from the HQ dashboard.
+    // Restricted to HQ platform_admin tokens only.
     match /organizations/{orgId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if request.auth != null &&
+                            request.auth.token.role == 'platform_admin';
     }
 
     // ── 9. Payments / Revenue Logs ────────────────────────────────────────
     // hq-schools.js and hq-approvals.js create and read payment records
-    // from the HQ dashboard (authenticated HQ session).
+    // from the HQ dashboard. Restricted to HQ platform_admin tokens only.
     match /payments/{paymentId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if request.auth != null &&
+                            request.auth.token.role == 'platform_admin';
     }
 
     // ── 10. Registered Emails (duplicate check & account recovery) ────────
     // GET: must remain open — landing.js (unauthenticated quote form),
     //      onboarding.js (unauthenticated school creation), and
     //      forgot-pin.html all check email existence before any auth exists.
-    // CREATE: authenticated users (admin settings, teacher settings, teacher
-    //         roster, student settings) register emails when creating accounts.
-    //         onboarding.js also creates during school setup (unauthenticated).
-    // DELETE: authenticated users (admin settings, teacher settings, student
-    //         settings) delete the old entry when changing their email.
-    //         This was previously blocked (if false) which silently broke
-    //         email changes. Fixed here.
+    // CREATE: open — onboarding.js (unauthenticated) creates during school
+    //         setup; authenticated portals also create.
+    // DELETE: authenticated only — admin/teacher/student settings delete
+    //         the old entry when changing their email. Closing this from
+    //         public prevents anonymous attackers from freeing email
+    //         reservations to hijack them.
     // LIST: disabled — no code lists this collection.
     // UPDATE: disabled — entries are delete-and-recreate, never updated.
     match /registered_emails/{email} {
       allow get:    if true;
       allow create: if true;
-      allow delete: if true;
+      allow delete: if request.auth != null;
       allow list:   if false;
       allow update: if false;
     }
