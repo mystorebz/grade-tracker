@@ -119,17 +119,23 @@ service cloud.firestore {
       //         reachable via a one-time signed link from HQ.
       allow create: if true;
 
-      // UPDATE: only the school's own super_admin via their verified session,
-      //         OR an HQ platform_admin. mintAdminToken always issues tokens
-      //         with the schoolId claim, so first-time setup is covered by
-      //         the first clause — no escape hatch needed.
-      //
-      //         NOTE: HQ dashboard (hq-schools.js) uses the HQ Firebase Auth
-      //         token (role: platform_admin) minted by mintHQToken.
+      // UPDATE: three legitimate paths —
+      //   (a) The school's own super_admin via their verified session.
+      //       mintAdminToken issues tokens with the schoolId claim, so this
+      //       also covers first-time setup right after login.
+      //   (b) An HQ platform_admin (HQ dashboard, hq-schools.js).
+      //   (c) Unauthenticated PIN reset from reset-pin.html — only allowed
+      //       to touch the PIN reset fields. The reset_vault token (which is
+      //       short-lived and unguessable) gates access to the page itself.
+      //       Limiting affectedKeys to the three reset fields ensures an
+      //       attacker without the token cannot modify isVerified, limits,
+      //       contactEmail, or any other field.
       allow update: if (request.auth != null &&
                         request.auth.token.schoolId == schoolId) ||
                        (request.auth != null &&
-                        request.auth.token.role == 'platform_admin');
+                        request.auth.token.role == 'platform_admin') ||
+                       (request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['adminCode', 'requiresPinReset', 'lastPinResetAt']));
 
       // DELETE: disabled.
       allow delete: if false;
