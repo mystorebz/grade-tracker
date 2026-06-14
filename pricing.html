@@ -580,8 +580,11 @@
                 </div>
 
                 <button id="registerBtn" class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-black py-4 px-4 rounded-2xl transition shadow-lg shadow-blue-200 text-base mt-2">
-                    Submit Request →
+                    Request a Quote →
                 </button>
+
+                <!-- ADDED: error/status message element (was missing from modal) -->
+                <p id="regMessage" class="text-sm text-center font-bold hidden mt-2"></p>
             </div>
 
             <div id="successScreen" class="hidden text-center py-8">
@@ -659,7 +662,6 @@
                     return actions.subscription.create({ plan_id: planId });
                 },
                 onApprove: function(data, actions) {
-                    // Subscription confirmed — redirect to onboarding with subscriptionID
                     window.location.href = 'onboarding/onboarding.html?subscription=' + data.subscriptionID;
                 },
                 onError: function(err) {
@@ -668,7 +670,6 @@
             }).render('#' + containerId);
         }
 
-        // Render all 6 buttons
         renderPayPalButton('paypal-starter-monthly',    PLANS.starter.monthly);
         renderPayPalButton('paypal-starter-annual',     PLANS.starter.annual);
         renderPayPalButton('paypal-growth-monthly',     PLANS.growth.monthly);
@@ -678,16 +679,15 @@
     </script>
 
     <script>
+        // ── Modal open/close (unchanged) ──
         const modal = document.getElementById('quoteModal');
-        const formContainer = document.getElementById('registrationFormContainer');
-        const successScreen = document.getElementById('successScreen');
         const contractTermSelect = document.getElementById('contractTerm');
-        const contractYearsWrap = document.getElementById('contractYearsWrap');
+        const contractYearsWrap  = document.getElementById('contractYearsWrap');
 
         function openQuoteModal() {
             modal.classList.remove('hidden');
             modal.classList.add('flex');
-            document.body.style.overflow = 'hidden'; // Prevents background scrolling
+            document.body.style.overflow = 'hidden';
         }
 
         function closeQuoteModal() {
@@ -698,28 +698,143 @@
 
         function resetAndCloseModal() {
             closeQuoteModal();
-            // Optional UX reset: reset form view slightly after closing animation
             setTimeout(() => {
-                formContainer.classList.remove('hidden');
-                successScreen.classList.add('hidden');
+                document.getElementById('registrationFormContainer').classList.remove('hidden');
+                document.getElementById('successScreen').classList.add('hidden');
             }, 300);
         }
 
-        // Handle Contract Term dynamic dropdown
         contractTermSelect.addEventListener('change', function(e) {
-            if (e.target.value === 'Multi-Year') {
-                contractYearsWrap.classList.remove('hidden');
-            } else {
-                contractYearsWrap.classList.add('hidden');
-            }
-        });
-
-        // Handle Form Submission Simulation
-        document.getElementById('registerBtn').addEventListener('click', function(e) {
-            e.preventDefault();
-            formContainer.classList.add('hidden');
-            successScreen.classList.remove('hidden');
+            contractYearsWrap.classList.toggle('hidden', e.target.value !== 'Multi-Year');
         });
     </script>
+
+    <!-- ADDED: Firebase module script with real quote submission logic -->
+    <script type="module">
+        import { db } from './assets/js/firebase-init.js';
+        import { doc, setDoc, getDoc, getDocs, collection, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        function btnLoadingState(isLoading) {
+            const btn   = document.getElementById('registerBtn');
+            const msgEl = document.getElementById('regMessage');
+            if (isLoading) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Submitting...';
+                btn.classList.add('opacity-75', 'cursor-not-allowed');
+                msgEl.textContent = 'Sending your request...';
+                msgEl.className = 'text-sm text-center font-bold mt-2 text-blue-600 block';
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = 'Request a Quote →';
+                btn.classList.remove('opacity-75', 'cursor-not-allowed');
+            }
+        }
+
+        document.getElementById('registerBtn').addEventListener('click', async () => {
+            const msgEl = document.getElementById('regMessage');
+
+            const firstName     = document.getElementById('firstName').value.trim();
+            const lastName      = document.getElementById('lastName').value.trim();
+            const jobTitle      = document.getElementById('jobTitle').value.trim();
+            const workEmail     = document.getElementById('workEmail').value.trim();
+            const phone         = document.getElementById('phone').value.trim();
+            const schoolName    = document.getElementById('schoolName').value.trim();
+            const schoolType    = document.getElementById('schoolType').value;
+            const country       = document.getElementById('country').value;
+            const city          = document.getElementById('city').value.trim();
+            const stateProvince = document.getElementById('stateProvince').value.trim();
+            const studentsCount = document.getElementById('studentsCount').value.trim();
+            const teachersCount = document.getElementById('teachersCount').value.trim();
+            const contractTerm  = document.getElementById('contractTerm').value;
+            const contractYears = document.getElementById('contractYears')?.value || null;
+            const hearAboutUs   = document.getElementById('hearAboutUs').value;
+            const message       = document.getElementById('message').value.trim();
+
+            if (!firstName || !lastName || !jobTitle || !workEmail || !phone ||
+                !schoolName || !schoolType || !country || !city ||
+                !studentsCount || !teachersCount || !contractTerm) {
+                msgEl.textContent = 'Please fill in all required fields (*).';
+                msgEl.className = 'text-sm text-center font-bold mt-2 text-red-600 block';
+                return;
+            }
+
+            if (contractTerm === 'Multi-Year' && !contractYears) {
+                msgEl.textContent = 'Please select how many years for your multi-year contract.';
+                msgEl.className = 'text-sm text-center font-bold mt-2 text-red-600 block';
+                return;
+            }
+
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(workEmail)) {
+                msgEl.textContent = 'Please enter a valid email address.';
+                msgEl.className = 'text-sm text-center font-bold mt-2 text-red-600 block';
+                return;
+            }
+
+            btnLoadingState(true);
+
+            const targetEmail = workEmail.toLowerCase().trim();
+
+            try {
+                const regSnap = await getDoc(doc(db, 'registered_emails', targetEmail));
+                if (regSnap.exists()) {
+                    msgEl.textContent = 'This email is already registered to an account in our system.';
+                    msgEl.className = 'text-sm text-center font-bold mt-2 text-red-600 block';
+                    btnLoadingState(false);
+                    return;
+                }
+
+                const qSnap = await getDocs(query(collection(db, 'quote_requests'), where('workEmail', '==', targetEmail)));
+                if (!qSnap.empty) {
+                    msgEl.textContent = 'A quote request with this email is already pending.';
+                    msgEl.className = 'text-sm text-center font-bold mt-2 text-red-600 block';
+                    btnLoadingState(false);
+                    return;
+                }
+
+                const timestamp = new Date().toISOString();
+                const fullName  = `${firstName} ${lastName}`;
+
+                const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+                let rand = '';
+                for (let i = 0; i < 5; i++) rand += chars.charAt(Math.floor(Math.random() * chars.length));
+                const reqId = `REQ-${rand}`;
+
+                await setDoc(doc(db, 'quote_requests', reqId), {
+                    requestId:     reqId,
+                    firstName,
+                    lastName,
+                    fullName,
+                    jobTitle,
+                    workEmail:     targetEmail,
+                    phone,
+                    schoolName,
+                    schoolType,
+                    country,
+                    city,
+                    stateProvince,
+                    studentsCount: parseInt(studentsCount),
+                    teachersCount: parseInt(teachersCount),
+                    contractTerm,
+                    contractYears: contractTerm === 'Multi-Year' ? parseInt(contractYears) : null,
+                    hearAboutUs,
+                    message,
+                    status:        'Pending',
+                    fulfilled:     false,
+                    createdAt:     timestamp,
+                });
+
+                document.getElementById('registrationFormContainer').classList.add('hidden');
+                document.getElementById('successScreen').classList.remove('hidden');
+                document.getElementById('successScreen').scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            } catch (error) {
+                console.error('Quote submission error:', error);
+                msgEl.textContent = 'Error submitting your request. Please try again.';
+                msgEl.className = 'text-sm text-center font-bold mt-2 text-red-600 block';
+                btnLoadingState(false);
+            }
+        });
+    </script>
+
 </body>
 </html>
