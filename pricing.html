@@ -16,7 +16,6 @@
     <link rel="stylesheet" href="assets/css/landing.css">
     <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- PayPal SDK — loaded once -->
     <script src="https://www.paypal.com/sdk/js?client-id=BAAhXsbZgDW5jGo0Si8njtFHI2dGsZJPVxyoinNCz_HiewmcGQ6us-loylu319j9noes5xkUZ39n4TbCXQ&vault=true&intent=subscription" data-sdk-integration-source="button-factory"></script>
 
     <style>
@@ -152,7 +151,6 @@
 </head>
 <body class="min-h-screen flex flex-col">
 
-    <!-- NAV -->
     <nav class="navbar">
         <div class="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
             <a href="index.html" class="flex items-center gap-3">
@@ -165,7 +163,6 @@
         </div>
     </nav>
 
-    <!-- HERO -->
     <header class="hero-bg py-16 px-4 text-center">
         <div class="max-w-3xl mx-auto relative z-10">
             <h1 class="text-4xl md:text-5xl lg:text-6xl font-black text-blue-900 leading-tight mb-4 tracking-tight">
@@ -176,7 +173,6 @@
                 Pick the plan that fits your school. Subscribe today and your portal is ready instantly.
             </p>
 
-            <!-- Billing toggle -->
             <div class="flex items-center justify-center gap-3">
                 <div class="billing-toggle">
                     <button class="toggle-btn active" id="toggleMonthly" onclick="setBilling('monthly')">Monthly</button>
@@ -188,7 +184,6 @@
         </div>
     </header>
 
-    <!-- WHAT EVERY PLAN INCLUDES -->
     <section class="py-10 px-4 bg-white">
         <div class="max-w-5xl mx-auto fade-up">
             <p class="text-center text-xs font-black text-blue-500 uppercase tracking-widest mb-6">What every plan includes</p>
@@ -223,18 +218,15 @@
         </div>
     </section>
 
-    <!-- PLAN CARDS -->
     <section class="py-14 px-4 bg-[#f8faff]">
-        <div class="max-w-6xl mx-auto">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 items-stretch max-w-5xl mx-auto">
+        <div class="max-w-7xl mx-auto">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch w-full mx-auto">
 
-                <!-- STARTER -->
                 <div class="plan-card p-7 fade-up">
                     <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Starter</p>
                     <h3 class="text-xl font-black text-slate-800 mb-1">Small Academies</h3>
                     <p class="text-slate-400 text-xs font-semibold leading-relaxed mb-4">Ideal for rural and small community schools getting started with digital grade management.</p>
 
-                    <!-- Price -->
                     <div class="price-monthly">
                         <span class="text-4xl font-black text-slate-800">$49</span><span class="text-lg font-bold text-slate-400">.99</span>
                         <span class="text-sm font-bold text-slate-400 ml-1">/ month</span>
@@ -262,19 +254,16 @@
 
                     <div class="card-divider"></div>
 
-                    <!-- PayPal buttons -->
                     <div class="paypal-monthly" id="paypal-starter-monthly"></div>
                     <div class="paypal-annual"  id="paypal-starter-annual"></div>
                 </div>
 
-                <!-- GROWTH (featured) -->
                 <div class="plan-card featured p-7 fade-up relative">
                     <div class="popular-badge">Most Popular</div>
                     <p class="text-xs font-black text-blue-400 uppercase tracking-widest mb-1 mt-3">Growth</p>
                     <h3 class="text-xl font-black text-slate-800 mb-1">Primary Schools</h3>
                     <p class="text-slate-400 text-xs font-semibold leading-relaxed mb-4">For growing primary schools that need a reliable, full-featured platform from day one.</p>
 
-                    <!-- Price -->
                     <div class="price-monthly">
                         <span class="text-4xl font-black text-slate-800">$99</span><span class="text-lg font-bold text-slate-400">.99</span>
                         <span class="text-sm font-bold text-slate-400 ml-1">/ month</span>
@@ -306,13 +295,11 @@
                     <div class="paypal-annual"  id="paypal-growth-annual"></div>
                 </div>
 
-                <!-- ENTERPRISE -->
                 <div class="plan-card p-7 fade-up">
                     <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Enterprise</p>
                     <h3 class="text-xl font-black text-slate-800 mb-1">Large Schools</h3>
                     <p class="text-slate-400 text-xs font-semibold leading-relaxed mb-4">For large secondary schools and campuses with bigger staff teams and broader admin needs.</p>
 
-                    <!-- Price -->
                     <div class="price-monthly">
                         <span class="text-4xl font-black text-slate-800">$199</span><span class="text-lg font-bold text-slate-400">.99</span>
                         <span class="text-sm font-bold text-slate-400 ml-1">/ month</span>
@@ -344,11 +331,44 @@
                     <div class="paypal-annual"  id="paypal-enterprise-annual"></div>
                 </div>
 
+                <div class="plan-card p-7 fade-up bg-slate-50 border-slate-200 border-dashed">
+                    <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Institution</p>
+                    <h3 class="text-xl font-black text-slate-800 mb-1">Custom Size</h3>
+                    <p class="text-slate-400 text-xs font-semibold leading-relaxed mb-4">You don't see a subscription that matches your needs here? We provide custom deployment scales.</p>
+
+                    <div class="price-monthly mb-1">
+                        <span class="text-4xl font-black text-slate-800">Quote</span>
+                    </div>
+                    <div class="price-annual mb-1">
+                        <span class="text-4xl font-black text-slate-800">Quote</span>
+                    </div>
+
+                    <div class="stat-row bg-white border border-slate-100">
+                        <div class="stat-item">
+                            <span class="stat-label"><i class="fa-solid fa-user-graduate text-slate-400"></i> Students</span>
+                            <span class="stat-value">300+</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label"><i class="fa-solid fa-chalkboard-user text-slate-400"></i> Teachers</span>
+                            <span class="stat-value">Unlimited</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label"><i class="fa-solid fa-key text-slate-400"></i> Admins</span>
+                            <span class="stat-value">Custom</span>
+                        </div>
+                    </div>
+
+                    <div class="card-divider"></div>
+
+                    <button onclick="openQuoteModal()" class="w-full bg-slate-800 hover:bg-slate-900 active:bg-slate-950 text-white font-black py-4 px-4 rounded-xl transition shadow-lg mt-auto text-sm border border-slate-700">
+                        Request a Quote →
+                    </button>
+                </div>
+
             </div>
         </div>
     </section>
 
-    <!-- REFUND & LEGAL NOTICE -->
     <section class="py-10 px-4 bg-white border-t border-slate-100">
         <div class="max-w-3xl mx-auto text-center">
             <div class="inline-flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-2xl px-6 py-4 mb-5">
@@ -370,7 +390,6 @@
         </div>
     </section>
 
-    <!-- FOOTER -->
     <footer class="py-10 px-4 text-center mt-auto">
         <div class="max-w-4xl mx-auto">
             <div class="flex items-center justify-center gap-3 mb-5">
@@ -392,7 +411,213 @@
         </div>
     </footer>
 
-    <!-- Fade-in observer -->
+    <div id="quoteModal" class="fixed inset-0 z-[100] hidden items-center justify-center">
+        <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onclick="closeQuoteModal()"></div>
+        
+        <div class="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl p-6 md:p-8 max-h-[90vh] overflow-y-auto m-4 border border-blue-100">
+            <button onclick="closeQuoteModal()" class="absolute top-5 right-5 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+
+            <div id="registrationFormContainer" class="space-y-5 mt-2">
+                <div class="text-center mb-6">
+                    <span class="text-xs font-black text-blue-500 uppercase tracking-widest">Get a Quote</span>
+                    <h2 class="text-2xl md:text-3xl font-black text-blue-900 mt-2">Bring ConnectUs to Your School</h2>
+                </div>
+
+                <p class="form-section no-border font-bold text-slate-700 text-sm border-b pb-2">
+                    <i class="fa-solid fa-address-card mr-2 text-blue-500"></i> Your Contact Information
+                </p>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="form-label block text-xs font-bold text-slate-600 mb-1">First Name *</label>
+                        <input type="text" id="firstName" placeholder="e.g. Maria" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                    </div>
+                    <div>
+                        <label class="form-label block text-xs font-bold text-slate-600 mb-1">Last Name *</label>
+                        <input type="text" id="lastName" placeholder="e.g. Torres" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="form-label block text-xs font-bold text-slate-600 mb-1">Job Title / Role *</label>
+                    <select id="jobTitle" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                        <option value="">Select your role</option>
+                        <option value="Principal">Principal</option>
+                        <option value="Vice Principal">Vice Principal</option>
+                        <option value="IT Director">IT Director</option>
+                        <option value="District Administrator">District Administrator</option>
+                        <option value="School Administrator">School Administrator</option>
+                        <option value="Teacher">Teacher</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="form-label block text-xs font-bold text-slate-600 mb-1">Work Email *</label>
+                        <input type="email" id="workEmail" placeholder="you@school.edu" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                    </div>
+                    <div>
+                        <label class="form-label block text-xs font-bold text-slate-600 mb-1">Phone Number *</label>
+                        <input type="tel" id="phone" placeholder="e.g. +501 600-0000" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                    </div>
+                </div>
+
+                <p class="form-section font-bold text-slate-700 text-sm border-b pb-2 pt-4">
+                    <i class="fa-solid fa-school mr-2 text-blue-500"></i> School Information
+                </p>
+
+                <div>
+                    <label class="form-label block text-xs font-bold text-slate-600 mb-1">School Name *</label>
+                    <input type="text" id="schoolName" placeholder="e.g. Valley High School" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="form-label block text-xs font-bold text-slate-600 mb-1">School Type *</label>
+                        <select id="schoolType" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                            <option value="">Select Type</option>
+                            <option value="Primary / Elementary">Primary / Elementary</option>
+                            <option value="Middle School">Middle School</option>
+                            <option value="High School / Secondary">High School / Secondary</option>
+                            <option value="Junior College">Junior College</option>
+                            <option value="University / College">University / College</option>
+                            <option value="Vocational / Technical">Vocational / Technical</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label block text-xs font-bold text-slate-600 mb-1">Country *</label>
+                        <select id="country" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                            <option value="">Select Country</option>
+                            <option value="Belize">Belize</option>
+                            <option value="United States">United States</option>
+                            <option value="Canada">Canada</option>
+                            <option value="United Kingdom">United Kingdom</option>
+                            <option value="Australia">Australia</option>
+                            <option value="Jamaica">Jamaica</option>
+                            <option value="Trinidad and Tobago">Trinidad and Tobago</option>
+                            <option value="Barbados">Barbados</option>
+                            <option value="Guyana">Guyana</option>
+                            <option disabled>──────────</option>
+                            <option value="Other / Global">Other / Global</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="form-label block text-xs font-bold text-slate-600 mb-1">City *</label>
+                        <input type="text" id="city" placeholder="e.g. Belize City" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                    </div>
+                    <div>
+                        <label class="form-label block text-xs font-bold text-slate-600 mb-1">State / Province / District</label>
+                        <input type="text" id="stateProvince" placeholder="e.g. California, Ontario, or Cayo" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                    </div>
+                </div>
+
+                <p class="form-section font-bold text-slate-700 text-sm border-b pb-2 pt-4">
+                    <i class="fa-solid fa-users mr-2 text-blue-500"></i> School Size
+                </p>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="form-label block text-xs font-bold text-slate-600 mb-1">Estimated Students *</label>
+                        <input type="number" id="studentsCount" placeholder="e.g. 350" min="1" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                    </div>
+                    <div>
+                        <label class="form-label block text-xs font-bold text-slate-600 mb-1">Estimated Teachers *</label>
+                        <input type="number" id="teachersCount" placeholder="e.g. 25" min="1" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                    </div>
+                </div>
+
+                <p class="form-section font-bold text-slate-700 text-sm border-b pb-2 pt-4">
+                    <i class="fa-solid fa-file-contract mr-2 text-blue-500"></i> Preferred Contract Term
+                </p>
+
+                <div>
+                    <label class="form-label block text-xs font-bold text-slate-600 mb-1">Contract Term *</label>
+                    <select id="contractTerm" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                        <option value="">Select preferred term</option>
+                        <option value="6 Months">6 Months — Pilot Program</option>
+                        <option value="Annual">Annual Contract — 1 year</option>
+                        <option value="Multi-Year">Multi-Year Contract — 2 or 3 years</option>
+                    </select>
+                </div>
+
+                <div id="contractYearsWrap" class="hidden">
+                    <label class="form-label block text-xs font-bold text-slate-600 mb-1">How many years? *</label>
+                    <select id="contractYears" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                        <option value="">Select number of years</option>
+                        <option value="2">2 Years</option>
+                        <option value="3">3 Years</option>
+                    </select>
+                    <p class="text-xs text-slate-400 font-semibold mt-1.5">Multi-year contracts may qualify for a discounted rate — we will include this in your quote.</p>
+                </div>
+
+                <p class="form-section font-bold text-slate-700 text-sm border-b pb-2 pt-4">
+                    <i class="fa-solid fa-circle-info mr-2 text-blue-500"></i> Additional Information
+                </p>
+
+                <div>
+                    <label class="form-label block text-xs font-bold text-slate-600 mb-1">How did you hear about us?</label>
+                    <select id="hearAboutUs" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                        <option value="">Select an option</option>
+                        <option value="Google Search">Google Search</option>
+                        <option value="Social Media">Social Media</option>
+                        <option value="Word of Mouth">Word of Mouth</option>
+                        <option value="Referral from another school">Referral from another school</option>
+                        <option value="Conference or Event">Conference or Event</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="form-label block text-xs font-bold text-slate-600 mb-1">Tell us more <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
+                    <textarea id="message" placeholder="Any specific needs, questions, or goals you'd like us to know about..." class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm h-24 resize-none"></textarea>
+                </div>
+
+                <button id="registerBtn" class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-black py-4 px-4 rounded-2xl transition shadow-lg shadow-blue-200 text-base mt-2">
+                    Submit Request →
+                </button>
+            </div>
+
+            <div id="successScreen" class="hidden text-center py-8">
+                <div class="text-7xl mb-4">🎉</div>
+                <h2 class="text-2xl font-black text-slate-800 mb-2">Request Received!</h2>
+                <p class="text-slate-500 font-semibold mb-5 text-sm leading-relaxed">
+                    Thank you for your interest in ConnectUs. We've sent a confirmation to your email and our team will be in touch within <strong class="text-slate-700">24–48 hours</strong> with a custom quote.
+                </p>
+                <div class="bg-blue-50 border border-blue-100 rounded-2xl p-5 mb-6 text-left">
+                    <p class="text-xs font-black text-blue-500 uppercase tracking-widest mb-3">What happens next?</p>
+                    <ul class="space-y-2.5 text-sm text-slate-600 font-semibold">
+                        <li class="flex items-start gap-2.5">
+                            <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i>
+                            Check your email for a confirmation from info@connectusonline.org
+                        </li>
+                        <li class="flex items-start gap-2.5">
+                            <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i>
+                            Our team will review your details and prepare a custom quote
+                        </li>
+                        <li class="flex items-start gap-2.5">
+                            <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i>
+                            We will send you an invoice or payment link based on your preferred term
+                        </li>
+                        <li class="flex items-start gap-2.5">
+                            <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i>
+                            Once confirmed and paid, we will send your onboarding link to set up your school
+                        </li>
+                    </ul>
+                </div>
+                <button onclick="resetAndCloseModal()" class="text-blue-600 font-black hover:underline text-sm bg-blue-50 py-2.5 px-6 rounded-full border border-blue-100 transition hover:bg-blue-100">
+                    Close Window
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const observer = new IntersectionObserver((entries) => {
             entries.forEach((entry, i) => {
@@ -412,7 +637,6 @@
         }
     </script>
 
-    <!-- PayPal buttons — rendered after SDK loads -->
     <script>
         // ── Plan IDs ──
         const PLANS = {
@@ -453,7 +677,49 @@
         renderPayPalButton('paypal-enterprise-annual',  PLANS.enterprise.annual);
     </script>
 
+    <script>
+        const modal = document.getElementById('quoteModal');
+        const formContainer = document.getElementById('registrationFormContainer');
+        const successScreen = document.getElementById('successScreen');
+        const contractTermSelect = document.getElementById('contractTerm');
+        const contractYearsWrap = document.getElementById('contractYearsWrap');
 
+        function openQuoteModal() {
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.body.style.overflow = 'hidden'; // Prevents background scrolling
+        }
 
+        function closeQuoteModal() {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            document.body.style.overflow = '';
+        }
+
+        function resetAndCloseModal() {
+            closeQuoteModal();
+            // Optional UX reset: reset form view slightly after closing animation
+            setTimeout(() => {
+                formContainer.classList.remove('hidden');
+                successScreen.classList.add('hidden');
+            }, 300);
+        }
+
+        // Handle Contract Term dynamic dropdown
+        contractTermSelect.addEventListener('change', function(e) {
+            if (e.target.value === 'Multi-Year') {
+                contractYearsWrap.classList.remove('hidden');
+            } else {
+                contractYearsWrap.classList.add('hidden');
+            }
+        });
+
+        // Handle Form Submission Simulation
+        document.getElementById('registerBtn').addEventListener('click', function(e) {
+            e.preventDefault();
+            formContainer.classList.add('hidden');
+            successScreen.classList.remove('hidden');
+        });
+    </script>
 </body>
 </html>
