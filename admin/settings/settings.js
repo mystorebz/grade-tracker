@@ -514,3 +514,90 @@ window.endOfYearReset = async function() {
 
 // ── INIT ──────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', loadSettingsData);
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SUBSCRIPTION MANAGEMENT PANEL
+// ═══════════════════════════════════════════════════════════════════════════════
+
+window.openSubscriptionPanel = function() {
+    if (!fullSchoolData) return;
+
+    const planName    = session.planName        || fullSchoolData.subscriptionName   || 'Unknown Plan';
+    const billing     = fullSchoolData.billingCycle                                  || session.billingCycle || '—';
+    const status      = fullSchoolData.subscriptionStatus                            || 'Active';
+    const paypalId    = fullSchoolData.paypalSubscriptionId                          || '—';
+    const limits      = fullSchoolData.limits   || {};
+    const renewalDate = fullSchoolData.nextRenewalDate || fullSchoolData.subscriptionExpiresAt || null;
+
+    // Plan name
+    document.getElementById('spPlanName').textContent      = planName;
+    document.getElementById('spBillingCycle').textContent  = billing ? `${billing} billing` : '—';
+    document.getElementById('spPaypalId').textContent      = paypalId;
+
+    // Limits
+    document.getElementById('spStudentLimit').textContent = limits.studentLimit || session.studentLimit || '—';
+    document.getElementById('spTeacherLimit').textContent = limits.teacherLimit || session.teacherLimit || '—';
+    document.getElementById('spAdminLimit').textContent   = limits.adminLimit   || session.adminLimit   || '—';
+
+    // Renewal date + countdown
+    const renewalEl    = document.getElementById('spRenewalDate');
+    const countdownEl  = document.getElementById('spRenewalCountdown');
+    if (renewalDate) {
+        const rd    = new Date(renewalDate);
+        const today = new Date();
+        const days  = Math.ceil((rd - today) / (1000 * 60 * 60 * 24));
+        renewalEl.textContent = rd.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        if (days > 0) {
+            countdownEl.textContent  = `${days} day${days !== 1 ? 's' : ''} remaining`;
+            countdownEl.className    = `text-[10px] font-bold mt-0.5 ${days <= 14 ? 'text-amber-500' : 'text-emerald-600'}`;
+        } else {
+            countdownEl.textContent  = 'Expired';
+            countdownEl.className    = 'text-[10px] font-bold mt-0.5 text-red-500';
+        }
+    } else {
+        renewalEl.textContent   = '—';
+        countdownEl.textContent = '';
+    }
+
+    // Status badge
+    const statusEl = document.getElementById('spStatusBadge');
+    const statusMap = {
+        'Active':    { cls: 'bg-emerald-100 text-emerald-700', label: 'Active' },
+        'Cancelled': { cls: 'bg-amber-100 text-amber-700',     label: 'Cancelled' },
+        'Expired':   { cls: 'bg-red-100 text-red-700',         label: 'Expired' },
+        'Suspended': { cls: 'bg-red-100 text-red-700',         label: 'Suspended' },
+    };
+    const s = statusMap[status] || { cls: 'bg-slate-100 text-slate-500', label: status };
+    statusEl.className   = `text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider ${s.cls}`;
+    statusEl.textContent = s.label;
+
+    // Highlight current plan card
+    const planLower = planName.toLowerCase();
+    ['Starter', 'Growth', 'Enterprise'].forEach(p => {
+        const card = document.getElementById(`spPlanCard${p}`);
+        const tag  = card?.querySelector('.current-plan-tag');
+        if (card && tag) {
+            const isCurrent = planLower.includes(p.toLowerCase());
+            card.classList.toggle('is-current', isCurrent);
+            tag.classList.toggle('hidden', !isCurrent);
+        }
+    });
+
+    // Open panel
+    const overlay = document.getElementById('subPanelOverlay');
+    const panel   = document.getElementById('subSlidePanel');
+    overlay.classList.remove('hidden');
+    setTimeout(() => {
+        overlay.classList.remove('opacity-0');
+        panel.classList.remove('translate-x-full');
+    }, 10);
+};
+
+window.closeSubscriptionPanel = function() {
+    const overlay = document.getElementById('subPanelOverlay');
+    const panel   = document.getElementById('subSlidePanel');
+    overlay.classList.add('opacity-0');
+    panel.classList.add('translate-x-full');
+    setTimeout(() => overlay.classList.add('hidden'), 300);
+};
