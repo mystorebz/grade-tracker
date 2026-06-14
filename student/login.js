@@ -70,7 +70,9 @@ async function handleLogin() {
 
         if (status !== 'Active') {
             if (currentSchoolId) {
-                // Internally archived — still at school, mint token for valid session
+                // Internally archived — still at school, mint token for valid session.
+                // Fallback session is intentional here because archived students are
+                // going to inactive.html which doesn't require an auth token.
                 try {
                     const result         = await mintStudentToken({ studentId: rawId, pin });
                     const userCredential = await signInWithCustomToken(auth, result.data.token);
@@ -106,6 +108,10 @@ async function handleLogin() {
         // ── END ENROLLMENT STATUS GATE ─────────────────────────────────────────
 
         // ── Mint Firebase Auth token via Cloud Function ────────────────────────
+        // The server is the gatekeeper. If it rejects (wrong PIN, suspended
+        // school, etc.) we surface a clear message and stop. No fallback
+        // session — that previously masked suspended schools and let students
+        // briefly land on the dashboard before the Ghostbuster evicted them.
         try {
             const result         = await mintStudentToken({ studentId: rawId, pin });
             const userCredential = await signInWithCustomToken(auth, result.data.token);
@@ -118,14 +124,23 @@ async function handleLogin() {
                 schoolId:    claims.schoolId   || studentData.currentSchoolId || '',
                 studentData: studentData
             });
-        } catch (e) {
-            console.error('[Student Login] mintStudentToken failed:', e);
-            // Non-fatal during migration — log but continue with studentData
-            setSessionData('student', {
-                studentId:   studentData.id,
-                schoolId:    studentData.currentSchoolId || '',
-                studentData: studentData
-            });
+        } catch (authError) {
+            console.error('[Student Login] Server rejected credentials:', authError);
+
+            if (authError?.code === 'functions/permission-denied') {
+                showError('Your school is currently inactive. Please contact your school administrator.');
+            } else if (authError?.code === 'functions/unauthenticated') {
+                showError('Incorrect PIN. Please check and try again.');
+            } else if (authError?.code === 'functions/not-found') {
+                showError('Student ID not found. Check the ID on your credential slip.');
+            } else if (authError?.code === 'functions/invalid-argument') {
+                showError('Please enter your Student ID and PIN.');
+            } else {
+                showError('Connection error. Please try again.');
+            }
+
+            setLoading(false);
+            return;
         }
 
         // ── Gate: Security questions ───────────────────────────────────────────
