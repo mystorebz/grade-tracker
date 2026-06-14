@@ -52,19 +52,26 @@ async function fetchPlanDetails(planId) {
 async function launchDashboard(schoolId, schoolData, role, adminId, adminData) {
     const session = {
         schoolId,
-        adminId:          adminId || schoolId,
+        adminId:            adminId || schoolId,
         role,
-        isSuperAdmin:     role === 'super_admin',
-        schoolName:       schoolData.schoolName       || '',
-        contactEmail:     schoolData.contactEmail     || '',
-        logoUrl:          schoolData.logoUrl          || '',
-        activeSemesterId: schoolData.activeSemesterId || '',
-        schoolType:       schoolData.schoolType       || 'Primary',
-        planLimit:        schoolData.planLimit,
-        planName:         schoolData.planName,
-        teacherLimit:     schoolData.teacherLimit,
-        adminLimit:       schoolData.adminLimit,
-        studentLimit:     schoolData.studentLimit
+        isSuperAdmin:       role === 'super_admin',
+        schoolName:         schoolData.schoolName       || '',
+        contactEmail:       schoolData.contactEmail     || '',
+        logoUrl:            schoolData.logoUrl          || '',
+        activeSemesterId:   schoolData.activeSemesterId || '',
+        schoolType:         schoolData.schoolType       || 'Primary',
+        planLimit:          schoolData.planLimit,
+        planName:           schoolData.planName,
+        teacherLimit:       schoolData.teacherLimit,
+        adminLimit:         schoolData.adminLimit,
+        studentLimit:       schoolData.studentLimit,
+        // Subscription state — used by the deactivated page if the Ghostbuster
+        // detects a suspension or cancellation mid-session and redirects there.
+        subscriptionStatus: schoolData.subscriptionStatus || 'Active',
+        statusReason:       schoolData.statusReason       || '',
+        nextRenewalDate:    schoolData.nextRenewalDate     || null,
+        billingCycle:       schoolData.billingCycle        || '',
+        subscriptionName:   schoolData.subscriptionName    || ''
     };
 
     if (role === 'sub_admin' && adminData) {
@@ -111,12 +118,11 @@ loginBtn.addEventListener('click', async () => {
             console.error('[Admin Login] Server rejected:', authError);
 
             // ── Suspended / expired school ────────────────────────────────────
-            // mintAdminToken throws 'failed-precondition' specifically for
-            // schools where isVerified === false. We fetch the school data
-            // here to populate the deactivated page with the right information.
+            // mintAdminToken throws 'failed-precondition' specifically when
+            // schoolData.isVerified !== true. Fetch the school doc directly
+            // here and route them to the deactivated page with full context.
             if (authError?.code === 'functions/failed-precondition') {
                 try {
-                    // Try uppercase first (standard School ID format), then as-entered
                     let schoolSnap = await getDoc(doc(db, 'schools', rawId.toUpperCase()));
                     if (!schoolSnap.exists()) {
                         schoolSnap = await getDoc(doc(db, 'schools', rawId));
@@ -205,7 +211,7 @@ loginBtn.addEventListener('click', async () => {
             tempAdminData = adminSnap.data();
             tempAdminId   = adminId;
 
-            // Archived sub-admin — redirect to deactivated page
+            // Archived sub-admin — set minimal session and redirect to deactivated
             if (tempAdminData.isArchived === true) {
                 setSessionData('admin', {
                     schoolId,
