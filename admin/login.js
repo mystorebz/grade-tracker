@@ -131,7 +131,22 @@ loginBtn.addEventListener('click', async () => {
         const schoolData = schoolSnap.data();
 
         if (schoolData.isVerified !== true) {
-            showLoginError('Account pending approval. Contact ConnectUs.');
+            // School is suspended/expired — set session and redirect to deactivated
+            // page so they see their subscription status and resubscribe options.
+            setSessionData('admin', {
+                schoolId,
+                role,
+                isSuperAdmin:       role === 'super_admin',
+                schoolName:         schoolData.schoolName         || '',
+                contactEmail:       schoolData.contactEmail       || '',
+                planName:           schoolData.subscriptionName   || schoolData.planName || '',
+                subscriptionStatus: schoolData.subscriptionStatus || 'Expired',
+                statusReason:       schoolData.statusReason       || '',
+                nextRenewalDate:    schoolData.nextRenewalDate     || null,
+                billingCycle:       schoolData.billingCycle        || '',
+                activeSemesterId:   schoolData.activeSemesterId    || ''
+            });
+            window.location.replace('deactivated/deactivated.html');
             return;
         }
 
