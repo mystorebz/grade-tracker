@@ -1,7 +1,7 @@
 import { db, auth } from '../../assets/js/firebase-init.js';
 import { doc, getDoc }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { signInWithCustomToken }
+import { signInWithCustomToken, signOut }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { getFunctions, httpsCallable }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
@@ -28,6 +28,14 @@ function resetBtn() {
     authBtn.disabled  = false;
     authBtn.innerHTML = `<i class="fa-solid fa-shield-halved"></i> Authenticate`;
 }
+
+// ── Clear any stale Firebase Auth session on page load ────────────────────────
+// If the user lands here, they should start with a clean auth state. This
+// prevents leftover credentials from a previous (failed) attempt poisoning
+// the next sign-in attempt.
+(async () => {
+    try { await signOut(auth); } catch (_) { /* ignore */ }
+})();
 
 // ── Keyboard support ──────────────────────────────────────────────────────────
 ['loginId', 'loginPin'].forEach(id => {
@@ -64,14 +72,31 @@ authBtn.addEventListener('click', async () => {
     authBtn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Authenticating...`;
 
     try {
-        // Server-side PIN verification + Firebase token minting
+        // 1. Server-side PIN verification + Firebase token minting
         const result = await mintHQToken({ hqId, pin });
-        await signInWithCustomToken(auth, result.data.token);
 
-        // Fetch admin data for session (auth confirmed at this point)
+        // 2. Sign in with the custom token
+        const userCredential = await signInWithCustomToken(auth, result.data.token);
+
+        // 3. CRITICAL: force a token refresh and WAIT for the custom claims
+        //    (role: 'platform_admin') to propagate to the Firestore SDK.
+        //    Without this, the very next getDoc() may fire before Firestore
+        //    sees the new claims and the rule check fails with permission-denied.
+        const idTokenResult = await userCredential.user.getIdTokenResult(true);
+
+        // 4. Defensive check: confirm the claim is actually present
+        if (idTokenResult.claims.role !== 'platform_admin') {
+            await signOut(auth);
+            showError('Authentication failed. Invalid credentials.');
+            resetBtn();
+            return;
+        }
+
+        // 5. Fetch admin data for session (auth + claims confirmed)
         const docSnap = await getDoc(doc(db, 'platform_admins', hqId));
 
         if (!docSnap.exists()) {
+            await signOut(auth);
             showError('Authentication failed. Invalid credentials.');
             resetBtn();
             return;
@@ -79,7 +104,7 @@ authBtn.addEventListener('click', async () => {
 
         const adminData = docSnap.data();
 
-        // Save HQ session
+        // 6. Save HQ session
         localStorage.setItem('connectus_hq_session', JSON.stringify({
             id:        docSnap.id,
             name:      adminData.name  || '',
@@ -87,10 +112,15 @@ authBtn.addEventListener('click', async () => {
             timestamp: new Date().getTime()
         }));
 
+        // 7. Redirect to dashboard. The browser is at /platform_dashboard/hq-login.html,
+        //    so 'index.html' resolves to /platform_dashboard/index.html (the dashboard).
         window.location.replace('index.html');
 
     } catch (e) {
         console.error('[HQ Login]', e);
+
+        // Make sure we don't leave a half-signed-in state behind
+        try { await signOut(auth); } catch (_) { /* ignore */ }
 
         if (e.code === 'functions/unauthenticated' || e.code === 'functions/not-found') {
             showError('Authentication failed. Invalid credentials.');
