@@ -54,7 +54,7 @@
                             <i class="fa-solid fa-file-csv"></i> Export Data
                         </button>
                         <button onclick="window.openAddTeacherModal()" class="flex items-center gap-2 bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold px-5 py-2.5 rounded shadow-md transition text-[13px]">
-                            <i class="fa-solid fa-user-plus"></i> Add or Claim Teacher
+                            <i class="fa-solid fa-user-plus"></i> Add New Teacher
                         </button>
                     </div>
                 </div>
@@ -74,7 +74,7 @@
                             </thead>
                             <tbody id="teachersTableBody" class="divide-y divide-[#f0f4f8]">
                                 <tr><td colspan="6" class="px-6 py-16 text-center text-[#9ab0c6] italic font-semibold">
-                                    <i class="fa-solid fa-spinner fa-spin mr-2 text-[#2563eb]"></i>Connecting to National Registry...
+                                    <i class="fa-solid fa-spinner fa-spin mr-2 text-[#2563eb]"></i>Connecting to School Database...
                                 </td></tr>
                             </tbody>
                         </table>
@@ -89,73 +89,13 @@
         <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200 flex flex-col max-h-[92vh]" id="addTeacherModalInner">
             <div class="h-1 bg-[#2563eb] flex-shrink-0"></div>
             <div class="px-7 py-5 border-b border-[#f0f4f8] flex justify-between items-center bg-[#f8fafb] flex-shrink-0">
-                <h3 class="font-bold text-lg text-[#0d1f35]">Add or Claim Teacher</h3>
+                <h3 class="font-bold text-lg text-[#0d1f35]">Add New Teacher</h3>
                 <button onclick="window.closeAddTeacherModal()" class="text-[#9ab0c6] hover:text-[#e31b4a] transition">
                     <i class="fa-solid fa-xmark text-xl"></i>
                 </button>
             </div>
 
             <div class="overflow-y-auto flex-1 p-7 space-y-6">
-
-                <div>
-                    <div class="flex items-center gap-2.5 mb-1">
-                        <div class="h-6 w-6 rounded-full bg-[#2563eb] text-white text-[11px] font-black flex items-center justify-center flex-shrink-0">1</div>
-                        <p class="font-bold text-[#0d1f35] text-[14px]">Claim an Existing Teacher</p>
-                    </div>
-                    <p class="text-[11px] text-[#6b84a0] font-semibold ml-9 mb-3">
-                        Search by name, email, or Global Teacher ID. Only teachers not currently assigned to a school will appear.
-                    </p>
-
-                    <div class="flex gap-2 ml-9">
-                        <input type="text" id="teacherSearchInput"
-                            placeholder="Name, Email, or ID..."
-                            class="form-input flex-1 p-2.5 bg-white border border-[#c7d9fd] rounded text-[13px] outline-none focus:border-[#2563eb]">
-                        <button id="searchTeacherBtn"
-                            class="px-4 py-2 bg-[#2563eb] text-white font-bold text-[12px] rounded hover:bg-[#1d4ed8] transition whitespace-nowrap min-w-[90px]">
-                            <i class="fa-solid fa-magnifying-glass mr-1"></i> Search
-                        </button>
-                    </div>
-
-                    <div id="teacherSearchResults"
-                        class="hidden ml-9 mt-2 border border-[#dce3ed] rounded-lg overflow-hidden max-h-44 overflow-y-auto shadow-sm">
-                    </div>
-
-                    <div id="claimTeacherPreview" class="hidden ml-9 mt-3 bg-[#eef4ff] border border-[#c7d9fd] rounded-xl p-4">
-                        <div class="flex items-start justify-between mb-3">
-                            <div>
-                                <p class="text-[10px] text-[#2563eb] font-black uppercase tracking-widest mb-1">Selected — Verify Before Claiming</p>
-                                <p id="claimPreviewName" class="font-black text-[#0d1f35] text-[16px]"></p>
-                                <p id="claimPreviewId" class="font-mono text-[11px] text-[#6b84a0] font-bold mt-0.5"></p>
-                            </div>
-                            <button onclick="window.clearTeacherSelection()" class="text-[#9ab0c6] hover:text-[#e31b4a] ml-3 mt-1 transition">
-                                <i class="fa-solid fa-xmark"></i>
-                            </button>
-                        </div>
-                        <div class="grid grid-cols-2 gap-2" id="claimPreviewDetails"></div>
-                        <div id="claimPreviewWarning" class="hidden mt-3 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
-                            <p class="text-[11px] text-amber-700 font-bold">
-                                <i class="fa-solid fa-triangle-exclamation mr-1"></i>
-                                <span id="claimPreviewWarningText"></span>
-                            </p>
-                        </div>
-                        <button id="claimTeacherBtn"
-                            class="mt-4 w-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold py-3 rounded-lg transition text-[12px] uppercase tracking-widest">
-                            <i class="fa-solid fa-handshake mr-2"></i> Claim This Teacher
-                        </button>
-                    </div>
-
-                    <div id="claimSearchEmpty" class="hidden ml-9 mt-3 p-4 bg-[#f8fafb] rounded-lg border border-[#dce3ed] text-center">
-                        <p class="text-[12px] text-[#9ab0c6] font-semibold italic">No unassigned teachers found. Try a different search or create a new profile below.</p>
-                    </div>
-                </div>
-
-                <div class="flex items-center gap-3">
-                    <hr class="flex-1 border-[#f0f4f8]">
-                    <span class="text-[10px] text-[#9ab0c6] font-bold uppercase tracking-widest px-1">Or Create New</span>
-                    <hr class="flex-1 border-[#f0f4f8]">
-                </div>
-
-                <div>
                     <div class="flex items-center gap-2.5 mb-4">
                         <div class="h-6 w-6 rounded-full bg-[#0d1f35] text-white text-[11px] font-black flex items-center justify-center flex-shrink-0">2</div>
                         <p class="font-bold text-[#0d1f35] text-[14px]">Create New Teacher Profile</p>
