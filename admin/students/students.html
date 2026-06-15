@@ -98,30 +98,6 @@
 
             <div class="overflow-y-auto flex-1">
 
-                <!-- ── Search Section ────────────────────────────────── -->
-                <div class="p-6 border-b border-slate-100">
-                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Search National Registry First</p>
-                    <p class="text-xs text-slate-500 font-semibold mb-3">If the student was previously enrolled in another school on ConnectUs, search their Student ID to find and claim them.</p>
-                    <div class="flex gap-2">
-                        <input id="sSearchQuery" type="text" placeholder="Student ID (e.g. S26-XXXXX)"
-                            class="flex-1 p-2.5 border border-slate-300 rounded-lg text-sm font-semibold outline-none focus:border-blue-400 font-mono uppercase">
-                        <button id="sSearchBtn" onclick="window.searchStudentRegistry()"
-                            class="bg-slate-800 hover:bg-black text-white font-bold px-4 py-2.5 rounded-lg text-xs transition flex-shrink-0 flex items-center gap-2">
-                            <i class="fa-solid fa-magnifying-glass"></i> Search
-                        </button>
-                    </div>
-
-                    <!-- Search Results -->
-                    <div id="sSearchResults" class="hidden mt-3 bg-slate-50 border border-slate-200 rounded-lg overflow-hidden text-sm"></div>
-                </div>
-
-                <!-- ── Divider ────────────────────────────────────────── -->
-                <div class="px-6 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-3">
-                    <div class="flex-1 h-px bg-slate-200"></div>
-                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Or Create a New Identity</span>
-                    <div class="flex-1 h-px bg-slate-200"></div>
-                </div>
-
                 <!-- ── Create Section (always visible) ── -->
                 <div id="asCreateSection" class="p-6">
                     <p class="text-xs text-slate-500 font-semibold mb-4">This student is not in the ConnectUs platform yet. Fill in their details to create a new student identity.</p>
