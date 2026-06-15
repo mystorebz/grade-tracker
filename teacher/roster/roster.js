@@ -359,13 +359,8 @@ window.quickGradeStudent = function(studentId) {
     window.location.assign('../grade_form/grade_form.html');
 };
 
-// ── 9. ENROLL / CLAIM STUDENT ─────────────────────────────────────────────
+// ── 9. ENROLL STUDENT ─────────────────────────────────────────────
 window.openAddStudentModal = function() {
-    const searchQ = document.getElementById('sSearchQuery');
-    const searchR = document.getElementById('sSearchResults');
-    if (searchQ) searchQ.value = '';
-    if (searchR) { searchR.innerHTML = ''; searchR.classList.add('hidden'); }
-
     ['sName','sEmail','sParentPhone','sParentName','sDob'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
     });
@@ -377,14 +372,12 @@ window.openAddStudentModal = function() {
     if (classes.length === 0) {
         sel.innerHTML = '<option value="">— No active classes available —</option>';
         sel.disabled = true;
-        document.getElementById('sSearchBtn').disabled = true;
         document.getElementById('saveStudentBtn').disabled = true;
         showMsg('addStudentMsg', 'You currently have no active classes assigned. Please contact your administrator to assign classes to your account before enrolling students.', true);
     } else {
         sel.innerHTML = '<option value="">— Select a Class —</option>' +
             classes.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
         sel.disabled = false;
-        document.getElementById('sSearchBtn').disabled = false;
         document.getElementById('saveStudentBtn').disabled = false;
     }
 
@@ -392,101 +385,6 @@ window.openAddStudentModal = function() {
 };
 
 window.closeAddStudentModal = function() { closeOverlay('addStudentModal', 'addStudentModalInner'); };
-
-window.searchStudentRegistry = async function() {
-    const rawId      = (document.getElementById('sSearchQuery')?.value || '').trim().toUpperCase();
-    const resultsDiv = document.getElementById('sSearchResults');
-
-    if (!rawId) { alert('Enter a Student Global ID to search.'); return; }
-
-    if (!/^S\d{2}-[A-Z0-9]{5}$/.test(rawId)) {
-        resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">Invalid format. Student ID should look like S26-XXXXX.</div>`;
-        resultsDiv.classList.remove('hidden'); return;
-    }
-
-    resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#9ab0c6;font-size:12px;"><i class="fa-solid fa-spinner fa-spin" style="margin-right:6px;"></i>Searching National Registry…</div>`;
-    resultsDiv.classList.remove('hidden');
-
-    const btn = document.getElementById('sSearchBtn');
-    btn.textContent = '…'; btn.disabled = true;
-
-    try {
-        const snap = await getDoc(doc(db, 'students', rawId));
-
-        if (!snap.exists()) {
-            resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#9ab0c6;font-size:12px;font-weight:600;">No student found with that ID. Fill in the form below to create a new identity.</div>`;
-            btn.textContent = 'Search'; btn.disabled = false; return;
-        }
-
-        const s = { id: snap.id, ...snap.data() };
-
-        if (s.currentSchoolId && s.currentSchoolId !== '') {
-            if (s.currentSchoolId !== session.schoolId) {
-                resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">This student is currently enrolled at another school. Their current school must close enrollment first.</div>`;
-                btn.textContent = 'Search'; btn.disabled = false; return;
-            } else {
-                if (s.teacherId && s.teacherId !== '') {
-                    resultsDiv.innerHTML = s.teacherId === session.teacherId
-                        ? `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">This student is already in your active roster!</div>`
-                        : `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">This student is already assigned to another teacher's roster at this school.</div>`;
-                    btn.textContent = 'Search'; btn.disabled = false; return;
-                }
-            }
-        }
-
-        const lastSchool  = s.academicHistory?.length
-            ? `Last school: ${s.academicHistory[s.academicHistory.length-1].schoolName || s.academicHistory[s.academicHistory.length-1].schoolId}`
-            : 'No prior enrollment';
-        const emailStatus = !s.email
-            ? `<span style="color:#d97706;font-weight:700;">⚠ No email on file</span>`
-            : `<span style="color:#059669;font-weight:600;">✓ Email on file</span>`;
-
-        resultsDiv.innerHTML = `
-        <div style="padding:14px 16px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
-            <div style="flex:1;min-width:0;">
-                <p style="font-weight:800;color:#0d1f35;font-size:14px;margin:0 0 3px;">${escHtml(s.name)}</p>
-                <p style="font-size:10.5px;font-family:'DM Mono',monospace;color:#9ab0c6;margin:0 0 3px;">${s.id}</p>
-                <p style="font-size:11px;font-weight:600;color:#374f6b;margin:0 0 2px;">${s.dob ? 'DOB: ' + s.dob + ' · ' : ''}${lastSchool}</p>
-                <p style="font-size:11px;margin:0;">${emailStatus}</p>
-            </div>
-            <button onclick="window.claimSearchedStudent('${s.id}')"
-                    style="padding:7px 16px;background:#0ea871;border:none;border-radius:4px;color:#fff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap;flex-shrink:0;">
-                Claim Student
-            </button>
-        </div>`;
-
-    } catch (e) {
-        if (e.code === 'permission-denied') {
-            resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#9ab0c6;font-size:12px;font-weight:600;">No student found with that ID. Fill in the form below to create a new identity.</div>`;
-        } else {
-            console.error('[Roster] searchStudentRegistry:', e);
-            resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;">Search failed. Try again.</div>`;
-        }
-    }
-
-    btn.textContent = 'Search'; btn.disabled = false;
-};
-
-window.claimSearchedStudent = async function(studentId) {
-    const classVal = document.getElementById('sClass').value;
-    if (!classVal) { alert('Please select a class from the "Assign to Class" dropdown first, then claim.'); return; }
-
-    const btn = document.querySelector(`button[onclick="window.claimSearchedStudent('${studentId}')"]`);
-    if (btn) { btn.textContent = '…'; btn.disabled = true; }
-
-    try {
-        await updateDoc(doc(db, 'students', studentId), {
-            currentSchoolId: session.schoolId, teacherId: session.teacherId,
-            className: classVal, enrollmentStatus: 'Active'
-        });
-        window.closeAddStudentModal();
-        await loadStudents();
-    } catch (e) {
-        console.error('[Roster] claimSearchedStudent:', e);
-        alert('Error claiming student. Please try again.');
-        if (btn) { btn.textContent = 'Claim Student'; btn.disabled = false; }
-    }
-};
 
 document.getElementById('saveStudentBtn').addEventListener('click', async () => {
     const assignedClass = document.getElementById('sClass').value;
@@ -506,7 +404,7 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
             const regSnap = await getDoc(doc(db, 'registered_emails', targetEmail));
             if (regSnap.exists()) {
                 showMsg('addStudentMsg', 'This email address is already in use by another account.', true);
-                btn.textContent = 'Create New Student Identity'; btn.disabled = false; return;
+                btn.textContent = 'Enroll Student'; btn.disabled = false; return;
             }
         }
 
@@ -517,7 +415,7 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
         ));
         if (countSnap.size >= schoolLimit) {
             showMsg('addStudentMsg', `School capacity reached (${schoolLimit} max). Contact Admin to upgrade.`, true);
-            btn.textContent = 'Create New Student Identity'; btn.disabled = false; return;
+            btn.textContent = 'Enroll Student'; btn.disabled = false; return;
         }
 
         const newId  = generateStudentId();
@@ -555,7 +453,7 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
         showMsg('addStudentMsg', 'Error saving student. Please try again.', true);
     }
 
-    btn.textContent = 'Create New Student Identity'; btn.disabled = false;
+    btn.textContent = 'Enroll Student'; btn.disabled = false;
 });
 
 // ── 10. STUDENT PANEL & TABS ──────────────────────────────────────────────
