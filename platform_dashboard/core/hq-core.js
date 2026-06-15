@@ -4,7 +4,7 @@ import { collection, getDocs, query, where, onSnapshot } from "https://www.gstat
 // ── Boot Sequence: Security Check ─────────────────────────────────────────
 const rawSession = localStorage.getItem('connectus_hq_session');
 if (!rawSession) {
-    window.location.replace('core/hq-login.html');
+    window.location.replace('hq-login.html');
 }
 const session = JSON.parse(rawSession);
 
@@ -234,7 +234,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('logoutBtn').addEventListener('click', () => {
         localStorage.removeItem('connectus_hq_session');
-        window.location.replace('core/hq-login.html');
+        window.location.replace('hq-login.html');
     });
 
     // Dropdown Toggle
