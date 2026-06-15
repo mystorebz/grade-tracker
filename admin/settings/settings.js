@@ -12,7 +12,8 @@ const session = requireAuth('admin', '../login.html');
 injectAdminLayout('settings', 'Settings', 'Security, profile, and system configuration', false, false);
 
 // ── 2. STATE ──────────────────────────────────────────────────────────────
-let fullSchoolData = null;
+let fullSchoolData  = null;
+let profileEditMode = false;
 
 // ── SHA-256 ───────────────────────────────────────────────────────────────
 async function sha256(text) {
@@ -53,14 +54,8 @@ async function loadSettingsData() {
 
         fullSchoolData = snap.data();
 
-        // ── Populate profile fields ────────────────────────────────────────
-        document.getElementById('profileSchoolName').value    = fullSchoolData.schoolName   || '';
-        document.getElementById('profileContactEmail').value  = fullSchoolData.contactEmail || '';
-        document.getElementById('profileDistrict').value      = fullSchoolData.district     || 'Belize';
-        document.getElementById('profileSchoolType').value    = fullSchoolData.schoolType   || 'Primary';
-        document.getElementById('profilePhone').value         = fullSchoolData.phone        || '';
-        document.getElementById('profileContactName').value   = fullSchoolData.contactName  || '';
-        document.getElementById('profileAddress').value       = fullSchoolData.schoolAddress|| '';
+        // ── Populate profile read-only view ────────────────────────────────
+        renderProfileReadOnly();
 
         // ── Subscription usage & Renewal Date ──────────────────────────────
         await loadSubscriptionUsage();
@@ -81,7 +76,6 @@ async function loadSettingsData() {
             if (dangerZone) dangerZone.classList.remove('hidden');
             loadSubAdmins();
         } else {
-            // CRITICAL FIX: Hide both sections from Sub-Admins entirely
             if (adminMgmtSection) adminMgmtSection.classList.add('hidden');
             if (dangerZone) dangerZone.classList.add('hidden');
         }
@@ -91,13 +85,81 @@ async function loadSettingsData() {
     }
 }
 
+// ── PROFILE: Read-only render ─────────────────────────────────────────────
+function renderProfileReadOnly() {
+    const d = fullSchoolData;
+
+    // Build address display
+    const parts = [
+        d.streetAddress,
+        d.city,
+        d.stateProvince,
+        d.country
+    ].filter(Boolean);
+    const addressDisplay = parts.join(', ') || '—';
+
+    document.getElementById('roSchoolName').textContent    = d.schoolName   || '—';
+    document.getElementById('roSchoolType').textContent    = d.schoolType   || '—';
+    document.getElementById('roAddress').textContent       = addressDisplay;
+    document.getElementById('roPhone').textContent         = d.phone        || '—';
+    document.getElementById('roContactName').textContent   = d.contactName  || '—';
+    document.getElementById('roContactEmail').textContent  = d.contactEmail || '—';
+
+    // Switch to read-only view
+    document.getElementById('profileReadOnly').classList.remove('hidden');
+    document.getElementById('profileEditForm').classList.add('hidden');
+    document.getElementById('profileEditBtn').classList.remove('hidden');
+    document.getElementById('profileSaveBtn').classList.add('hidden');
+    document.getElementById('profileCancelBtn').classList.add('hidden');
+
+    profileEditMode = false;
+}
+
+// ── PROFILE: Activate edit mode ───────────────────────────────────────────
+window.activateProfileEdit = function() {
+    const d = fullSchoolData;
+
+    // Populate edit fields from current data
+    document.getElementById('profileSchoolName').value    = d.schoolName    || '';
+    document.getElementById('profileSchoolType').value    = d.schoolType    || '';
+    document.getElementById('profileStreetAddress').value = d.streetAddress || '';
+    document.getElementById('profileCity').value          = d.city          || '';
+    document.getElementById('profileStateProvince').value = d.stateProvince || '';
+    document.getElementById('profileCountry').value       = d.country       || '';
+    document.getElementById('profilePhone').value         = d.phone         || '';
+    document.getElementById('profileContactName').value   = d.contactName   || '';
+    document.getElementById('profileContactEmail').value  = d.contactEmail  || '';
+
+    // Hide message if visible
+    const msgEl = document.getElementById('settingsProfileMsg');
+    if (msgEl) msgEl.classList.add('hidden');
+
+    // Switch to edit mode
+    document.getElementById('profileReadOnly').classList.add('hidden');
+    document.getElementById('profileEditForm').classList.remove('hidden');
+    document.getElementById('profileEditBtn').classList.add('hidden');
+    document.getElementById('profileSaveBtn').classList.remove('hidden');
+    document.getElementById('profileCancelBtn').classList.remove('hidden');
+
+    profileEditMode = true;
+};
+
+// ── PROFILE: Cancel edit ──────────────────────────────────────────────────
+window.cancelProfileEdit = function() {
+    renderProfileReadOnly();
+};
+
 // ── 4. SUBSCRIPTION USAGE ─────────────────────────────────────────────────
+// FIX: Read limits from fullSchoolData.limits (fresh from Firestore)
+// instead of session (frozen at login time). Session is kept as fallback
+// for older accounts that may not yet have a limits field on their doc.
 async function loadSubscriptionUsage() {
     try {
-        const planName      = session.planName      || 'Pro';
-        const teacherLimit  = session.teacherLimit  || 50;
-        const studentLimit  = session.studentLimit  || 999;
-        const adminLimit    = session.adminLimit    || 1;
+        const limits       = fullSchoolData.limits || {};
+        const teacherLimit = limits.teacherLimit || session.teacherLimit || 50;
+        const studentLimit = limits.studentLimit || session.studentLimit || 999;
+        const adminLimit   = limits.adminLimit   || session.adminLimit   || 1;
+        const planName     = fullSchoolData.subscriptionName || session.planName || 'Pro';
 
         document.getElementById('planBadge').textContent = planName;
 
@@ -112,9 +174,9 @@ async function loadSubscriptionUsage() {
         const adminCount   = aSnap.size;
 
         const usageItems = [
-            { label: 'Teachers', used: teacherCount, limit: teacherLimit, icon: 'fa-chalkboard-user', color: 'blue' },
-            { label: 'Students', used: studentCount, limit: studentLimit, icon: 'fa-user-graduate',   color: 'emerald' },
-            { label: 'Sub-Admins', used: adminCount, limit: adminLimit,  icon: 'fa-user-shield',     color: 'indigo' }
+            { label: 'Teachers',   used: teacherCount, limit: teacherLimit, icon: 'fa-chalkboard-user', color: 'blue'    },
+            { label: 'Students',   used: studentCount, limit: studentLimit, icon: 'fa-user-graduate',   color: 'emerald' },
+            { label: 'Sub-Admins', used: adminCount,   limit: adminLimit,   icon: 'fa-user-shield',     color: 'indigo'  }
         ];
 
         document.getElementById('subscriptionUsageGrid').innerHTML = usageItems.map(item => {
@@ -154,7 +216,7 @@ document.getElementById('updateCodeBtn').addEventListener('click', async () => {
 
     if (!cur || !nw || !cf) { showMsg(mid, 'All three fields are required.', true); return; }
     if (nw !== cf)          { showMsg(mid, 'New codes do not match.', true);        return; }
-    if (nw.length < 6)        { showMsg(mid, 'Min. 6 characters required.', true);    return; }
+    if (nw.length < 6)      { showMsg(mid, 'Min. 6 characters required.', true);    return; }
 
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Updating...`;
     btn.disabled  = true;
@@ -192,16 +254,32 @@ document.getElementById('updateCodeBtn').addEventListener('click', async () => {
 });
 
 // ── 6. SAVE SCHOOL PROFILE ────────────────────────────────────────────────
-document.getElementById('saveProfileBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('saveProfileBtn');
+// FIX: Now saves all profile fields correctly including schoolType and
+// structured address fields (streetAddress, city, stateProvince, country).
+// Email change logic preserved exactly as before.
+document.getElementById('profileSaveBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('profileSaveBtn');
+
     const u = {
         schoolName:    document.getElementById('profileSchoolName').value.trim(),
-        contactEmail:  document.getElementById('profileContactEmail').value.trim().toLowerCase(), // Lowercase for safety
-        district:      document.getElementById('profileDistrict').value,
+        schoolType:    document.getElementById('profileSchoolType').value,
+        streetAddress: document.getElementById('profileStreetAddress').value.trim(),
+        city:          document.getElementById('profileCity').value.trim(),
+        stateProvince: document.getElementById('profileStateProvince').value.trim(),
+        country:       document.getElementById('profileCountry').value,
         phone:         document.getElementById('profilePhone').value.trim(),
         contactName:   document.getElementById('profileContactName').value.trim(),
-        schoolAddress: document.getElementById('profileAddress').value.trim()
+        contactEmail:  document.getElementById('profileContactEmail').value.trim().toLowerCase()
     };
+
+    if (!u.schoolName) {
+        showMsg('settingsProfileMsg', 'School name is required.', true);
+        return;
+    }
+    if (!u.contactEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u.contactEmail)) {
+        showMsg('settingsProfileMsg', 'A valid contact email is required.', true);
+        return;
+    }
 
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...`;
     btn.disabled  = true;
@@ -211,27 +289,24 @@ document.getElementById('saveProfileBtn').addEventListener('click', async () => 
         const newEmail     = u.contactEmail;
         const batch        = writeBatch(db);
 
-        // ── EMAIL CHANGE LOGIC ──
+        // ── EMAIL CHANGE LOGIC (preserved exactly) ──────────────────────────
         if (newEmail !== currentEmail) {
-            // Check if new email is taken globally
             const regSnap = await getDoc(doc(db, 'registered_emails', newEmail));
             if (regSnap.exists()) {
                 showMsg('settingsProfileMsg', 'This contact email is already registered to another account.', true);
-                btn.innerHTML = 'Save Profile';
+                btn.innerHTML = 'Save Changes';
                 btn.disabled  = false;
                 return;
             }
 
-            // Reserve the new email
             batch.set(doc(db, 'registered_emails', newEmail), {
-                email: newEmail,
-                name: u.schoolName || u.contactName,
-                role: 'admin',
+                email:       newEmail,
+                name:        u.schoolName || u.contactName,
+                role:        'admin',
                 referenceId: session.schoolId,
-                createdAt: new Date().toISOString()
+                createdAt:   new Date().toISOString()
             });
 
-            // Free up the old email if they had one
             if (currentEmail) {
                 batch.delete(doc(db, 'registered_emails', currentEmail));
             }
@@ -239,7 +314,7 @@ document.getElementById('saveProfileBtn').addEventListener('click', async () => 
 
         // Update the main school profile
         batch.update(doc(db, 'schools', session.schoolId), u);
-        
+
         await batch.commit();
         Object.assign(fullSchoolData, u);
 
@@ -250,13 +325,16 @@ document.getElementById('saveProfileBtn').addEventListener('click', async () => 
         const nameEl = document.getElementById('displaySchoolName');
         if (nameEl && session.isSuperAdmin) nameEl.textContent = u.schoolName;
 
+        // Return to read-only view with updated data
+        renderProfileReadOnly();
         showMsg('settingsProfileMsg', 'Profile saved successfully!', false);
+
     } catch (e) {
         console.error('[Settings] saveProfile:', e);
         showMsg('settingsProfileMsg', 'Failed to save profile.', true);
     }
 
-    btn.innerHTML = 'Save Profile';
+    btn.innerHTML = 'Save Changes';
     btn.disabled  = false;
 });
 
@@ -315,9 +393,8 @@ async function loadSubAdmins() {
     }
 }
 
-// ── Create Sub-Admin (WITH GLOBAL EMAIL CHECK & CLOUD FN TRIGGER) ──────────
+// ── Create Sub-Admin ──────────────────────────────────────────────────────
 document.getElementById('createSubAdminBtn').addEventListener('click', async () => {
-    // CRITICAL FIX: Backend verification intercept
     if (!session.isSuperAdmin) {
         showMsg('createAdminMsg', 'Unauthorized: Only Super Admins can create new Sub-Admins.', true);
         return;
@@ -333,12 +410,11 @@ document.getElementById('createSubAdminBtn').addEventListener('click', async () 
         showMsg('createAdminMsg', 'Please enter a valid email address.', true); return;
     }
 
-    btn.disabled = true;
+    btn.disabled  = true;
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Creating...`;
 
     try {
-        // 1. Check adminLimit
-        const adminLimit = session.adminLimit || 1;
+        const adminLimit   = fullSchoolData.limits?.adminLimit || session.adminLimit || 1;
         const existingSnap = await getDocs(query(collection(db, 'schools', session.schoolId, 'admins'), where('isArchived', '==', false)));
         if (existingSnap.size >= adminLimit) {
             showMsg('createAdminMsg', `Limit reached (${adminLimit} max). Upgrade your plan to add more.`, true);
@@ -346,7 +422,6 @@ document.getElementById('createSubAdminBtn').addEventListener('click', async () 
             return;
         }
 
-        // 2. STRICT GLOBAL EMAIL UNIQUENESS CHECK
         const regSnap = await getDoc(doc(db, 'registered_emails', email));
         if (regSnap.exists()) {
             showMsg('createAdminMsg', 'This email is already registered to an account in our system.', true);
@@ -354,44 +429,38 @@ document.getElementById('createSubAdminBtn').addEventListener('click', async () 
             return;
         }
 
-        // 3. Generate credentials
-        const newId   = generateAdminId();
-        const tempPin = generateTempPin();
+        const newId     = generateAdminId();
+        const tempPin   = generateTempPin();
         const hashedPin = await sha256(tempPin);
 
-        // 4. BATCH WRITE: Save Sub-Admin & Register Email
-        const batch = writeBatch(db);
-
+        const batch    = writeBatch(db);
         const adminRef = doc(db, 'schools', session.schoolId, 'admins', newId);
         batch.set(adminRef, {
             name,
-            email:                email,
-            adminCode:            hashedPin,   // SHA-256 hashed for login
-            tempPin:              tempPin,     // Picked up by Cloud Function, then instantly deleted
+            email,
+            adminCode:            hashedPin,
+            tempPin,
             role:                 'sub_admin',
             isArchived:           false,
             archivedAt:           null,
-            requiresPinReset:     true,        // Forced to change on first login
-            securityQuestionsSet: false,       // Must complete setup on first login
+            requiresPinReset:     true,
+            securityQuestionsSet: false,
             createdAt:            new Date().toISOString()
         });
 
-        const emailRef = doc(db, 'registered_emails', email);
-        batch.set(emailRef, {
-            email: email,
-            name: name,
-            role: 'sub_admin',
+        batch.set(doc(db, 'registered_emails', email), {
+            email,
+            name,
+            role:        'sub_admin',
             referenceId: newId,
-            createdAt: new Date().toISOString()
+            createdAt:   new Date().toISOString()
         });
 
         await batch.commit();
 
-        // 5. Show credentials slip on screen
         document.getElementById('newAdminIdDisplay').textContent  = newId;
         document.getElementById('newAdminPinDisplay').textContent = tempPin;
         document.getElementById('newAdminCredentials').classList.remove('hidden');
-
         document.getElementById('newAdminName').value  = '';
         document.getElementById('newAdminEmail').value = '';
 
@@ -427,9 +496,9 @@ window.archiveSubAdmin = async function(adminId, name) {
 
 // ── Restore Sub-Admin ─────────────────────────────────────────────────────
 window.restoreSubAdmin = async function(adminId, name) {
-    const adminLimit = session.adminLimit || 1;
+    const adminLimit   = fullSchoolData.limits?.adminLimit || session.adminLimit || 1;
     const existingSnap = await getDocs(query(collection(db, 'schools', session.schoolId, 'admins'), where('isArchived', '==', false)));
-    
+
     if (existingSnap.size >= adminLimit) {
         alert(`Cannot restore — sub-admin limit (${adminLimit}) already reached.`);
         return;
@@ -486,8 +555,6 @@ window.endOfYearReset = async function() {
                 const leavingClass = data.className || '';
                 const update       = { teacherId: '', className: '' };
 
-                // Stamp a year-boundary trail before clearing — only for students
-                // who actually had a class to leave. Matches roster.js classHistory shape.
                 if (leavingClass) {
                     update.classHistory = arrayUnion({
                         fromClass: leavingClass,
@@ -518,42 +585,45 @@ document.addEventListener('DOMContentLoaded', loadSettingsData);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SUBSCRIPTION MANAGEMENT PANEL
+// FIX: Detect PayPal vs manual school. Show different content accordingly.
+// PayPal school → full panel with billing + upgrade sections.
+// Manual school → info only, with "Contact Us" for changes.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 window.openSubscriptionPanel = function() {
     if (!fullSchoolData) return;
 
-    const planName    = session.planName        || fullSchoolData.subscriptionName   || 'Unknown Plan';
-    const billing     = fullSchoolData.billingCycle                                  || session.billingCycle || '—';
-    const status      = fullSchoolData.subscriptionStatus                            || 'Active';
-    const paypalId    = fullSchoolData.paypalSubscriptionId                          || '—';
-    const limits      = fullSchoolData.limits   || {};
-    const renewalDate = fullSchoolData.nextRenewalDate || fullSchoolData.subscriptionExpiresAt || null;
+    const planName     = fullSchoolData.subscriptionName || session.planName || 'Unknown Plan';
+    const billing      = fullSchoolData.billingCycle     || session.billingCycle || '—';
+    const status       = fullSchoolData.subscriptionStatus || 'Active';
+    const paypalId     = fullSchoolData.paypalSubscriptionId || null;
+    const limits       = fullSchoolData.limits || {};
+    const renewalDate  = fullSchoolData.nextRenewalDate || fullSchoolData.subscriptionExpiresAt || null;
+    const isPayPalSchool = !!(paypalId);
 
-    // Plan name
-    document.getElementById('spPlanName').textContent      = planName;
-    document.getElementById('spBillingCycle').textContent  = billing ? `${billing} billing` : '—';
-    document.getElementById('spPaypalId').textContent      = paypalId;
+    // Plan name, billing, PayPal ID
+    document.getElementById('spPlanName').textContent     = planName;
+    document.getElementById('spBillingCycle').textContent = billing ? `${billing} billing` : '—';
+    document.getElementById('spPaypalId').textContent     = paypalId || '—';
 
-    // Limits
+    // Limits — read from Firestore
     document.getElementById('spStudentLimit').textContent = limits.studentLimit || session.studentLimit || '—';
     document.getElementById('spTeacherLimit').textContent = limits.teacherLimit || session.teacherLimit || '—';
     document.getElementById('spAdminLimit').textContent   = limits.adminLimit   || session.adminLimit   || '—';
 
     // Renewal date + countdown
-    const renewalEl    = document.getElementById('spRenewalDate');
-    const countdownEl  = document.getElementById('spRenewalCountdown');
+    const renewalEl   = document.getElementById('spRenewalDate');
+    const countdownEl = document.getElementById('spRenewalCountdown');
     if (renewalDate) {
-        const rd    = new Date(renewalDate);
-        const today = new Date();
-        const days  = Math.ceil((rd - today) / (1000 * 60 * 60 * 24));
+        const rd   = new Date(renewalDate);
+        const days = Math.ceil((rd - new Date()) / (1000 * 60 * 60 * 24));
         renewalEl.textContent = rd.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
         if (days > 0) {
-            countdownEl.textContent  = `${days} day${days !== 1 ? 's' : ''} remaining`;
-            countdownEl.className    = `text-[10px] font-bold mt-0.5 ${days <= 14 ? 'text-amber-500' : 'text-emerald-600'}`;
+            countdownEl.textContent = `${days} day${days !== 1 ? 's' : ''} remaining`;
+            countdownEl.className   = `text-[10px] font-bold mt-0.5 ${days <= 14 ? 'text-amber-500' : 'text-emerald-600'}`;
         } else {
-            countdownEl.textContent  = 'Expired';
-            countdownEl.className    = 'text-[10px] font-bold mt-0.5 text-red-500';
+            countdownEl.textContent = 'Expired';
+            countdownEl.className   = 'text-[10px] font-bold mt-0.5 text-red-500';
         }
     } else {
         renewalEl.textContent   = '—';
@@ -561,28 +631,44 @@ window.openSubscriptionPanel = function() {
     }
 
     // Status badge
-    const statusEl = document.getElementById('spStatusBadge');
+    const statusEl  = document.getElementById('spStatusBadge');
     const statusMap = {
-        'Active':    { cls: 'bg-emerald-100 text-emerald-700', label: 'Active' },
+        'Active':    { cls: 'bg-emerald-100 text-emerald-700', label: 'Active'    },
         'Cancelled': { cls: 'bg-amber-100 text-amber-700',     label: 'Cancelled' },
-        'Expired':   { cls: 'bg-red-100 text-red-700',         label: 'Expired' },
+        'Expired':   { cls: 'bg-red-100 text-red-700',         label: 'Expired'   },
         'Suspended': { cls: 'bg-red-100 text-red-700',         label: 'Suspended' },
     };
     const s = statusMap[status] || { cls: 'bg-slate-100 text-slate-500', label: status };
     statusEl.className   = `text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider ${s.cls}`;
     statusEl.textContent = s.label;
 
-    // Highlight current plan card
-    const planLower = planName.toLowerCase();
-    ['Starter', 'Growth', 'Enterprise'].forEach(p => {
-        const card = document.getElementById(`spPlanCard${p}`);
-        const tag  = card?.querySelector('.current-plan-tag');
-        if (card && tag) {
-            const isCurrent = planLower.includes(p.toLowerCase());
-            card.classList.toggle('is-current', isCurrent);
-            tag.classList.toggle('hidden', !isCurrent);
-        }
-    });
+    // FIX: Show PayPal billing + upgrade section for PayPal schools only.
+    // Manual schools see a "Contact Us" message instead.
+    const paypalSection  = document.getElementById('spPaypalSection');
+    const upgradeSection = document.getElementById('spUpgradeSection');
+    const manualSection  = document.getElementById('spManualSection');
+
+    if (isPayPalSchool) {
+        if (paypalSection)  paypalSection.classList.remove('hidden');
+        if (upgradeSection) upgradeSection.classList.remove('hidden');
+        if (manualSection)  manualSection.classList.add('hidden');
+
+        // Highlight current plan card
+        const planLower = planName.toLowerCase();
+        ['Starter', 'Growth', 'Enterprise'].forEach(p => {
+            const card = document.getElementById(`spPlanCard${p}`);
+            const tag  = card?.querySelector('.current-plan-tag');
+            if (card && tag) {
+                const isCurrent = planLower.includes(p.toLowerCase());
+                card.classList.toggle('is-current', isCurrent);
+                tag.classList.toggle('hidden', !isCurrent);
+            }
+        });
+    } else {
+        if (paypalSection)  paypalSection.classList.add('hidden');
+        if (upgradeSection) upgradeSection.classList.add('hidden');
+        if (manualSection)  manualSection.classList.remove('hidden');
+    }
 
     // Open panel
     const overlay = document.getElementById('subPanelOverlay');
