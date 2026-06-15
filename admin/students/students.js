@@ -217,9 +217,6 @@ window.openAddStudentModal = function () {
         alert(`You have reached your student limit of ${limit}. Please contact ConnectUs to upgrade your plan.`);
         return;
     }
-    document.getElementById('sSearchQuery').value = '';
-    document.getElementById('sSearchResults').innerHTML = '';
-    document.getElementById('sSearchResults').classList.add('hidden');
     document.getElementById('asForm').reset();
     document.getElementById('asMsg').classList.add('hidden');
     openOverlay('addStudentModal', 'addStudentModalInner');
@@ -227,106 +224,6 @@ window.openAddStudentModal = function () {
 
 window.closeAddStudentModal = function () {
     closeOverlay('addStudentModal', 'addStudentModalInner');
-};
-
-document.getElementById('sSearchQuery')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') window.searchStudentRegistry();
-});
-
-window.searchStudentRegistry = async function () {
-    const rawId     = (document.getElementById('sSearchQuery').value || '').trim().toUpperCase();
-    const resultsEl = document.getElementById('sSearchResults');
-
-    resultsEl.classList.remove('hidden');
-
-    if (!rawId) {
-        resultsEl.innerHTML = `<div class="py-3 px-4 text-xs font-bold text-red-500">Please enter a Student ID.</div>`;
-        return;
-    }
-
-    if (!/^S\d{2}-[A-Z0-9]{5}$/.test(rawId)) {
-        resultsEl.innerHTML = `<div class="py-3 px-4 text-xs font-bold text-red-500">Invalid format. Should look like S26-XXXXX.</div>`;
-        return;
-    }
-
-    resultsEl.innerHTML = `<div class="py-3 px-4 text-xs font-semibold text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Searching national registry...</div>`;
-
-    const searchBtn    = document.getElementById('sSearchBtn');
-    searchBtn.disabled = true;
-
-    try {
-        const snap = await getDoc(doc(db, 'students', rawId));
-
-        if (!snap.exists()) {
-            resultsEl.innerHTML = `<div class="py-3 px-4 text-xs font-semibold text-slate-500">No student found with that ID. Fill in the form below to create a new identity.</div>`;
-            searchBtn.disabled = false;
-            return;
-        }
-
-        const s = { id: snap.id, ...snap.data() };
-
-        if (s.currentSchoolId === session.schoolId) {
-            resultsEl.innerHTML = `<div class="py-3 px-4 text-xs font-bold text-blue-600"><i class="fa-solid fa-circle-check mr-2"></i>This student is already enrolled at your school.</div>`;
-            searchBtn.disabled = false;
-            return;
-        }
-
-        if (s.currentSchoolId && s.currentSchoolId !== '') {
-            resultsEl.innerHTML = `<div class="py-3 px-4 text-xs font-bold text-red-500"><i class="fa-solid fa-lock mr-2"></i>This student is currently enrolled at another school. Their current school must close enrollment first.</div>`;
-            searchBtn.disabled = false;
-            return;
-        }
-
-        const lastSchool  = s.academicHistory?.length
-            ? `Last school: ${s.academicHistory[s.academicHistory.length - 1].schoolName || s.academicHistory[s.academicHistory.length - 1].schoolId}`
-            : 'No prior enrollment on record';
-        const emailStatus = s.email
-            ? `<span class="text-emerald-600 font-bold">✓ Email on file</span>`
-            : `<span class="text-amber-600 font-bold">⚠ No email on file</span>`;
-
-        resultsEl.innerHTML = `
-        <div class="p-4 flex items-start justify-between gap-4">
-            <div class="flex-1 min-w-0">
-                <p class="font-black text-slate-800 text-sm mb-0.5">${escHtml(s.name)}</p>
-                <p class="font-mono text-[10px] text-slate-400 mb-1">${s.id}</p>
-                <p class="text-[11px] font-semibold text-slate-500 mb-1">${escHtml(s.dob ? 'DOB: ' + s.dob + ' · ' : '')}${escHtml(lastSchool)}</p>
-                <p class="text-[11px]">${emailStatus}</p>
-            </div>
-            <button onclick="window.claimSearchedStudent('${s.id}')"
-                class="flex-shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-lg text-xs transition flex items-center gap-2">
-                <i class="fa-solid fa-user-check"></i> Claim Student
-            </button>
-        </div>`;
-
-    } catch (e) {
-        if (e.code === 'permission-denied') {
-            resultsEl.innerHTML = `<div class="py-3 px-4 text-xs font-semibold text-slate-500">No student found with that ID. Fill in the form below to create a new identity.</div>`;
-        } else {
-            console.error('[Search Registry]', e);
-            resultsEl.innerHTML = `<div class="py-3 px-4 text-xs font-bold text-red-500">Search failed. Please try again.</div>`;
-        }
-        searchBtn.disabled = false;
-    }
-};
-
-window.claimSearchedStudent = async function (studentId) {
-    const btn = document.querySelector(`button[onclick="window.claimSearchedStudent('${studentId}')"]`);
-    if (btn) { btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Enrolling...`; btn.disabled = true; }
-
-    try {
-        await updateDoc(doc(db, 'students', studentId), {
-            currentSchoolId:  session.schoolId,
-            enrollmentStatus: 'Active',
-            teacherId:        '',
-            className:        ''
-        });
-        window.closeAddStudentModal();
-        await loadData();
-    } catch (e) {
-        console.error('[Claim Student]', e);
-        alert('Failed to enroll student. Please try again.');
-        if (btn) { btn.innerHTML = `<i class="fa-solid fa-user-check"></i> Claim Student`; btn.disabled = false; }
-    }
 };
 
 document.getElementById('saveAddStudentBtn')?.addEventListener('click', async () => {
