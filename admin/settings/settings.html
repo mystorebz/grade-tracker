@@ -24,6 +24,7 @@
         <div class="flex-1 overflow-y-auto p-8 view-section">
             <div class="max-w-5xl mx-auto space-y-8">
 
+                <!-- ── Subscription & Usage ────────────────────────────────── -->
                 <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                     <div class="px-6 py-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
                         <div class="flex items-center gap-3">
@@ -49,71 +50,171 @@
                                 <p id="adminUsageBadge" class="text-lg font-black text-indigo-600">Loading...</p>
                             </div>
                         </div>
-                        <div id="subscriptionUsageGrid" class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            </div>
+                        <div id="subscriptionUsageGrid" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
                     </div>
                 </section>
 
+                <!-- ── School Profile ──────────────────────────────────────── -->
                 <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center gap-3">
-                        <i class="fa-solid fa-school text-blue-500"></i>
-                        <h3 class="font-black text-slate-800">School Profile</h3>
-                    </div>
-                    <div class="p-6 space-y-4">
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">School Name</label>
-                                <input type="text" id="profileSchoolName" class="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-blue-500">
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">District / Region</label>
-                                <select id="profileDistrict" class="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-blue-500">
-                                    <option value="Corozal">Corozal</option>
-                                    <option value="Orange Walk">Orange Walk</option>
-                                    <option value="Belize">Belize</option>
-                                    <option value="Cayo">Cayo</option>
-                                    <option value="Stann Creek">Stann Creek</option>
-                                    <option value="Toledo">Toledo</option>
-                                </select>
-                            </div>
+                    <div class="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <i class="fa-solid fa-school text-blue-500"></i>
+                            <h3 class="font-black text-slate-800">School Profile</h3>
                         </div>
-                        <div class="grid grid-cols-3 gap-4">
-                            <div>
-                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">School Type</label>
-                                <select id="profileSchoolType" class="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 disabled:opacity-50" disabled>
-                                    <option value="Primary">Primary School</option>
-                                    <option value="High School">High School</option>
-                                    <option value="Junior College">Junior College</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Contact Email</label>
-                                <input type="email" id="profileContactEmail" class="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-blue-500">
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Phone Number</label>
-                                <input type="text" id="profilePhone" class="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-blue-500">
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Principal / Contact Name</label>
-                                <input type="text" id="profileContactName" class="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-blue-500">
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Physical Address</label>
-                                <input type="text" id="profileAddress" class="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-blue-500">
-                            </div>
-                        </div>
-                        <div class="flex items-center justify-between pt-4 border-t border-slate-100">
-                            <p id="settingsProfileMsg" class="text-xs font-bold hidden"></p>
-                            <button id="saveProfileBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-6 rounded-lg transition text-sm flex items-center gap-2 ml-auto">
-                                Save Profile
+                        <button id="profileEditBtn" onclick="window.activateProfileEdit()"
+                            class="bg-blue-600 hover:bg-blue-700 text-white font-black px-4 py-1.5 rounded-lg text-[10px] uppercase tracking-widest transition flex items-center gap-1.5 shadow-sm">
+                            <i class="fa-solid fa-pen"></i> Edit
+                        </button>
+                        <div class="hidden flex items-center gap-2" id="profileSaveBtn">
+                            <button onclick="document.getElementById('profileSaveBtn').dispatchEvent(new Event('click-save'))"
+                                id="profileSaveBtnInner"
+                                class="bg-blue-600 hover:bg-blue-700 text-white font-black px-4 py-1.5 rounded-lg text-[10px] uppercase tracking-widest transition flex items-center gap-1.5 shadow-sm">
+                                <i class="fa-solid fa-floppy-disk"></i> Save Changes
                             </button>
                         </div>
+                        <button id="profileCancelBtn" onclick="window.cancelProfileEdit()" class="hidden text-xs font-bold text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition">
+                            Cancel
+                        </button>
+                    </div>
+
+                    <!-- Read-only view -->
+                    <div id="profileReadOnly" class="p-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                            <!-- Left column -->
+                            <div class="space-y-4">
+                                <div>
+                                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">School Name</p>
+                                    <p id="roSchoolName" class="text-sm font-bold text-slate-800">—</p>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">School Type</p>
+                                    <p id="roSchoolType" class="text-sm font-bold text-slate-800">—</p>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Address</p>
+                                    <p id="roAddress" class="text-sm font-bold text-slate-800">—</p>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Phone Number</p>
+                                    <p id="roPhone" class="text-sm font-bold text-slate-800">—</p>
+                                </div>
+                            </div>
+
+                            <!-- Right column -->
+                            <div class="space-y-4">
+                                <div>
+                                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Principal / Contact Name</p>
+                                    <p id="roContactName" class="text-sm font-bold text-slate-800">—</p>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Contact Email</p>
+                                    <p id="roContactEmail" class="text-sm font-bold text-slate-800">—</p>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <!-- Edit form (hidden by default) -->
+                    <div id="profileEditForm" class="hidden p-6 space-y-5">
+
+                        <p id="settingsProfileMsg" class="hidden text-xs font-bold px-3 py-2 rounded-lg"></p>
+
+                        <!-- Row 1: School name + type -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">School Name *</label>
+                                <input type="text" id="profileSchoolName"
+                                    class="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 transition">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">School Type</label>
+                                <select id="profileSchoolType"
+                                    class="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 transition">
+                                    <option value="">Select type...</option>
+                                    <option value="Primary / Elementary">Primary / Elementary</option>
+                                    <option value="Middle School">Middle School</option>
+                                    <option value="High School / Secondary">High School / Secondary</option>
+                                    <option value="Junior College">Junior College</option>
+                                    <option value="University / College">University / College</option>
+                                    <option value="Vocational / Technical">Vocational / Technical</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Row 2: Street address -->
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Street / Physical Address</label>
+                            <input type="text" id="profileStreetAddress" placeholder="e.g. 12 Cemetery Road"
+                                class="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 transition">
+                        </div>
+
+                        <!-- Row 3: City + State/Province + Country -->
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">City / Town</label>
+                                <input type="text" id="profileCity" placeholder="e.g. Belize City"
+                                    class="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 transition">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">State / Province / District</label>
+                                <input type="text" id="profileStateProvince" placeholder="e.g. Cayo, Ontario, Texas"
+                                    class="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 transition">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Country</label>
+                                <select id="profileCountry"
+                                    class="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 transition">
+                                    <option value="">Select country...</option>
+                                    <option value="Belize">Belize</option>
+                                    <option value="United States">United States</option>
+                                    <option value="Canada">Canada</option>
+                                    <option value="United Kingdom">United Kingdom</option>
+                                    <option value="Australia">Australia</option>
+                                    <option value="Jamaica">Jamaica</option>
+                                    <option value="Trinidad and Tobago">Trinidad and Tobago</option>
+                                    <option value="Barbados">Barbados</option>
+                                    <option value="Guyana">Guyana</option>
+                                    <option value="Other / Global">Other / Global</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Row 4: Phone + Contact name + Contact email -->
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Phone Number</label>
+                                <input type="text" id="profilePhone" placeholder="e.g. +501 600-0000"
+                                    class="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 transition">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Principal / Contact Name</label>
+                                <input type="text" id="profileContactName" placeholder="e.g. Maria Torres"
+                                    class="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 transition">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Contact Email *</label>
+                                <input type="email" id="profileContactEmail" placeholder="admin@school.edu"
+                                    class="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 transition">
+                                <p class="text-[10px] text-slate-400 font-semibold mt-1">Changing this email updates your login and PIN reset address.</p>
+                            </div>
+                        </div>
+
+                        <!-- Save row -->
+                        <div class="flex items-center justify-between pt-4 border-t border-slate-100">
+                            <p class="text-[10px] text-slate-400 font-semibold">* Required fields</p>
+                            <button id="profileSaveBtn"
+                                class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-6 rounded-lg transition text-sm flex items-center gap-2">
+                                <i class="fa-solid fa-floppy-disk"></i> Save Changes
+                            </button>
+                        </div>
+
                     </div>
                 </section>
 
+                <!-- ── Account Security ────────────────────────────────────── -->
                 <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                     <div class="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center gap-3">
                         <i class="fa-solid fa-shield-halved text-emerald-500"></i>
@@ -143,6 +244,7 @@
                     </div>
                 </section>
 
+                <!-- ── Sub-Admin Management ────────────────────────────────── -->
                 <section id="adminManagementSection" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hidden">
                     <div class="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center gap-3">
                         <i class="fa-solid fa-users-gear text-indigo-500"></i>
@@ -177,19 +279,18 @@
 
                         <div>
                             <h4 class="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Active Sub-Admins</h4>
-                            <div id="activeAdminsList" class="space-y-3 mb-6">
-                                </div>
+                            <div id="activeAdminsList" class="space-y-3 mb-6"></div>
 
                             <div id="archivedAdminsWrap" class="hidden border-t border-slate-100 pt-6">
                                 <h4 class="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Archived Sub-Admins</h4>
-                                <div id="archivedAdminsList" class="space-y-3">
-                                    </div>
+                                <div id="archivedAdminsList" class="space-y-3"></div>
                             </div>
                         </div>
 
                     </div>
                 </section>
 
+                <!-- ── Danger Zone ─────────────────────────────────────────── -->
                 <section class="danger-zone bg-red-50 rounded-2xl border border-red-200 overflow-hidden">
                     <div class="px-6 py-4 border-b border-red-200 bg-red-100 flex items-center gap-3">
                         <i class="fa-solid fa-triangle-exclamation text-red-600"></i>
@@ -223,7 +324,7 @@
                 </div>
                 <div>
                     <h3 class="font-black text-slate-800 text-sm">Subscription Management</h3>
-                    <p class="text-[10px] font-semibold text-slate-400 mt-0.5">Billing, plan, and PayPal settings</p>
+                    <p class="text-[10px] font-semibold text-slate-400 mt-0.5">Billing, plan, and payment settings</p>
                 </div>
             </div>
             <button onclick="window.closeSubscriptionPanel()" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition">
@@ -234,7 +335,7 @@
         <!-- Scrollable content -->
         <div class="flex-1 overflow-y-auto p-6 space-y-6">
 
-            <!-- Current plan -->
+            <!-- Current plan — shown for all schools -->
             <div class="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 rounded-xl p-5">
                 <div class="flex items-center justify-between mb-4">
                     <p class="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Current Plan</p>
@@ -267,86 +368,109 @@
                 </div>
             </div>
 
-            <!-- PayPal reference -->
+            <!-- PayPal reference — shown for all schools (ID shows — for manual) -->
             <div>
                 <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">PayPal Subscription ID</p>
                 <p id="spPaypalId" class="font-mono text-xs font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 break-all">—</p>
             </div>
 
-            <!-- Manage billing -->
-            <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                <div class="px-4 py-3 bg-slate-50 border-b border-slate-100">
-                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                        <i class="fa-brands fa-paypal text-blue-500"></i> Manage Billing in PayPal
-                    </p>
-                </div>
-                <div class="p-4 space-y-3">
-                    <p class="text-xs font-semibold text-slate-500 leading-relaxed">
-                        Update your payment method, view payment history, or cancel your subscription directly in your PayPal account.
-                    </p>
-                    <a href="https://www.paypal.com/myaccount/autopay/" target="_blank" rel="noopener noreferrer"
-                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3 px-4 rounded-lg transition flex items-center justify-center gap-2 text-sm shadow-sm">
-                        <i class="fa-brands fa-paypal"></i>
-                        Open PayPal Billing &rarr;
-                    </a>
-                    <div class="bg-amber-50 border border-amber-100 rounded-lg p-3">
-                        <p class="text-[10px] font-bold text-amber-700 leading-relaxed">
-                            <i class="fa-solid fa-circle-info mr-1"></i>
-                            <strong>To cancel:</strong> In PayPal, go to Settings → Payments → Manage Automatic Payments → find ConnectUs → Cancel. Your access continues until your renewal date.
+            <!-- ── PayPal section (self-service schools only) ── -->
+            <div id="spPaypalSection">
+                <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="px-4 py-3 bg-slate-50 border-b border-slate-100">
+                        <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                            <i class="fa-brands fa-paypal text-blue-500"></i> Manage Billing in PayPal
                         </p>
+                    </div>
+                    <div class="p-4 space-y-3">
+                        <p class="text-xs font-semibold text-slate-500 leading-relaxed">
+                            Update your payment method, view payment history, or cancel your subscription directly in your PayPal account.
+                        </p>
+                        <a href="https://www.paypal.com/myaccount/autopay/" target="_blank" rel="noopener noreferrer"
+                            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3 px-4 rounded-lg transition flex items-center justify-center gap-2 text-sm shadow-sm">
+                            <i class="fa-brands fa-paypal"></i>
+                            Open PayPal Billing &rarr;
+                        </a>
+                        <div class="bg-amber-50 border border-amber-100 rounded-lg p-3">
+                            <p class="text-[10px] font-bold text-amber-700 leading-relaxed">
+                                <i class="fa-solid fa-circle-info mr-1"></i>
+                                <strong>To cancel:</strong> In PayPal, go to Settings → Payments → Manage Automatic Payments → find ConnectUs → Cancel. Your access continues until your renewal date.
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Upgrade / change plan -->
-            <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                <div class="px-4 py-3 bg-slate-50 border-b border-slate-100">
-                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                        <i class="fa-solid fa-arrow-up-right-dots text-emerald-500"></i> Upgrade or Change Plan
-                    </p>
-                </div>
-                <div class="p-4 space-y-3">
-                    <!-- Plan comparison cards -->
-                    <div class="space-y-2">
-                        <div id="spPlanCardStarter" class="plan-card-option flex items-center justify-between p-3 border rounded-lg transition cursor-default">
-                            <div>
-                                <p class="text-xs font-black text-slate-700">Starter</p>
-                                <p class="text-[10px] font-semibold text-slate-400">50 students · 10 teachers · $49.99/mo</p>
-                            </div>
-                            <span class="current-plan-tag hidden text-[9px] font-black text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full uppercase tracking-wider">Current</span>
-                        </div>
-                        <div id="spPlanCardGrowth" class="plan-card-option flex items-center justify-between p-3 border rounded-lg transition cursor-default">
-                            <div>
-                                <p class="text-xs font-black text-slate-700">Growth</p>
-                                <p class="text-[10px] font-semibold text-slate-400">150 students · 20 teachers · $99.99/mo</p>
-                            </div>
-                            <span class="current-plan-tag hidden text-[9px] font-black text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full uppercase tracking-wider">Current</span>
-                        </div>
-                        <div id="spPlanCardEnterprise" class="plan-card-option flex items-center justify-between p-3 border rounded-lg transition cursor-default">
-                            <div>
-                                <p class="text-xs font-black text-slate-700">Enterprise</p>
-                                <p class="text-[10px] font-semibold text-slate-400">300 students · 30 teachers · $199.99/mo</p>
-                            </div>
-                            <span class="current-plan-tag hidden text-[9px] font-black text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full uppercase tracking-wider">Current</span>
-                        </div>
-                    </div>
-
-                    <a href="../../pricing.html" target="_blank" rel="noopener noreferrer"
-                        class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3 px-4 rounded-lg transition flex items-center justify-center gap-2 text-sm shadow-sm">
-                        <i class="fa-solid fa-arrow-up-right-dots"></i>
-                        View All Plans &amp; Subscribe &rarr;
-                    </a>
-
-                    <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
-                        <p class="text-[10px] font-bold text-slate-500 leading-relaxed">
-                            <i class="fa-solid fa-circle-info mr-1 text-slate-400"></i>
-                            To change plans: cancel your current PayPal subscription, then subscribe to the new plan on our pricing page. Your School ID, Admin Code, and all data are preserved. Access restores within seconds of payment.
+            <!-- ── Upgrade section (self-service schools only) ── -->
+            <div id="spUpgradeSection">
+                <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="px-4 py-3 bg-slate-50 border-b border-slate-100">
+                        <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                            <i class="fa-solid fa-arrow-up-right-dots text-emerald-500"></i> Upgrade or Change Plan
                         </p>
+                    </div>
+                    <div class="p-4 space-y-3">
+                        <div class="space-y-2">
+                            <div id="spPlanCardStarter" class="plan-card-option flex items-center justify-between p-3 border rounded-lg transition cursor-default">
+                                <div>
+                                    <p class="text-xs font-black text-slate-700">Starter</p>
+                                    <p class="text-[10px] font-semibold text-slate-400">50 students · 10 teachers · $49.99/mo</p>
+                                </div>
+                                <span class="current-plan-tag hidden text-[9px] font-black text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full uppercase tracking-wider">Current</span>
+                            </div>
+                            <div id="spPlanCardGrowth" class="plan-card-option flex items-center justify-between p-3 border rounded-lg transition cursor-default">
+                                <div>
+                                    <p class="text-xs font-black text-slate-700">Growth</p>
+                                    <p class="text-[10px] font-semibold text-slate-400">150 students · 20 teachers · $99.99/mo</p>
+                                </div>
+                                <span class="current-plan-tag hidden text-[9px] font-black text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full uppercase tracking-wider">Current</span>
+                            </div>
+                            <div id="spPlanCardEnterprise" class="plan-card-option flex items-center justify-between p-3 border rounded-lg transition cursor-default">
+                                <div>
+                                    <p class="text-xs font-black text-slate-700">Enterprise</p>
+                                    <p class="text-[10px] font-semibold text-slate-400">300 students · 30 teachers · $199.99/mo</p>
+                                </div>
+                                <span class="current-plan-tag hidden text-[9px] font-black text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full uppercase tracking-wider">Current</span>
+                            </div>
+                        </div>
+
+                        <a href="../../pricing.html" target="_blank" rel="noopener noreferrer"
+                            class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3 px-4 rounded-lg transition flex items-center justify-center gap-2 text-sm shadow-sm">
+                            <i class="fa-solid fa-arrow-up-right-dots"></i>
+                            View All Plans &amp; Subscribe &rarr;
+                        </a>
+
+                        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                            <p class="text-[10px] font-bold text-slate-500 leading-relaxed">
+                                <i class="fa-solid fa-circle-info mr-1 text-slate-400"></i>
+                                To change plans: cancel your current PayPal subscription, then subscribe to the new plan on our pricing page. Your School ID, Admin Code, and all data are preserved. Access restores within seconds of payment.
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Support -->
+            <!-- ── Manual plan section (custom/manual schools only) ── -->
+            <div id="spManualSection" class="hidden">
+                <div class="bg-blue-50 border border-blue-100 rounded-xl p-5">
+                    <div class="flex items-start gap-3">
+                        <i class="fa-solid fa-handshake text-blue-500 text-lg flex-shrink-0 mt-0.5"></i>
+                        <div>
+                            <p class="text-xs font-black text-blue-900 mb-1">Managed Plan</p>
+                            <p class="text-xs font-semibold text-blue-700 leading-relaxed">
+                                Your subscription is managed directly by the ConnectUs team. To renew, upgrade, or make changes to your plan, please contact us.
+                            </p>
+                            <a href="mailto:info@connectusonline.org"
+                                class="inline-flex items-center gap-2 mt-3 bg-blue-600 hover:bg-blue-700 text-white font-black py-2.5 px-4 rounded-lg transition text-xs shadow-sm">
+                                <i class="fa-solid fa-envelope"></i>
+                                Contact Us to Renew or Upgrade
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Support — shown for all schools -->
             <div class="flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-xl p-4">
                 <i class="fa-solid fa-headset text-blue-500 text-lg flex-shrink-0"></i>
                 <div>
