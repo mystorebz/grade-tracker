@@ -54,7 +54,7 @@
                             <i class="fa-solid fa-file-csv"></i> Export Data
                         </button>
                         <button onclick="window.openAddTeacherModal()" class="flex items-center gap-2 bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold px-5 py-2.5 rounded shadow-md transition text-[13px]">
-                            <i class="fa-solid fa-user-plus"></i> Add New Teacher
+                            <i class="fa-solid fa-user-plus"></i> Add Teacher
                         </button>
                     </div>
                 </div>
@@ -89,58 +89,51 @@
         <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full m-4 overflow-hidden transform scale-95 transition-transform duration-200 flex flex-col max-h-[92vh]" id="addTeacherModalInner">
             <div class="h-1 bg-[#2563eb] flex-shrink-0"></div>
             <div class="px-7 py-5 border-b border-[#f0f4f8] flex justify-between items-center bg-[#f8fafb] flex-shrink-0">
-                <h3 class="font-bold text-lg text-[#0d1f35]">Add New Teacher</h3>
+                <h3 class="font-bold text-lg text-[#0d1f35]">Add Teacher</h3>
                 <button onclick="window.closeAddTeacherModal()" class="text-[#9ab0c6] hover:text-[#e31b4a] transition">
                     <i class="fa-solid fa-xmark text-xl"></i>
                 </button>
             </div>
 
-            <div class="overflow-y-auto flex-1 p-7 space-y-6">
-                    <div class="flex items-center gap-2.5 mb-4">
-                        <div class="h-6 w-6 rounded-full bg-[#0d1f35] text-white text-[11px] font-black flex items-center justify-center flex-shrink-0">2</div>
-                        <p class="font-bold text-[#0d1f35] text-[14px]">Create New Teacher Profile</p>
+            <div class="overflow-y-auto flex-1 p-7">
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">First Name <span class="text-[#e31b4a]">*</span></label>
+                            <input type="text" id="tFirstName" placeholder="e.g. Jane"
+                                class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Last Name <span class="text-[#e31b4a]">*</span></label>
+                            <input type="text" id="tLastName" placeholder="e.g. Doe"
+                                class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Email Address <span class="text-[#e31b4a]">*</span></label>
+                        <input type="email" id="tEmail" placeholder="jane.doe@example.com"
+                            class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Phone</label>
+                        <input type="text" id="tPhone" placeholder="Optional"
+                            class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Assign to Class(es) <span class="text-[#e31b4a]">*</span></label>
+                        <div id="classCheckboxGroup" class="grid grid-cols-2 gap-2 p-3 bg-[#f8fafb] border border-[#dce3ed] rounded-lg max-h-36 overflow-y-auto">
+                            </div>
+                        <p class="text-[10px] text-[#9ab0c6] mt-1 font-semibold">Required — principal must assign the initial class.</p>
                     </div>
 
-                    <div class="space-y-4 ml-9">
-                        <div class="grid grid-cols-2 gap-3">
-                            <div>
-                                <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">First Name <span class="text-[#e31b4a]">*</span></label>
-                                <input type="text" id="tFirstName" placeholder="e.g. Jane"
-                                    class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Last Name <span class="text-[#e31b4a]">*</span></label>
-                                <input type="text" id="tLastName" placeholder="e.g. Doe"
-                                    class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
-                            </div>
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Email Address <span class="text-[#e31b4a]">*</span></label>
-                            <input type="email" id="tEmail" placeholder="jane.doe@example.com"
-                                class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Phone</label>
-                            <input type="text" id="tPhone" placeholder="Optional"
-                                class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] outline-none focus:border-[#2563eb]">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Assign to Class(es) <span class="text-[#e31b4a]">*</span></label>
-                            <div id="classCheckboxGroup" class="grid grid-cols-2 gap-2 p-3 bg-[#f8fafb] border border-[#dce3ed] rounded-lg max-h-36 overflow-y-auto">
-                                </div>
-                            <p class="text-[10px] text-[#9ab0c6] mt-1 font-semibold">Required — principal must assign the initial class.</p>
-                        </div>
-
-                        <div>
-                            <p id="addTeacherMsg" class="text-[11px] font-bold hidden mb-2"></p>
-                            <button id="saveTeacherBtn"
-                                class="w-full bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-3.5 rounded transition shadow-md text-[13px] uppercase tracking-widest">
-                                <i class="fa-solid fa-user-plus mr-2"></i> Register
-                            </button>
-                        </div>
+                    <div>
+                        <p id="addTeacherMsg" class="text-[11px] font-bold hidden mb-2"></p>
+                        <button id="saveTeacherBtn"
+                            class="w-full bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-3.5 rounded transition shadow-md text-[13px] uppercase tracking-widest">
+                            <i class="fa-solid fa-user-plus mr-2"></i> Register
+                        </button>
                     </div>
                 </div>
-
             </div>
         </div>
     </div>
