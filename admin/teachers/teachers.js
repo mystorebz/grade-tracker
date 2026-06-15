@@ -17,7 +17,6 @@ injectAdminLayout('teachers', 'Teaching Staff', 'Manage active educators, transf
 let allTeachersCache  = [];
 let currentTeacherId  = null;
 let currentTeacherData = null;
-let claimedTeacherDoc = null;
 let slipData          = { name: '', id: '', pin: '' };
 let dynamicEvalTypes  = new Set();
 let schoolClasses     = [];   // ← class names from schools/{id}/classes subcollection
@@ -274,195 +273,19 @@ function populateClassCheckboxes(containerId = 'classCheckboxGroup', checked = [
 }
 
 window.openAddTeacherModal = () => {
-    ['tFirstName', 'tLastName', 'tEmail', 'tPhone', 'teacherSearchInput'].forEach(id => {
+    ['tFirstName', 'tLastName', 'tEmail', 'tPhone'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
     });
-    ['teacherSearchResults', 'claimTeacherPreview', 'claimSearchEmpty', 'addTeacherMsg'].forEach(id =>
+    ['addTeacherMsg'].forEach(id =>
         document.getElementById(id)?.classList.add('hidden')
     );
-    claimedTeacherDoc = null;
     populateClassCheckboxes();
     openOverlay('addTeacherModal', 'addTeacherModalInner');
 };
 
 window.closeAddTeacherModal = () => {
     closeOverlay('addTeacherModal', 'addTeacherModalInner');
-    claimedTeacherDoc = null;
 };
-
-document.getElementById('teacherSearchInput').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('searchTeacherBtn').click(); }
-});
-
-document.getElementById('searchTeacherBtn').addEventListener('click', async () => {
-    const input     = document.getElementById('teacherSearchInput').value.trim();
-    const resultsEl = document.getElementById('teacherSearchResults');
-    const emptyEl   = document.getElementById('claimSearchEmpty');
-    const previewEl = document.getElementById('claimTeacherPreview');
-
-    resultsEl.classList.add('hidden');
-    emptyEl.classList.add('hidden');
-    previewEl.classList.add('hidden');
-    claimedTeacherDoc = null;
-
-    if (!input) { alert('Enter a name, email, or Teacher ID to search.'); return; }
-
-    const btn = document.getElementById('searchTeacherBtn');
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-    btn.disabled  = true;
-
-    try {
-        let results    = [];
-        const lower    = input.toLowerCase();
-        const looksLikeId = input.includes('-');
-
-        if (looksLikeId) {
-            const normalizedId = input.toUpperCase().replace(/\s/g, '');
-            const snap = await getDoc(doc(db, 'teachers', normalizedId));
-            if (snap.exists()) {
-                const d = { id: snap.id, ...snap.data() };
-                if (!d.currentSchoolId || d.currentSchoolId === '') {
-                    results = [d];
-                } else if (d.currentSchoolId === session.schoolId) {
-                    emptyEl.querySelector('p').textContent = 'That teacher is already active at your school.';
-                    emptyEl.classList.remove('hidden');
-                    btn.innerHTML = '<i class="fa-solid fa-magnifying-glass mr-1"></i> Search';
-                    btn.disabled  = false;
-                    return;
-                }
-            }
-        }
-
-        if (!results.length) {
-            const snap = await getDocs(
-                query(collection(db, 'teachers'), where('currentSchoolId', '==', ''))
-            );
-            results = snap.docs
-                .map(d => ({ id: d.id, ...d.data() }))
-                .filter(t =>
-                    (t.name || '').toLowerCase().includes(lower) ||
-                    (t.email || '').toLowerCase().includes(lower) ||
-                    t.id.toLowerCase().includes(lower)
-                );
-        }
-
-        if (!results.length) {
-            emptyEl.classList.remove('hidden');
-        } else {
-            resultsEl.innerHTML = results.map(t => `
-                <div onclick="window.selectTeacherResult('${t.id}')"
-                    class="px-4 py-3 hover:bg-[#eef4ff] cursor-pointer border-b border-[#f0f4f8] last:border-0 flex items-center justify-between transition">
-                    <div>
-                        <p class="font-bold text-[#0d1f35] text-[13px]">${escHtml(t.name || 'Unknown')}</p>
-                        <p class="font-mono text-[10px] text-[#9ab0c6] uppercase mt-0.5">${t.id} ${t.email ? `• ${t.email}` : ''}</p>
-                    </div>
-                    <i class="fa-solid fa-chevron-right text-[#c5d0db] text-[11px]"></i>
-                </div>
-            `).join('');
-            resultsEl.classList.remove('hidden');
-        }
-    } catch (e) {
-        console.error('[Teachers] search:', e);
-        alert('Search failed. Please try again.');
-    }
-
-    btn.innerHTML = '<i class="fa-solid fa-magnifying-glass mr-1"></i> Search';
-    btn.disabled  = false;
-});
-
-window.selectTeacherResult = async (teacherId) => {
-    document.getElementById('teacherSearchResults').classList.add('hidden');
-
-    try {
-        const snap = await getDoc(doc(db, 'teachers', teacherId));
-        if (!snap.exists()) return;
-
-        claimedTeacherDoc = { id: snap.id, ...snap.data() };
-        const t = claimedTeacherDoc;
-
-        document.getElementById('claimPreviewName').textContent = t.name || 'Unknown';
-        document.getElementById('claimPreviewId').textContent   = t.id;
-
-        const details = [
-            ['Email',        t.email              || null],
-            ['Phone',        t.phone              || null],
-            ['License No.',  t.teacherLicenseNumber || null],
-            ['License Type', t.licenseType        || null],
-            ['Education',    t.highestEducationLevel || null],
-            ['Employment',   t.employmentType     || null],
-        ];
-
-        document.getElementById('claimPreviewDetails').innerHTML = details.map(([label, val]) => `
-            <div class="bg-white rounded-lg p-2.5 border border-[#dce3ed]">
-                <p class="text-[9px] font-bold text-[#9ab0c6] uppercase tracking-widest mb-0.5">${label}</p>
-                <p class="text-[12px] font-bold text-[#0d1f35]">
-                    ${val ? escHtml(val) : '<span class="text-[#c5d0db] italic text-[11px] font-semibold">Not on file</span>'}
-                </p>
-            </div>
-        `).join('');
-
-        const warningEl   = document.getElementById('claimPreviewWarning');
-        const warningText = document.getElementById('claimPreviewWarningText');
-        if (!t.email) {
-            warningText.textContent = 'No email on file — the teacher should add one during their first login setup.';
-            warningEl.classList.remove('hidden');
-        } else {
-            warningEl.classList.add('hidden');
-        }
-
-        document.getElementById('claimTeacherPreview').classList.remove('hidden');
-    } catch (e) {
-        console.error('[Teachers] selectTeacherResult:', e);
-        alert('Could not load teacher details. Please try again.');
-    }
-};
-
-window.clearTeacherSelection = () => {
-    document.getElementById('claimTeacherPreview').classList.add('hidden');
-    document.getElementById('teacherSearchInput').value = '';
-    claimedTeacherDoc = null;
-};
-
-document.getElementById('claimTeacherBtn').addEventListener('click', async () => {
-    if (!claimedTeacherDoc) return;
-    const btn = document.getElementById('claimTeacherBtn');
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Claiming...';
-    btn.disabled  = true;
-
-    try {
-        const limitCheck = await isTeacherLimitReached();
-        if (limitCheck.reached) {
-            alert(`Teacher limit reached (${limitCheck.current}/${limitCheck.limit}). Contact ConnectUs to upgrade your plan.`);
-            btn.disabled  = false;
-            btn.innerHTML = '<i class="fa-solid fa-handshake mr-2"></i> Claim This Teacher';
-            return;
-        }
-
-        const tempPin = generatePin();
-        const tRef    = doc(db, 'teachers', claimedTeacherDoc.id);
-        const updates = {
-            currentSchoolId:  session.schoolId,
-            pin:              tempPin,
-            requiresPinReset: true
-        };
-        if (claimedTeacherDoc.currentSchoolId && claimedTeacherDoc.currentSchoolId !== '') {
-            updates.archivedSchoolIds = arrayUnion(claimedTeacherDoc.currentSchoolId);
-        }
-        await updateDoc(tRef, updates);
-
-        slipData = { name: claimedTeacherDoc.name, id: claimedTeacherDoc.id, pin: tempPin };
-        window.closeAddTeacherModal();
-        window.showCredentialSlip();
-        loadTeachers();
-
-    } catch (e) {
-        console.error('[Teachers] claim:', e);
-        alert('Error claiming teacher. Please try again.');
-    }
-
-    btn.disabled  = false;
-    btn.innerHTML = '<i class="fa-solid fa-handshake mr-2"></i> Claim This Teacher';
-});
 
 document.getElementById('saveTeacherBtn').addEventListener('click', async () => {
     const btn   = document.getElementById('saveTeacherBtn');
@@ -1482,7 +1305,7 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
 
         batch.update(tRef, {
             currentSchoolId:   '',
-            archived:          true,                          // ── FIX: marks teacher as archived so auth watcher and mintTeacherToken block access
+            archived:          true,                           // ── FIX: marks teacher as archived so auth watcher and mintTeacherToken block access
             archivedSchoolIds: arrayUnion(session.schoolId),
             teachingHistory:   arrayUnion(teachingSnapshot)
         });
