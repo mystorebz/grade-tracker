@@ -274,7 +274,7 @@
                         <option value="good">Good Standing (80–89)</option>
                         <option value="ontrack">On Track (70–79)</option>
                         <option value="needsattention">Needs Attention (65–69)</option>
-                        <option value="atrisk">At Risk (&lt;65)</option>
+                        <option value="atrisk">At Risk (<65)</option>
                         <option value="none">No Grades</option>
                     </select>
                 </div>
@@ -310,31 +310,17 @@
         </div>
     </main>
 
-    <!-- ── ADD STUDENT MODAL ─────────────────────────────────────────────── -->
     <div id="addStudentModal" class="modal-overlay hidden opacity-0">
         <div class="modal-box" id="addStudentModalInner" style="width:100%;max-width:500px;max-height:90vh;overflow-y:auto;">
             <div class="modal-stripe"></div>
             <div class="modal-header" style="position:sticky;top:0;background:#fafbfc;z-index:10;">
                 <div class="modal-header-left">
                     <div class="modal-icon" style="background:#edfaf4;color:#0ea871;border:1px solid #a7f3d0;"><i class="fa-solid fa-user-plus"></i></div>
-                    <span class="modal-title">Enroll or Claim Student</span>
+                    <span class="modal-title">Add Student</span>
                 </div>
                 <button onclick="closeAddStudentModal()" class="modal-close"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="modal-body" style="display:flex;flex-direction:column;gap:16px;">
-                <div style="background:#edfaf4;border:1px solid #a7f3d0;border-radius:3px;padding:14px;">
-                    <label class="field-label" style="color:#065f46;">Search National Registry First</label>
-                    <div style="display:flex;gap:8px;">
-                        <input type="text" id="sSearchQuery" placeholder="S26-XXXXX Student ID" class="form-input" style="flex:1;">
-                        <button id="sSearchBtn" onclick="window.searchStudentRegistry()" style="padding:9px 16px;background:#0ea871;border:none;border-radius:3px;color:#fff;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap;">Search</button>
-                    </div>
-                </div>
-                <div id="sSearchResults" class="hidden" style="border:1px solid #c5d0db;border-radius:3px;overflow:hidden;max-height:220px;overflow-y:auto;"></div>
-                <div style="display:flex;align-items:center;gap:10px;">
-                    <div style="flex:1;height:1px;background:#e8edf2;"></div>
-                    <span style="font-size:9.5px;font-weight:700;color:#9ab0c6;text-transform:uppercase;letter-spacing:0.1em;white-space:nowrap;">Or Create New Identity</span>
-                    <div style="flex:1;height:1px;background:#e8edf2;"></div>
-                </div>
                 <div style="display:flex;flex-direction:column;gap:14px;">
                     <div><label class="field-label">Student Full Name <span style="color:#e31b4a;">*</span></label><input type="text" id="sName" class="form-input"></div>
                     <div><label class="field-label">Date of Birth</label><input type="date" id="sDob" class="form-input"></div>
@@ -346,13 +332,12 @@
                     <label class="field-label">Assign to Class <span style="color:#e31b4a;">*</span></label>
                     <select id="sClass" class="form-input"></select>
                 </div>
-                <button id="saveStudentBtn" style="width:100%;padding:11px;background:#0ea871;border:none;border-radius:3px;color:#fff;font-size:13.5px;font-weight:700;font-family:inherit;cursor:pointer;">Create New Student Identity</button>
+                <button id="saveStudentBtn" style="width:100%;padding:11px;background:#0ea871;border:none;border-radius:3px;color:#fff;font-size:13.5px;font-weight:700;font-family:inherit;cursor:pointer;">Enroll Student</button>
                 <p id="addStudentMsg" class="hidden" style="font-size:12px;font-weight:600;padding:10px 14px;border-radius:3px;text-align:center;"></p>
             </div>
         </div>
     </div>
 
-    <!-- ── ARCHIVE MODAL ─────────────────────────────────────────────────── -->
     <div id="archiveModal" class="modal-overlay hidden opacity-0" style="z-index:70;">
         <div class="modal-box" id="archiveModalInner" style="width:100%;max-width:480px;">
             <div class="modal-stripe" style="background:linear-gradient(90deg,#dc2626,#9f1239);"></div>
@@ -398,7 +383,6 @@
         </div>
     </div>
 
-    <!-- ── STUDENT PANEL ─────────────────────────────────────────────────── -->
     <div id="studentPanel" class="modal-overlay hidden opacity-0" style="padding:12px;">
         <div id="studentPanelInner">
             <div class="panel-top-stripe"></div>
@@ -418,7 +402,6 @@
                     <span style="font-size:12px;color:#6b84a0;font-weight:500;">Loading student record…</span>
                 </div>
                 <div id="sViewMode" class="hidden" style="flex:1;display:flex;overflow:hidden;">
-                    <!-- LEFT SIDEBAR -->
                     <div style="width:280px;flex-shrink:0;background:#fff;border-right:1px solid #dce3ed;overflow-y:auto;display:flex;flex-direction:column;">
                         <div style="padding:20px 20px 0;">
                             <span style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#6b84a0;display:block;margin-bottom:12px;">Profile</span>
@@ -444,13 +427,11 @@
                             <button onclick="window.archiveStudent()" style="width:100%;padding:9px;background:#fffbeb;border:1px solid #fde68a;border-radius:3px;color:#78350f;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;"><i class="fa-solid fa-box-archive"></i> Archive This Student</button>
                         </div>
                     </div>
-                    <!-- RIGHT PANEL -->
                     <div style="flex:1;display:flex;flex-direction:column;background:#f8fafb;overflow:hidden;min-width:0;">
                         <div style="background:#fff;border-bottom:1px solid #dce3ed;display:flex;padding:0 20px;flex-shrink:0;">
                             <button id="tabBtnGrades" onclick="window.switchStudentTab('grades')" style="padding:14px 16px;font-size:13px;font-weight:700;color:#0d1f35;border-bottom:2px solid #0ea871;background:none;cursor:pointer;border-top:none;border-left:none;border-right:none;">Grades &amp; Assessments</button>
                             <button id="tabBtnEvaluations" onclick="window.switchStudentTab('evaluations')" style="padding:14px 16px;font-size:13px;font-weight:600;color:#6b84a0;border-bottom:2px solid transparent;background:none;cursor:pointer;border-top:none;border-left:none;border-right:none;transition:color 0.15s;">Formal Evaluations</button>
                         </div>
-                        <!-- GRADES TAB -->
                         <div id="tabContentGrades" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
                             <div style="padding:14px 20px;border-bottom:1px solid #dce3ed;background:#fff;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;flex-shrink:0;">
                                 <div style="display:flex;align-items:center;gap:8px;">
@@ -476,7 +457,6 @@
                                 </div>
                             </div>
                         </div>
-                        <!-- EVALUATIONS TAB -->
                         <div id="tabContentEvaluations" class="hidden" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
                             <div style="padding:14px 20px;border-bottom:1px solid #dce3ed;background:#fff;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;flex-wrap:wrap;gap:8px;">
                                 <div style="display:flex;align-items:center;gap:8px;">
@@ -502,7 +482,6 @@
         </div>
     </div>
 
-    <!-- ── REPORT CARD MODAL ─────────────────────────────────────────────── -->
     <div id="reportCardModal" class="modal-overlay hidden opacity-0" style="z-index:65;">
         <div class="modal-box" id="reportCardModalInner" style="width:100%;max-width:680px;max-height:90vh;display:flex;flex-direction:column;">
             <div class="modal-stripe" style="background:linear-gradient(90deg,#1e1b4b,#4f46e5);"></div>
@@ -580,7 +559,6 @@
         </div>
     </div>
 
-    <!-- ── EVAL MODAL ────────────────────────────────────────────────────── -->
     <div id="evalModal" class="modal-overlay hidden opacity-0" style="z-index:60;">
         <div class="modal-box" id="evalModalInner" style="width:100%;max-width:650px;max-height:90vh;display:flex;flex-direction:column;">
             <div class="modal-stripe" style="background:linear-gradient(90deg,#0d1f35,#2563eb);"></div>
@@ -614,7 +592,6 @@
                         <input type="date" id="evalDate" class="form-input">
                     </div>
                 </div>
-                <!-- Academic Progress -->
                 <div id="type-academic" class="eval-section">
                     <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin-bottom:12px;">Quantitative Metrics</h3>
                     <div style="background:#fff;border:1px solid #e8edf2;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
@@ -632,7 +609,6 @@
                         <div><label class="field-label">Actionable Next Steps</label><textarea id="evalAcadSteps" class="form-input" rows="2"></textarea></div>
                     </div>
                 </div>
-                <!-- End of Year -->
                 <div id="type-eoy" class="eval-section hidden">
                     <h3 style="font-size:13px;font-weight:700;color:#0d1f35;border-bottom:1px solid #dce3ed;padding-bottom:6px;margin-bottom:12px;">Summative Metrics</h3>
                     <div style="background:#fff;border:1px solid #e8edf2;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
@@ -661,7 +637,6 @@
                         </div>
                     </div>
                 </div>
-                <!-- Behavioral Intervention -->
                 <div id="type-behavioral" class="eval-section hidden">
                     <h3 style="font-size:13px;font-weight:700;color:#dc2626;border-bottom:1px solid #fecaca;padding-bottom:6px;margin-bottom:12px;">Conduct Metrics</h3>
                     <div style="background:#fff;border:1px solid #fecaca;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
@@ -695,7 +670,6 @@
                         </div>
                     </div>
                 </div>
-                <!-- Mid-Term Review -->
                 <div id="type-midterm" class="eval-section hidden">
                     <h3 style="font-size:13px;font-weight:700;color:#0369a1;border-bottom:1px solid #bae6fd;padding-bottom:6px;margin-bottom:12px;">Mid-Term Review Metrics</h3>
                     <div style="background:#fff;border:1px solid #bae6fd;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
@@ -716,7 +690,6 @@
                         </div>
                     </div>
                 </div>
-                <!-- Parent Conference -->
                 <div id="type-parent-conference" class="eval-section hidden">
                     <h3 style="font-size:13px;font-weight:700;color:#6d28d9;border-bottom:1px solid #ddd6fe;padding-bottom:6px;margin-bottom:12px;">Conference Metrics</h3>
                     <div style="background:#fff;border:1px solid #ddd6fe;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
@@ -741,7 +714,6 @@
                         <div><label class="field-label">Follow-Up Required</label><textarea id="evalPcFollowUp" class="form-input" rows="2" placeholder="Leave blank if no follow-up needed"></textarea></div>
                     </div>
                 </div>
-                <!-- Learning Support Plan -->
                 <div id="type-learning-support" class="eval-section hidden">
                     <h3 style="font-size:13px;font-weight:700;color:#9333ea;border-bottom:1px solid #e9d5ff;padding-bottom:6px;margin-bottom:12px;">Intervention Metrics</h3>
                     <div style="background:#fff;border:1px solid #e9d5ff;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
@@ -766,7 +738,6 @@
                         <div><label class="field-label">Goals &amp; Success Indicators</label><textarea id="evalLsGoals" class="form-input" rows="2"></textarea></div>
                     </div>
                 </div>
-                <!-- Custom Evaluation -->
                 <div id="type-custom" class="eval-section hidden">
                     <h3 style="font-size:13px;font-weight:700;color:#475569;border-bottom:1px solid #cbd5e1;padding-bottom:6px;margin-bottom:12px;">Custom Evaluation Metrics</h3>
                     <div style="background:#fff;border:1px solid #cbd5e1;border-radius:4px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px;">
@@ -789,7 +760,6 @@
         </div>
     </div>
 
-    <!-- ── ASSIGNMENT DETAIL MODAL ───────────────────────────────────────── -->
     <div id="assignmentModal" class="modal-overlay hidden opacity-0" style="z-index:60;">
         <div class="modal-box" id="assignmentModalInner" style="width:100%;max-width:460px;">
             <div class="modal-stripe"></div>
@@ -801,7 +771,6 @@
         </div>
     </div>
 
-    <!-- ── PROMOTE / REPEAT MODAL ────────────────────────────────────────── -->
     <div id="promoteModal" class="modal-overlay hidden opacity-0" style="z-index:68;">
         <div class="modal-box" id="promoteModalInner" style="width:100%;max-width:600px;max-height:90vh;display:flex;flex-direction:column;">
             <div class="modal-stripe"></div>
