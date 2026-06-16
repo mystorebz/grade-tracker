@@ -500,29 +500,42 @@
                 
                 <div class="space-y-4">
 
-                    <!-- PayPal school note (hidden for manual schools) -->
+                    <!-- PayPal note — shown for PayPal schools only -->
                     <div id="renPayPalNote" class="hidden bg-blue-900/20 border border-blue-800/40 p-4">
                         <p class="text-xs font-bold text-blue-400 flex items-center gap-2"><i class="fa-brands fa-paypal"></i> PayPal Self-Service School</p>
-                        <p class="text-xs text-slate-400 mt-1 leading-relaxed">Billing is handled automatically by PayPal. Use this form to manually extend the renewal date or log a payment adjustment only.</p>
+                        <p class="text-xs text-slate-400 mt-1 leading-relaxed">Billing is handled automatically by PayPal. Use this form to manually extend the renewal date or log a payment only.</p>
                     </div>
 
-                    <!-- Plan section (hidden for PayPal schools) -->
-                    <div id="renPlanSection">
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 text-indigo-400">Subscription Tier</label>
-                        <select id="renPlan" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-indigo-500 transition"></select>
-                        <p id="renPlanLimitsDisplay" class="text-[10px] font-bold text-indigo-400 mt-2 hidden"></p>
+                    <!-- Subscription tier — read-only from school doc -->
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Subscription Tier</label>
+                        <p id="renSubscriptionName" class="text-sm font-black text-indigo-400 bg-slate-900 border border-slate-700 px-3 py-2.5">—</p>
                     </div>
 
+                    <!-- Reference dates — read-only -->
+                    <div class="grid grid-cols-2 gap-4 bg-slate-900/50 border border-slate-700/50 p-4">
+                        <div>
+                            <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Activated</p>
+                            <p id="renActivatedDate" class="text-xs font-bold text-slate-300">—</p>
+                        </div>
+                        <div>
+                            <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Current Renewal</p>
+                            <p id="renCurrentRenewal" class="text-xs font-bold text-slate-300">—</p>
+                        </div>
+                    </div>
+
+                    <!-- Amount + Renewal term -->
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Amount (USD)</label>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Amount Paid (USD)</label>
                             <input type="number" id="renAmount" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-emerald-500 transition">
                         </div>
                         <div>
                             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Renewal Term</label>
                             <select id="renCycle" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-emerald-500 transition">
+                                <option value="Monthly">Monthly</option>
                                 <option value="6 Months">6 Months</option>
-                                <option value="Annual">1 Year</option>
+                                <option value="Annual" selected>1 Year (Annual)</option>
                                 <option value="Multi-Year">Multi-Year</option>
                                 <option value="No Extension">Do Not Extend Clock</option>
                                 <option value="Other">Other</option>
@@ -530,26 +543,38 @@
                         </div>
                     </div>
 
-                    <!-- Custom cycle wrap — shown when Other is selected -->
+                    <!-- Custom term — shown when Other is selected -->
                     <div id="renCustomCycleWrap" class="hidden">
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Custom Term</label>
-                        <input type="text" id="renCustomCycle" placeholder="e.g. 18 Months" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-emerald-500 transition">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Custom Term Description</label>
+                        <input type="text" id="renCustomCycle" placeholder="e.g. 18 Months"
+                            class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-emerald-500 transition">
                     </div>
 
+                    <!-- New renewal date — auto-populated, fully editable -->
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">New Renewal Date</label>
+                        <input type="date" id="renNewDate"
+                            class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-emerald-500 transition">
+                        <p class="text-[10px] text-slate-500 font-semibold mt-1">Auto-calculated from term above — you can override to any date.</p>
+                    </div>
+
+                    <!-- Notes -->
                     <div>
                         <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Notes (Optional)</label>
                         <textarea id="renNotes" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-emerald-500 transition resize-none h-16"></textarea>
                     </div>
 
+                    <!-- Receipt / Invoice upload -->
                     <div class="pt-2 border-t border-slate-800">
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Attach Receipt</label>
-                        <input type="file" id="renReceipt" accept="image/*,.pdf" class="w-full p-2 bg-slate-900 border border-slate-700 text-sm text-slate-400 file:mr-4 file:py-1.5 file:px-3 file:border-0 file:text-[10px] file:font-black file:uppercase file:tracking-wider file:bg-emerald-900/30 file:text-emerald-400 cursor-pointer">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Attach Invoice / Receipt</label>
+                        <input type="file" id="renReceipt" accept="image/*,.pdf"
+                            class="w-full p-2 bg-slate-900 border border-slate-700 text-sm text-slate-400 file:mr-4 file:py-1.5 file:px-3 file:border-0 file:text-[10px] file:font-black file:uppercase file:tracking-wider file:bg-emerald-900/30 file:text-emerald-400 cursor-pointer">
                     </div>
                 </div>
 
                 <p id="renewalErrorMsg" class="text-xs font-bold text-red-400 bg-red-900/30 border border-red-800/50 p-3 text-center hidden mt-5"></p>
                 <button id="confirmRenewalBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 transition text-sm tracking-wide mt-6 uppercase">
-                    Update Node <i class="fa-solid fa-check ml-1"></i>
+                    Confirm Renewal <i class="fa-solid fa-check ml-1"></i>
                 </button>
             </div>
         </div>
@@ -647,6 +672,9 @@
             </div>
         </div>
     </div>
+
+    <!-- Hidden file input for ledger receipt upload -->
+    <input type="file" id="ledgerReceiptInput" accept="image/*,.pdf" class="hidden">
 
     <!-- NEW: Toast Notification Container -->
     <div id="toastContainer" class="fixed top-6 right-6 z-[100] flex flex-col gap-3 pointer-events-none"></div>
