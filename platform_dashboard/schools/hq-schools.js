@@ -1,10 +1,13 @@
 import { db, storage } from '../../assets/js/firebase-init.js';
 import { collection, getDocs, getDoc, doc, updateDoc, setDoc, query, where, writeBatch, arrayUnion, limit, startAfter, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
+
+const functions = getFunctions();
 
 // ── Boot Sequence: Security Check & Setup ──────────────────────────────────
 const rawSession = localStorage.getItem('connectus_hq_session');
-if (!rawSession) window.location.replace('../hq-login.html');
+if (!rawSession) window.location.replace('../core/hq-login.html');
 const session = JSON.parse(rawSession);
 
 document.getElementById('hqAdminName').textContent = session.name;
@@ -14,7 +17,7 @@ if (session.role !== 'Owner') document.getElementById('navTeamBtn').classList.ad
 
 document.getElementById('logoutBtn').addEventListener('click', () => {
     localStorage.removeItem('connectus_hq_session');
-    window.location.replace('../hq-login.html');
+    window.location.replace('../core/hq-login.html');
 });
 
 const tbody = document.getElementById('schoolsTableBody');
@@ -76,25 +79,34 @@ function calculateNewRenewalDate(cycleType, currentExpirationString) {
 // ── Load Subscription Plans ──────────────────────────────────────────────
 async function loadSubscriptionPlans() {
     const renSelect = document.getElementById('renPlan');
-    const depSelect = document.getElementById('depPlan');
     try {
         const snap = await getDocs(collection(db, 'subscriptionPlans'));
         availablePlans = [];
         let options = '<option value="">Select a subscription tier...</option>';
 
-        snap.forEach(doc => {
-            const data = doc.data();
-            data.id = doc.id;
+        snap.forEach(d => {
+            const data = { id: d.id, ...d.data() };
             availablePlans.push(data);
-            options += `<option value="${data.id}">${data.name}</option>`;
+            options += `<option value="${data.id}">${data.name} — ${data.studentLimit} stu · ${data.teacherLimit} tch · ${data.adminLimit} adm</option>`;
         });
 
         if (renSelect) renSelect.innerHTML = options;
-        if (depSelect) depSelect.innerHTML = options;
     } catch (e) {
         console.error("Failed to load subscription plans:", e);
     }
 }
+
+// ── renPlan change listener → auto-fill limits display ───────────────────
+document.getElementById('renPlan').addEventListener('change', (e) => {
+    const display  = document.getElementById('renPlanLimitsDisplay');
+    const selected = availablePlans.find(p => p.id === e.target.value);
+    if (selected) {
+        display.textContent = `${selected.studentLimit} Students · ${selected.teacherLimit} Teachers · ${selected.adminLimit} Admins`;
+        display.classList.remove('hidden');
+    } else {
+        display.classList.add('hidden');
+    }
+});
 
 // ── Notification System Functions ──────────────────────────────────────────
 window.showToast = (title, message, type = 'warning') => {
@@ -310,10 +322,23 @@ window.openSchoolPanel = (schoolId) => {
     }
 
     // 3. Populate Profile Tab (Core Info)
-    document.getElementById('manageEmail').textContent      = currentSchool.contactEmail || 'N/A';
-    document.getElementById('manageAdminId').textContent    = currentSchool.superAdminId || 'N/A';
-    document.getElementById('manageDistrict').textContent   = currentSchool.district     || 'N/A';
-    document.getElementById('manageType').textContent       = currentSchool.schoolType   || 'N/A';
+    document.getElementById('manageEmail').textContent    = currentSchool.contactEmail || 'N/A';
+    document.getElementById('manageAdminId').textContent  = currentSchool.superAdminId || 'N/A';
+
+    // Show stateProvince + country if available, fallback to district for older records
+    const location = [currentSchool.stateProvince || currentSchool.district, currentSchool.country]
+        .filter(Boolean).join(', ') || 'N/A';
+    document.getElementById('manageDistrict').textContent = location;
+    document.getElementById('manageType').textContent     = currentSchool.schoolType || 'N/A';
+
+    // Show/hide Cancel PayPal button based on whether school has a PayPal subscription
+    const isPayPalSchool     = !!currentSchool.paypalSubscriptionId;
+    const cancelPayPalWrap   = document.getElementById('cancelPayPalWrap');
+    if (cancelPayPalWrap) cancelPayPalWrap.classList.toggle('hidden', !isPayPalSchool);
+
+    // Update Renew button label
+    const renewBtn = document.getElementById('openRenewalBtn');
+    if (renewBtn) renewBtn.textContent = isPayPalSchool ? 'Override / Extend' : 'Renew / Update';
 
     // 4. Populate Subscription Tab Details
     document.getElementById('manageTier').textContent         = currentSchool.subscriptionName || 'Not Set';
@@ -342,15 +367,10 @@ window.openSchoolPanel = (schoolId) => {
     // 6. Render Notes
     renderAdminNotes();
 
-    // 7. Populate Edit School Info fields
-    document.getElementById('editSchoolName').value    = currentSchool.schoolName   || '';
-    document.getElementById('editContactName').value   = currentSchool.contactName  || '';
-    document.getElementById('editContactEmail').value  = currentSchool.contactEmail || '';
-    document.getElementById('editPhone').value         = currentSchool.phone        || '';
-    const editMsg = document.getElementById('editSchoolMsg');
-    if (editMsg) { editMsg.classList.add('hidden'); editMsg.textContent = ''; }
+    // 7. Populate Edit School Info — start in read-only mode
+    renderSchoolInfoReadOnly();
 
-    // 7. Slide In the Panel
+    // 8. Slide In the Panel
     const overlay = document.getElementById('schoolPanelOverlay');
     const panel   = document.getElementById('schoolSlidePanel');
     overlay.classList.remove('hidden');
@@ -399,6 +419,40 @@ window.switchTab = (tabName) => {
     }
 };
 
+
+// ── Edit School Info: Read-only / Edit pattern ───────────────────────────
+function renderSchoolInfoReadOnly() {
+    document.getElementById('schoolInfoReadOnly').classList.remove('hidden');
+    document.getElementById('schoolInfoEditForm').classList.add('hidden');
+    document.getElementById('schoolInfoEditBtn').classList.remove('hidden');
+    document.getElementById('schoolInfoSaveBtn').classList.add('hidden');
+    document.getElementById('schoolInfoCancelBtn').classList.add('hidden');
+    const editMsg = document.getElementById('editSchoolMsg');
+    if (editMsg) { editMsg.classList.add('hidden'); editMsg.textContent = ''; }
+
+    document.getElementById('roSchoolName').textContent   = currentSchool.schoolName   || '—';
+    document.getElementById('roContactName').textContent  = currentSchool.contactName  || '—';
+    document.getElementById('roContactEmail').textContent = currentSchool.contactEmail || '—';
+    document.getElementById('roPhone').textContent        = currentSchool.phone        || '—';
+}
+
+window.activateSchoolEdit = function() {
+    document.getElementById('editSchoolName').value    = currentSchool.schoolName   || '';
+    document.getElementById('editContactName').value   = currentSchool.contactName  || '';
+    document.getElementById('editContactEmail').value  = currentSchool.contactEmail || '';
+    document.getElementById('editPhone').value         = currentSchool.phone        || '';
+    const editMsg = document.getElementById('editSchoolMsg');
+    if (editMsg) { editMsg.classList.add('hidden'); editMsg.textContent = ''; }
+    document.getElementById('schoolInfoReadOnly').classList.add('hidden');
+    document.getElementById('schoolInfoEditForm').classList.remove('hidden');
+    document.getElementById('schoolInfoEditBtn').classList.add('hidden');
+    document.getElementById('schoolInfoSaveBtn').classList.remove('hidden');
+    document.getElementById('schoolInfoCancelBtn').classList.remove('hidden');
+};
+
+window.cancelSchoolEdit = function() {
+    renderSchoolInfoReadOnly();
+};
 
 // ── Tab 2: Cursor Pagination & Target Search (Members) ────────────────────
 window.loadMembers = async (direction = 'init') => {
@@ -743,9 +797,18 @@ document.getElementById('confirmLimitsBtn').addEventListener('click', async () =
             let receiptUrl  = null;
 
             if (receiptFile) {
-                const storageRef = ref(storage, `receipts/${paymentId}_${receiptFile.name}`);
-                await uploadBytes(storageRef, receiptFile);
-                receiptUrl = await getDownloadURL(storageRef);
+                try {
+                    const storageRef = ref(storage, `receipts/${paymentId}_${receiptFile.name}`);
+                    await uploadBytes(storageRef, receiptFile);
+                    receiptUrl = await getDownloadURL(storageRef);
+                } catch (uploadErr) {
+                    console.error('[Limits] Receipt upload failed:', uploadErr);
+                    errorMsg.textContent = 'Receipt upload failed. Check Storage rules. You can save without a receipt by clearing the file.';
+                    errorMsg.classList.remove('hidden');
+                    btn.disabled  = false;
+                    btn.innerHTML = 'Save Overrides & Log Payment <i class="fa-solid fa-check ml-1"></i>';
+                    return;
+                }
             }
 
             const notesArray = internalNote ? [{
@@ -800,10 +863,9 @@ document.getElementById('renCycle').addEventListener('change', (e) => {
 });
 
 document.getElementById('openRenewalBtn').addEventListener('click', () => {
-    document.getElementById('renSchoolName').textContent = currentSchool.schoolName;
-    document.getElementById('renPlan').value             = currentSchool.subscriptionPlanId || '';
-    if (currentSchool.subscriptionPlanId) document.getElementById('renPlan').dispatchEvent(new Event('change'));
+    const isPayPalSchool = !!currentSchool.paypalSubscriptionId;
 
+    document.getElementById('renSchoolName').textContent = currentSchool.schoolName;
     document.getElementById('renAmount').value           = '';
     document.getElementById('renCycle').value            = 'No Extension';
     document.getElementById('renCustomCycleWrap').classList.add('hidden');
@@ -811,6 +873,22 @@ document.getElementById('openRenewalBtn').addEventListener('click', () => {
     document.getElementById('renNotes').value            = '';
     document.getElementById('renReceipt').value          = '';
     document.getElementById('renewalErrorMsg').classList.add('hidden');
+    document.getElementById('renPlanLimitsDisplay').classList.add('hidden');
+
+    if (isPayPalSchool) {
+        // PayPal school — hide plan selection, show override note
+        document.getElementById('renPlanSection').classList.add('hidden');
+        document.getElementById('renPayPalNote').classList.remove('hidden');
+        document.getElementById('renPlan').value = '';
+    } else {
+        // Manual school — show full plan selection, pre-fill current plan
+        document.getElementById('renPlanSection').classList.remove('hidden');
+        document.getElementById('renPayPalNote').classList.add('hidden');
+        document.getElementById('renPlan').value = currentSchool.subscriptionPlanId || '';
+        if (currentSchool.subscriptionPlanId) {
+            document.getElementById('renPlan').dispatchEvent(new Event('change'));
+        }
+    }
 
     const modal = document.getElementById('renewalModal');
     const inner = document.getElementById('renewalModalInner');
@@ -827,43 +905,62 @@ const closeRenewalModal = () => {
 document.getElementById('closeRenewalBtn').addEventListener('click', closeRenewalModal);
 
 document.getElementById('confirmRenewalBtn').addEventListener('click', async () => {
-    const planId       = document.getElementById('renPlan').value;
-    const amount       = document.getElementById('renAmount').value;
-    const cycleSelect  = document.getElementById('renCycle').value;
-    const customCycle  = document.getElementById('renCustomCycle').value;
-    const internalNote = document.getElementById('renNotes').value.trim();
-    const receiptFile  = document.getElementById('renReceipt').files[0];
-    const errorMsg     = document.getElementById('renewalErrorMsg');
+    const isPayPalSchool = !!currentSchool.paypalSubscriptionId;
+    const planId         = document.getElementById('renPlan').value;
+    const amount         = document.getElementById('renAmount').value;
+    const cycleSelect    = document.getElementById('renCycle').value;
+    const customCycle    = document.getElementById('renCustomCycle').value;
+    const internalNote   = document.getElementById('renNotes').value.trim();
+    const receiptFile    = document.getElementById('renReceipt').files[0];
+    const errorMsg       = document.getElementById('renewalErrorMsg');
 
-    if (!planId) {
-        errorMsg.textContent = "Please select a Subscription Tier.";
+    // Validation
+    if (!isPayPalSchool && !planId) {
+        errorMsg.textContent = 'Please select a Subscription Tier.';
         errorMsg.classList.remove('hidden'); return;
     }
-    if (!amount || amount < 0) {
-        errorMsg.textContent = "Please enter a payment amount (can be 0 for free upgrades).";
+    if (!amount || parseFloat(amount) < 0) {
+        errorMsg.textContent = 'Please enter a payment amount (can be 0 for free upgrades).';
         errorMsg.classList.remove('hidden'); return;
     }
 
-    const selectedPlan = availablePlans.find(p => p.id === planId);
-    const actualCycle  = cycleSelect === 'Other' ? (customCycle || 'Custom') : cycleSelect;
-    const btn          = document.getElementById('confirmRenewalBtn');
-    btn.disabled = true;
+    const selectedPlan = isPayPalSchool ? null : availablePlans.find(p => p.id === planId);
+
+    // Guard: plan selected but not found in loaded plans
+    if (!isPayPalSchool && !selectedPlan) {
+        errorMsg.textContent = 'Selected plan not found. Please refresh and try again.';
+        errorMsg.classList.remove('hidden'); return;
+    }
+
+    const actualCycle = cycleSelect === 'Other' ? (customCycle || 'Custom') : cycleSelect;
+    const btn         = document.getElementById('confirmRenewalBtn');
+    btn.disabled      = true;
+    errorMsg.classList.add('hidden');
 
     try {
-        const paymentId = `PAY-${Date.now()}`;
-        const timestamp = new Date().toISOString();
-        let receiptUrl  = null;
+        const paymentId  = `PAY-${Date.now()}`;
+        const timestamp  = new Date().toISOString();
+        let   receiptUrl = null;
 
         if (receiptFile) {
             btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up fa-spin mr-2"></i> Uploading Receipt...';
-            const storageRef = ref(storage, `receipts/${paymentId}_${receiptFile.name}`);
-            await uploadBytes(storageRef, receiptFile);
-            receiptUrl = await getDownloadURL(storageRef);
+            try {
+                const storageRef = ref(storage, `receipts/${paymentId}_${receiptFile.name}`);
+                await uploadBytes(storageRef, receiptFile);
+                receiptUrl = await getDownloadURL(storageRef);
+            } catch (uploadErr) {
+                console.error('[Renewal] Receipt upload failed:', uploadErr);
+                errorMsg.textContent = 'Receipt upload failed. Check Storage rules. You can save without a receipt by clearing the file.';
+                errorMsg.classList.remove('hidden');
+                btn.disabled  = false;
+                btn.innerHTML = 'Update Subscription & Log Ledger <i class="fa-solid fa-arrow-rotate-right ml-1"></i>';
+                return;
+            }
         }
 
         btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Logging Ledger...';
 
-        const notesArray   = internalNote ? [{
+        const notesArray     = internalNote ? [{
             note:         internalNote,
             timestamp:    timestamp,
             loggedBy:     session.id,
@@ -879,40 +976,47 @@ document.getElementById('confirmRenewalBtn').addEventListener('click', async () 
             paymentType:        paymentType,
             amount:             parseFloat(amount),
             billingCycle:       actualCycle,
-            subscriptionPlanId: selectedPlan.id,
+            subscriptionPlanId: isPayPalSchool ? 'paypal_override' : selectedPlan.id,
             receiptUrl:         receiptUrl,
             internalNotes:      notesArray,
             loggedBy:           session.id,
             timestamp:          timestamp
         });
 
-        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Updating Node Limits...';
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Updating School...';
 
-        await updateDoc(doc(db, 'schools', currentSchool.id), {
-            billingCycle:            cycleSelect === 'No Extension' ? currentSchool.billingCycle : actualCycle,
+        const schoolUpdate = {
             nextRenewalDate:         newRenewalDate,
-            subscriptionPlanId:      selectedPlan.id,
-            subscriptionName:        selectedPlan.name,
-            limits: {
-                adminLimit:   selectedPlan.adminLimit,
-                studentLimit: selectedPlan.studentLimit,
-                teacherLimit: selectedPlan.teacherLimit
-            },
             isActive:                true,
             isVerified:              true,
             subscriptionStatus:      'Active',
             subscriptionEndedAt:     null,
             statusReason:            null,
             subscriptionActivatedAt: new Date().toISOString()
-        });
+        };
+
+        if (!isPayPalSchool) {
+            // Manual school — update plan, limits, billing cycle
+            schoolUpdate.subscriptionPlanId = selectedPlan.id;
+            schoolUpdate.subscriptionName   = selectedPlan.name;
+            schoolUpdate.limits = {
+                adminLimit:   selectedPlan.adminLimit,
+                studentLimit: selectedPlan.studentLimit,
+                teacherLimit: selectedPlan.teacherLimit
+            };
+            if (cycleSelect !== 'No Extension') schoolUpdate.billingCycle = actualCycle;
+        }
+        // PayPal school — only update renewal date and status, leave plan/limits alone
+
+        await updateDoc(doc(db, 'schools', currentSchool.id), schoolUpdate);
 
         closeRenewalModal();
         window.closeSchoolPanel();
         loadSchools();
 
     } catch (e) {
-        console.error("Update Failed:", e);
-        errorMsg.textContent = "An error occurred during update. Check console for details.";
+        console.error('Update Failed:', e);
+        errorMsg.textContent = 'An error occurred during update. Check console for details.';
         errorMsg.classList.remove('hidden');
     }
     btn.disabled  = false;
@@ -926,7 +1030,8 @@ document.getElementById('openDeployModalBtn').addEventListener('click', () => {
     document.getElementById('depLastName').value     = '';
     document.getElementById('depPhone').value        = '';
     document.getElementById('depSchoolName').value   = '';
-    document.getElementById('depDistrict').value     = 'Belize';
+    document.getElementById('depStateProvince').value = '';
+    document.getElementById('depCountry').value       = '';
     document.getElementById('depSchoolType').value   = 'Primary';
     document.getElementById('depEmail').value        = '';
     document.getElementById('depContractTerm').value = 'Annual';
@@ -954,7 +1059,8 @@ document.getElementById('executeDeployBtn').addEventListener('click', async () =
     const lastName     = document.getElementById('depLastName').value.trim();
     const phone        = document.getElementById('depPhone').value.trim();
     const schoolName   = document.getElementById('depSchoolName').value.trim();
-    const district     = document.getElementById('depDistrict').value;
+    const stateProvince = document.getElementById('depStateProvince').value.trim();
+    const country       = document.getElementById('depCountry').value.trim();
     const schoolType   = document.getElementById('depSchoolType').value;
     const email        = document.getElementById('depEmail').value.trim().toLowerCase();
     const contractTerm = document.getElementById('depContractTerm').value;
@@ -1009,10 +1115,9 @@ document.getElementById('executeDeployBtn').addEventListener('click', async () =
             phone,
             schoolName,
             schoolType,
-            district,
+            stateProvince,
+            country,
             city,
-            country:       'Belize',
-            stateProvince: district,
             studentsCount: 0,
             teachersCount: 0,
             contractTerm,
@@ -1043,11 +1148,41 @@ document.getElementById('executeDeployBtn').addEventListener('click', async () =
     btn.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i> Submit to Approvals →';
 });
 
+// ── Cancel PayPal Subscription ────────────────────────────────────────────
+document.getElementById('cancelPayPalBtn').addEventListener('click', async () => {
+    if (!currentSchool) return;
+    if (!confirm(`This will:
+
+• Cancel the PayPal subscription — stops future billing
+• Immediately suspend their ConnectUs access
+• Send them a cancellation email
+
+Are you sure you want to cancel ${currentSchool.schoolName}?`)) return;
+
+    const btn  = document.getElementById('cancelPayPalBtn');
+    const orig = btn.innerHTML;
+    btn.disabled  = true;
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Cancelling...';
+
+    try {
+        const cancelFn = httpsCallable(functions, 'cancelPayPalSubscription');
+        await cancelFn({ schoolId: currentSchool.id });
+        window.closeSchoolPanel();
+        loadSchools();
+        window.showToast('Subscription Cancelled', `${currentSchool.schoolName} has been cancelled and suspended.`);
+    } catch (e) {
+        console.error('Cancel PayPal failed:', e);
+        alert(`Cancellation failed: ${e.message || 'Unknown error. Check console.'}`);
+        btn.disabled  = false;
+        btn.innerHTML = orig;
+    }
+});
+
 // ── Edit School Info ──────────────────────────────────────────────────────
-document.getElementById('saveSchoolInfoBtn').addEventListener('click', async () => {
+document.getElementById('schoolInfoSaveBtn').addEventListener('click', async () => {
     if (!currentSchool) return;
 
-    const btn          = document.getElementById('saveSchoolInfoBtn');
+    const btn          = document.getElementById('schoolInfoSaveBtn');
     const msgEl        = document.getElementById('editSchoolMsg');
     const newName      = document.getElementById('editSchoolName').value.trim();
     const newContact   = document.getElementById('editContactName').value.trim();
@@ -1127,6 +1262,9 @@ document.getElementById('saveSchoolInfoBtn').addEventListener('click', async () 
         document.getElementById('manageEmail').textContent     = newEmail;
         document.getElementById('managePhone').textContent     = newPhone || 'N/A';
 
+        // Return to read-only view
+        renderSchoolInfoReadOnly();
+
         // Update allSchools cache so table reflects change on close
         const idx = allSchools.findIndex(s => s.id === currentSchool.id);
         if (idx !== -1) Object.assign(allSchools[idx], { schoolName: newName, contactName: newContact, contactEmail: newEmail, phone: newPhone });
@@ -1144,7 +1282,7 @@ document.getElementById('saveSchoolInfoBtn').addEventListener('click', async () 
     }
 
     btn.disabled  = false;
-    btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Changes';
+    btn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-1"></i> Save Changes';
 });
 
 function showEditMsg(text, isError) {
