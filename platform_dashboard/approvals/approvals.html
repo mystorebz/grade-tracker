@@ -460,13 +460,11 @@
                         Log Payment & Activate
                     </div>
 
-                    <!-- Step 1: Subscription tier -->
+                    <!-- Step 1: Plan name -->
                     <div>
-                        <label class="hq-label text-indigo-400">Step 1 — Subscription Tier *</label>
-                        <select id="payPlan" class="hq-input">
-                            <option value="">Loading plans...</option>
-                        </select>
-                        <p id="planLimitsDisplay" class="text-[10px] font-bold mt-2 hidden"></p>
+                        <label class="hq-label text-indigo-400">Step 1 — Plan Name *</label>
+                        <input type="text" id="payPlanName" class="hq-input" placeholder="e.g. Custom Plan, Custom Enterprise, District Deal...">
+                        <p class="text-[10px] text-slate-600 font-semibold mt-1.5">Enter any name — this will appear on the school's subscription record.</p>
                     </div>
 
                     <!-- Step 2: Limits (always editable) -->
