@@ -21,7 +21,6 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
 let allPayPalSubs   = [];
 let allManualQuotes = [];
 let currentQuote    = null;
-let availablePlans  = [];
 let activeTab       = 'paypal';
 let contactEditMode = false;
 
@@ -75,58 +74,6 @@ async function checkEmailGlobalUse(email, currentReqId) {
     }
 }
 
-// ── Load subscription plans ───────────────────────────────────────────────────
-async function loadSubscriptionPlans() {
-    const planSelect = document.getElementById('payPlan');
-    try {
-        const snap = await getDocs(collection(db, 'subscriptionPlans'));
-        availablePlans = [];
-        let options = '<option value="">— Select a subscription tier —</option>';
-        snap.forEach(d => {
-            const data = { id: d.id, ...d.data() };
-            availablePlans.push(data);
-            options += `<option value="${data.id}">${escHtml(data.name)} — ${data.studentLimit} stu · ${data.teacherLimit} tch · ${data.adminLimit} adm</option>`;
-        });
-        options += `<option value="__custom__">Custom Plan (enter limits manually)</option>`;
-        planSelect.innerHTML = options;
-    } catch (e) {
-        console.error('Failed to load plans:', e);
-        planSelect.innerHTML = '<option value="">Error loading plans</option>';
-    }
-}
-
-// ── Plan selection → auto-fill limits ────────────────────────────────────────
-document.getElementById('payPlan').addEventListener('change', (e) => {
-    const val      = e.target.value;
-    const display  = document.getElementById('planLimitsDisplay');
-    const stuInput = document.getElementById('payStudentLimit');
-    const tchInput = document.getElementById('payTeacherLimit');
-    const admInput = document.getElementById('payAdminLimit');
-
-    if (val === '__custom__') {
-        stuInput.value = '';
-        tchInput.value = '';
-        admInput.value = '';
-        display.innerHTML = `<i class="fa-solid fa-pen mr-1"></i> Enter custom limits in the fields below`;
-        display.classList.remove('hidden');
-        display.className = 'text-[10px] font-bold text-amber-400 mt-2';
-    } else {
-        const selected = availablePlans.find(p => p.id === val);
-        if (selected) {
-            stuInput.value = selected.studentLimit || '';
-            tchInput.value = selected.teacherLimit || '';
-            admInput.value = selected.adminLimit   || '';
-            display.innerHTML = `<i class="fa-solid fa-circle-check mr-1"></i> Limits auto-filled — adjust below if needed`;
-            display.classList.remove('hidden');
-            display.className = 'text-[10px] font-bold text-emerald-400 mt-2';
-        } else {
-            stuInput.value = '';
-            tchInput.value = '';
-            admInput.value = '';
-            display.classList.add('hidden');
-        }
-    }
-});
 
 // ── Load all data ─────────────────────────────────────────────────────────────
 async function loadAll() {
@@ -371,8 +318,6 @@ window.openManualModal = function(reqId) {
     } else {
         document.getElementById('paymentFormContainer').classList.remove('hidden');
         document.getElementById('manageLinkContainer').classList.add('hidden');
-        document.getElementById('payPlan').value          = '';
-        document.getElementById('planLimitsDisplay').classList.add('hidden');
         document.getElementById('payStudentLimit').value  = '';
         document.getElementById('payTeacherLimit').value  = '';
         document.getElementById('payAdminLimit').value    = '';
@@ -540,7 +485,7 @@ document.getElementById('payCycle').addEventListener('change', (e) => {
 
 // ── Manual approval ───────────────────────────────────────────────────────────
 document.getElementById('confirmApproveBtn').addEventListener('click', async () => {
-    const planId      = document.getElementById('payPlan').value;
+    const planName_input = document.getElementById('payPlanName').value.trim();
     const amount      = document.getElementById('payAmount').value;
     const cycleSelect = document.getElementById('payCycle').value;
     const customCycle = document.getElementById('payCustomCycle').value.trim();
@@ -551,8 +496,8 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
     const teacherLim  = parseInt(document.getElementById('payTeacherLimit').value);
     const adminLim    = parseInt(document.getElementById('payAdminLimit').value);
 
-    if (!planId) {
-        errorMsg.textContent = 'Please select a subscription tier.';
+    if (!planName_input) {
+        errorMsg.textContent = 'Please enter a plan name.';
         errorMsg.classList.remove('hidden'); return;
     }
     if (!amount || parseFloat(amount) <= 0) {
@@ -566,9 +511,7 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
 
     errorMsg.classList.add('hidden');
 
-    const isCustomPlan = planId === '__custom__';
-    const selectedPlan = isCustomPlan ? null : availablePlans.find(p => p.id === planId);
-    const planName     = isCustomPlan ? 'Custom Plan' : (selectedPlan?.name || planId);
+    const planName     = planName_input;
     const actualCycle  = cycleSelect === 'Other' ? (customCycle || 'Custom') : cycleSelect;
     const btn          = document.getElementById('confirmApproveBtn');
     btn.disabled       = true;
@@ -606,7 +549,7 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
             paymentType:        'Initial Setup',
             amount:             parseFloat(amount),
             billingCycle:       actualCycle,
-            subscriptionPlanId: isCustomPlan ? 'custom' : (selectedPlan?.id || ''),
+            subscriptionPlanId: 'custom',
             receiptUrl,
             internalNotes:      notesArray,
             loggedBy:           session.id,
@@ -618,7 +561,7 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
             clearedAt:             timestamp,
             approvedBillingCycle:  actualCycle,
             calculatedRenewalDate: nextRenewalDate,
-            approvedPlanId:        isCustomPlan ? 'custom' : (selectedPlan?.id || ''),
+            approvedPlanId:        'custom',
             approvedPlanName:      planName,
             approvedLimits
         });
@@ -730,4 +673,4 @@ document.getElementById('refreshPaypalBtn').addEventListener('click', loadAll);
 document.getElementById('refreshManualBtn').addEventListener('click', loadAll);
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
-loadSubscriptionPlans().then(() => loadAll());
+loadAll();
