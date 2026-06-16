@@ -180,12 +180,16 @@
                                 <span id="manageEmail" class="text-xs font-bold text-slate-300"></span>
                             </div>
                             <div class="flex justify-between">
-                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">District</span>
+                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Location</span>
                                 <span id="manageDistrict" class="text-xs font-bold text-slate-300"></span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">School Type</span>
                                 <span id="manageType" class="text-xs font-bold text-slate-300"></span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Phone</span>
+                                <span id="managePhone" class="text-xs font-bold text-slate-300"></span>
                             </div>
                         </div>
                     </div>
@@ -255,12 +259,50 @@
                     </div>
                 </div>
 
-                <!-- Edit School Info -->
+                <!-- Edit School Info — read-only / edit pattern -->
                 <div class="bg-slate-800 border border-slate-700 p-6">
-                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 border-b border-slate-700 pb-2">
-                        <i class="fa-solid fa-pen-to-square mr-1 text-violet-400"></i> Edit School Info
-                    </p>
-                    <div class="space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-700 pb-3 mb-4">
+                        <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                            <i class="fa-solid fa-pen-to-square mr-1 text-violet-400"></i> School Info
+                        </p>
+                        <div class="flex gap-2">
+                            <button id="schoolInfoEditBtn" onclick="window.activateSchoolEdit()"
+                                class="text-[10px] font-black uppercase tracking-widest text-violet-400 bg-violet-900/30 border border-violet-800 px-3 py-1 hover:bg-violet-900/50 transition">
+                                <i class="fa-solid fa-pen text-[9px] mr-1"></i> Edit
+                            </button>
+                            <button id="schoolInfoSaveBtn"
+                                class="hidden text-[10px] font-black uppercase tracking-widest text-white bg-violet-700 hover:bg-violet-600 border border-violet-600 px-3 py-1 transition">
+                                <i class="fa-solid fa-floppy-disk mr-1"></i> Save Changes
+                            </button>
+                            <button id="schoolInfoCancelBtn" onclick="window.cancelSchoolEdit()"
+                                class="hidden text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-3 py-1 transition">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Read-only view -->
+                    <div id="schoolInfoReadOnly" class="space-y-3">
+                        <div class="flex justify-between items-center py-2 border-b border-slate-700/50">
+                            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">School Name</span>
+                            <span id="roSchoolName" class="text-xs font-bold text-white">—</span>
+                        </div>
+                        <div class="flex justify-between items-center py-2 border-b border-slate-700/50">
+                            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Contact Name</span>
+                            <span id="roContactName" class="text-xs font-bold text-slate-300">—</span>
+                        </div>
+                        <div class="flex justify-between items-center py-2 border-b border-slate-700/50">
+                            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Contact Email</span>
+                            <span id="roContactEmail" class="text-xs font-bold text-slate-300">—</span>
+                        </div>
+                        <div class="flex justify-between items-center py-2">
+                            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Phone</span>
+                            <span id="roPhone" class="text-xs font-bold text-slate-300">—</span>
+                        </div>
+                    </div>
+
+                    <!-- Edit form (hidden by default) -->
+                    <div id="schoolInfoEditForm" class="hidden space-y-4 mt-4">
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">School Name</label>
@@ -275,7 +317,7 @@
                             <div>
                                 <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Contact Email</label>
                                 <input type="email" id="editContactEmail" class="w-full p-3 bg-slate-900 border border-slate-700 text-xs text-white outline-none focus:border-violet-500 transition">
-                                <p class="text-[9px] text-amber-500 font-bold mt-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Changing email updates the login & registered email on file.</p>
+                                <p class="text-[9px] text-amber-500 font-bold mt-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Changing email updates the login &amp; registered email on file.</p>
                             </div>
                             <div>
                                 <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Phone Number</label>
@@ -283,15 +325,14 @@
                             </div>
                         </div>
                         <p id="editSchoolMsg" class="text-xs font-bold hidden"></p>
-                        <button id="saveSchoolInfoBtn" class="w-full bg-violet-700 hover:bg-violet-600 text-white font-black py-3 transition text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
-                            <i class="fa-solid fa-floppy-disk"></i> Save Changes
-                        </button>
                     </div>
                 </div>
 
                 <!-- Danger Zone -->
-                <div class="mt-12 pt-6 border-t border-slate-800">
+                <div class="mt-12 pt-6 border-t border-slate-800 space-y-4">
                     <p class="text-[10px] font-black text-red-500 uppercase tracking-widest mb-3"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Danger Zone</p>
+
+                    <!-- Kill Switch -->
                     <div class="bg-red-950/20 border border-red-900/50 p-6 flex items-center justify-between">
                         <div>
                             <h4 class="text-sm font-black text-white">Platform Kill Switch</h4>
@@ -299,6 +340,17 @@
                         </div>
                         <button id="toggleStatusBtn" class="bg-red-900/40 border border-red-800 hover:bg-red-800 text-red-400 text-[10px] font-black uppercase tracking-widest px-6 py-3 transition">
                             <i class="fa-solid fa-power-off mr-2"></i> Suspend Access
+                        </button>
+                    </div>
+
+                    <!-- Cancel PayPal — only shown for PayPal self-service schools -->
+                    <div id="cancelPayPalWrap" class="hidden bg-red-950/20 border border-red-900/50 p-6 flex items-center justify-between">
+                        <div>
+                            <h4 class="text-sm font-black text-white">Cancel PayPal Subscription</h4>
+                            <p class="text-xs text-slate-500 mt-1">Cancels billing on PayPal AND suspends their ConnectUs access in one action.</p>
+                        </div>
+                        <button id="cancelPayPalBtn" class="bg-red-900/40 border border-red-800 hover:bg-red-800 text-red-400 text-[10px] font-black uppercase tracking-widest px-6 py-3 transition">
+                            <i class="fa-brands fa-paypal mr-2"></i> Cancel & Suspend
                         </button>
                     </div>
                 </div>
@@ -447,7 +499,15 @@
                 </div>
                 
                 <div class="space-y-4">
-                    <div>
+
+                    <!-- PayPal school note (hidden for manual schools) -->
+                    <div id="renPayPalNote" class="hidden bg-blue-900/20 border border-blue-800/40 p-4">
+                        <p class="text-xs font-bold text-blue-400 flex items-center gap-2"><i class="fa-brands fa-paypal"></i> PayPal Self-Service School</p>
+                        <p class="text-xs text-slate-400 mt-1 leading-relaxed">Billing is handled automatically by PayPal. Use this form to manually extend the renewal date or log a payment adjustment only.</p>
+                    </div>
+
+                    <!-- Plan section (hidden for PayPal schools) -->
+                    <div id="renPlanSection">
                         <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 text-indigo-400">Subscription Tier</label>
                         <select id="renPlan" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-indigo-500 transition"></select>
                         <p id="renPlanLimitsDisplay" class="text-[10px] font-bold text-indigo-400 mt-2 hidden"></p>
@@ -455,7 +515,7 @@
 
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Amount (BZD)</label>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Amount (USD)</label>
                             <input type="number" id="renAmount" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-emerald-500 transition">
                         </div>
                         <div>
@@ -465,8 +525,15 @@
                                 <option value="Annual">1 Year</option>
                                 <option value="Multi-Year">Multi-Year</option>
                                 <option value="No Extension">Do Not Extend Clock</option>
+                                <option value="Other">Other</option>
                             </select>
                         </div>
+                    </div>
+
+                    <!-- Custom cycle wrap — shown when Other is selected -->
+                    <div id="renCustomCycleWrap" class="hidden">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Custom Term</label>
+                        <input type="text" id="renCustomCycle" placeholder="e.g. 18 Months" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-emerald-500 transition">
                     </div>
 
                     <div>
@@ -516,17 +583,25 @@
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">District *</label>
-                            <select id="depDistrict" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-teal-500 transition">
-                                <option value="Belize">Belize</option><option value="Cayo">Cayo</option><option value="Corozal">Corozal</option><option value="Orange Walk">Orange Walk</option><option value="Stann Creek">Stann Creek</option><option value="Toledo">Toledo</option>
-                            </select>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">State / Province / District</label>
+                            <input type="text" id="depStateProvince" placeholder="e.g. Cayo, Kingston, etc." class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-teal-500 transition">
                         </div>
                         <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Type *</label>
-                            <select id="depSchoolType" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-teal-500 transition">
-                                <option value="Primary">Primary</option><option value="Secondary">Secondary</option>
-                            </select>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Country</label>
+                            <input type="text" id="depCountry" placeholder="e.g. Belize, Jamaica..." class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-teal-500 transition">
                         </div>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Type *</label>
+                        <select id="depSchoolType" class="w-full p-3 bg-slate-900 border border-slate-700 text-sm text-white outline-none focus:border-teal-500 transition">
+                            <option value="Primary">Primary / Elementary</option>
+                            <option value="Secondary">High School / Secondary</option>
+                            <option value="Middle School">Middle School</option>
+                            <option value="Junior College">Junior College</option>
+                            <option value="University">University / College</option>
+                            <option value="Vocational">Vocational / Technical</option>
+                            <option value="Other">Other</option>
+                        </select>
                     </div>
                     <div>
                         <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Contact Email *</label>
