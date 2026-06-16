@@ -28,18 +28,17 @@
             background: rgba(255,255,255,0.04);
         }
 
-        /* Modal overlay */
         .modal-overlay {
-            background: rgba(2,6,23,0.85);
-            backdrop-filter: blur(6px);
+            background: rgba(2,6,23,0.88);
+            backdrop-filter: blur(8px);
         }
 
-        /* Info row inside modals */
+        /* Info rows */
         .info-row {
             display: flex;
             align-items: flex-start;
             justify-content: space-between;
-            padding: 10px 0;
+            padding: 9px 0;
             border-bottom: 1px solid rgba(255,255,255,0.05);
             gap: 12px;
         }
@@ -51,7 +50,8 @@
             text-transform: uppercase;
             letter-spacing: 0.1em;
             flex-shrink: 0;
-            padding-top: 1px;
+            padding-top: 2px;
+            min-width: 80px;
         }
         .info-value {
             font-size: 13px;
@@ -61,13 +61,13 @@
             word-break: break-all;
         }
 
-        /* HQ form inputs */
+        /* HQ inputs */
         .hq-input {
             width: 100%;
-            padding: 10px 14px;
+            padding: 9px 12px;
             background: #020617;
             border: 1.5px solid #1e293b;
-            border-radius: 10px;
+            border-radius: 9px;
             color: #f1f5f9;
             font-size: 13px;
             font-weight: 600;
@@ -88,6 +88,43 @@
             letter-spacing: 0.1em;
             margin-bottom: 5px;
         }
+
+        /* Section header inside modal left panel */
+        .section-head {
+            font-size: 10px;
+            font-weight: 900;
+            color: #475569;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+
+        /* Read-only data card */
+        .data-card {
+            background: rgba(15,23,42,0.6);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 12px;
+            padding: 14px 16px;
+            margin-bottom: 14px;
+        }
+
+        /* Approval step indicator */
+        .step-label {
+            font-size: 9px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: #10b981;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 14px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(16,185,129,0.15);
+        }
     </style>
 </head>
 <body class="bg-slate-900 text-slate-300 antialiased min-h-screen flex overflow-hidden">
@@ -102,7 +139,6 @@
                 <p id="hqAdminBadge" class="text-[9px] font-mono font-bold text-emerald-500 tracking-widest uppercase mt-0.5">Role: Owner</p>
             </div>
         </div>
-
         <nav class="flex-1 overflow-y-auto py-6 px-3 space-y-1">
             <a href="../index.html" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition">
                 <i class="fa-solid fa-chart-line w-5 text-center"></i> Overview
@@ -121,7 +157,6 @@
                 <i class="fa-solid fa-user-shield w-5 text-center"></i> HQ Team
             </a>
         </nav>
-
         <div class="p-4 border-t border-slate-800">
             <div class="bg-slate-900 border border-slate-700 rounded-xl p-3 flex items-center justify-between">
                 <div class="overflow-hidden">
@@ -135,9 +170,8 @@
         </div>
     </aside>
 
-    <!-- ── Main content ────────────────────────────────────────────────────── -->
+    <!-- ── Main ───────────────────────────────────────────────────────────── -->
     <main class="flex-1 flex flex-col h-screen overflow-hidden bg-[#0f172a]">
-
         <header class="h-20 flex items-center justify-between px-8 border-b border-slate-800 bg-slate-900/50 backdrop-blur-md flex-shrink-0">
             <div>
                 <h2 class="text-xl font-black text-white tracking-wide">Approvals & Subscriptions</h2>
@@ -146,24 +180,20 @@
         </header>
 
         <div class="flex-1 overflow-y-auto p-8">
-
-            <!-- Tab bar -->
             <div class="flex items-center gap-2 mb-6">
                 <button id="tabPayPal" onclick="window.switchTab('paypal')"
                     class="tab-active flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-black border transition">
-                    <i class="fa-brands fa-paypal"></i>
-                    Self-Service Subscriptions
+                    <i class="fa-brands fa-paypal"></i> Self-Service Subscriptions
                     <span id="paypalBadge" class="hidden bg-emerald-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none"></span>
                 </button>
                 <button id="tabManual" onclick="window.switchTab('manual')"
                     class="tab-inactive flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-black border transition">
-                    <i class="fa-solid fa-file-invoice-dollar"></i>
-                    Quote Requests
+                    <i class="fa-solid fa-file-invoice-dollar"></i> Quote Requests
                     <span id="manualBadge" class="hidden bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none"></span>
                 </button>
             </div>
 
-            <!-- ── PayPal Subscriptions panel ──────────────────────────────── -->
+            <!-- PayPal panel -->
             <div id="paypalPanel">
                 <div class="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden shadow-xl">
                     <div class="p-5 border-b border-slate-700 flex justify-between items-center bg-slate-900/50">
@@ -193,13 +223,13 @@
                 </div>
             </div>
 
-            <!-- ── Manual Quotes panel ─────────────────────────────────────── -->
+            <!-- Manual quotes panel -->
             <div id="manualPanel" class="hidden">
                 <div class="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden shadow-xl">
                     <div class="p-5 border-b border-slate-700 flex justify-between items-center bg-slate-900/50">
                         <div>
                             <h3 class="font-black text-white text-base">Manual Quote Requests</h3>
-                            <p class="text-xs text-slate-500 font-semibold mt-0.5">Schools that submitted a quote request form and require manual approval.</p>
+                            <p class="text-xs text-slate-500 font-semibold mt-0.5">Schools that submitted a quote request and require manual approval.</p>
                         </div>
                         <button id="refreshManualBtn" class="text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1.5 border border-emerald-900 bg-emerald-900/20 px-3 py-1.5 rounded-lg transition">
                             <i class="fa-solid fa-rotate-right"></i> Refresh
@@ -221,18 +251,15 @@
                     </div>
                 </div>
             </div>
-
         </div>
     </main>
 
 
-    <!-- ════════════════════════════════════════════════════════════════════════
-         PAYPAL SUBSCRIPTION MODAL
-    ════════════════════════════════════════════════════════════════════════════ -->
+    <!-- ════════════════════════════════════════════
+         PAYPAL MODAL — unchanged
+    ═════════════════════════════════════════════ -->
     <div id="paypalModal" class="modal-overlay fixed inset-0 z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300 overflow-y-auto py-8 px-4">
         <div id="paypalModalInner" class="bg-slate-800 border border-slate-700 rounded-3xl shadow-2xl w-full max-w-4xl transform scale-95 transition-transform duration-300 overflow-hidden">
-
-            <!-- Modal header -->
             <div class="flex items-center justify-between px-8 py-6 border-b border-slate-700 bg-slate-900/60">
                 <div>
                     <div class="flex items-center gap-3 mb-1">
@@ -243,181 +270,229 @@
                 </div>
                 <div class="flex items-center gap-3">
                     <span id="ppStatusBadge"></span>
-                    <button onclick="window.closePayPalModal()" class="text-slate-500 hover:text-white transition text-xl">
-                        <i class="fa-solid fa-xmark"></i>
-                    </button>
+                    <button onclick="window.closePayPalModal()" class="text-slate-500 hover:text-white transition text-xl"><i class="fa-solid fa-xmark"></i></button>
                 </div>
             </div>
-
             <div class="grid grid-cols-1 md:grid-cols-2 gap-0">
-
-                <!-- Left: Subscription details -->
                 <div class="p-8 border-b md:border-b-0 md:border-r border-slate-700">
-
-                    <!-- Subscriber info -->
-                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                        <i class="fa-solid fa-user text-slate-600"></i> Subscriber
-                    </p>
-                    <div class="bg-slate-900/60 border border-slate-700/50 rounded-xl p-4 mb-6">
+                    <p class="section-head"><i class="fa-solid fa-user text-slate-600"></i> Subscriber</p>
+                    <div class="data-card mb-6">
                         <div class="info-row"><span class="info-label">Name</span><span class="info-value" id="ppName">—</span></div>
                         <div class="info-row"><span class="info-label">Email</span><span class="info-value text-blue-400" id="ppEmail">—</span></div>
                         <div class="info-row"><span class="info-label">School Name</span><span class="info-value text-slate-400 italic" id="ppSchool">—</span></div>
                         <div class="info-row"><span class="info-label">School ID</span><span class="info-value font-mono text-emerald-400" id="ppGenSchool">—</span></div>
                         <div class="info-row"><span class="info-label">Subscribed</span><span class="info-value" id="ppCreated">—</span></div>
                     </div>
-
-                    <!-- Subscription info -->
-                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                        <i class="fa-solid fa-credit-card text-slate-600"></i> Subscription
-                    </p>
-                    <div class="bg-slate-900/60 border border-slate-700/50 rounded-xl p-4">
+                    <p class="section-head"><i class="fa-solid fa-credit-card text-slate-600"></i> Subscription</p>
+                    <div class="data-card">
                         <div class="info-row"><span class="info-label">Plan</span><span class="info-value text-white" id="ppPlan">—</span></div>
                         <div class="info-row"><span class="info-label">Billing</span><span class="info-value" id="ppBilling">—</span></div>
-                        <div class="info-row"><span class="info-label">Renewal Date</span><span class="info-value text-emerald-400" id="ppRenewal">—</span></div>
-                        <div class="info-row"><span class="info-label">PayPal Sub ID</span><span class="info-value font-mono text-[11px] text-slate-400" id="ppPaypalId">—</span></div>
+                        <div class="info-row"><span class="info-label">Renewal</span><span class="info-value text-emerald-400" id="ppRenewal">—</span></div>
+                        <div class="info-row"><span class="info-label">PayPal ID</span><span class="info-value font-mono text-[11px] text-slate-400" id="ppPaypalId">—</span></div>
                     </div>
                 </div>
-
-                <!-- Right: Actions -->
                 <div class="p-8 bg-slate-900/40 flex flex-col gap-6">
-
-                    <!-- Adjust limits -->
                     <div>
-                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                            <i class="fa-solid fa-sliders text-emerald-500"></i> Adjust Plan Limits
-                        </p>
+                        <p class="section-head"><i class="fa-solid fa-sliders text-emerald-500"></i> Adjust Plan Limits</p>
                         <div class="grid grid-cols-3 gap-3 mb-3">
-                            <div>
-                                <label class="hq-label">Students</label>
-                                <input type="number" id="ppStudentLimit" class="hq-input text-center" min="1">
-                            </div>
-                            <div>
-                                <label class="hq-label">Teachers</label>
-                                <input type="number" id="ppTeacherLimit" class="hq-input text-center" min="1">
-                            </div>
-                            <div>
-                                <label class="hq-label">Admins</label>
-                                <input type="number" id="ppAdminLimit" class="hq-input text-center" min="1">
-                            </div>
+                            <div><label class="hq-label">Students</label><input type="number" id="ppStudentLimit" class="hq-input text-center" min="1"></div>
+                            <div><label class="hq-label">Teachers</label><input type="number" id="ppTeacherLimit" class="hq-input text-center" min="1"></div>
+                            <div><label class="hq-label">Admins</label><input type="number" id="ppAdminLimit" class="hq-input text-center" min="1"></div>
                         </div>
                         <button id="ppSaveLimitsBtn" class="w-full bg-emerald-700 hover:bg-emerald-600 text-white font-black py-2.5 rounded-xl transition text-sm flex items-center justify-center gap-2">
                             <i class="fa-solid fa-floppy-disk"></i> Save Limits
                         </button>
-                        <p class="text-[10px] font-semibold text-slate-500 mt-2 text-center">
-                            If the school is already live, limits update on both the quote and school records.
-                        </p>
+                        <p class="text-[10px] font-semibold text-slate-500 mt-2 text-center">If school is live, limits update on both the quote and school record.</p>
                     </div>
-
-                    <div class="border-t border-slate-700/50 pt-6">
-                        <!-- Update email -->
-                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                            <i class="fa-solid fa-envelope text-blue-500"></i> Onboarding Email
-                        </p>
+                    <div class="border-t border-slate-700/50 pt-5">
+                        <p class="section-head"><i class="fa-solid fa-envelope text-blue-500"></i> Onboarding Email</p>
                         <div class="flex gap-2 mb-3">
                             <input type="email" id="ppEditEmail" class="hq-input flex-1" placeholder="subscriber@email.com">
-                            <button id="ppSaveEmailBtn" class="bg-blue-700 hover:bg-blue-600 text-white font-bold px-4 rounded-xl transition text-xs flex-shrink-0">
-                                Update
-                            </button>
+                            <button id="ppSaveEmailBtn" class="bg-blue-700 hover:bg-blue-600 text-white font-bold px-4 rounded-xl transition text-xs flex-shrink-0">Update</button>
                         </div>
                         <button id="ppResendBtn" class="w-full bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white font-bold py-2.5 rounded-xl transition text-sm flex items-center justify-center gap-2">
                             <i class="fa-solid fa-paper-plane"></i> Resend Onboarding Link
                         </button>
                     </div>
-
-                    <!-- Save message -->
                     <p id="ppSaveMsg" class="text-xs font-bold hidden"></p>
-
                 </div>
             </div>
         </div>
     </div>
 
 
-    <!-- ════════════════════════════════════════════════════════════════════════
-         MANUAL QUOTE MODAL
-    ════════════════════════════════════════════════════════════════════════════ -->
-    <div id="manualModal" class="modal-overlay fixed inset-0 z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300 overflow-y-auto py-8 px-4">
+    <!-- ════════════════════════════════════════════
+         MANUAL QUOTE MODAL — redesigned
+    ═════════════════════════════════════════════ -->
+    <div id="manualModal" class="modal-overlay fixed inset-0 z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300 overflow-y-auto py-6 px-4">
         <div id="manualModalInner" class="bg-slate-800 border border-slate-700 rounded-3xl shadow-2xl w-full max-w-5xl transform scale-95 transition-transform duration-300 overflow-hidden flex flex-col md:flex-row">
 
-            <!-- Left: Quote details -->
-            <div class="md:w-[58%] p-8 border-b md:border-b-0 md:border-r border-slate-700 bg-slate-800/50 overflow-y-auto max-h-[85vh]">
-                <div class="flex justify-between items-start mb-6">
+            <!-- ── LEFT: Quote details ─────────────────────────────────────── -->
+            <div class="md:w-[55%] flex flex-col border-b md:border-b-0 md:border-r border-slate-700/60 overflow-y-auto max-h-[88vh]">
+
+                <!-- Left header -->
+                <div class="px-7 py-5 border-b border-slate-700/60 bg-slate-900/60 flex items-center justify-between flex-shrink-0">
                     <div>
-                        <h3 class="font-black text-2xl text-white">Quote Request</h3>
-                        <p id="vReqId" class="text-xs font-mono font-bold text-blue-400 mt-1 uppercase tracking-widest"></p>
+                        <h3 class="font-black text-lg text-white">Quote Request</h3>
+                        <p id="vReqId" class="text-[10px] font-mono font-bold text-blue-400 mt-0.5 uppercase tracking-widest"></p>
                     </div>
-                    <button onclick="window.closeManualModal()" class="md:hidden text-slate-500 hover:text-white transition">
-                        <i class="fa-solid fa-xmark text-xl"></i>
+                    <div class="flex items-center gap-2">
+                        <!-- Edit button (read-only mode) -->
+                        <button id="contactEditBtn" onclick="window.activateContactEdit()"
+                            class="flex items-center gap-1.5 text-xs font-black text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg transition">
+                            <i class="fa-solid fa-pen text-[10px]"></i> Edit
+                        </button>
+                        <!-- Save button (edit mode, hidden by default) -->
+                        <button id="contactSaveBtn" onclick="window.saveContactInfo()"
+                            class="hidden flex items-center gap-1.5 text-xs font-black text-white bg-emerald-700 hover:bg-emerald-600 px-3 py-1.5 rounded-lg transition">
+                            <i class="fa-solid fa-floppy-disk text-[10px]"></i> Save
+                        </button>
+                        <!-- Cancel button (edit mode, hidden by default) -->
+                        <button id="contactCancelBtn" onclick="window.cancelContactEdit()"
+                            class="hidden text-xs font-bold text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-3 py-1.5 rounded-lg transition">
+                            Cancel
+                        </button>
+                        <button onclick="window.closeManualModal()" class="md:hidden text-slate-500 hover:text-white transition ml-1">
+                            <i class="fa-solid fa-xmark text-lg"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ── Read-only view ───────────────────────────────────────── -->
+                <div id="contactReadOnly" class="p-7 space-y-5 flex-1">
+
+                    <!-- Contact + School side by side -->
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <p class="section-head"><i class="fa-solid fa-user text-slate-600"></i> Contact</p>
+                            <div class="data-card space-y-0">
+                                <div class="info-row"><span class="info-label">Name</span><span class="info-value" id="vName">—</span></div>
+                                <div class="info-row"><span class="info-label">Title</span><span class="info-value text-slate-400" id="vRole">—</span></div>
+                                <div class="info-row"><span class="info-label">Email</span><span class="info-value text-blue-400 text-[12px]" id="vEmail">—</span></div>
+                                <div class="info-row"><span class="info-label">Phone</span><span class="info-value" id="vPhone">—</span></div>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="section-head"><i class="fa-solid fa-school text-slate-600"></i> School</p>
+                            <div class="data-card space-y-0">
+                                <div class="info-row"><span class="info-label">Name</span><span class="info-value" id="vSchoolName">—</span></div>
+                                <div class="info-row"><span class="info-label">Type</span><span class="info-value text-slate-400" id="vSchoolType">—</span></div>
+                                <div class="info-row"><span class="info-label">Location</span><span class="info-value text-slate-400 text-[12px]" id="vLocation">—</span></div>
+                                <div class="info-row">
+                                    <span class="info-label">Scale</span>
+                                    <span class="info-value">
+                                        <span id="vStudents">—</span> stu · <span id="vTeachers">—</span> tch
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Contract -->
+                    <div>
+                        <p class="section-head"><i class="fa-solid fa-file-contract text-slate-600"></i> Contract & Notes</p>
+                        <div class="data-card space-y-0">
+                            <div class="info-row"><span class="info-label">Term</span><span class="info-value" id="vContractTerm">—</span></div>
+                            <div class="info-row"><span class="info-label">Duration</span><span class="info-value text-slate-400" id="vContractDuration">—</span></div>
+                            <div class="info-row"><span class="info-label">Source</span><span class="info-value text-slate-400" id="vSource">—</span></div>
+                        </div>
+                        <div class="bg-slate-900/60 border border-slate-700/40 rounded-xl p-3 mt-2">
+                            <p class="text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Message</p>
+                            <p class="text-xs text-slate-400 italic leading-relaxed" id="vMessage">No message.</p>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- ── Edit form (hidden by default) ───────────────────────── -->
+                <div id="contactEditForm" class="hidden p-7 space-y-4 flex-1 overflow-y-auto">
+                    <p class="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Editing Contact Information</p>
+
+                    <!-- Contact fields -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div><label class="hq-label">First Name *</label><input type="text" id="eFirstName" class="hq-input" placeholder="First name"></div>
+                        <div><label class="hq-label">Last Name *</label><input type="text" id="eLastName" class="hq-input" placeholder="Last name"></div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div><label class="hq-label">Email *</label><input type="email" id="eEmail" class="hq-input" placeholder="contact@school.edu"></div>
+                        <div><label class="hq-label">Phone</label><input type="text" id="ePhone" class="hq-input" placeholder="+501 600-0000"></div>
+                    </div>
+
+                    <!-- School fields -->
+                    <div class="pt-3 border-t border-slate-700/40">
+                        <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">School Information</p>
+                        <div class="grid grid-cols-2 gap-3 mb-3">
+                            <div><label class="hq-label">School Name</label><input type="text" id="eSchoolName" class="hq-input" placeholder="Valley Academy"></div>
+                            <div><label class="hq-label">School Type</label><input type="text" id="eSchoolType" class="hq-input" placeholder="Primary / Elementary"></div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-3 mb-3">
+                            <div><label class="hq-label">City</label><input type="text" id="eCity" class="hq-input" placeholder="Belize City"></div>
+                            <div><label class="hq-label">State / District</label><input type="text" id="eStateProvince" class="hq-input" placeholder="Cayo"></div>
+                            <div><label class="hq-label">Country</label><input type="text" id="eCountry" class="hq-input" placeholder="Belize"></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div><label class="hq-label">Est. Students</label><input type="number" id="eStudents" class="hq-input" placeholder="e.g. 150" min="0"></div>
+                            <div><label class="hq-label">Est. Teachers</label><input type="number" id="eTeachers" class="hq-input" placeholder="e.g. 12" min="0"></div>
+                        </div>
+                    </div>
+
+                    <p id="contactSaveMsg" class="text-xs font-bold hidden"></p>
+                </div>
+
+            </div>
+
+            <!-- ── RIGHT: Actions ──────────────────────────────────────────── -->
+            <div class="md:w-[45%] bg-[#080f1e] flex flex-col relative overflow-y-auto max-h-[88vh]">
+
+                <!-- Right header -->
+                <div class="px-7 py-5 border-b border-slate-700/40 flex items-center justify-between flex-shrink-0">
+                    <p class="text-xs font-black text-slate-500 uppercase tracking-widest">Actions</p>
+                    <button onclick="window.closeManualModal()" class="hidden md:flex text-slate-500 hover:text-white transition">
+                        <i class="fa-solid fa-xmark text-lg"></i>
                     </button>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-                    <div class="bg-slate-900 border border-slate-700 rounded-xl p-4">
-                        <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 pb-2 border-b border-slate-800">
-                            <i class="fa-solid fa-user mr-1"></i> Contact
-                        </p>
-                        <p class="text-sm font-bold text-white mb-1" id="vName">—</p>
-                        <p class="text-xs text-slate-400 mb-3" id="vRole">—</p>
-                        <p class="text-xs text-slate-300 mb-1"><i class="fa-solid fa-envelope w-4 text-slate-500"></i> <span id="vEmail">—</span></p>
-                        <p class="text-xs text-slate-300"><i class="fa-solid fa-phone w-4 text-slate-500"></i> <span id="vPhone">—</span></p>
+                <!-- Log Payment & Activate -->
+                <div id="paymentFormContainer" class="p-7 space-y-5 flex-1">
+
+                    <div class="step-label">
+                        <i class="fa-solid fa-money-check-dollar"></i>
+                        Log Payment & Activate
                     </div>
-                    <div class="bg-slate-900 border border-slate-700 rounded-xl p-4">
-                        <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 pb-2 border-b border-slate-800">
-                            <i class="fa-solid fa-school mr-1"></i> School
-                        </p>
-                        <p class="text-sm font-bold text-white mb-1" id="vSchoolName">—</p>
-                        <p class="text-xs text-slate-400 mb-2" id="vSchoolType">—</p>
-                        <p class="text-xs text-slate-300 mb-2"><i class="fa-solid fa-location-dot w-4 text-slate-500"></i> <span id="vLocation">—</span></p>
-                        <div class="flex gap-3 mt-2">
-                            <div class="bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 text-center">
-                                <span class="text-[9px] block text-slate-500 uppercase font-bold">Students</span>
-                                <span class="text-sm font-black text-white" id="vStudents">—</span>
+
+                    <!-- Step 1: Subscription tier -->
+                    <div>
+                        <label class="hq-label text-indigo-400">Step 1 — Subscription Tier *</label>
+                        <select id="payPlan" class="hq-input">
+                            <option value="">Loading plans...</option>
+                        </select>
+                        <p id="planLimitsDisplay" class="text-[10px] font-bold mt-2 hidden"></p>
+                    </div>
+
+                    <!-- Step 2: Limits (always editable) -->
+                    <div>
+                        <label class="hq-label text-indigo-400">Step 2 — Confirm Limits *</label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div>
+                                <label class="hq-label">Students</label>
+                                <input type="number" id="payStudentLimit" class="hq-input text-center font-black" min="1" placeholder="—">
                             </div>
-                            <div class="bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 text-center">
-                                <span class="text-[9px] block text-slate-500 uppercase font-bold">Teachers</span>
-                                <span class="text-sm font-black text-white" id="vTeachers">—</span>
+                            <div>
+                                <label class="hq-label">Teachers</label>
+                                <input type="number" id="payTeacherLimit" class="hq-input text-center font-black" min="1" placeholder="—">
+                            </div>
+                            <div>
+                                <label class="hq-label">Admins</label>
+                                <input type="number" id="payAdminLimit" class="hq-input text-center font-black" min="1" placeholder="—">
                             </div>
                         </div>
+                        <p class="text-[10px] text-slate-600 font-semibold mt-1.5">Auto-filled from plan selection. Adjust freely before approving.</p>
                     </div>
-                </div>
 
-                <div class="bg-slate-900 border border-slate-700 rounded-xl p-4 mb-4">
-                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 pb-2 border-b border-slate-800">
-                        <i class="fa-solid fa-file-contract mr-1"></i> Contract
-                    </p>
-                    <p class="text-sm font-bold text-white mb-1" id="vContractTerm">—</p>
-                    <p class="text-xs text-slate-400" id="vContractDuration">—</p>
-                </div>
-
-                <div class="bg-slate-900 border border-slate-700 rounded-xl p-4">
-                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 pb-2 border-b border-slate-800">
-                        <i class="fa-solid fa-comment-dots mr-1"></i> Notes
-                    </p>
-                    <p class="text-xs text-slate-400 font-bold mb-2">Source: <span class="text-slate-300 font-normal" id="vSource">—</span></p>
-                    <div class="bg-slate-800 p-3 rounded-lg text-sm text-slate-300 italic border border-slate-700" id="vMessage">No message.</div>
-                </div>
-            </div>
-
-            <!-- Right: Actions -->
-            <div class="md:w-[42%] bg-slate-900 p-8 flex flex-col gap-0 relative overflow-y-auto max-h-[85vh]">
-                <button onclick="window.closeManualModal()" class="hidden md:block absolute top-6 right-6 text-slate-500 hover:text-white transition">
-                    <i class="fa-solid fa-xmark text-xl"></i>
-                </button>
-
-                <!-- Log payment -->
-                <div id="paymentFormContainer">
-                    <h3 class="font-black text-lg text-emerald-400 border-b border-emerald-900/40 pb-3 mb-5">
-                        <i class="fa-solid fa-money-check-dollar mr-2"></i> Log Payment & Activate
-                    </h3>
-                    <div class="space-y-4">
-                        <div>
-                            <label class="hq-label text-indigo-400">Subscription Tier *</label>
-                            <select id="payPlan" class="hq-input">
-                                <option value="">Loading plans...</option>
-                            </select>
-                            <p id="planLimitsDisplay" class="text-[10px] font-bold text-indigo-400 mt-2 hidden"></p>
-                        </div>
-                        <div class="grid grid-cols-2 gap-3">
+                    <!-- Step 3: Payment details -->
+                    <div>
+                        <label class="hq-label text-indigo-400">Step 3 — Payment Details</label>
+                        <div class="grid grid-cols-2 gap-3 mb-3">
                             <div>
                                 <label class="hq-label">Amount (USD)</label>
                                 <input type="number" id="payAmount" placeholder="e.g. 99.99" class="hq-input">
@@ -432,35 +507,48 @@
                                 </select>
                             </div>
                         </div>
-                        <div id="customCycleWrap" class="hidden">
-                            <label class="hq-label">Custom Term</label>
+                        <div id="customCycleWrap" class="hidden mb-3">
+                            <label class="hq-label">Custom Term Description</label>
                             <input type="text" id="payCustomCycle" placeholder="e.g. 6 Months" class="hq-input">
                         </div>
-                        <div>
+                        <div class="mb-3">
                             <label class="hq-label">Internal Notes</label>
-                            <textarea id="payNotes" placeholder="e.g. Wire transfer cleared..." class="hq-input resize-none h-14"></textarea>
+                            <textarea id="payNotes" placeholder="e.g. Wire transfer cleared, ref #12345..." class="hq-input resize-none h-16"></textarea>
                         </div>
                         <div>
-                            <label class="hq-label">Attach Receipt / Invoice</label>
+                            <label class="hq-label">Receipt / Invoice (optional)</label>
                             <input type="file" id="payReceipt" accept="image/*,.pdf"
                                 class="w-full p-2 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:uppercase file:bg-emerald-900/30 file:text-emerald-400 hover:file:bg-emerald-900/50 outline-none cursor-pointer transition">
                         </div>
                     </div>
-                    <div class="mt-5">
+
+                    <!-- Approve button -->
+                    <div>
                         <p id="paymentErrorMsg" class="text-xs font-bold text-red-400 bg-red-900/20 border border-red-900/40 p-3 rounded-xl text-center hidden mb-4"></p>
-                        <button id="confirmApproveBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 rounded-xl transition shadow-lg shadow-emerald-900/40 text-sm">
-                            Mark as Paid & Approve <i class="fa-solid fa-arrow-right ml-1"></i>
+                        <button id="confirmApproveBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-xl transition shadow-lg shadow-emerald-900/40 text-sm tracking-wide">
+                            <i class="fa-solid fa-circle-check mr-2"></i>Mark as Paid & Activate
                         </button>
-                        <p class="text-[10px] text-center font-bold text-emerald-600 mt-2">Locks tier limits and emails the onboarding link.</p>
+                        <p class="text-[10px] text-center font-semibold text-slate-600 mt-2 leading-relaxed">
+                            Locks limits, creates a payment record, and emails the onboarding link to the contact.
+                        </p>
                     </div>
+
                 </div>
 
-                <!-- Manage sent link -->
-                <div id="manageLinkContainer" class="hidden">
-                    <h3 class="font-black text-lg text-blue-400 border-b border-blue-900/40 pb-3 mb-5">
-                        <i class="fa-solid fa-link mr-2"></i> Manage Sent Link
-                    </h3>
-                    <div class="space-y-5">
+                <!-- Manage sent link (shown after approval) -->
+                <div id="manageLinkContainer" class="hidden p-7 space-y-5 flex-1">
+                    <div class="step-label" style="color:#60a5fa;border-color:rgba(96,165,250,0.15);">
+                        <i class="fa-solid fa-link"></i>
+                        Onboarding Link Sent
+                    </div>
+
+                    <div class="bg-emerald-900/20 border border-emerald-800/40 rounded-xl p-4 text-center">
+                        <i class="fa-solid fa-paper-plane text-emerald-400 text-2xl mb-2"></i>
+                        <p class="text-sm font-bold text-emerald-300">Onboarding email has been sent.</p>
+                        <p class="text-xs text-slate-500 font-semibold mt-1">The school is waiting to complete their setup.</p>
+                    </div>
+
+                    <div class="space-y-4">
                         <div>
                             <label class="hq-label">Update Recipient Email</label>
                             <div class="flex gap-2">
@@ -468,20 +556,22 @@
                                 <button id="saveEmailBtn" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 rounded-xl transition text-xs flex-shrink-0">Save</button>
                             </div>
                         </div>
-                        <button id="resendLinkBtn" class="w-full bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white font-bold py-3.5 rounded-xl transition text-sm flex items-center justify-center gap-2">
+                        <button id="resendLinkBtn" class="w-full bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white font-bold py-3 rounded-xl transition text-sm flex items-center justify-center gap-2">
                             <i class="fa-solid fa-paper-plane"></i> Resend Onboarding Email
                         </button>
-                        <div class="pt-4 border-t border-slate-800">
-                            <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Danger Zone</p>
+                        <div class="pt-4 border-t border-slate-800/60">
+                            <p class="text-[10px] font-black text-slate-600 uppercase tracking-widest mb-3">Danger Zone</p>
                             <button id="revokeLinkBtn" class="w-full bg-red-900/20 border border-red-900/40 hover:bg-red-900/40 text-red-400 font-bold py-3 rounded-xl transition text-sm flex items-center justify-center gap-2">
                                 <i class="fa-solid fa-ban"></i> Revoke Approval
                             </button>
-                            <p class="text-[10px] font-semibold text-slate-500 mt-2 text-center leading-relaxed">Renders the sent link useless and returns this quote to Pending.</p>
+                            <p class="text-[10px] font-semibold text-slate-600 mt-2 text-center leading-relaxed">
+                                Invalidates the sent link and returns this quote to Pending Payment.
+                            </p>
                         </div>
                     </div>
                 </div>
-            </div>
 
+            </div>
         </div>
     </div>
 
