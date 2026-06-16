@@ -24,7 +24,6 @@ const tbody = document.getElementById('schoolsTableBody');
 const searchInput = document.getElementById('searchSchools');
 let allSchools = [];
 let currentSchool = null;
-let availablePlans = [];
 
 // Panel & Lazy Loading State
 let membersLoaded = false;
@@ -64,49 +63,26 @@ function calculateNewRenewalDate(cycleType, currentExpirationString) {
     let baseDate = currentExpirationString ? new Date(currentExpirationString) : now;
     if (baseDate < now) baseDate = now;
 
-    if (cycleType === '6 Months') {
+    if (cycleType === 'Monthly') {
+        baseDate.setMonth(baseDate.getMonth() + 1);
+    } else if (cycleType === '6 Months') {
         baseDate.setMonth(baseDate.getMonth() + 6);
     } else if (cycleType === 'Annual') {
         baseDate.setFullYear(baseDate.getFullYear() + 1);
     } else if (cycleType === 'Multi-Year') {
         baseDate.setFullYear(baseDate.getFullYear() + 2);
     } else {
+        // Other / unknown — default to 1 year
         baseDate.setFullYear(baseDate.getFullYear() + 1);
     }
     return baseDate.toISOString();
 }
 
-// ── Load Subscription Plans ──────────────────────────────────────────────
-async function loadSubscriptionPlans() {
-    const renSelect = document.getElementById('renPlan');
-    try {
-        const snap = await getDocs(collection(db, 'subscriptionPlans'));
-        availablePlans = [];
-        let options = '<option value="">Select a subscription tier...</option>';
 
-        snap.forEach(d => {
-            const data = { id: d.id, ...d.data() };
-            availablePlans.push(data);
-            options += `<option value="${data.id}">${data.name} — ${data.studentLimit} stu · ${data.teacherLimit} tch · ${data.adminLimit} adm</option>`;
-        });
-
-        if (renSelect) renSelect.innerHTML = options;
-    } catch (e) {
-        console.error("Failed to load subscription plans:", e);
-    }
+function isoToDateInput(iso) {
+    if (!iso) return '';
+    return new Date(iso).toISOString().split('T')[0];
 }
-
-// ── renPlan change listener → auto-fill limits display ───────────────────
-document.getElementById('renPlan').addEventListener('change', (e) => {
-    const display  = document.getElementById('renPlanLimitsDisplay');
-    const selected = availablePlans.find(p => p.id === e.target.value);
-    if (selected) {
-        display.textContent = `${selected.studentLimit} Students · ${selected.teacherLimit} Teachers · ${selected.adminLimit} Admins`;
-        display.classList.remove('hidden');
-    } else {
-        display.classList.add('hidden');
-    }
-});
 
 // ── Notification System Functions ──────────────────────────────────────────
 window.showToast = (title, message, type = 'warning') => {
@@ -610,18 +586,37 @@ async function loadSchoolLedger(school) {
             const date    = new Date(p.timestamp).toLocaleDateString();
             const amount  = p.amount ? `$${p.amount.toFixed(2)}` : '$0.00';
             const type    = p.paymentType || 'Payment';
-            const receipt = p.receiptUrl
-                ? `<a href="${p.receiptUrl}" target="_blank" class="text-blue-400 hover:underline font-bold uppercase text-[10px] tracking-widest"><i class="fa-solid fa-file-invoice mr-1"></i> View</a>`
-                : '<span class="text-slate-600">-</span>';
             const notes   = (p.internalNotes && p.internalNotes.length > 0) ? p.internalNotes[0].note : '-';
 
+            // Receipt cell — View + Update if exists, Upload if not
+            let receiptCell;
+            if (p.receiptUrl) {
+                receiptCell = `
+                    <div class="flex items-center justify-end gap-2">
+                        <a href="${p.receiptUrl}" target="_blank"
+                            class="text-blue-400 hover:underline font-bold uppercase text-[10px] tracking-widest">
+                            <i class="fa-solid fa-file-invoice mr-1"></i> View
+                        </a>
+                        <button onclick="window.triggerLedgerReceiptUpload('${p.id}')"
+                            class="text-slate-400 hover:text-white text-[10px] font-bold uppercase tracking-widest border border-slate-700 hover:border-slate-500 px-2 py-1 transition">
+                            Update
+                        </button>
+                    </div>`;
+            } else {
+                receiptCell = `
+                    <button onclick="window.triggerLedgerReceiptUpload('${p.id}')"
+                        class="text-emerald-400 hover:text-white text-[10px] font-bold uppercase tracking-widest border border-emerald-900 hover:border-emerald-600 bg-emerald-900/20 px-2 py-1 transition">
+                        <i class="fa-solid fa-upload mr-1"></i> Upload
+                    </button>`;
+            }
+
             rows += `
-            <tr class="border-b border-slate-800 hover:bg-slate-800/30 transition text-xs">
+            <tr id="ledger-row-${p.id}" class="border-b border-slate-800 hover:bg-slate-800/30 transition text-xs">
                 <td class="p-4 text-slate-400 font-mono">${date}</td>
                 <td class="p-4 font-bold text-white">${type}</td>
                 <td class="p-4 text-emerald-400 font-black">${amount}</td>
                 <td class="p-4 text-slate-400 truncate max-w-[200px]" title="${notes}">${notes}</td>
-                <td class="p-4 text-right">${receipt}</td>
+                <td class="p-4 text-right">${receiptCell}</td>
             </tr>`;
         });
         ledTbody.innerHTML = rows;
@@ -631,6 +626,56 @@ async function loadSchoolLedger(school) {
         ledTbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-red-400 font-bold">Failed to load transaction ledger.</td></tr>';
     }
 }
+
+// ── Ledger receipt upload ─────────────────────────────────────────────────
+window.triggerLedgerReceiptUpload = function(paymentId) {
+    const input = document.getElementById('ledgerReceiptInput');
+    if (!input) return;
+    input.setAttribute('data-payment-id', paymentId);
+    input.value = '';
+    input.click();
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    const ledgerInput = document.getElementById('ledgerReceiptInput');
+    if (ledgerInput) {
+        ledgerInput.addEventListener('change', async (e) => {
+            const file      = e.target.files[0];
+            const paymentId = ledgerInput.getAttribute('data-payment-id');
+            if (!file || !paymentId) return;
+
+            const row = document.getElementById(`ledger-row-${paymentId}`);
+            const cell = row ? row.querySelector('td:last-child') : null;
+            if (cell) cell.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-slate-400"></i>';
+
+            try {
+                const storageRef = ref(storage, `receipts/${paymentId}_${file.name}`);
+                await uploadBytes(storageRef, file);
+                const receiptUrl = await getDownloadURL(storageRef);
+
+                await updateDoc(doc(db, 'payments', paymentId), { receiptUrl });
+
+                // Update row in place
+                if (cell) {
+                    cell.innerHTML = `
+                        <div class="flex items-center justify-end gap-2">
+                            <a href="${receiptUrl}" target="_blank"
+                                class="text-blue-400 hover:underline font-bold uppercase text-[10px] tracking-widest">
+                                <i class="fa-solid fa-file-invoice mr-1"></i> View
+                            </a>
+                            <button onclick="window.triggerLedgerReceiptUpload('${paymentId}')"
+                                class="text-slate-400 hover:text-white text-[10px] font-bold uppercase tracking-widest border border-slate-700 hover:border-slate-500 px-2 py-1 transition">
+                                Update
+                            </button>
+                        </div>`;
+                }
+            } catch (err) {
+                console.error('[Ledger] Receipt upload failed:', err);
+                if (cell) cell.innerHTML = '<span class="text-red-400 text-[10px] font-bold">Upload failed</span>';
+            }
+        });
+    }
+});
 
 
 // ── Admin Collaborative Notes ─────────────────────────────────────────────
@@ -858,36 +903,56 @@ document.getElementById('confirmLimitsBtn').addEventListener('click', async () =
 // ── Renewal & Upgrade Modal ────────────────────────────────────────────────
 document.getElementById('renCycle').addEventListener('change', (e) => {
     const customWrap = document.getElementById('renCustomCycleWrap');
-    if (e.target.value === 'Other') customWrap.classList.remove('hidden');
+    const val        = e.target.value;
+
+    // Toggle custom term input
+    if (val === 'Other') customWrap.classList.remove('hidden');
     else customWrap.classList.add('hidden');
+
+    // Auto-populate the new renewal date picker
+    const baseDateStr = currentSchool ? currentSchool.nextRenewalDate : null;
+    if (val && val !== 'Other') {
+        const calculated = calculateNewRenewalDate(val, baseDateStr);
+        document.getElementById('renNewDate').value = isoToDateInput(calculated);
+    }
 });
 
 document.getElementById('openRenewalBtn').addEventListener('click', () => {
     const isPayPalSchool = !!currentSchool.paypalSubscriptionId;
 
+    // School name in header
     document.getElementById('renSchoolName').textContent = currentSchool.schoolName;
-    document.getElementById('renAmount').value           = '';
-    document.getElementById('renCycle').value            = 'No Extension';
-    document.getElementById('renCustomCycleWrap').classList.add('hidden');
-    document.getElementById('renCustomCycle').value      = '';
-    document.getElementById('renNotes').value            = '';
-    document.getElementById('renReceipt').value          = '';
-    document.getElementById('renewalErrorMsg').classList.add('hidden');
-    document.getElementById('renPlanLimitsDisplay').classList.add('hidden');
 
+    // Subscription tier — read-only from school doc (always custom for manual)
+    document.getElementById('renSubscriptionName').textContent =
+        currentSchool.subscriptionName || 'Custom Plan';
+
+    // Reference dates — read-only
+    document.getElementById('renActivatedDate').textContent = currentSchool.subscriptionActivatedAt
+        ? new Date(currentSchool.subscriptionActivatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+        : 'Not set';
+    document.getElementById('renCurrentRenewal').textContent = currentSchool.nextRenewalDate
+        ? new Date(currentSchool.nextRenewalDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+        : 'Not set';
+
+    // Reset form fields
+    document.getElementById('renAmount').value             = '';
+    document.getElementById('renCycle').value              = 'Annual';
+    document.getElementById('renCustomCycleWrap').classList.add('hidden');
+    document.getElementById('renCustomCycle').value        = '';
+    document.getElementById('renNotes').value              = '';
+    document.getElementById('renReceipt').value            = '';
+    document.getElementById('renewalErrorMsg').classList.add('hidden');
+
+    // Auto-populate new renewal date based on default cycle (Annual)
+    const calculated = calculateNewRenewalDate('Annual', currentSchool.nextRenewalDate);
+    document.getElementById('renNewDate').value = isoToDateInput(calculated);
+
+    // PayPal vs manual
     if (isPayPalSchool) {
-        // PayPal school — hide plan selection, show override note
-        document.getElementById('renPlanSection').classList.add('hidden');
         document.getElementById('renPayPalNote').classList.remove('hidden');
-        document.getElementById('renPlan').value = '';
     } else {
-        // Manual school — show full plan selection, pre-fill current plan
-        document.getElementById('renPlanSection').classList.remove('hidden');
         document.getElementById('renPayPalNote').classList.add('hidden');
-        document.getElementById('renPlan').value = currentSchool.subscriptionPlanId || '';
-        if (currentSchool.subscriptionPlanId) {
-            document.getElementById('renPlan').dispatchEvent(new Event('change'));
-        }
     }
 
     const modal = document.getElementById('renewalModal');
@@ -906,35 +971,29 @@ document.getElementById('closeRenewalBtn').addEventListener('click', closeRenewa
 
 document.getElementById('confirmRenewalBtn').addEventListener('click', async () => {
     const isPayPalSchool = !!currentSchool.paypalSubscriptionId;
-    const planId         = document.getElementById('renPlan').value;
     const amount         = document.getElementById('renAmount').value;
     const cycleSelect    = document.getElementById('renCycle').value;
-    const customCycle    = document.getElementById('renCustomCycle').value;
+    const customCycle    = document.getElementById('renCustomCycle').value.trim();
+    const newDateValue   = document.getElementById('renNewDate').value;
     const internalNote   = document.getElementById('renNotes').value.trim();
     const receiptFile    = document.getElementById('renReceipt').files[0];
     const errorMsg       = document.getElementById('renewalErrorMsg');
 
     // Validation
-    if (!isPayPalSchool && !planId) {
-        errorMsg.textContent = 'Please select a Subscription Tier.';
-        errorMsg.classList.remove('hidden'); return;
-    }
     if (!amount || parseFloat(amount) < 0) {
-        errorMsg.textContent = 'Please enter a payment amount (can be 0 for free upgrades).';
+        errorMsg.textContent = 'Please enter a payment amount (can be 0 for free renewals).';
+        errorMsg.classList.remove('hidden'); return;
+    }
+    if (!newDateValue) {
+        errorMsg.textContent = 'Please select a new renewal date.';
         errorMsg.classList.remove('hidden'); return;
     }
 
-    const selectedPlan = isPayPalSchool ? null : availablePlans.find(p => p.id === planId);
-
-    // Guard: plan selected but not found in loaded plans
-    if (!isPayPalSchool && !selectedPlan) {
-        errorMsg.textContent = 'Selected plan not found. Please refresh and try again.';
-        errorMsg.classList.remove('hidden'); return;
-    }
-
-    const actualCycle = cycleSelect === 'Other' ? (customCycle || 'Custom') : cycleSelect;
-    const btn         = document.getElementById('confirmRenewalBtn');
-    btn.disabled      = true;
+    const actualCycle    = cycleSelect === 'Other' ? (customCycle || 'Custom') : cycleSelect;
+    // Use the date picker value — convert YYYY-MM-DD to ISO
+    const newRenewalDate = new Date(newDateValue + 'T00:00:00').toISOString();
+    const btn            = document.getElementById('confirmRenewalBtn');
+    btn.disabled         = true;
     errorMsg.classList.add('hidden');
 
     try {
@@ -953,60 +1012,51 @@ document.getElementById('confirmRenewalBtn').addEventListener('click', async () 
                 errorMsg.textContent = 'Receipt upload failed. Check Storage rules. You can save without a receipt by clearing the file.';
                 errorMsg.classList.remove('hidden');
                 btn.disabled  = false;
-                btn.innerHTML = 'Update Subscription & Log Ledger <i class="fa-solid fa-arrow-rotate-right ml-1"></i>';
+                btn.innerHTML = 'Confirm Renewal <i class="fa-solid fa-check ml-1"></i>';
                 return;
             }
         }
 
-        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Logging Ledger...';
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Logging Payment...';
 
-        const notesArray     = internalNote ? [{
+        const notesArray = internalNote ? [{
             note:         internalNote,
             timestamp:    timestamp,
             loggedBy:     session.id,
             loggedByName: session.name
         }] : [];
 
-        const newRenewalDate = calculateNewRenewalDate(cycleSelect, currentSchool.nextRenewalDate);
-        const paymentType    = cycleSelect === 'No Extension' ? 'Plan Upgrade/Change' : 'Renewal';
-
         await setDoc(doc(db, 'payments', paymentId), {
-            schoolId:           currentSchool.id,
-            schoolName:         currentSchool.schoolName,
-            paymentType:        paymentType,
-            amount:             parseFloat(amount),
-            billingCycle:       actualCycle,
-            subscriptionPlanId: isPayPalSchool ? 'paypal_override' : selectedPlan.id,
-            receiptUrl:         receiptUrl,
-            internalNotes:      notesArray,
-            loggedBy:           session.id,
-            timestamp:          timestamp
+            schoolId:      currentSchool.id,
+            schoolName:    currentSchool.schoolName,
+            paymentType:   'Renewal',
+            amount:        parseFloat(amount),
+            billingCycle:  actualCycle,
+            receiptUrl:    receiptUrl,
+            internalNotes: notesArray,
+            loggedBy:      session.id,
+            timestamp:     timestamp
         });
 
         btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Updating School...';
 
         const schoolUpdate = {
-            nextRenewalDate:         newRenewalDate,
-            isActive:                true,
-            isVerified:              true,
-            subscriptionStatus:      'Active',
-            subscriptionEndedAt:     null,
-            statusReason:            null,
-            subscriptionActivatedAt: new Date().toISOString()
+            nextRenewalDate:      newRenewalDate,
+            isActive:             true,
+            isVerified:           true,
+            subscriptionStatus:   'Active',
+            subscriptionEndedAt:  null,
+            statusReason:         null
         };
 
-        if (!isPayPalSchool) {
-            // Manual school — update plan, limits, billing cycle
-            schoolUpdate.subscriptionPlanId = selectedPlan.id;
-            schoolUpdate.subscriptionName   = selectedPlan.name;
-            schoolUpdate.limits = {
-                adminLimit:   selectedPlan.adminLimit,
-                studentLimit: selectedPlan.studentLimit,
-                teacherLimit: selectedPlan.teacherLimit
-            };
-            if (cycleSelect !== 'No Extension') schoolUpdate.billingCycle = actualCycle;
+        // Update billing cycle for both manual and PayPal if not Other
+        if (cycleSelect !== 'No Extension' && cycleSelect !== 'Other') {
+            schoolUpdate.billingCycle = actualCycle;
+        } else if (cycleSelect === 'Other' && customCycle) {
+            schoolUpdate.billingCycle = customCycle;
         }
-        // PayPal school — only update renewal date and status, leave plan/limits alone
+        // Never touch subscriptionName, subscriptionPlanId, or limits —
+        // those were set at approval and should only change via Override Limits
 
         await updateDoc(doc(db, 'schools', currentSchool.id), schoolUpdate);
 
@@ -1015,12 +1065,12 @@ document.getElementById('confirmRenewalBtn').addEventListener('click', async () 
         loadSchools();
 
     } catch (e) {
-        console.error('Update Failed:', e);
-        errorMsg.textContent = 'An error occurred during update. Check console for details.';
+        console.error('Renewal Failed:', e);
+        errorMsg.textContent = 'An error occurred. Check console for details.';
         errorMsg.classList.remove('hidden');
     }
     btn.disabled  = false;
-    btn.innerHTML = 'Update Subscription & Log Ledger <i class="fa-solid fa-arrow-rotate-right ml-1"></i>';
+    btn.innerHTML = 'Confirm Renewal <i class="fa-solid fa-check ml-1"></i>';
 });
 
 
@@ -1295,4 +1345,4 @@ function showEditMsg(text, isError) {
 }
 
 // Init Data
-loadSubscriptionPlans().then(() => loadSchools());
+loadSchools();
