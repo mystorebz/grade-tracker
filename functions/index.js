@@ -50,14 +50,20 @@ exports.mintAdminToken = onCall({ region: 'us-central1' }, async (request) => {
     }
 
     const hashedInput = sha256Lower(adminCode);
+    const limits      = schoolData.limits || {};
 
     // Path 1: Super Admin
     if (hashedInput === schoolData.adminCode) {
         const token = await mintToken(resolvedSchoolId, {
-            role:       'super_admin',
-            schoolId:   resolvedSchoolId,
-            schoolName: schoolData.schoolName || '',
-            schoolType: schoolData.schoolType || 'Primary'
+            role:         'super_admin',
+            schoolId:     resolvedSchoolId,
+            schoolName:   schoolData.schoolName       || '',
+            schoolType:   schoolData.schoolType       || 'Primary',
+            studentLimit: limits.studentLimit         || 0,
+            teacherLimit: limits.teacherLimit         || 0,
+            adminLimit:   limits.adminLimit           || 0,
+            planName:     schoolData.subscriptionName || '',
+            billingCycle: schoolData.billingCycle     || ''
         });
         return { token };
     }
@@ -72,11 +78,16 @@ exports.mintAdminToken = onCall({ region: 'us-central1' }, async (request) => {
     for (const adminDoc of adminsSnap.docs) {
         if (hashedInput === adminDoc.data().adminCode) {
             const token = await mintToken(adminDoc.id, {
-                role:       'sub_admin',
-                schoolId:   resolvedSchoolId,
-                adminId:    adminDoc.id,
-                schoolName: schoolData.schoolName || '',
-                schoolType: schoolData.schoolType || 'Primary'
+                role:         'sub_admin',
+                schoolId:     resolvedSchoolId,
+                adminId:      adminDoc.id,
+                schoolName:   schoolData.schoolName       || '',
+                schoolType:   schoolData.schoolType       || 'Primary',
+                studentLimit: limits.studentLimit         || 0,
+                teacherLimit: limits.teacherLimit         || 0,
+                adminLimit:   limits.adminLimit           || 0,
+                planName:     schoolData.subscriptionName || '',
+                billingCycle: schoolData.billingCycle     || ''
             });
             return { token };
         }
@@ -341,6 +352,223 @@ exports.mintHQToken = onCall({ region: 'us-central1' }, async (request) => {
     return { token };
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// FUNCTION 5: cancelPayPalSubscription
+//
+// Called from HQ Schools panel when an HQ admin cancels a PayPal school.
+//
+// Does the following in order:
+//   1. Validates caller is an authenticated platform_admin
+//   2. Reads the school doc and confirms it has a paypalSubscriptionId
+//   3. Calls PayPal API to cancel the subscription
+//      - 204 → success, proceed
+//      - 422 → already cancelled in PayPal, proceed anyway
+//      - 404 → not found in PayPal (already gone), proceed anyway
+//      - Any other error → throw, stop, do not touch Firestore
+//   4. Updates school doc in Firestore:
+//      - isVerified: false (suspends access)
+//      - isActive: false
+//      - subscriptionStatus: 'Cancelled'
+//      - statusReason: 'Cancelled by HQ'
+//      - subscriptionEndedAt: now
+//      - paypalSubscriptionId: null (prevents ghost webhook events)
+//   5. Sends cancellation email to school contact
+//   6. Sends internal notification email to HQ
+// ═══════════════════════════════════════════════════════════════════════════════
+exports.cancelPayPalSubscription = onCall({ region: 'us-central1' }, async (request) => {
+
+    // ── 1. Auth check ─────────────────────────────────────────────────────────
+    if (!request.auth) {
+        throw new HttpsError('unauthenticated', 'Authentication required.');
+    }
+    if (request.auth.token.role !== 'platform_admin') {
+        throw new HttpsError('permission-denied', 'Only HQ administrators can perform this action.');
+    }
+
+    const { schoolId } = request.data;
+    const cancelledByName = request.auth.token.name || request.auth.uid;
+    const cancelledById   = request.auth.uid;
+
+    if (!schoolId) {
+        throw new HttpsError('invalid-argument', 'schoolId is required.');
+    }
+
+    console.log(`[cancelPayPalSubscription] Initiated by ${cancelledById} for school ${schoolId}`);
+
+    // ── 2. Read school doc ────────────────────────────────────────────────────
+    const schoolRef  = db.collection('schools').doc(schoolId);
+    const schoolSnap = await schoolRef.get();
+
+    if (!schoolSnap.exists) {
+        throw new HttpsError('not-found', `School ${schoolId} not found.`);
+    }
+
+    const schoolData     = schoolSnap.data();
+    const subscriptionId = schoolData.paypalSubscriptionId;
+    const schoolName     = schoolData.schoolName   || schoolId;
+    const contactEmail   = schoolData.contactEmail || null;
+
+    if (!subscriptionId) {
+        throw new HttpsError('failed-precondition', 'This school does not have a PayPal subscription on file. Use the kill switch to suspend manual schools.');
+    }
+
+    console.log(`[cancelPayPalSubscription] School: ${schoolName} | PayPal Sub ID: ${subscriptionId}`);
+
+    // ── 3. Cancel subscription in PayPal ──────────────────────────────────────
+    try {
+        const accessToken = await getPayPalAccessToken();
+
+        const response = await fetch(
+            `${PAYPAL_API_BASE}/v1/billing/subscriptions/${subscriptionId}/cancel`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type':  'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                },
+                body: JSON.stringify({
+                    reason: `Subscription cancelled by ConnectUs HQ administrator (${cancelledByName}).`
+                })
+            }
+        );
+
+        console.log(`[cancelPayPalSubscription] PayPal response status: ${response.status}`);
+
+        // 204 = cancelled successfully
+        // 422 = already cancelled/suspended in PayPal — treat as success
+        // 404 = subscription not found in PayPal — treat as success (already gone)
+        // Anything else = real error, stop here
+        if (response.status !== 204 && response.status !== 422 && response.status !== 404) {
+            let errorBody = '';
+            try { errorBody = await response.text(); } catch (_) {}
+            console.error(`[cancelPayPalSubscription] PayPal error: ${response.status} — ${errorBody}`);
+            throw new HttpsError(
+                'internal',
+                `PayPal returned an unexpected error (${response.status}). The subscription was NOT cancelled. Please try again or cancel manually in PayPal.`
+            );
+        }
+
+        if (response.status === 422) {
+            console.log(`[cancelPayPalSubscription] PayPal subscription was already cancelled/suspended — proceeding with Firestore update.`);
+        }
+        if (response.status === 404) {
+            console.log(`[cancelPayPalSubscription] PayPal subscription not found — may have already been cancelled. Proceeding with Firestore update.`);
+        }
+
+    } catch (err) {
+        // Re-throw HttpsErrors as-is
+        if (err instanceof HttpsError) throw err;
+        // Wrap unexpected errors
+        console.error(`[cancelPayPalSubscription] Unexpected PayPal error:`, err);
+        throw new HttpsError('internal', 'Failed to reach PayPal. Please check your connection and try again.');
+    }
+
+    // ── 4. Update Firestore ───────────────────────────────────────────────────
+    const now = new Date().toISOString();
+
+    try {
+        await schoolRef.update({
+            isVerified:           false,
+            isActive:             false,
+            subscriptionStatus:   'Cancelled',
+            statusReason:         `Cancelled by HQ — ${cancelledByName}`,
+            subscriptionEndedAt:  now,
+            paypalSubscriptionId: null   // Clear to prevent ghost webhook events
+        });
+
+        console.log(`[cancelPayPalSubscription] Firestore updated for school ${schoolId}`);
+    } catch (err) {
+        console.error(`[cancelPayPalSubscription] Firestore update failed:`, err);
+        throw new HttpsError(
+            'internal',
+            'PayPal subscription was cancelled but the school record could not be updated. Please manually suspend the school in the HQ panel.'
+        );
+    }
+
+    // ── 5. Email to school ────────────────────────────────────────────────────
+    if (contactEmail) {
+        try {
+            const body = `
+              <h2 style="margin:0 0 8px;font-size:24px;font-weight:900;color:#0f172a;text-align:center;">Your Subscription Has Been Cancelled</h2>
+              <p style="margin:0 0 28px;font-size:15px;color:#64748b;text-align:center;line-height:1.6;">Your ConnectUs subscription and portal access have been cancelled by our team.</p>
+
+              <p style="margin:0 0 20px;font-size:15px;color:#334155;line-height:1.7;">
+                Your subscription for <strong>${schoolName}</strong> has been cancelled effective <strong>${new Date(now).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</strong>.
+                Your school portal access has been suspended.
+              </p>
+
+              <div style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:24px;">
+                <p style="margin:0 0 10px;font-size:13px;font-weight:800;color:#0f172a;text-transform:uppercase;letter-spacing:0.08em;">What this means</p>
+                <p style="margin:0 0 10px;font-size:14px;color:#475569;line-height:1.6;">
+                  ✓ <strong>Your PayPal subscription has been cancelled.</strong> No further charges will be made. Please verify the cancellation in your PayPal account under Settings → Payments → Manage Automatic Payments.
+                </p>
+                <p style="margin:0 0 10px;font-size:14px;color:#475569;line-height:1.6;">
+                  ✓ <strong>Your data is preserved.</strong> All school records — teachers, students, and grades — remain intact.
+                </p>
+                <p style="margin:0;font-size:14px;color:#475569;line-height:1.6;">
+                  ✓ <strong>You can resubscribe at any time.</strong> Your School ID and Admin Code will work again as soon as a new subscription is active.
+                </p>
+              </div>
+
+              <p style="margin:0 0 20px;font-size:14px;color:#64748b;line-height:1.7;">
+                If you believe this was done in error or have questions, please contact us immediately at
+                <a href="mailto:info@connectusonline.org" style="color:#0ea5e9;font-weight:700;">info@connectusonline.org</a>.
+              </p>
+
+              <div style="text-align:center;margin-bottom:28px;">
+                <a href="https://connectusonline.org/pricing.html" style="display:inline-block;background:linear-gradient(135deg,#2563eb,#0ea5e9);color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;padding:14px 32px;border-radius:12px;box-shadow:0 4px 14px rgba(37,99,235,0.3);">
+                  Resubscribe &rarr;
+                </a>
+              </div>
+
+              <p style="margin:0;font-size:15px;color:#0f172a;">Warm regards,<br><strong style="color:#10b981;">The ConnectUs Team</strong></p>`;
+
+            const html = buildEmailWrapper('#ef4444,#f97316', LOGO_URL, body);
+
+            await db.collection('mail').add({
+                to:      contactEmail,
+                message: {
+                    subject: `Your ConnectUs Subscription Has Been Cancelled — ${schoolName}`,
+                    html
+                }
+            });
+
+            console.log(`[cancelPayPalSubscription] Cancellation email sent to ${contactEmail}`);
+        } catch (emailErr) {
+            // Email failure is non-fatal — log it but don't throw
+            console.error(`[cancelPayPalSubscription] Failed to send cancellation email:`, emailErr);
+        }
+    }
+
+    // ── 6. Internal HQ notification ───────────────────────────────────────────
+    try {
+        await db.collection('mail').add({
+            to: HQ_EMAIL_ADDRESS,
+            message: {
+                subject: `🚫 HQ Cancellation: ${schoolName} (${schoolId})`,
+                html: `<p style="font-family:sans-serif;font-size:14px;color:#334155;line-height:1.8;">
+                    <strong>School:</strong> ${schoolName}<br>
+                    <strong>School ID:</strong> <span style="font-family:monospace;">${schoolId}</span><br>
+                    <strong>PayPal Subscription ID:</strong> <span style="font-family:monospace;">${subscriptionId}</span><br>
+                    <strong>Cancelled by:</strong> ${cancelledByName} (${cancelledById})<br>
+<strong>Timestamp:</strong> ${new Date(now).toLocaleString('en-US', { timeZone: 'UTC' })} UTC<br><br>
+                    The PayPal subscription has been cancelled and the school's access has been suspended.
+                    All school data is preserved.
+                </p>`
+            }
+        });
+
+        console.log(`[cancelPayPalSubscription] HQ notification sent.`);
+    } catch (hqEmailErr) {
+        // HQ email failure is non-fatal
+        console.error(`[cancelPayPalSubscription] Failed to send HQ notification:`, hqEmailErr);
+    }
+
+    console.log(`[cancelPayPalSubscription] ✓ Complete — school ${schoolId} cancelled and suspended.`);
+    return { success: true, schoolId, cancelledAt: now };
+});
+// --- END: cancelPayPalSubscription ---
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //
@@ -494,7 +722,7 @@ exports.onTeacherCreated = onDocumentCreated("teachers/{teacherId}", async (even
       <p style="margin:0 0 28px;font-size:15px;color:#64748b;text-align:center;line-height:1.6;">You have been successfully onboarded as an educator on the ConnectUs platform.</p>
 
       <p style="margin:0 0 20px;font-size:15px;color:#334155;line-height:1.7;">Hello <strong>${firstName}</strong>,<br><br>
-      Welcome to the ConnectUs National Teacher Registry. You have been enrolled at <strong>${schoolName}</strong>. Your credentials are listed below — please log in and complete your profile setup on first login.</p>
+      Welcome to the ConnectUs Teacher Portal. You have been enrolled at <strong>${schoolName}</strong>. Your credentials are listed below — please log in and complete your profile setup on first login.</p>
 
       <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:28px;">
         <tr><td colspan="2" style="padding:14px 16px;background-color:#0f172a;">
@@ -570,7 +798,7 @@ exports.onTeacherUpdated = onDocumentUpdated("teachers/{teacherId}", async (even
       <p style="margin:0 0 28px;font-size:15px;color:#64748b;text-align:center;line-height:1.6;">You have been successfully enrolled at a new school on ConnectUs.</p>
 
       <p style="margin:0 0 20px;font-size:15px;color:#334155;line-height:1.7;">Hello <strong>${firstName}</strong>,<br><br>
-      Your national teacher profile has been claimed by <strong>${schoolName}</strong>. A new temporary PIN has been generated for your login. Please log in to complete your setup at the new school.</p>
+      Your teacher profile has been registered by <strong>${schoolName}</strong>. A new temporary PIN has been generated for your login. Please log in to complete your setup at the new school.</p>
 
       <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:28px;">
         <tr><td colspan="2" style="padding:14px 16px;background-color:#0f172a;">
