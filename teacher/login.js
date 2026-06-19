@@ -57,7 +57,7 @@ function hideError(el) {
 
 // ── 1. MAIN LOGIN ─────────────────────────────────────────────────────────────
 document.getElementById('loginBtn').addEventListener('click', async () => {
-    const rawId = document.getElementById('loginSchoolId').value.trim();
+    const rawId = document.getElementById('loginTeacherId').value.trim();
     const pin   = document.getElementById('loginTeacherCode').value.trim();
     const msgEl = document.getElementById('loginMsg');
     const btn   = document.getElementById('loginBtn');
@@ -76,13 +76,13 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         // ── 1. CF IS THE GATEKEEPER — send raw PIN, server hashes and verifies ──
         let claims;
         try {
-            const authResult     = await mintTeacherToken({ schoolId: rawId, pin });
+            const authResult     = await mintTeacherToken({ teacherId: rawId, pin });
             const userCredential = await signInWithCustomToken(auth, authResult.data.token);
             const idTokenResult  = await userCredential.user.getIdTokenResult(true);
             claims               = idTokenResult.claims;
         } catch (authError) {
             console.error('[Teacher Login] Server rejected credentials:', authError);
-            showError(msgEl, 'Invalid School ID or Teacher Code.');
+            showError(msgEl, 'Invalid Teacher ID or PIN.');
             resetLoginBtn(btn);
             return;
         }
