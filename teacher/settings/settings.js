@@ -60,7 +60,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Populate header
     document.getElementById('profileAvatar').textContent      = (t.name || 'T').charAt(0).toUpperCase();
     document.getElementById('profileDisplayName').textContent = t.name  || '—';
-    document.getElementById('profileSchoolId').textContent    = session.schoolId || '—';
+    document.getElementById('profileTeacherId').textContent = session.teacherId || '—';
 
     // Populate read-only profile card display
     document.getElementById('displayName').textContent  = t.name  || '—';
