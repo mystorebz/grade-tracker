@@ -228,9 +228,6 @@
 
         /* ── RESPONSIVE ───────────────────────────────────────── */
         @media (max-width: 768px) {
-            /* Fix 1: unlock body scroll on mobile.
-               The global overflow: hidden is correct for dashboard pages
-               but kills scroll on the login page on small screens.       */
             html, body {
                 overflow-y: auto;
                 height: auto;
@@ -240,7 +237,7 @@
                 flex-direction: column;
                 overflow-y: auto;
                 height: auto;
-                min-height: 100dvh; /* dvh tracks real visible area on iOS */
+                min-height: 100dvh;
             }
 
             .brand-panel { width: 100%; padding: 32px 28px; }
@@ -251,8 +248,6 @@
                 width: 100%;
                 padding: 32px 28px;
                 align-items: stretch;
-                /* Fix 2: safe area inset so "Back to main site" clears
-                   the iPhone home indicator bar.                         */
                 padding-bottom: calc(32px + env(safe-area-inset-bottom, 0px));
             }
 
@@ -306,13 +301,13 @@
         <div class="form-card">
             <p class="form-card-eyebrow">Teacher Sign In</p>
             <h2 class="form-card-title">Welcome back</h2>
-            <p class="form-card-sub">Enter your school credentials to continue.</p>
+            <p class="form-card-sub">Enter your Teacher ID and PIN to continue.</p>
 
             <div class="form-field">
-                <label class="form-label" for="loginSchoolId">School ID</label>
+                <label class="form-label" for="loginTeacherId">Teacher ID</label>
                 <div class="form-input-wrap">
-                    <i class="fa-solid fa-school form-input-icon"></i>
-                    <input type="text" id="loginSchoolId" placeholder="e.g. SCH-8B2X9" class="form-input" autocomplete="off" spellcheck="false">
+                    <i class="fa-solid fa-id-badge form-input-icon"></i>
+                    <input type="text" id="loginTeacherId" placeholder="e.g. T26-ABCDE" class="form-input form-input-mono" autocomplete="off" spellcheck="false">
                 </div>
             </div>
 
