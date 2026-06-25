@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About Us | ConnectUs</title>
+
+    <link rel="stylesheet" href="assets/css/global.css">
+    <link rel="stylesheet" href="assets/css/landing.css">
+
+    <link rel="icon" type="image/x-icon" href="assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/images/favicon-32x32.png">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen flex flex-col text-slate-800 antialiased">
+
+    <!-- ── Navbar (identical to index.html) ── -->
+    <nav class="navbar" id="navbar">
+        <div class="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
+            <a href="index.html" class="flex items-center gap-3">
+                <img src="assets/images/logo.png" alt="ConnectUs Logo" class="h-10 w-auto">
+                <span class="font-black text-blue-900 text-xl tracking-tight hidden sm:block">ConnectUs</span>
+            </a>
+            <div class="hidden md:flex items-center gap-6 text-sm font-bold text-slate-600">
+                <a href="index.html#features"     class="hover:text-blue-600 transition">Features</a>
+                <a href="index.html#testimonials" class="hover:text-blue-600 transition">Stories</a>
+                <a href="index.html#get-started"  class="hover:text-blue-600 transition">Portals</a>
+                <a href="pricing.html" class="bg-blue-600 hover:bg-blue-700 text-white py-2 px-5 rounded-full transition shadow-md shadow-blue-200">Subscribe</a>
+            </div>
+            <a href="pricing.html" class="md:hidden bg-blue-600 text-white text-sm font-bold py-2 px-4 rounded-full">Subscribe</a>
+        </div>
+    </nav>
+
+    <!-- ── Hero ── -->
+    <header class="pt-32 pb-16 px-4 text-center bg-gradient-to-b from-[#f0f6ff] to-white">
+        <div class="max-w-3xl mx-auto">
+            <span class="inline-flex items-center gap-2 bg-blue-100 text-blue-700 text-xs font-bold px-4 py-1.5 rounded-full border border-blue-200 shadow-sm mb-5">
+                🏫 &nbsp; About ConnectUs
+            </span>
+            <h1 class="text-4xl md:text-5xl lg:text-6xl font-black text-blue-900 leading-tight mb-5 tracking-tight">
+                The Full Picture.<br>
+                <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">For Every Student.</span>
+            </h1>
+            <p class="text-lg md:text-xl text-slate-600 font-semibold leading-relaxed">
+                ConnectUs replaces scattered spreadsheets and paper grade books with one connected platform — giving schools, teachers, students, and parents a complete, real-time view of academic performance.
+            </p>
+        </div>
+    </header>
+
+    <!-- ── The Problem ── -->
+    <section class="py-20 px-4 bg-white">
+        <div class="max-w-4xl mx-auto">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+                <div>
+                    <span class="text-xs font-black text-blue-500 uppercase tracking-widest">The Problem</span>
+                    <h2 class="text-3xl font-black text-blue-900 mt-2 mb-5 leading-tight">Schools Still Run on Spreadsheets</h2>
+                    <p class="text-slate-600 font-semibold leading-relaxed mb-4">
+                        Walk into most schools today and you'll find the same thing — teachers juggling dozens of Excel sheets, grade books filled with hand-written entries, and report cards typed out one by one at the end of term.
+                    </p>
+                    <p class="text-slate-600 font-semibold leading-relaxed mb-4">
+                        It's slow. It's error-prone. And worst of all, nobody has the full picture. Parents don't know how their child is doing until a report card arrives weeks later. Students don't know where they stand until it's too late to improve.
+                    </p>
+                    <p class="text-slate-600 font-semibold leading-relaxed">
+                        By the time anyone finds out there's a problem, the term is already over.
+                    </p>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-red-50 border border-red-100 rounded-2xl p-5 text-center">
+                        <div class="text-3xl mb-3">📋</div>
+                        <p class="text-sm font-black text-red-700">Clunky Excel sheets</p>
+                        <p class="text-xs text-red-400 font-semibold mt-1">Prone to errors</p>
+                    </div>
+                    <div class="bg-orange-50 border border-orange-100 rounded-2xl p-5 text-center">
+                        <div class="text-3xl mb-3">⏳</div>
+                        <p class="text-sm font-black text-orange-700">Delayed reports</p>
+                        <p class="text-xs text-orange-400 font-semibold mt-1">Weeks out of date</p>
+                    </div>
+                    <div class="bg-amber-50 border border-amber-100 rounded-2xl p-5 text-center">
+                        <div class="text-3xl mb-3">🔍</div>
+                        <p class="text-sm font-black text-amber-700">No visibility</p>
+                        <p class="text-xs text-amber-400 font-semibold mt-1">Parents left guessing</p>
+                    </div>
+                    <div class="bg-yellow-50 border border-yellow-100 rounded-2xl p-5 text-center">
+                        <div class="text-3xl mb-3">📦</div>
+                        <p class="text-sm font-black text-yellow-700">Scattered data</p>
+                        <p class="text-xs text-yellow-400 font-semibold mt-1">Lost when staff leave</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── The Solution ── -->
+    <section class="py-20 px-4 bg-gradient-to-b from-[#f8faff] to-white">
+        <div class="max-w-4xl mx-auto">
+            <div class="text-center mb-14">
+                <span class="text-xs font-black text-blue-500 uppercase tracking-widest">The Solution</span>
+                <h2 class="text-3xl md:text-4xl font-black text-blue-900 mt-2 mb-4">One Platform. Everyone Connected.</h2>
+                <p class="text-slate-500 font-semibold max-w-2xl mx-auto text-base leading-relaxed">
+                    ConnectUs brings the entire school community onto one shared, real-time platform. The moment a teacher enters a grade, everyone who needs to see it can see it.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+                <!-- Admin -->
+                <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-7">
+                    <div class="w-12 h-12 bg-orange-100 rounded-2xl flex items-center justify-center text-2xl mb-4">🔑</div>
+                    <h4 class="font-black text-orange-700 text-lg mb-2">School Admins</h4>
+                    <p class="text-slate-500 text-sm font-semibold leading-relaxed">
+                        See a live dashboard of school-wide academic performance. Manage teachers, students, and classes from one place. Generate report cards with a single click. Know exactly how the school is performing — at any moment.
+                    </p>
+                </div>
+                <!-- Teacher -->
+                <div class="bg-white rounded-2xl border border-blue-100 shadow-sm p-7 ring-1 ring-blue-200">
+                    <div class="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center text-2xl mb-4">🎓</div>
+                    <h4 class="font-black text-blue-700 text-lg mb-2">Teachers</h4>
+                    <p class="text-slate-500 text-sm font-semibold leading-relaxed">
+                        Enter grades directly into a live gradebook — no spreadsheets, no manual calculations. Manage your class roster, leave notes on assignments, run evaluations, and generate professional report cards in minutes.
+                    </p>
+                </div>
+                <!-- Student / Parent -->
+                <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-7">
+                    <div class="w-12 h-12 bg-green-100 rounded-2xl flex items-center justify-center text-2xl mb-4">👪</div>
+                    <h4 class="font-black text-green-700 text-lg mb-2">Students & Parents</h4>
+                    <p class="text-slate-500 text-sm font-semibold leading-relaxed">
+                        Log in from any device and see grades as soon as they're entered. View the full academic transcript, check progress across subjects, and know exactly what areas need improvement — before it's too late.
+                    </p>
+                </div>
+            </div>
+
+            <!-- The big differentiator -->
+            <div class="bg-gradient-to-br from-blue-900 to-blue-700 rounded-3xl p-10 text-white text-center">
+                <div class="text-4xl mb-4">⚡</div>
+                <h3 class="text-2xl md:text-3xl font-black mb-4 leading-tight">Real-Time. Not End-of-Term.</h3>
+                <p class="text-blue-100 font-semibold leading-relaxed max-w-2xl mx-auto text-base">
+                    The biggest shift ConnectUs makes is simple: nobody is waiting anymore. A teacher enters a grade on Monday. A parent checks it on Tuesday. A student knows where they stand by Wednesday. The school sees the full picture every single day — not just at the end of term when it's too late to do anything about it.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── What ConnectUs Tracks ── -->
+    <section class="py-20 px-4 bg-white">
+        <div class="max-w-4xl mx-auto">
+            <div class="text-center mb-14">
+                <span class="text-xs font-black text-blue-500 uppercase tracking-widest">What We Track</span>
+                <h2 class="text-3xl md:text-4xl font-black text-blue-900 mt-2 mb-4">A Complete Academic Record</h2>
+                <p class="text-slate-500 font-semibold max-w-xl mx-auto text-base">
+                    ConnectUs goes beyond just grades. Every student builds a full academic history — subject by subject, term by term, school year by school year.
+                </p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="flex items-start gap-4 p-5 bg-[#f8faff] rounded-2xl border border-slate-100">
+                    <div class="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-lg flex-shrink-0">📝</div>
+                    <div>
+                        <h4 class="font-black text-blue-900 mb-1">Live Gradebook</h4>
+                        <p class="text-slate-500 text-sm font-semibold leading-relaxed">Grades entered by teachers are immediately visible across the platform. No lag, no manual syncing.</p>
+                    </div>
+                </div>
+                <div class="flex items-start gap-4 p-5 bg-[#f8faff] rounded-2xl border border-slate-100">
+                    <div class="w-10 h-10 bg-cyan-100 rounded-xl flex items-center justify-center text-lg flex-shrink-0">📊</div>
+                    <div>
+                        <h4 class="font-black text-blue-900 mb-1">Subject-by-Subject Breakdown</h4>
+                        <p class="text-slate-500 text-sm font-semibold leading-relaxed">Students and parents see exactly which subjects are strong and which need attention — not just an overall average.</p>
+                    </div>
+                </div>
+                <div class="flex items-start gap-4 p-5 bg-[#f8faff] rounded-2xl border border-slate-100">
+                    <div class="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center text-lg flex-shrink-0">📋</div>
+                    <div>
+                        <h4 class="font-black text-blue-900 mb-1">Report Cards with Character Metrics</h4>
+                        <p class="text-slate-500 text-sm font-semibold leading-relaxed">Professional report cards include academic grades and character development evaluations — generated in seconds, not hours.</p>
+                    </div>
+                </div>
+                <div class="flex items-start gap-4 p-5 bg-[#f8faff] rounded-2xl border border-slate-100">
+                    <div class="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center text-lg flex-shrink-0">🏅</div>
+                    <div>
+                        <h4 class="font-black text-blue-900 mb-1">Full Academic History</h4>
+                        <p class="text-slate-500 text-sm font-semibold leading-relaxed">Every grade, every term, every school year — stored permanently in the student's record. Nothing gets lost.</p>
+                    </div>
+                </div>
+                <div class="flex items-start gap-4 p-5 bg-[#f8faff] rounded-2xl border border-slate-100">
+                    <div class="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center text-lg flex-shrink-0">👨‍🏫</div>
+                    <div>
+                        <h4 class="font-black text-blue-900 mb-1">Teacher Evaluations</h4>
+                        <p class="text-slate-500 text-sm font-semibold leading-relaxed">Teachers build a professional record of evaluations and assessments that grows throughout their career.</p>
+                    </div>
+                </div>
+                <div class="flex items-start gap-4 p-5 bg-[#f8faff] rounded-2xl border border-slate-100">
+                    <div class="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center text-lg flex-shrink-0">🏫</div>
+                    <div>
+                        <h4 class="font-black text-blue-900 mb-1">School Performance Overview</h4>
+                        <p class="text-slate-500 text-sm font-semibold leading-relaxed">Admins see exactly how the school is performing across every class and subject — so they know where to focus resources.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── Vision ── -->
+    <section class="py-20 px-4 bg-gradient-to-b from-[#f8faff] to-blue-50">
+        <div class="max-w-3xl mx-auto text-center">
+            <span class="text-xs font-black text-blue-500 uppercase tracking-widest">Our Vision</span>
+            <h2 class="text-3xl md:text-4xl font-black text-blue-900 mt-2 mb-6 leading-tight">
+                No Student's Record<br>Should Ever Be Lost
+            </h2>
+            <p class="text-slate-600 font-semibold leading-relaxed mb-6 text-lg">
+                Every student who goes through ConnectUs carries a permanent Academic Passport — a lifelong digital record of their academic journey. Every teacher carries a Career Ledger that follows them throughout their professional life.
+            </p>
+            <p class="text-slate-600 font-semibold leading-relaxed mb-10 text-lg">
+                When a student moves to a new school, their history moves with them. When a teacher joins a new institution, their record is already there. No paperwork. No starting over. No lost years.
+            </p>
+            <a href="pricing.html" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-black py-4 px-10 rounded-2xl transition shadow-xl shadow-blue-300 text-lg">
+                Get Your School Started →
+            </a>
+        </div>
+    </section>
+
+    <!-- ── Footer (updated) ── -->
+    <footer class="py-10 px-4 text-center">
+        <div class="max-w-4xl mx-auto">
+            <div class="flex items-center justify-center gap-3 mb-5">
+                <img src="assets/images/logo.png" alt="ConnectUs Logo" class="h-10 w-auto opacity-90">
+                <span class="font-black text-white text-2xl tracking-tight">ConnectUs</span>
+            </div>
+            <div class="flex items-center justify-center gap-6 text-slate-400 text-sm font-semibold mb-8">
+                <a href="index.html#features"    class="hover:text-white transition">Features</a>
+                <a href="index.html#get-started" class="hover:text-white transition">Portals</a>
+                <a href="pricing.html"           class="hover:text-white transition">Pricing & Plans</a>
+            </div>
+            <div class="border-t border-white/10 pt-6">
+                <p class="text-slate-500 text-sm font-semibold">
+                    © 2026 ConnectUs. All rights reserved. &nbsp;|&nbsp;
+                    <a href="about.html"        class="hover:text-white transition">About Us</a> &nbsp;|&nbsp;
+                    <a href="contact.html"      class="hover:text-white transition">Contact Us</a> &nbsp;|&nbsp;
+                    <a href="pricing.html"      class="hover:text-white transition">Pricing</a> &nbsp;|&nbsp;
+                    <a href="terms/privacy.html" class="hover:text-white transition">Privacy Policy</a> &nbsp;|&nbsp;
+                    <a href="terms/terms.html"  class="hover:text-white transition">Terms of Service</a>
+                </p>
+            </div>
+        </div>
+    </footer>
+
+</body>
+</html>
