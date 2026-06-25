@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contact Us | ConnectUs</title>
+
+    <link rel="stylesheet" href="assets/css/global.css">
+    <link rel="stylesheet" href="assets/css/landing.css">
+
+    <link rel="icon" type="image/x-icon" href="assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/images/favicon-32x32.png">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- EmailJS -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+    <script>emailjs.init('0J9RlI4x1fQ8P9IG9');</script>
+</head>
+<body class="min-h-screen flex flex-col text-slate-800 antialiased">
+
+    <!-- ── Navbar ── -->
+    <nav class="navbar" id="navbar">
+        <div class="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
+            <a href="index.html" class="flex items-center gap-3">
+                <img src="assets/images/logo.png" alt="ConnectUs Logo" class="h-10 w-auto">
+                <span class="font-black text-blue-900 text-xl tracking-tight hidden sm:block">ConnectUs</span>
+            </a>
+            <div class="hidden md:flex items-center gap-6 text-sm font-bold text-slate-600">
+                <a href="index.html#features"     class="hover:text-blue-600 transition">Features</a>
+                <a href="index.html#testimonials" class="hover:text-blue-600 transition">Stories</a>
+                <a href="index.html#get-started"  class="hover:text-blue-600 transition">Portals</a>
+                <a href="pricing.html" class="bg-blue-600 hover:bg-blue-700 text-white py-2 px-5 rounded-full transition shadow-md shadow-blue-200">Subscribe</a>
+            </div>
+            <a href="pricing.html" class="md:hidden bg-blue-600 text-white text-sm font-bold py-2 px-4 rounded-full">Subscribe</a>
+        </div>
+    </nav>
+
+    <!-- ── Full-page split layout ── -->
+    <div class="flex-1 flex flex-col md:flex-row min-h-screen">
+
+        <!-- Left panel — dark navy -->
+        <div class="md:w-5/12 bg-[#0d1f35] flex flex-col justify-center px-10 py-24 md:py-32 relative overflow-hidden">
+
+            <!-- Background texture -->
+            <div style="position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,0.03) 1px,transparent 1px);background-size:28px 28px;pointer-events:none;"></div>
+            <div style="position:absolute;top:-120px;right:-120px;width:380px;height:380px;background:radial-gradient(circle,rgba(37,99,235,0.18) 0%,transparent 70%);pointer-events:none;"></div>
+            <div style="position:absolute;bottom:-80px;left:-80px;width:280px;height:280px;background:radial-gradient(circle,rgba(6,182,212,0.10) 0%,transparent 70%);pointer-events:none;"></div>
+
+            <div class="relative z-10">
+                <div class="flex items-center gap-3 mb-10">
+                    <img src="assets/images/logo.png" alt="ConnectUs" class="h-10 w-auto">
+                    <span class="font-black text-white text-xl tracking-tight">ConnectUs</span>
+                </div>
+
+                <p class="text-xs font-black text-blue-400 uppercase tracking-widest mb-3">Contact Us</p>
+                <h1 class="text-4xl md:text-5xl font-black text-white leading-tight mb-6 tracking-tight">
+                    Have a<br>question?<br>
+                    <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-400">Let's talk.</span>
+                </h1>
+                <p class="text-slate-400 font-semibold leading-relaxed text-base mb-10 max-w-xs">
+                    Whether you're curious about our platform, need help with your account, or just want to learn more — send us a message and we'll get back to you.
+                </p>
+
+                <!-- Email display -->
+                <div class="flex items-center gap-4 bg-white/5 border border-white/10 rounded-2xl px-5 py-4 max-w-xs">
+                    <div class="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <i class="fa-solid fa-envelope text-white text-sm"></i>
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5">Email</p>
+                        <a href="mailto:info@connectusonline.org" class="text-white font-black text-sm hover:text-blue-300 transition">
+                            info@connectusonline.org
+                        </a>
+                    </div>
+                </div>
+
+                <p class="text-slate-600 text-xs font-semibold mt-4">
+                    We typically respond within 1 business day.
+                </p>
+            </div>
+        </div>
+
+        <!-- Right panel — form -->
+        <div class="md:w-7/12 bg-[#f8faff] flex items-center justify-center px-6 py-16 md:py-0">
+            <div class="w-full max-w-lg">
+
+                <h2 class="text-2xl font-black text-blue-900 mb-2">Send us a message</h2>
+                <p class="text-slate-500 font-semibold text-sm mb-8">Fill in the form below and we'll be in touch shortly.</p>
+
+                <!-- Success state -->
+                <div id="successMsg" class="hidden bg-green-50 border border-green-200 rounded-2xl p-8 text-center">
+                    <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i class="fa-solid fa-circle-check text-green-500 text-3xl"></i>
+                    </div>
+                    <h3 class="font-black text-green-800 text-xl mb-2">Message Sent!</h3>
+                    <p class="text-green-600 font-semibold text-sm leading-relaxed">
+                        Thanks for reaching out. We'll get back to you at your email address within 1 business day.
+                    </p>
+                    <button onclick="resetForm()" class="mt-6 text-xs font-black text-green-600 hover:text-green-800 uppercase tracking-widest transition">
+                        ← Send another message
+                    </button>
+                </div>
+
+                <!-- Error banner -->
+                <div id="errorMsg" class="hidden bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-6 flex items-center gap-3">
+                    <i class="fa-solid fa-circle-exclamation text-red-400 flex-shrink-0"></i>
+                    <p class="text-sm font-bold text-red-600">
+                        Something went wrong. Please try again or email us directly.
+                    </p>
+                </div>
+
+                <!-- Form -->
+                <div id="contactForm" class="space-y-5">
+
+                    <div>
+                        <label class="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">Full Name <span class="text-red-400">*</span></label>
+                        <input type="text" id="contactName" placeholder="e.g. Maria Torres" autocomplete="name"
+                            class="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition placeholder-slate-300">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">Email Address <span class="text-red-400">*</span></label>
+                        <input type="email" id="contactEmail" placeholder="your@email.com" autocomplete="email"
+                            class="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition placeholder-slate-300">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">Your Question <span class="text-red-400">*</span></label>
+                        <textarea id="contactMessage" rows="6"
+                            placeholder="Type your question or message here..."
+                            class="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition resize-none placeholder-slate-300"></textarea>
+                    </div>
+
+                    <button id="sendBtn" onclick="sendMessage()"
+                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl transition shadow-lg shadow-blue-200 text-sm uppercase tracking-widest flex items-center justify-center gap-2.5">
+                        <i class="fa-solid fa-paper-plane"></i>
+                        Send Message
+                    </button>
+
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ── Footer ── -->
+    <footer class="py-10 px-4 text-center">
+        <div class="max-w-4xl mx-auto">
+            <div class="flex items-center justify-center gap-3 mb-5">
+                <img src="assets/images/logo.png" alt="ConnectUs Logo" class="h-10 w-auto opacity-90">
+                <span class="font-black text-white text-2xl tracking-tight">ConnectUs</span>
+            </div>
+            <div class="flex items-center justify-center gap-6 text-slate-400 text-sm font-semibold mb-8">
+                <a href="index.html#features"    class="hover:text-white transition">Features</a>
+                <a href="index.html#get-started" class="hover:text-white transition">Portals</a>
+                <a href="pricing.html"           class="hover:text-white transition">Pricing & Plans</a>
+            </div>
+            <div class="border-t border-white/10 pt-6">
+                <p class="text-slate-500 text-sm font-semibold">
+                    © 2026 ConnectUs. All rights reserved. &nbsp;|&nbsp;
+                    <a href="about.html"         class="hover:text-white transition">About Us</a> &nbsp;|&nbsp;
+                    <a href="contact.html"       class="hover:text-white transition">Contact Us</a> &nbsp;|&nbsp;
+                    <a href="pricing.html"       class="hover:text-white transition">Pricing</a> &nbsp;|&nbsp;
+                    <a href="terms/privacy.html" class="hover:text-white transition">Privacy Policy</a> &nbsp;|&nbsp;
+                    <a href="terms/terms.html"   class="hover:text-white transition">Terms of Service</a>
+                </p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        async function sendMessage() {
+            const name     = document.getElementById('contactName').value.trim();
+            const email    = document.getElementById('contactEmail').value.trim();
+            const message  = document.getElementById('contactMessage').value.trim();
+            const btn      = document.getElementById('sendBtn');
+            const errorEl  = document.getElementById('errorMsg');
+
+            errorEl.classList.add('hidden');
+
+            if (!name) { alert('Please enter your name.'); return; }
+            if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                alert('Please enter a valid email address.'); return;
+            }
+            if (!message) { alert('Please enter your question or message.'); return; }
+
+            btn.disabled  = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending...';
+
+            try {
+                await emailjs.send('service_kgk97jd', 'template_02ud7dw', {
+                    from_name:    name,
+                    from_email:   email,
+                    message:      message,
+                    submitted_at: new Date().toLocaleString('en-US', {
+                        weekday: 'long', year: 'numeric', month: 'long',
+                        day: 'numeric', hour: '2-digit', minute: '2-digit'
+                    })
+                });
+
+                document.getElementById('contactForm').classList.add('hidden');
+                document.getElementById('successMsg').classList.remove('hidden');
+
+            } catch (err) {
+                console.error('[ContactForm] EmailJS error:', err);
+                errorEl.classList.remove('hidden');
+                btn.disabled  = false;
+                btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Send Message';
+            }
+        }
+
+        function resetForm() {
+            document.getElementById('contactName').value    = '';
+            document.getElementById('contactEmail').value   = '';
+            document.getElementById('contactMessage').value = '';
+            document.getElementById('successMsg').classList.add('hidden');
+            document.getElementById('contactForm').classList.remove('hidden');
+        }
+    </script>
+
+</body>
+</html>
