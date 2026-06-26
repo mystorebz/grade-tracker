@@ -13,6 +13,13 @@ if (tData?.profileComplete === true && tData?.requiresPinReset === false && tDat
     window.location.replace('../home/home.html');
 }
 
+// ── SHA-256 TRIM-ONLY (matches sha256Trim on the server — for PINs) ──────────
+async function sha256Trim(text) {
+    const encoded = new TextEncoder().encode(String(text).trim());
+    const buffer  = await crypto.subtle.digest('SHA-256', encoded);
+    return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 // ── UI INITIALIZATION ─────────────────────────────────────────────────────────
 const nameEl = document.getElementById('welcomeTeacherName');
 if (nameEl && tData?.name) {
@@ -104,7 +111,7 @@ document.getElementById('saveStep1Btn')?.addEventListener('click', async () => {
 
     try {
         const securityData = {
-            pin: newPin,
+            pin: await sha256Trim(newPin),
             requiresPinReset: false,
             securityQuestionsSet: true,
             securityQuestions: [
