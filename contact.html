@@ -221,7 +221,10 @@
             document.getElementById('contactMessage').value = '';
             document.getElementById('successMsg').classList.add('hidden');
             document.getElementById('contactForm').classList.remove('hidden');
-        }
+            const btn = document.getElementById('sendBtn');
+            btn.disabled  = false;
+            btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Send Message';
+            }
     </script>
 
 </body>
