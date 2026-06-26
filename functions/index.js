@@ -50,20 +50,14 @@ exports.mintAdminToken = onCall({ region: 'us-central1' }, async (request) => {
     }
 
     const hashedInput = sha256Lower(adminCode);
-    const limits      = schoolData.limits || {};
 
     // Path 1: Super Admin
     if (hashedInput === schoolData.adminCode) {
         const token = await mintToken(resolvedSchoolId, {
-            role:         'super_admin',
-            schoolId:     resolvedSchoolId,
-            schoolName:   schoolData.schoolName       || '',
-            schoolType:   schoolData.schoolType       || 'Primary',
-            studentLimit: limits.studentLimit         || 0,
-            teacherLimit: limits.teacherLimit         || 0,
-            adminLimit:   limits.adminLimit           || 0,
-            planName:     schoolData.subscriptionName || '',
-            billingCycle: schoolData.billingCycle     || ''
+            role:       'super_admin',
+            schoolId:   resolvedSchoolId,
+            schoolName: schoolData.schoolName || '',
+            schoolType: schoolData.schoolType || 'Primary'
         });
         return { token };
     }
@@ -78,16 +72,11 @@ exports.mintAdminToken = onCall({ region: 'us-central1' }, async (request) => {
     for (const adminDoc of adminsSnap.docs) {
         if (hashedInput === adminDoc.data().adminCode) {
             const token = await mintToken(adminDoc.id, {
-                role:         'sub_admin',
-                schoolId:     resolvedSchoolId,
-                adminId:      adminDoc.id,
-                schoolName:   schoolData.schoolName       || '',
-                schoolType:   schoolData.schoolType       || 'Primary',
-                studentLimit: limits.studentLimit         || 0,
-                teacherLimit: limits.teacherLimit         || 0,
-                adminLimit:   limits.adminLimit           || 0,
-                planName:     schoolData.subscriptionName || '',
-                billingCycle: schoolData.billingCycle     || ''
+                role:       'sub_admin',
+                schoolId:   resolvedSchoolId,
+                adminId:    adminDoc.id,
+                schoolName: schoolData.schoolName || '',
+                schoolType: schoolData.schoolType || 'Primary'
             });
             return { token };
         }
@@ -98,134 +87,115 @@ exports.mintAdminToken = onCall({ region: 'us-central1' }, async (request) => {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FUNCTION 2: mintTeacherToken
-// --- START: mintTeacherToken ---
+//
+// Authenticates a teacher using their unique Teacher ID and PIN.
+//
+// Flow:
+//   1. Receives { teacherId, pin } from the teacher login page
+//   2. Normalizes teacherId: trim + toUpperCase
+//   3. Validates format: must match T##-XXXXX (e.g. T26-ABCDE)
+//   4. Fetches teacher doc directly from /teachers/{teacherId} — no query,
+//      no ambiguity. This replaces the old school-scoped query which could
+//      return multiple teachers if two shared the same PIN.
+//   5. Hashes the incoming PIN with sha256Trim (trim only, preserve case)
+//      — same hash function used at teacher creation time
+//   6. Compares hash against teacherData.pin — hash-only, no plain-text fallback
+//   7. Checks teacher is not archived
+//   8. Gets schoolId from teacherData.currentSchoolId
+//   9. Fetches school doc and confirms isVerified === true
+//  10. Mints a custom Firebase Auth token with identical claims to before:
+//      { role, schoolId, teacherId, schoolType, schoolName }
+//      No 'legacy' claim — login.js reads isGlobalTeacher = !claims.legacy = true
+//
+// Changed from previous version:
+//   - Input: teacherId + pin (was schoolId + pin)
+//   - Lookup: direct getDoc by teacherId (was query by currentSchoolId + pin)
+//   - Removed: plain-text PIN fallback (clean slate — all accounts are hashed)
+//   - Removed: legacy Block 2 (/schools/{id}/teachers subcollection)
+//   - schoolId now comes FROM the teacher doc, not from the login form
+//
+// Deploy command: firebase deploy --only functions:mintTeacherToken
 // ═══════════════════════════════════════════════════════════════════════════════
+// --- START: mintTeacherToken ---
 exports.mintTeacherToken = onCall({ region: 'us-central1' }, async (request) => {
-
-    const { schoolId, pin } = request.data;
-
-    if (!schoolId || !pin) {
-        throw new HttpsError('invalid-argument', 'schoolId and pin are required.');
+ 
+    const { teacherId, pin } = request.data;
+ 
+    // ── 1. Input validation ───────────────────────────────────────────────────
+    if (!teacherId || !pin) {
+        throw new HttpsError('invalid-argument', 'teacherId and pin are required.');
     }
-
-    // Hash the incoming pin exactly as entered (trim whitespace only, preserve case)
-    const pinTrimmed = String(pin).trim();
-    const pinHashed  = sha256Trim(pinTrimmed);
-
-    const variants = [schoolId.toUpperCase(), schoolId.toLowerCase(), schoolId];
-
-    // ── Path 1: Global /teachers ──────────────────────────────────────────────
-    for (const sid of variants) {
-
-        // Step 1: Try hashed comparison first (new secure path)
-        let globalSnap = await db.collection('teachers')
-            .where('currentSchoolId', '==', sid)
-            .where('pin', '==', pinHashed)
-            .get();
-
-        // Step 2: Fall back to plain text comparison (migration path for existing pins)
-        if (globalSnap.empty) {
-            globalSnap = await db.collection('teachers')
-                .where('currentSchoolId', '==', sid)
-                .where('pin', '==', pinTrimmed)
-                .get();
-
-            // If plain text matched, silently upgrade the stored pin to a hash
-            if (!globalSnap.empty) {
-                try {
-                    await db.collection('teachers')
-                        .doc(globalSnap.docs[0].id)
-                        .update({ pin: pinHashed });
-                } catch (upgradeErr) {
-                    console.warn('[mintTeacherToken] Pin upgrade failed silently:', upgradeErr.message);
-                }
-            }
-        }
-
-        if (!globalSnap.empty) {
-            const teacherDoc  = globalSnap.docs[0];
-            const teacherData = teacherDoc.data();
-
-            if (teacherData.archived) {
-                throw new HttpsError('permission-denied', 'Account archived. Contact your administrator.');
-            }
-
-            const schoolSnap = await db.collection('schools').doc(sid).get();
-            if (!schoolSnap.exists || schoolSnap.data().isVerified !== true) {
-                throw new HttpsError('permission-denied', 'School account is pending approval.');
-            }
-
-            const token = await mintToken(teacherDoc.id, {
-                role:       'teacher',
-                schoolId:   sid,
-                teacherId:  teacherDoc.id,
-                schoolType: schoolSnap.data().schoolType || 'Primary',
-                schoolName: schoolSnap.data().schoolName || ''
-            });
-            return { token };
-        }
+ 
+    // ── 2. Normalize and validate Teacher ID format ───────────────────────────
+    // Format: T + 2-digit year + hyphen + 5 alphanumeric chars (e.g. T26-ABCDE)
+    const normalizedId = String(teacherId).trim().toUpperCase();
+ 
+    if (!/^T\d{2}-[A-Z0-9]{5}$/.test(normalizedId)) {
+        throw new HttpsError('invalid-argument', 'Invalid Teacher ID format.');
     }
-
-    // ── Path 2: Legacy siloed /schools/{schoolId}/teachers ────────────────────
-    for (const sid of variants) {
-        try {
-            // Try hashed first
-            let legacySnap = await db
-                .collection('schools').doc(sid)
-                .collection('teachers')
-                .where('loginCode', '==', pinHashed)
-                .get();
-
-            // Fall back to plain text
-            if (legacySnap.empty) {
-                legacySnap = await db
-                    .collection('schools').doc(sid)
-                    .collection('teachers')
-                    .where('loginCode', '==', pinTrimmed)
-                    .get();
-
-                // Silently upgrade if plain text matched
-                if (!legacySnap.empty) {
-                    try {
-                        await db
-                            .collection('schools').doc(sid)
-                            .collection('teachers')
-                            .doc(legacySnap.docs[0].id)
-                            .update({ loginCode: pinHashed });
-                    } catch (upgradeErr) {
-                        console.warn('[mintTeacherToken] Legacy pin upgrade failed silently:', upgradeErr.message);
-                    }
-                }
-            }
-
-            if (!legacySnap.empty) {
-                const teacherDoc = legacySnap.docs[0];
-
-                const schoolSnap = await db.collection('schools').doc(sid).get();
-                if (!schoolSnap.exists || schoolSnap.data().isVerified !== true) {
-                    throw new HttpsError('permission-denied', 'School account is pending approval.');
-                }
-
-                const token = await mintToken(teacherDoc.id, {
-                    role:       'teacher',
-                    schoolId:   sid,
-                    teacherId:  teacherDoc.id,
-                    schoolType: schoolSnap.data().schoolType || 'Primary',
-                    schoolName: schoolSnap.data().schoolName || '',
-                    legacy:     true
-                });
-                return { token };
-            }
-        } catch (e) {
-            if (e instanceof HttpsError) throw e;
-            continue;
-        }
+ 
+    // ── 3. Fetch teacher doc directly — no query, no ambiguity ───────────────
+    // This is the core change: instead of querying all teachers in a school
+    // by PIN (which fails when two teachers share a PIN), we fetch the exact
+    // teacher document by their unique ID and verify the PIN against it.
+    const teacherSnap = await db.collection('teachers').doc(normalizedId).get();
+ 
+    if (!teacherSnap.exists) {
+        throw new HttpsError('not-found', 'Invalid Teacher ID or PIN.');
     }
-
-    throw new HttpsError('unauthenticated', 'Invalid School ID or Teacher Code.');
+ 
+    const teacherData = teacherSnap.data();
+ 
+    // ── 4. Hash and verify PIN ────────────────────────────────────────────────
+    // sha256Trim: trim whitespace only, preserve case — matches how PINs are
+    // stored at teacher creation time. No plain-text fallback.
+    const pinHashed = sha256Trim(String(pin).trim());
+ 
+    if (teacherData.pin !== pinHashed) {
+        throw new HttpsError('unauthenticated', 'Invalid Teacher ID or PIN.');
+    }
+ 
+    // ── 5. Check teacher is not archived ─────────────────────────────────────
+    if (teacherData.archived) {
+        throw new HttpsError('permission-denied', 'Account archived. Contact your administrator.');
+    }
+ 
+    // ── 6. Get schoolId from the teacher doc ──────────────────────────────────
+    // schoolId comes FROM the teacher's record, not from the login form.
+    // This is what flows into the token claims and downstream session.
+    const schoolId = teacherData.currentSchoolId || '';
+ 
+    if (!schoolId) {
+        throw new HttpsError('permission-denied', 'Teacher is not currently enrolled at a school.');
+    }
+ 
+    // ── 7. Fetch school and verify it is active ───────────────────────────────
+    const schoolSnap = await db.collection('schools').doc(schoolId).get();
+ 
+    if (!schoolSnap.exists || schoolSnap.data().isVerified !== true) {
+        throw new HttpsError('permission-denied', 'School account is pending approval.');
+    }
+ 
+    const schoolData = schoolSnap.data();
+ 
+    // ── 8. Mint token — claims structure identical to previous version ─────────
+    // No 'legacy' claim is set. In login.js: isGlobalTeacher = !claims.legacy
+    // = !undefined = true. All downstream portal logic works correctly.
+    const token = await mintToken(normalizedId, {
+        role:       'teacher',
+        schoolId,
+        teacherId:  normalizedId,
+        schoolType: schoolData.schoolType || 'Primary',
+        schoolName: schoolData.schoolName || ''
+    });
+ 
+    return { token };
+ 
+    // Unreachable — kept as safety net per project convention
+    throw new HttpsError('unauthenticated', 'Invalid Teacher ID or PIN.');
 });
 // --- END: mintTeacherToken ---
-
+ 
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FUNCTION 3: mintStudentToken
@@ -352,6 +322,7 @@ exports.mintHQToken = onCall({ region: 'us-central1' }, async (request) => {
     return { token };
 });
 
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // FUNCTION 5: cancelPayPalSubscription
 //
@@ -434,10 +405,6 @@ exports.cancelPayPalSubscription = onCall({ region: 'us-central1' }, async (requ
 
         console.log(`[cancelPayPalSubscription] PayPal response status: ${response.status}`);
 
-        // 204 = cancelled successfully
-        // 422 = already cancelled/suspended in PayPal — treat as success
-        // 404 = subscription not found in PayPal — treat as success (already gone)
-        // Anything else = real error, stop here
         if (response.status !== 204 && response.status !== 422 && response.status !== 404) {
             let errorBody = '';
             try { errorBody = await response.text(); } catch (_) {}
@@ -456,9 +423,7 @@ exports.cancelPayPalSubscription = onCall({ region: 'us-central1' }, async (requ
         }
 
     } catch (err) {
-        // Re-throw HttpsErrors as-is
         if (err instanceof HttpsError) throw err;
-        // Wrap unexpected errors
         console.error(`[cancelPayPalSubscription] Unexpected PayPal error:`, err);
         throw new HttpsError('internal', 'Failed to reach PayPal. Please check your connection and try again.');
     }
@@ -473,7 +438,7 @@ exports.cancelPayPalSubscription = onCall({ region: 'us-central1' }, async (requ
             subscriptionStatus:   'Cancelled',
             statusReason:         `Cancelled by HQ — ${cancelledByName}`,
             subscriptionEndedAt:  now,
-            paypalSubscriptionId: null   // Clear to prevent ghost webhook events
+            paypalSubscriptionId: null
         });
 
         console.log(`[cancelPayPalSubscription] Firestore updated for school ${schoolId}`);
@@ -535,7 +500,6 @@ exports.cancelPayPalSubscription = onCall({ region: 'us-central1' }, async (requ
 
             console.log(`[cancelPayPalSubscription] Cancellation email sent to ${contactEmail}`);
         } catch (emailErr) {
-            // Email failure is non-fatal — log it but don't throw
             console.error(`[cancelPayPalSubscription] Failed to send cancellation email:`, emailErr);
         }
     }
@@ -551,7 +515,7 @@ exports.cancelPayPalSubscription = onCall({ region: 'us-central1' }, async (requ
                     <strong>School ID:</strong> <span style="font-family:monospace;">${schoolId}</span><br>
                     <strong>PayPal Subscription ID:</strong> <span style="font-family:monospace;">${subscriptionId}</span><br>
                     <strong>Cancelled by:</strong> ${cancelledByName} (${cancelledById})<br>
-<strong>Timestamp:</strong> ${new Date(now).toLocaleString('en-US', { timeZone: 'UTC' })} UTC<br><br>
+                    <strong>Timestamp:</strong> ${new Date(now).toLocaleString('en-US', { timeZone: 'UTC' })} UTC<br><br>
                     The PayPal subscription has been cancelled and the school's access has been suspended.
                     All school data is preserved.
                 </p>`
@@ -560,7 +524,6 @@ exports.cancelPayPalSubscription = onCall({ region: 'us-central1' }, async (requ
 
         console.log(`[cancelPayPalSubscription] HQ notification sent.`);
     } catch (hqEmailErr) {
-        // HQ email failure is non-fatal
         console.error(`[cancelPayPalSubscription] Failed to send HQ notification:`, hqEmailErr);
     }
 
@@ -698,60 +661,79 @@ exports.onSchoolCreated = onDocumentCreated("schools/{schoolId}", async (event) 
 // --- END: onSchoolCreated ---
 
 
+
+ 
+// ═══════════════════════════════════════════════════════════════════════════════
+// FUNCTION: onTeacherCreated
+//
+// Firestore trigger — fires when a new teacher doc is created in /teachers/.
+// Sends a welcome & credential email to the new teacher.
+//
+// Unchanged from previous version:
+//   - Trigger path, guard conditions, school name lookup
+//   - Email wrapper, colors, CTA button, support footer
+//   - db.collection('mail').add() write
+//
+// Changed from previous version:
+//   - Credentials table: Teacher ID is now FIRST (it's the login identifier)
+//   - Table order: Teacher ID → Full Name → School Name → School ID → Temporary PIN
+//   - Intro paragraph: explicitly says to use Teacher ID to log in
+//   - Important note: clarifies Teacher ID is the login credential, not School ID
+// ═══════════════════════════════════════════════════════════════════════════════
 // --- START: onTeacherCreated ---
-// Fires when a new teacher doc is created in the national registry.
-// Sends a welcome & credential email to the teacher.
 exports.onTeacherCreated = onDocumentCreated("teachers/{teacherId}", async (event) => {
     const data      = event.data.data();
     const teacherId = event.params.teacherId;
-
+ 
+    // Guard: only send email if teacher has an email and is assigned to a school
     if (!data || !data.email || !data.currentSchoolId) return null;
-
+ 
+    // Look up the school name for display in the email
     let schoolName = data.currentSchoolId;
     try {
         const schoolSnap = await db.collection('schools').doc(data.currentSchoolId).get();
         if (schoolSnap.exists) schoolName = schoolSnap.data().schoolName || data.currentSchoolId;
     } catch (_) {}
-
+ 
     const firstName = data.firstName || data.name?.split(' ')[0] || 'there';
     const pin       = data.pin       || 'See your administrator';
     const loginLink = 'https://connectusonline.org/teacher/login.html';
-
+ 
     const body = `
       <h2 style="margin:0 0 8px;font-size:26px;font-weight:900;color:#0f172a;text-align:center;">You're on ConnectUs!</h2>
       <p style="margin:0 0 28px;font-size:15px;color:#64748b;text-align:center;line-height:1.6;">You have been successfully onboarded as an educator on the ConnectUs platform.</p>
-
+ 
       <p style="margin:0 0 20px;font-size:15px;color:#334155;line-height:1.7;">Hello <strong>${firstName}</strong>,<br><br>
-      Welcome to the ConnectUs Teacher Portal. You have been enrolled at <strong>${schoolName}</strong>. Your credentials are listed below — please log in and complete your profile setup on first login.</p>
-
+      Welcome to the ConnectUs National Teacher Registry. You have been enrolled at <strong>${schoolName}</strong>. Your credentials are listed below — use your <strong>Teacher ID</strong> to log in and complete your profile setup on first login.</p>
+ 
       <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:28px;">
         <tr><td colspan="2" style="padding:14px 16px;background-color:#0f172a;">
           <p style="margin:0;font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.15em;">Your Credentials</p>
         </td></tr>
-        ${credentialRow('Full Name', data.name || `${data.firstName} ${data.lastName}`)}
         ${credentialRow('Teacher ID', teacherId, true)}
-        ${credentialRow('School ID', data.currentSchoolId, true)}
+        ${credentialRow('Full Name', data.name || `${data.firstName} ${data.lastName}`)}
         ${credentialRow('School Name', schoolName)}
+        ${credentialRow('School ID', data.currentSchoolId, true)}
         ${credentialRow('Temporary PIN', pin, true)}
       </table>
-
+ 
       <div style="text-align:center;margin-bottom:28px;">
         <a href="${loginLink}" style="display:inline-block;background:linear-gradient(135deg,#2563eb,#7c3aed);color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;padding:16px 36px;border-radius:12px;letter-spacing:0.04em;box-shadow:0 4px 14px rgba(37,99,235,0.35);">
           Log In to Teacher Portal &rarr;
         </a>
       </div>
-
+ 
       <div style="background-color:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:16px 20px;margin-bottom:20px;">
         <p style="margin:0;font-size:13px;font-weight:700;color:#92400e;line-height:1.6;">
-          <strong>Important:</strong> Your PIN above is temporary. You will be required to set a new PIN and answer security questions on your first login. Keep your Teacher ID safe — it follows you throughout your career.
+          <strong>Important:</strong> Your PIN above is temporary. You will be required to set a new PIN and answer security questions on your first login. Your Teacher ID is what you use to log in to the portal — keep it safe, as it follows you throughout your career.
         </p>
       </div>
-
+ 
       <p style="margin:0;font-size:14px;color:#64748b;line-height:1.7;">For support, contact us at <a href="mailto:info@connectusonline.org" style="color:#2563eb;font-weight:700;">info@connectusonline.org</a>.</p>
       <p style="margin:20px 0 0;font-size:15px;color:#0f172a;">Warm regards,<br><strong style="color:#2563eb;">The ConnectUs Team</strong></p>`;
-
+ 
     const html = buildEmailWrapper('#2563eb,#7c3aed,#0ea5e9', LOGO_URL, body);
-
+ 
     try {
         await db.collection('mail').add({
             to: data.email,
@@ -761,7 +743,7 @@ exports.onTeacherCreated = onDocumentCreated("teachers/{teacherId}", async (even
     } catch (error) {
         console.error(`Failed to send teacher welcome email for ${teacherId}:`, error);
     }
-
+ 
     return null;
 });
 // --- END: onTeacherCreated ---
@@ -798,7 +780,7 @@ exports.onTeacherUpdated = onDocumentUpdated("teachers/{teacherId}", async (even
       <p style="margin:0 0 28px;font-size:15px;color:#64748b;text-align:center;line-height:1.6;">You have been successfully enrolled at a new school on ConnectUs.</p>
 
       <p style="margin:0 0 20px;font-size:15px;color:#334155;line-height:1.7;">Hello <strong>${firstName}</strong>,<br><br>
-      Your teacher profile has been registered by <strong>${schoolName}</strong>. A new temporary PIN has been generated for your login. Please log in to complete your setup at the new school.</p>
+      Your national teacher profile has been claimed by <strong>${schoolName}</strong>. A new temporary PIN has been generated for your login. Please log in to complete your setup at the new school.</p>
 
       <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:28px;">
         <tr><td colspan="2" style="padding:14px 16px;background-color:#0f172a;">
@@ -1353,17 +1335,16 @@ function generateReqId() {
 }
 
 // ── Main webhook handler ──────────────────────────────────────────────────────
-exports.onPayPalWebhook = onRequest({ region: 'us-central1' }, async (req, res) => {
+exports.onPayPalWebhook = onRequest({ region: 'us-central1', minInstances: 1 }, async (req, res) => {
 
     if (req.method !== 'POST') {
         res.status(405).send('Method Not Allowed');
         return;
     }
 
-    // Collect raw body for signature verification
-    let rawBody = '';
-    req.on('data', chunk => { rawBody += chunk.toString(); });
-    await new Promise(resolve => req.on('end', resolve));
+    // Read body — Firebase Functions v2 already parses it for us.
+    // req.rawBody contains the original bytes (needed for PayPal signature verification).
+    const rawBody = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body);
 
     // ── Verify the request is genuinely from PayPal ───────────────────────────
     const isValid = await verifyPayPalWebhook(req.headers, rawBody);
@@ -1555,7 +1536,7 @@ exports.onPayPalWebhook = onRequest({ region: 'us-central1' }, async (req, res) 
                     message:               '',
                     status:                'Paid',
                     fulfilled:             false,
-                    paymentCleared:        true,
+                    paymentCleared:        false,
                     approvedPlanId:        planId,
                     approvedPlanName:      `ConnectUs ${plan.name}`,
                     approvedBillingCycle:  plan.billing,
@@ -1568,7 +1549,13 @@ exports.onPayPalWebhook = onRequest({ region: 'us-central1' }, async (req, res) 
                     createdAt: now.toISOString()
                 });
 
-                console.log(`[onPayPalWebhook] NEW SUBSCRIBER — created quote_requests/${reqId} for ${subscriberEmail}`);
+                // Step 2: Flip paymentCleared to true. This triggers onQuoteApproved
+                // which sends the onboarding email automatically.
+                await db.collection('quote_requests').doc(reqId).update({
+                    paymentCleared: true
+                });
+
+                console.log(`[onPayPalWebhook] NEW SUBSCRIBER — created quote_requests/${reqId} for ${subscriberEmail} and triggered onboarding email`);
 
                 // ── HQ notification for new subscriber ────────────────────────
                 const hqNotificationHtml = `
@@ -2070,3 +2057,311 @@ exports.autoSuspendExpiredSchools = onSchedule(
     }
 );
 // --- END: autoSuspendExpiredSchools ---
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SANDBOX TESTING — onPayPalWebhookSandbox
+//
+// This is a parallel function that handles PayPal SANDBOX webhooks only.
+// It runs alongside the live onPayPalWebhook function — completely isolated.
+//
+// Sandbox events create real Firestore docs and send real emails, but are
+// tagged with source: 'paypal-sandbox' so they can be identified and cleaned
+// up easily after testing.
+//
+// To clean up after testing:
+//   Firestore Console → quote_requests → filter where source == 'paypal-sandbox'
+//   Delete those docs. Done.
+//
+// To remove sandbox entirely when done testing:
+//   Delete this entire block + remove the webhook in PayPal Sandbox dashboard.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── Sandbox PayPal credentials ────────────────────────────────────────────────
+const PAYPAL_SANDBOX_CLIENT_ID     = 'AceuzPv9uHIgK2LUy7wbpjU-V0yVGNn4M23BCdjTtjUsUwU8vh1QWx2usB6VgxJ77GpXz5KBrLG6JJ3W';
+const PAYPAL_SANDBOX_CLIENT_SECRET = 'EDSKQmkOV0KOtileHx_gTc4pLXOityT0a_VZ_fksPQezo27EyNc__8-WCUVDHTJSfgbFxBqGv2wVR90S';
+const PAYPAL_SANDBOX_WEBHOOK_ID    = '39V61404WA1746601';
+const PAYPAL_SANDBOX_API_BASE      = 'https://api-m.sandbox.paypal.com';
+
+// ── Sandbox plan ID → metadata ────────────────────────────────────────────────
+const PAYPAL_SANDBOX_PLAN_MAP = {
+    'P-353316640J552981VNIY2O4Q': { name: 'Starter', billing: 'Monthly', studentLimit: 50, teacherLimit: 10, adminLimit: 1 },
+    'P-0GW99757YL647613XNIY2PZY': { name: 'Starter', billing: 'Annual',  studentLimit: 50, teacherLimit: 10, adminLimit: 1 },
+};
+
+// ── Sandbox: Get PayPal access token ──────────────────────────────────────────
+async function getPayPalSandboxAccessToken() {
+    const response = await fetch(`${PAYPAL_SANDBOX_API_BASE}/v1/oauth2/token`, {
+        method:  'POST',
+        headers: {
+            'Content-Type':  'application/x-www-form-urlencoded',
+            'Authorization': 'Basic ' + Buffer.from(`${PAYPAL_SANDBOX_CLIENT_ID}:${PAYPAL_SANDBOX_CLIENT_SECRET}`).toString('base64')
+        },
+        body: 'grant_type=client_credentials'
+    });
+    const data = await response.json();
+    return data.access_token;
+}
+
+// ── Sandbox: Verify PayPal webhook signature ──────────────────────────────────
+async function verifyPayPalSandboxWebhook(headers, rawBody) {
+    try {
+        const accessToken = await getPayPalSandboxAccessToken();
+        const response    = await fetch(`${PAYPAL_SANDBOX_API_BASE}/v1/notifications/verify-webhook-signature`, {
+            method:  'POST',
+            headers: {
+                'Content-Type':  'application/json',
+                'Authorization': `Bearer ${accessToken}`
+            },
+            body: JSON.stringify({
+                auth_algo:         headers['paypal-auth-algo'],
+                cert_url:          headers['paypal-cert-url'],
+                transmission_id:   headers['paypal-transmission-id'],
+                transmission_sig:  headers['paypal-transmission-sig'],
+                transmission_time: headers['paypal-transmission-time'],
+                webhook_id:        PAYPAL_SANDBOX_WEBHOOK_ID,
+                webhook_event:     JSON.parse(rawBody)
+            })
+        });
+        const result = await response.json();
+        return result.verification_status === 'SUCCESS';
+    } catch (err) {
+        console.error('[onPayPalWebhookSandbox] Signature verification failed:', err);
+        return false;
+    }
+}
+
+// ── Sandbox: Main webhook handler ─────────────────────────────────────────────
+exports.onPayPalWebhookSandbox = onRequest({ region: 'us-central1' }, async (req, res) => {
+
+    if (req.method !== 'POST') {
+        res.status(405).send('Method Not Allowed');
+        return;
+    }
+
+    const rawBody = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body);
+
+    const isValid = await verifyPayPalSandboxWebhook(req.headers, rawBody);
+    if (!isValid) {
+        console.warn('[onPayPalWebhookSandbox] Invalid signature — request rejected.');
+        res.status(400).send('Invalid signature');
+        return;
+    }
+
+    let event;
+    try {
+        event = JSON.parse(rawBody);
+    } catch (e) {
+        res.status(400).send('Invalid JSON');
+        return;
+    }
+
+    const eventType       = event.event_type;
+    const resource        = event.resource || {};
+    const subscriptionId  = resource.id || resource.billing_agreement_id || '';
+    const planId          = resource.plan_id || '';
+    const subscriberEmail = resource.subscriber?.email_address || '';
+    const subscriberName  = resource.subscriber?.name || {};
+    const firstName       = subscriberName.given_name || '';
+    const lastName        = subscriberName.surname    || '';
+
+    console.log(`[onPayPalWebhookSandbox] 🧪 Event: ${eventType} | Subscription: ${subscriptionId} | Plan: ${planId}`);
+
+    try {
+
+        if (eventType === 'BILLING.SUBSCRIPTION.ACTIVATED') {
+
+            const plan = PAYPAL_SANDBOX_PLAN_MAP[planId];
+            if (!plan) {
+                console.error(`[onPayPalWebhookSandbox] Unknown sandbox plan ID: ${planId}`);
+                res.status(200).send('OK');
+                return;
+            }
+
+            const now       = new Date();
+            const expiresAt = plan.billing === 'Annual'
+                ? new Date(new Date().setFullYear(now.getFullYear() + 1)).toISOString()
+                : new Date(new Date().setMonth(now.getMonth() + 1)).toISOString();
+
+            // Check if this subscriber already has a school (reactivation test path)
+            const existing = await findExistingSchoolByEmail(subscriberEmail);
+
+            if (existing) {
+                // REACTIVATION — same as live, but logged with sandbox prefix
+                const { schoolId, schoolData } = existing;
+
+                await db.collection('schools').doc(schoolId).update({
+                    isVerified:              true,
+                    isActive:                true,
+                    subscriptionStatus:      'Active',
+                    statusReason:            null,
+                    subscriptionEndedAt:     null,
+                    paypalSubscriptionId:    subscriptionId,
+                    paypalPlanId:            planId,
+                    subscriptionName:        `ConnectUs ${plan.name} (SANDBOX)`,
+                    subscriptionPlanId:      planId,
+                    billingCycle:            plan.billing,
+                    nextRenewalDate:         expiresAt,
+                    subscriptionActivatedAt: now.toISOString(),
+                    sandboxTest:             true,
+                    limits: {
+                        studentLimit: plan.studentLimit,
+                        teacherLimit: plan.teacherLimit,
+                        adminLimit:   plan.adminLimit
+                    }
+                });
+
+                console.log(`[onPayPalWebhookSandbox] 🧪 REACTIVATION — restored school ${schoolId} for ${subscriberEmail}`);
+
+                // HQ notification only — skip the customer-facing "Access Restored" email
+                // for reactivation tests to avoid confusing real customers
+                await db.collection('mail').add({
+                    to: HQ_EMAIL_ADDRESS,
+                    message: {
+                        subject: `🧪 SANDBOX Reactivation Test: ${schoolData.schoolName || schoolId}`,
+                        html: `<p style="font-family:sans-serif;font-size:14px;color:#334155;">
+                            <strong>⚠ SANDBOX TEST EVENT</strong><br><br>
+                            <strong>School:</strong> ${schoolData.schoolName || schoolId} (${schoolId})<br>
+                            <strong>Plan:</strong> ConnectUs ${plan.name} — ${plan.billing}<br>
+                            <strong>Subscriber Email:</strong> ${subscriberEmail}<br>
+                            <strong>Sandbox Subscription ID:</strong> ${subscriptionId}
+                        </p>`
+                    }
+                });
+
+            } else {
+                // NEW SUBSCRIBER — same two-step write as live to trigger onQuoteApproved
+                const reqId = generateReqId();
+
+                await db.collection('quote_requests').doc(reqId).set({
+                    requestId:             reqId,
+                    source:                'paypal-sandbox',
+                    sandboxTest:           true,
+                    paypalSubscriptionId:  subscriptionId,
+                    paypalPlanId:          planId,
+                    firstName,
+                    lastName,
+                    fullName:              `${firstName} ${lastName}`.trim(),
+                    jobTitle:              '',
+                    workEmail:             subscriberEmail,
+                    phone:                 '',
+                    schoolName:            '[SANDBOX TEST]',
+                    schoolType:            '',
+                    country:               '',
+                    city:                  '',
+                    stateProvince:         '',
+                    studentsCount:         plan.studentLimit,
+                    teachersCount:         plan.teacherLimit,
+                    contractTerm:          plan.billing,
+                    hearAboutUs:           'PayPal Sandbox Test',
+                    message:               '',
+                    status:                'Paid',
+                    fulfilled:             false,
+                    paymentCleared:        false,
+                    approvedPlanId:        planId,
+                    approvedPlanName:      `ConnectUs ${plan.name} (SANDBOX)`,
+                    approvedBillingCycle:  plan.billing,
+                    calculatedRenewalDate: expiresAt,
+                    approvedLimits: {
+                        studentLimit: plan.studentLimit,
+                        teacherLimit: plan.teacherLimit,
+                        adminLimit:   plan.adminLimit
+                    },
+                    createdAt: now.toISOString()
+                });
+
+                // Flip paymentCleared to trigger onQuoteApproved → onboarding email
+                await db.collection('quote_requests').doc(reqId).update({
+                    paymentCleared: true
+                });
+
+                console.log(`[onPayPalWebhookSandbox] 🧪 NEW SUBSCRIBER — created quote_requests/${reqId} for ${subscriberEmail}`);
+
+                // HQ notification so you can confirm test fired
+                await db.collection('mail').add({
+                    to: HQ_EMAIL_ADDRESS,
+                    message: {
+                        subject: `🧪 SANDBOX Test: New Subscription — ${subscriberEmail}`,
+                        html: `<p style="font-family:sans-serif;font-size:14px;color:#334155;">
+                            <strong>⚠ SANDBOX TEST EVENT</strong><br><br>
+                            <strong>Subscriber:</strong> ${`${firstName} ${lastName}`.trim() || 'Unknown'}<br>
+                            <strong>Email:</strong> ${subscriberEmail}<br>
+                            <strong>Plan:</strong> ConnectUs ${plan.name} — ${plan.billing}<br>
+                            <strong>Quote Request ID:</strong> ${reqId}<br>
+                            <strong>Sandbox Subscription ID:</strong> ${subscriptionId}<br><br>
+                            Onboarding email has been triggered automatically.<br>
+                            To clean up: delete quote_requests/${reqId} from Firestore.
+                        </p>`
+                    }
+                });
+            }
+        }
+
+        else if (eventType === 'BILLING.SUBSCRIPTION.EXPIRED') {
+            const school = await findSchoolBySubscription(subscriptionId);
+            if (school) {
+                await db.collection('schools').doc(school.id).update({
+                    isVerified:          false,
+                    subscriptionStatus:  'Expired',
+                    statusReason:        'SANDBOX TEST: Subscription expired',
+                    subscriptionEndedAt: new Date().toISOString()
+                });
+                console.log(`[onPayPalWebhookSandbox] 🧪 EXPIRED — suspended school ${school.id}`);
+            }
+        }
+
+        else if (eventType === 'BILLING.SUBSCRIPTION.SUSPENDED') {
+            const school = await findSchoolBySubscription(subscriptionId);
+            if (school) {
+                await db.collection('schools').doc(school.id).update({
+                    isVerified:         false,
+                    subscriptionStatus: 'Suspended',
+                    statusReason:       'SANDBOX TEST: Suspended by PayPal'
+                });
+                console.log(`[onPayPalWebhookSandbox] 🧪 SUSPENDED — suspended school ${school.id}`);
+            }
+        }
+
+        else if (eventType === 'BILLING.SUBSCRIPTION.RE-ACTIVATED') {
+            const school = await findSchoolBySubscription(subscriptionId);
+            if (school) {
+                await db.collection('schools').doc(school.id).update({
+                    isVerified:         true,
+                    subscriptionStatus: 'Active',
+                    statusReason:       null
+                });
+                console.log(`[onPayPalWebhookSandbox] 🧪 RE-ACTIVATED — restored school ${school.id}`);
+            }
+        }
+
+        else if (eventType === 'BILLING.SUBSCRIPTION.PAYMENT.FAILED') {
+            const school = await findSchoolBySubscription(subscriptionId);
+            if (school) {
+                console.log(`[onPayPalWebhookSandbox] 🧪 PAYMENT_FAILED — for school ${school.id}`);
+            }
+        }
+
+        else if (eventType === 'BILLING.SUBSCRIPTION.CANCELLED') {
+            const school = await findSchoolBySubscription(subscriptionId);
+            if (school) {
+                await db.collection('schools').doc(school.id).update({
+                    subscriptionStatus: 'Cancelled',
+                    statusReason:       'SANDBOX TEST: Cancelled by subscriber'
+                });
+                console.log(`[onPayPalWebhookSandbox] 🧪 CANCELLED — logged on school ${school.id}`);
+            }
+        }
+
+        else {
+            console.log(`[onPayPalWebhookSandbox] 🧪 Unhandled event: ${eventType}`);
+        }
+
+    } catch (err) {
+        console.error(`[onPayPalWebhookSandbox] Error handling ${eventType}:`, err);
+        res.status(500).send('Internal error');
+        return;
+    }
+
+    res.status(200).send('OK');
+});
+// --- END: onPayPalWebhookSandbox ---
