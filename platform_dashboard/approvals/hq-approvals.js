@@ -93,7 +93,7 @@ async function loadAll() {
         snap.forEach(d => {
             const data = { id: d.id, ...d.data() };
             if (data.source === 'paypal') {
-                allPayPalSubs.push(data);
+                if (!data.fulfilled) allPayPalSubs.push(data);
             } else {
                 if (!data.fulfilled) allManualQuotes.push(data);
             }
