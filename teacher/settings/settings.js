@@ -16,6 +16,13 @@ async function sha256(text) {
     return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+// ── SHA-256 TRIM-ONLY (matches sha256Trim on the server — for PINs) ──────────
+async function sha256Trim(text) {
+    const encoded = new TextEncoder().encode(String(text).trim());
+    const buffer  = await crypto.subtle.digest('SHA-256', encoded);
+    return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 function showMsg(elId, msg, isError) {
     const el = document.getElementById(elId);
     if (!el) return;
@@ -292,7 +299,14 @@ document.getElementById('savePinBtn')?.addEventListener('click', async () => {
 
     try {
         const snap = await getDoc(doc(db, 'teachers', session.teacherId));
-        if (!snap.exists() || String(snap.data().pin) !== String(current)) {
+        const storedPin   = snap.exists() ? snap.data().pin : null;
+        const currentHash = await sha256Trim(current);
+
+        // Match against hash first (logged-in teachers), then plain text
+        // (never-logged-in teachers whose PIN hasn't been upgraded yet)
+        const pinMatches = storedPin === currentHash || storedPin === String(current);
+
+        if (!snap.exists() || !pinMatches) {
             showMsg('pinMsg', 'Current PIN is incorrect.', true);
             btn.disabled  = false;
             btn.innerHTML = '<i class="fa-solid fa-lock text-[11px]"></i> Update PIN';
@@ -300,7 +314,7 @@ document.getElementById('savePinBtn')?.addEventListener('click', async () => {
         }
 
         await updateDoc(doc(db, 'teachers', session.teacherId), {
-            pin:            nw,
+            pin:            await sha256Trim(nw),
             lastPinResetAt: new Date().toISOString()
         });
 
@@ -333,7 +347,13 @@ document.getElementById('saveSecQBtn')?.addEventListener('click', async () => {
 
     try {
         const snap = await getDoc(doc(db, 'teachers', session.teacherId));
-        if (!snap.exists() || String(snap.data().pin) !== String(currentPin)) {
+        const storedPin   = snap.exists() ? snap.data().pin : null;
+        const currentHash = await sha256Trim(currentPin);
+
+        // Match against hash first, then plain text (same as Change PIN)
+        const pinMatches = storedPin === currentHash || storedPin === String(currentPin);
+
+        if (!snap.exists() || !pinMatches) {
             showMsg('secQMsg', 'Current PIN is incorrect.', true);
             btn.disabled  = false;
             btn.innerHTML = '<i class="fa-solid fa-floppy-disk text-[11px]"></i> Save Questions';
