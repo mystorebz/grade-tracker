@@ -1,4 +1,5 @@
 import { logout, getSessionData } from './auth.js';
+import { initNotifications } from './notifications.js';
 
 /**
  * Injects the Admin Sidebar and Topbar into the page.
@@ -116,6 +117,17 @@ export function injectAdminLayout(activePageId, pageTitle, pageSub, showSearch =
           </div>
           ` : ''}
 
+          <div class="notif-wrap">
+            <button id="notifBellBtn" class="notif-bell" aria-label="Notifications">
+              <i class="fa-solid fa-bell"></i>
+              <span id="notifBadge" class="notif-badge hidden">0</span>
+            </button>
+            <div id="notifDropdown" class="notif-dropdown hidden">
+              <div class="notif-dropdown-head">Notifications</div>
+              <div id="notifList" class="notif-list"></div>
+            </div>
+          </div>
+
         </div>
       </header>
     `;
@@ -140,6 +152,9 @@ export function injectAdminLayout(activePageId, pageTitle, pageSub, showSearch =
     document.getElementById('logoutBtn').addEventListener('click', () => {
         logout('../../admin/login.html');
     });
+
+    // ── 6b. Notifications ──────────────────────────────────────────────────────
+    initNotifications('admin', session);
 
     // ── 7. Mobile sidebar toggle ──────────────────────────────────────────────
     // Class toggles only — no body overflow manipulation, no display toggling.
