@@ -107,6 +107,7 @@ function checkTeacherAtRisk() {
         message: `${risk === 1 ? 'A student is' : 'These students are'} averaging below 65% this period. Review and consider early support.`,
         href:    '../home/home.html'
     };
+}
 
 /**
  * Checks the active grading period's end date and returns a notification
