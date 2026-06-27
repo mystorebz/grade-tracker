@@ -158,7 +158,7 @@ function infoCell(label, value) {
 // ── 4. LOAD TEACHERS ────────────────────────────────────────────────────────
 async function loadTeachers() {
     tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center text-[#9ab0c6] italic font-semibold">
-        <i class="fa-solid fa-spinner fa-spin mr-2 text-[#2563eb]"></i>Syncing with National Registry...
+        <i class="fa-solid fa-spinner fa-spin mr-2 text-[#2563eb]"></i>Syncing with Registry...
     </td></tr>`;
 
     try {
@@ -1124,7 +1124,7 @@ function renderArchiveTab() {
                 <h4 class="font-black text-[#be123c] text-[15px] mb-2">Archive This Teacher</h4>
                 <p class="text-[12px] text-[#374f6b] font-semibold leading-relaxed">
                     Archiving removes <strong>${escHtml(currentTeacherData?.name)}</strong> from your active staff,
-                    files a mandatory exit evaluation, and generates a career snapshot for their national passport.
+                    files a mandatory exit evaluation, and generates a career snapshot for their passport.
                 </p>
             </div>
             <div class="bg-white border border-[#dce3ed] rounded-xl p-5 mb-5 space-y-2">
@@ -1337,7 +1337,7 @@ window.printTeacherPortfolio = async (tId) => {
     if (!t || t.id !== tId) return;
 
     const w = window.open('', '_blank');
-    w.document.write('<div style="font-family: sans-serif; padding: 40px; color: #64748b;">Generating National Portfolio Data...</div>');
+    w.document.write('<div style="font-family: sans-serif; padding: 40px; color: #64748b;">Generating Portfolio Data...</div>');
 
     try {
         const evalSnap = await getDocs(query(collection(db, 'teachers', tId, 'evaluations'), where('schoolId', '==', session.schoolId)));
