@@ -66,10 +66,47 @@ async function buildNotifications(role, session) {
         console.error('[Notifications] grading period check failed:', e);
     }
 
-    // (Future steps add at-risk, missing grades, seat limits here.)
+    // ── Teacher at-risk students (cache only — Option A) ────────────────────
+    if (role === 'teacher') {
+        try {
+            const riskNotif = checkTeacherAtRisk();
+            if (riskNotif) notifications.push(riskNotif);
+        } catch (e) {
+            console.error('[Notifications] at-risk check failed:', e);
+        }
+    }
+
+    // (Future steps add admin at-risk, missing grades, seat limits here.)
 
     return notifications;
 }
+
+/**
+ * Teacher at-risk notification, read from the connectus_sidebar_stats cache
+ * that the teacher home dashboard writes. "risk" = students averaging below
+ * 65% this period (matches the dashboard threshold exactly).
+ *
+ * Option A: cache only. If the teacher hasn't loaded their dashboard this
+ * session, the cache may be absent and we simply show nothing (no false
+ * alarm). Returns a notification object or null.
+ */
+function checkTeacherAtRisk() {
+    const cached = localStorage.getItem('connectus_sidebar_stats');
+    if (!cached) return null;
+
+    let stats;
+    try { stats = JSON.parse(cached); } catch (_) { return null; }
+
+    const risk = Number(stats?.risk);
+    if (!Number.isFinite(risk) || risk <= 0) return null;
+
+    return {
+        level:   'warn',
+        icon:    'fa-triangle-exclamation',
+        title:   `${risk} student${risk !== 1 ? 's' : ''} at risk`,
+        message: `${risk === 1 ? 'A student is' : 'These students are'} averaging below 65% this period. Review and consider early support.`,
+        href:    '../home/home.html'
+    };
 
 /**
  * Checks the active grading period's end date and returns a notification
