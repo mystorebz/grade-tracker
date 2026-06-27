@@ -3,16 +3,16 @@
    Powers the topbar notification bell for the Teacher and Admin portals.
    Computed once on page load (no live listeners).
 
-   STEP 2: Grading period awareness.
+   STEP 2 (hardened): Grading period awareness.
      • Amber "warn"   when the active period ends within 7 days (countdown)
      • Red   "urgent" when the active period's end date has passed
-   Reads the active semester the same way the teacher pages already do:
-   the semester list from the connectus_semesters_{schoolId} cache (or a
-   one-time fetch if absent), and the active semester id from the school doc.
+   The active semester is fetched fresh from Firestore (school doc + the one
+   active semester doc) rather than from any cache, so the date check always
+   reflects reality for both teacher and admin.
    ========================================================================== */
 
 import { db } from './firebase-init.js';
-import { doc, getDoc, getDocs, collection } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 /**
  * Initializes the notification bell for a portal.
@@ -66,47 +66,9 @@ async function buildNotifications(role, session) {
         console.error('[Notifications] grading period check failed:', e);
     }
 
-    // ── Teacher at-risk students (cache only — Option A) ────────────────────
-    if (role === 'teacher') {
-        try {
-            const riskNotif = checkTeacherAtRisk();
-            if (riskNotif) notifications.push(riskNotif);
-        } catch (e) {
-            console.error('[Notifications] at-risk check failed:', e);
-        }
-    }
-
-    // (Future steps add admin at-risk, missing grades, seat limits here.)
+    // (Future steps add missing grades, seat limits here.)
 
     return notifications;
-}
-
-/**
- * Teacher at-risk notification, read from the connectus_sidebar_stats cache
- * that the teacher home dashboard writes. "risk" = students averaging below
- * 65% this period (matches the dashboard threshold exactly).
- *
- * Option A: cache only. If the teacher hasn't loaded their dashboard this
- * session, the cache may be absent and we simply show nothing (no false
- * alarm). Returns a notification object or null.
- */
-function checkTeacherAtRisk() {
-    const cached = localStorage.getItem('connectus_sidebar_stats');
-    if (!cached) return null;
-
-    let stats;
-    try { stats = JSON.parse(cached); } catch (_) { return null; }
-
-    const risk = Number(stats?.risk);
-    if (!Number.isFinite(risk) || risk <= 0) return null;
-
-    return {
-        level:   'warn',
-        icon:    'fa-triangle-exclamation',
-        title:   `${risk} student${risk !== 1 ? 's' : ''} at risk`,
-        message: `${risk === 1 ? 'A student is' : 'These students are'} averaging below 65% this period. Review and consider early support.`,
-        href:    '../home/home.html'
-    };
 }
 
 /**
@@ -117,34 +79,22 @@ async function checkGradingPeriod(role, session) {
     const schoolId = session?.schoolId;
     if (!schoolId) return null;
 
-    // 1. Resolve the active semester ID.
-    //    Admin session carries it; teacher session does not — so fall back
-    //    to the school doc, exactly like the teacher pages do.
-    let activeId = session.activeSemesterId || '';
-    if (!activeId) {
-        const schoolSnap = await getDoc(doc(db, 'schools', schoolId));
-        activeId = schoolSnap.exists() ? (schoolSnap.data().activeSemesterId || '') : '';
-    }
+    // 1. Resolve the active semester ID from the school doc (always fresh).
+    //    We deliberately do NOT trust session.activeSemesterId or the
+    //    semester cache here, because either can be stale — and the period
+    //    notification is the most important one, so it must reflect reality.
+    const schoolSnap = await getDoc(doc(db, 'schools', schoolId));
+    if (!schoolSnap.exists()) return null;
+    const activeId = schoolSnap.data().activeSemesterId || '';
     if (!activeId) return null; // no active period set — nothing to warn about
 
-    // 2. Get the semester list — cache first, then one-time fetch if absent.
-    const cacheKey = `connectus_semesters_${schoolId}`;
-    let semesters  = [];
-    const cached   = localStorage.getItem(cacheKey);
-    if (cached) {
-        try { semesters = JSON.parse(cached); } catch (_) { semesters = []; }
-    }
-    if (!semesters.length) {
-        const snap = await getDocs(collection(db, 'schools', schoolId, 'semesters'));
-        semesters  = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        // Don't write the cache here — let the dashboards own that, to avoid
-        // changing behavior elsewhere. We just read what we need.
-    }
+    // 2. Fetch that one semester doc directly (fresh — not from cache).
+    const semSnap = await getDoc(doc(db, 'schools', schoolId, 'semesters', activeId));
+    if (!semSnap.exists()) return null;
+    const active = { id: semSnap.id, ...semSnap.data() };
+    if (!active.endDate) return null;
 
-    // 3. Find the active semester and check its end date.
-    const active = semesters.find(s => s.id === activeId);
-    if (!active || !active.endDate) return null;
-
+    // 3. Compare its end date to today.
     const today = startOfDay(new Date());
     const end   = startOfDay(new Date(active.endDate + 'T00:00:00'));
     if (isNaN(end.getTime())) return null;
