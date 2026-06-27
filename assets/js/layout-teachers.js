@@ -1,4 +1,5 @@
 import { logout, getSessionData } from './auth.js';
+import { initNotifications } from './notifications.js';
 
 /**
  * Injects the Teacher Sidebar and Topbar into the page.
@@ -112,6 +113,17 @@ export function injectTeacherLayout(activePageId, pageTitle, pageSub, showSearch
             </select>
           </div>
 
+          <div class="notif-wrap">
+            <button id="notifBellBtn" class="notif-bell" aria-label="Notifications">
+              <i class="fa-solid fa-bell"></i>
+              <span id="notifBadge" class="notif-badge hidden">0</span>
+            </button>
+            <div id="notifDropdown" class="notif-dropdown hidden">
+              <div class="notif-dropdown-head">Notifications</div>
+              <div id="notifList" class="notif-list"></div>
+            </div>
+          </div>
+
           <img src="../../assets/images/logo.png" alt="ConnectUs" class="topbar-logo hidden sm:block">
         </div>
       </header>
@@ -177,6 +189,9 @@ export function injectTeacherLayout(activePageId, pageTitle, pageSub, showSearch
         logout('../../teacher/login.html');
     });
 
+    // ── NOTIFICATIONS ─────────────────────────────────────────────────────────
+    initNotifications('teacher', session);
+
     // ── MOBILE SIDEBAR TOGGLE ────────────────────────────────────────────────
     // Class toggles only — no body overflow manipulation, no display toggling.
     // Nav <a> links navigate naturally on their own.
@@ -195,4 +210,4 @@ export function injectTeacherLayout(activePageId, pageTitle, pageSub, showSearch
 
     if (toggleBtn) toggleBtn.addEventListener('click', openSidebar);
     overlay.addEventListener('click', closeSidebar);
-}  
+}
