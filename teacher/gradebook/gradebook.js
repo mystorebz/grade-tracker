@@ -232,6 +232,9 @@ async function loadGradebook() {
     const sbRisk = document.getElementById('sb-risk');
     if (sbRisk) { sbRisk.textContent = riskCount; sbRisk.classList.toggle('is-risk', riskCount > 0); }
 
+    // Grading completeness summary (awareness only — never alters grades/averages)
+    try { computeCompleteness(grades, semId); } catch (e) { console.error('[Gradebook] completeness:', e); }
+
     if (sfSubject) {
         const subjSet = [...new Set(grades.map(g => g.subject || 'Uncategorized'))].sort();
         sfSubject.setItems(subjSet.map(s => ({ id: s, label: s })));
@@ -338,6 +341,111 @@ function renderGradebook() {
 }
 
 window.applyGradebookFilters = function() { renderGradebook(); };
+
+// ── COMPLETENESS SUMMARY (awareness only) ─────────────────────────────────────
+// Flags students who have NO grades or only ONE grade in a subject their class
+// has already started grading this term. Students within a 21-day grace window
+// (from the later of their enrollment date or the term start) are skipped, so
+// newly-enrolled students are never falsely flagged. This function only reads
+// data already in memory and only writes to the #gbCompleteness element — it
+// never changes grades, averages, or any other part of the gradebook.
+const GRACE_DAYS = 21;
+
+function completenessStartOfDay(d) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function computeCompleteness(grades, semId) {
+    const el = document.getElementById('gbCompleteness');
+    if (!el) return;
+
+    // Resolve the active term's start date (same lookup checkLockStatus uses).
+    const activeSem = rawSemesters.find(s => s.id === semId);
+    const termStart = activeSem && activeSem.startDate
+        ? completenessStartOfDay(new Date(activeSem.startDate + 'T00:00:00'))
+        : null;
+
+    const today = completenessStartOfDay(new Date());
+
+    // Group grades: className -> subject -> studentId -> count
+    // Also track which subjects each class has "started" (has >=1 grade in).
+    const classSubjects = {};                 // className -> Set(subject)
+    const countByClassSubjStu = {};           // className -> subject -> studentId -> count
+
+    grades.forEach(g => {
+        const cls  = g.className || '';
+        const subj = g.subject || 'Uncategorized';
+        const sid  = g.studentId;
+        if (!classSubjects[cls]) classSubjects[cls] = new Set();
+        classSubjects[cls].add(subj);
+        if (!countByClassSubjStu[cls]) countByClassSubjStu[cls] = {};
+        if (!countByClassSubjStu[cls][subj]) countByClassSubjStu[cls][subj] = {};
+        countByClassSubjStu[cls][subj][sid] = (countByClassSubjStu[cls][subj][sid] || 0) + 1;
+    });
+
+    let noneCount   = 0;   // students with zero grades in a started subject
+    let sparseCount = 0;   // students with exactly one grade in a started subject
+
+    allStudentsCache.forEach(stu => {
+        // 21-day grace: skip students still ramping up.
+        let graceAnchor = null;
+        if (stu.createdAt) {
+            const enrolled = completenessStartOfDay(new Date(stu.createdAt));
+            graceAnchor = (termStart && termStart > enrolled) ? termStart : enrolled;
+        } else if (termStart) {
+            graceAnchor = termStart;
+        }
+        if (graceAnchor) {
+            const daysSince = Math.round((today - graceAnchor) / (1000 * 60 * 60 * 24));
+            if (daysSince < GRACE_DAYS) return; // still in grace — do not flag
+        }
+
+        const cls = stu.className || '';
+        const startedSubjects = classSubjects[cls];
+        if (!startedSubjects || startedSubjects.size === 0) return; // class hasn't started grading
+
+        let hasNone = false;
+        let hasSparse = false;
+        startedSubjects.forEach(subj => {
+            const cnt = (countByClassSubjStu[cls][subj] || {})[stu.id] || 0;
+            if (cnt === 0)      hasNone = true;
+            else if (cnt === 1) hasSparse = true;
+        });
+
+        // A student is counted once per tier: "none" takes priority as the more urgent gap.
+        if (hasNone)        noneCount++;
+        else if (hasSparse) sparseCount++;
+    });
+
+    // Nothing to show → keep the strip hidden.
+    if (noneCount === 0 && sparseCount === 0) {
+        el.style.display = 'none';
+        el.innerHTML = '';
+        return;
+    }
+
+    const parts = [];
+    if (noneCount > 0) {
+        parts.push(`<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#7f1d1d;background:#fee2e2;border:1px solid #fecaca;border-radius:4px;padding:5px 11px;">
+            <i class="fa-solid fa-circle-exclamation" style="font-size:11px;"></i>
+            ${noneCount} student${noneCount !== 1 ? 's' : ''} with no grades in a subject</span>`);
+    }
+    if (sparseCount > 0) {
+        parts.push(`<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#78350f;background:#fef3c7;border:1px solid #fde68a;border-radius:4px;padding:5px 11px;">
+            <i class="fa-solid fa-circle-half-stroke" style="font-size:11px;"></i>
+            ${sparseCount} student${sparseCount !== 1 ? 's' : ''} with only one grade in a subject</span>`);
+    }
+
+    el.innerHTML = `
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid #dce3ed;border-radius:4px;padding:12px 16px;box-shadow:0 1px 2px rgba(13,31,53,0.05);">
+            <span style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#9ab0c6;display:inline-flex;align-items:center;gap:6px;">
+                <i class="fa-solid fa-list-check" style="font-size:11px;color:#6b84a0;"></i> Grading Completeness
+            </span>
+            ${parts.join('')}
+            <span style="font-size:10.5px;color:#9ab0c6;font-weight:500;margin-left:auto;">Students enrolled under ${GRACE_DAYS} days are not counted.</span>
+        </div>`;
+    el.style.display = 'block';
+}
 
 function gradeColor(pct) {
     if (pct >= 90) return '#065f46'; if (pct >= 80) return '#1e3a8a';
