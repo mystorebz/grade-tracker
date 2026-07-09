@@ -257,6 +257,7 @@
                     </div>
                 </div>
             </div>
+            <div id="rosterPeriodNote" class="no-print" style="display:none;margin-bottom:16px;"></div>
             <div class="roster-controls no-print">
                 <div class="control-search">
                     <div class="control-search-icon"><i class="fa-solid fa-magnifying-glass"></i></div>
@@ -396,6 +397,7 @@
                     <button onclick="window.closeStudentPanel()" class="modal-close"><i class="fa-solid fa-xmark"></i></button>
                 </div>
             </div>
+            <div id="sPanelMissing" style="display:none;flex-shrink:0;border-bottom:1px solid #dce3ed;background:#fff;padding:14px 24px;"></div>
             <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;position:relative;">
                 <div id="sPanelLoader" style="position:absolute;inset:0;background:rgba(255,255,255,0.85);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;">
                     <i class="fa-solid fa-circle-notch fa-spin" style="font-size:28px;color:#0ea871;"></i>
@@ -788,6 +790,11 @@
                     Whoever you don't tick stays exactly where they are.
                 </p>
                 <div id="promoteList" style="display:flex;flex-direction:column;"></div>
+                <div id="promoteWarning" style="display:none;margin-top:14px;padding:13px 15px;background:#fff7ed;border:1px solid #fed7aa;border-radius:4px;"></div>
+                <div id="promoteNoteWrap" style="display:none;margin-top:14px;">
+                    <label class="field-label">Promotion Note <span style="color:#9ab0c6;font-weight:600;text-transform:none;letter-spacing:0;">(optional — saved to the student's record)</span></label>
+                    <textarea id="promoteNote" class="form-input" rows="2" placeholder="e.g. Reason for promotion, notes for the next teacher or admin…"></textarea>
+                </div>
                 <p id="promoteMsg" class="hidden" style="font-size:12px;font-weight:600;padding:10px 14px;border-radius:3px;text-align:center;margin-top:12px;"></p>
             </div>
             <div style="padding:16px 24px;border-top:1px solid #e8edf2;background:#fafbfc;display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;">
