@@ -14,6 +14,8 @@ if (session) {
 let allStudents = [];
 let studentMap  = {};
 let allGrades   = [];
+let rawSemesters      = [];   // module-scoped so fetchMetrics can read period dates
+let activeSemesterId  = '';   // the school's active semester id
 
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 function getGradeTypes() { return session.teacherData.gradeTypes || session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
@@ -47,7 +49,6 @@ async function init() {
 // ── 4. SEMESTERS ──────────────────────────────────────────────────────────────
 async function loadSemesters() {
     try {
-        let rawSemesters = [];
         const cacheKey   = `connectus_semesters_${session.schoolId}`;
         const cached     = localStorage.getItem(cacheKey);
 
@@ -63,6 +64,7 @@ async function loadSemesters() {
 
         const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
         const activeId   = schoolSnap.data()?.activeSemesterId || '';
+        activeSemesterId = activeId;
 
         const semSel = document.getElementById('activeSemester');
         if (semSel) {
@@ -119,6 +121,8 @@ async function fetchMetrics() {
             localStorage.setItem('connectus_sidebar_stats', JSON.stringify({ students: allStudents.length || 0, risk: 0 }));
             renderEmptyActivity();
             renderEmptyRisk();
+            const summaryEl0 = document.getElementById('completenessSummary');
+            if (summaryEl0) { summaryEl0.style.display = 'none'; summaryEl0.innerHTML = ''; }
             document.getElementById('analyticsLoader').classList.add('hidden');
             return;
         }
@@ -191,6 +195,9 @@ async function fetchMetrics() {
         } else {
             renderEmptyRisk();
         }
+
+        // End-of-term completeness summary (missing grades + started late)
+        renderCompletenessSummary(semId, stuG);
 
         const recent = [...allGrades]
             .sort((a, b) => new Date(b.createdAt || b.date || 0) - new Date(a.createdAt || a.date || 0))
@@ -432,6 +439,125 @@ function renderEmptyRisk() {
             <p style="font-size:12.5px;margin:0;font-weight:400;text-align:center;">All students on track!</p>
         </div>`;
 }
+
+// ── END-OF-TERM COMPLETENESS SUMMARY ──────────────────────────────────────────
+// Shows, only when the active period is ending soon or has ended:
+//   • students with NO grades this period
+//   • students who started recently (within the grace window from term start)
+// Computed from data already in memory (allStudents + the stuG grade map).
+// Clicking a student opens them in the roster. Shrinks as grades are entered;
+// hidden entirely when there is nothing to flag.
+const SUMMARY_WARN_DAYS = 7;    // show the summary within this many days of period end
+const SUMMARY_GRACE_DAYS = 21;  // "started recently" window from the later of enrol/term-start
+
+function summaryStartOfDay(d) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function renderCompletenessSummary(semId, stuG) {
+    const el = document.getElementById('completenessSummary');
+    if (!el) return;
+
+    const activeSem = rawSemesters.find(s => s.id === semId);
+
+    // Gate to end-of-term window: within SUMMARY_WARN_DAYS of the end, or after it.
+    let inWindow = false;
+    let termStart = null;
+    if (activeSem && activeSem.endDate) {
+        const today    = summaryStartOfDay(new Date());
+        const end      = summaryStartOfDay(new Date(activeSem.endDate + 'T00:00:00'));
+        const daysLeft = Math.round((end - today) / (1000 * 60 * 60 * 24));
+        inWindow = daysLeft <= SUMMARY_WARN_DAYS;
+    }
+    if (activeSem && activeSem.startDate) {
+        termStart = summaryStartOfDay(new Date(activeSem.startDate + 'T00:00:00'));
+    }
+
+    if (!inWindow) {
+        el.style.display = 'none';
+        el.innerHTML = '';
+        return;
+    }
+
+    const today = summaryStartOfDay(new Date());
+
+    // Students with NO grades this period
+    const noGrades = allStudents.filter(s => {
+        const g = stuG[s.id];
+        return !g || g.length === 0;
+    });
+
+    // Students who started recently (within grace window from later of enrol/term-start)
+    const startedLate = allStudents.filter(s => {
+        if (!s.createdAt) return false;
+        const enrolled = summaryStartOfDay(new Date(s.createdAt));
+        const anchor   = (termStart && termStart > enrolled) ? termStart : enrolled;
+        const daysSince = Math.round((today - anchor) / (1000 * 60 * 60 * 24));
+        return daysSince >= 0 && daysSince < SUMMARY_GRACE_DAYS;
+    });
+
+    if (!noGrades.length && !startedLate.length) {
+        el.style.display = 'none';
+        el.innerHTML = '';
+        return;
+    }
+
+    const chip = (s, palette) => {
+        const styles = palette === 'red'
+            ? 'color:#7f1d1d;background:#fee2e2;border:1px solid #fecaca;'
+            : 'color:#78350f;background:#fef3c7;border:1px solid #fde68a;';
+        return `<button type="button" onclick="window.goToStudentInRoster('${escHtml(s.id)}')"
+            style="display:inline-flex;align-items:center;font-size:11.5px;font-weight:600;${styles}border-radius:0px;padding:3px 9px;cursor:pointer;font-family:inherit;"
+            onmouseover="this.style.filter='brightness(0.96)'" onmouseout="this.style.filter=''">${escHtml(s.name)}</button>`;
+    };
+
+    let sections = '';
+
+    if (noGrades.length) {
+        sections += `
+            <div style="margin-bottom:${startedLate.length ? '14px' : '0'};">
+                <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px;">
+                    <i class="fa-solid fa-circle-exclamation" style="font-size:12px;color:#dc2626;"></i>
+                    <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#7f1d1d;">${noGrades.length} student${noGrades.length !== 1 ? 's have' : ' has'} no grades yet</span>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;">${noGrades.map(s => chip(s, 'red')).join('')}</div>
+            </div>`;
+    }
+
+    if (startedLate.length) {
+        sections += `
+            <div>
+                <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px;">
+                    <i class="fa-solid fa-user-clock" style="font-size:12px;color:#d97706;"></i>
+                    <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#78350f;">${startedLate.length} student${startedLate.length !== 1 ? 's' : ''} started recently</span>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;">${startedLate.map(s => chip(s, 'amber')).join('')}</div>
+            </div>`;
+    }
+
+    el.innerHTML = `
+        <div class="panel" style="border-color:#fde68a;">
+            <div class="panel-header" style="background:#fffbeb;border-bottom-color:#fde68a;">
+                <div class="panel-header-left">
+                    <div class="panel-header-icon" style="background:#fef3c7;color:#b45309;border:1px solid #fde68a;">
+                        <i class="fa-solid fa-list-check"></i>
+                    </div>
+                    <p class="panel-title" style="color:#78350f;">End-of-Term Check</p>
+                </div>
+            </div>
+            <div style="padding:16px 18px;">
+                <p style="font-size:11px;color:#9a7b4f;font-weight:500;margin:0 0 14px;line-height:1.5;">The grading period is closing. Click a student to open their record.</p>
+                ${sections}
+            </div>
+        </div>`;
+    el.style.display = 'block';
+}
+
+// Store the student id and jump to the roster, which opens their panel on load.
+window.goToStudentInRoster = function(studentId) {
+    try { localStorage.setItem('connectus_open_student', studentId); } catch (e) {}
+    window.location.assign('../roster/roster.html#' + encodeURIComponent(studentId));
+};
 
 function escHtml(str) {
     if (!str) return '';
