@@ -137,6 +137,26 @@ async function init() {
     await Promise.all([fetchSchoolLimit(), loadSemesters()]);
     await loadStudents();
     window.buildStarGroups();
+    openRequestedStudent();
+}
+
+// If we arrived from another page (e.g. the overview) with a requested student,
+// open that student's panel automatically. Accepts either a stored key or a
+// URL hash of the form #<studentId>. Only opens if the student is in this roster.
+function openRequestedStudent() {
+    let requestedId = '';
+    try { requestedId = localStorage.getItem('connectus_open_student') || ''; } catch (e) {}
+    if (requestedId) { try { localStorage.removeItem('connectus_open_student'); } catch (e) {} }
+
+    if (!requestedId && window.location.hash && window.location.hash.length > 1) {
+        try { requestedId = decodeURIComponent(window.location.hash.slice(1)); } catch (e) { requestedId = window.location.hash.slice(1); }
+    }
+    if (!requestedId) return;
+
+    const exists = allStudentsCache.some(s => s.id === requestedId);
+    if (exists && typeof window.openStudentPanel === 'function') {
+        window.openStudentPanel(requestedId);
+    }
 }
 
 async function fetchSchoolLimit() {
