@@ -601,20 +601,24 @@
 
                 </div>
 
-                <div class="risk-panel">
-                    <div class="risk-panel-header">
-                        <div class="risk-panel-title">
-                            <i class="fa-solid fa-triangle-exclamation" style="font-size:12px;color:#e31b4a;"></i>
-                            <span>Needs Attention</span>
+                <div class="dashboard-right" style="display:flex;flex-direction:column;min-width:0;">
+                    <div class="risk-panel">
+                        <div class="risk-panel-header">
+                            <div class="risk-panel-title">
+                                <i class="fa-solid fa-triangle-exclamation" style="font-size:12px;color:#e31b4a;"></i>
+                                <span>Needs Attention</span>
+                            </div>
+                            <p class="risk-panel-sub">Students averaging below 65%</p>
                         </div>
-                        <p class="risk-panel-sub">Students averaging below 65%</p>
-                    </div>
-                    <div id="needsAttentionList">
-                        <div class="loading-state">
-                            <i class="fa-solid fa-spinner fa-spin" style="color:#e31b4a;"></i>
-                            <p>Evaluating performance…</p>
+                        <div id="needsAttentionList">
+                            <div class="loading-state">
+                                <i class="fa-solid fa-spinner fa-spin" style="color:#e31b4a;"></i>
+                                <p>Evaluating performance…</p>
+                            </div>
                         </div>
                     </div>
+
+                    <div id="completenessSummary" style="display:none;margin-top:16px;"></div>
                 </div>
 
             </div>
