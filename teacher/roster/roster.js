@@ -217,6 +217,61 @@ function checkLockStatus() {
                          : badge.classList.add('hidden') && badge.classList.remove('flex');
     }
     updatePeriodLabel();
+    renderRosterPeriodNote(activeSem);
+}
+
+// ── GRADING-PERIOD NOTE (awareness only) ──────────────────────────────────
+// Amber when the active period ends within 7 days; red once it has passed.
+// Hidden otherwise. Reads only the active semester's endDate; writes only to
+// the #rosterPeriodNote element.
+const PERIOD_WARN_DAYS = 7;
+
+function periodStartOfDay(d) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function renderRosterPeriodNote(activeSem) {
+    const el = document.getElementById('rosterPeriodNote');
+    if (!el) return;
+
+    if (!activeSem || !activeSem.endDate) {
+        el.style.display = 'none';
+        el.innerHTML = '';
+        return;
+    }
+
+    const today = periodStartOfDay(new Date());
+    const end   = periodStartOfDay(new Date(activeSem.endDate + 'T00:00:00'));
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const daysLeft = Math.round((end - today) / msPerDay);
+
+    let bg, border, color, icon, text;
+
+    if (daysLeft < 0) {
+        // Period has ended
+        bg = '#fee2e2'; border = '#fecaca'; color = '#7f1d1d';
+        icon = 'fa-circle-exclamation';
+        const ended = Math.abs(daysLeft);
+        text = `The grading period <strong>${escHtml(activeSem.name)}</strong> ended ${ended} day${ended !== 1 ? 's' : ''} ago. Make sure all grades and evaluations are finalized.`;
+    } else if (daysLeft <= PERIOD_WARN_DAYS) {
+        // Period ending soon (includes today = 0)
+        bg = '#fef3c7'; border = '#fde68a'; color = '#78350f';
+        icon = 'fa-triangle-exclamation';
+        const when = daysLeft === 0 ? 'today' : `in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}`;
+        text = `The grading period <strong>${escHtml(activeSem.name)}</strong> ends ${when}. Be sure to complete any outstanding grades and evaluations before it closes.`;
+    } else {
+        // Not near the end — stay hidden
+        el.style.display = 'none';
+        el.innerHTML = '';
+        return;
+    }
+
+    el.innerHTML = `
+        <div style="display:flex;align-items:flex-start;gap:11px;background:${bg};border:1px solid ${border};border-radius:4px;padding:12px 16px;">
+            <i class="fa-solid ${icon}" style="color:${color};font-size:14px;margin-top:1px;flex-shrink:0;"></i>
+            <p style="font-size:12.5px;color:${color};font-weight:500;margin:0;line-height:1.5;">${text}</p>
+        </div>`;
+    el.style.display = 'block';
 }
 
 // ── 6. LOAD STUDENTS ──────────────────────────────────────────────────────
@@ -640,6 +695,7 @@ window.openStudentPanel = async function(studentId) {
         document.getElementById('sPanelFilterSubject').innerHTML = '<option value="">All Subjects</option>' + subjSet.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
         document.getElementById('sPanelFilterType').innerHTML    = '<option value="">All Types</option>' + getGradeTypes().map(t => `<option value="${escHtml(t.name || t)}">${escHtml(t.name || t)}</option>`).join('');
         window.renderStudentGrades();
+        renderPanelMissing(semId);
         await window.loadStudentEvaluations(studentId);
     } catch (e) { console.error('[Roster] openStudentPanel data load:', e); }
 
@@ -648,6 +704,78 @@ window.openStudentPanel = async function(studentId) {
 };
 
 window.closeStudentPanel = function() { closeOverlay('studentPanel', 'studentPanelInner'); };
+
+// ── PANEL "WHAT'S MISSING" BLOCK (awareness only) ─────────────────────────
+// Shows gaps in THIS student's grades for the active period — only what the
+// teacher grades. Appears only when the active period is ending soon or has
+// ended (same window as the roster period note). Reads only
+// currentStudentGradesCache; writes only to #sPanelMissing. Never touches grades.
+function renderPanelMissing(semId) {
+    const el = document.getElementById('sPanelMissing');
+    if (!el) return;
+
+    // Gate to the end-of-term window: only surface this when the active period
+    // is within PERIOD_WARN_DAYS of ending, or has already ended.
+    const activeSem = rawSemesters.find(s => s.id === semId);
+    let inWindow = false;
+    if (activeSem && activeSem.endDate) {
+        const today    = periodStartOfDay(new Date());
+        const end      = periodStartOfDay(new Date(activeSem.endDate + 'T00:00:00'));
+        const daysLeft = Math.round((end - today) / (1000 * 60 * 60 * 24));
+        inWindow = daysLeft <= PERIOD_WARN_DAYS; // ending soon or passed
+    }
+
+    if (!inWindow) {
+        el.style.display = 'none';
+        el.innerHTML = '';
+        return;
+    }
+
+    const grades = currentStudentGradesCache;
+
+    // No grades at all this period
+    if (!grades.length) {
+        el.innerHTML = `
+            <div style="display:flex;align-items:flex-start;gap:10px;">
+                <i class="fa-solid fa-circle-exclamation" style="color:#7f1d1d;font-size:13px;margin-top:1px;flex-shrink:0;"></i>
+                <div>
+                    <p style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#7f1d1d;margin:0 0 2px;">Needs Attention This Period</p>
+                    <p style="font-size:12.5px;color:#374f6b;font-weight:500;margin:0;line-height:1.5;">No grades have been entered for this student this period.</p>
+                </div>
+            </div>`;
+        el.style.display = 'block';
+        return;
+    }
+
+    // Count grades per subject; flag subjects with exactly one grade
+    const countBySubject = {};
+    grades.forEach(g => {
+        const subj = g.subject || 'Uncategorized';
+        countBySubject[subj] = (countBySubject[subj] || 0) + 1;
+    });
+    const thinSubjects = Object.keys(countBySubject).filter(s => countBySubject[s] === 1).sort();
+
+    if (!thinSubjects.length) {
+        // Nothing to flag
+        el.style.display = 'none';
+        el.innerHTML = '';
+        return;
+    }
+
+    const chips = thinSubjects.map(s =>
+        `<span style="display:inline-flex;align-items:center;font-size:11.5px;font-weight:600;color:#78350f;background:#fef3c7;border:1px solid #fde68a;border-radius:3px;padding:3px 9px;">${escHtml(s)}</span>`
+    ).join('');
+
+    el.innerHTML = `
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+            <i class="fa-solid fa-circle-half-stroke" style="color:#78350f;font-size:13px;margin-top:1px;flex-shrink:0;"></i>
+            <div style="flex:1;min-width:0;">
+                <p style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#78350f;margin:0 0 6px;">Only One Grade So Far</p>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;">${chips}</div>
+            </div>
+        </div>`;
+    el.style.display = 'block';
+}
 
 window.renderStudentGrades = function() {
     const fSubj = document.getElementById('sPanelFilterSubject').value;
@@ -1316,8 +1444,72 @@ window.openPromoteModal = async function(singleStudentId = null) {
         </div>
     `).join('');
 
+    // Reset the note field and warning each time the modal opens
+    const noteEl     = document.getElementById('promoteNote');
+    const noteWrap   = document.getElementById('promoteNoteWrap');
+    const warningEl  = document.getElementById('promoteWarning');
+    if (noteEl)   noteEl.value = '';
+    if (noteWrap) noteWrap.style.display = 'block';
+    if (warningEl) { warningEl.style.display = 'none'; warningEl.innerHTML = ''; }
+
+    // Update the warning live as checkboxes/destinations change
+    document.querySelectorAll('.promote-row').forEach(row => {
+        const chk = row.querySelector('.promote-check');
+        const sel = row.querySelector('.promote-dest');
+        if (chk) chk.addEventListener('change', updatePromoteWarning);
+        if (sel) sel.addEventListener('change', updatePromoteWarning);
+    });
+
     openOverlay('promoteModal', 'promoteModalInner');
 };
+
+// Live warning shown before promotion is confirmed. Explains that promoted
+// students leave this roster, and flags any destination class with no teacher.
+function updatePromoteWarning() {
+    const warningEl = document.getElementById('promoteWarning');
+    if (!warningEl) return;
+
+    let anyPromote   = false;   // at least one ticked student moving to a real class
+    let anyRepeat    = false;
+    const noTeacherDest = new Set();
+
+    document.querySelectorAll('.promote-row').forEach(row => {
+        const checked = row.querySelector('.promote-check')?.checked;
+        if (!checked) return;
+        const dest = row.querySelector('.promote-dest')?.value || '';
+        if (!dest) return;
+        if (dest === '__repeat__') { anyRepeat = true; return; }
+        anyPromote = true;
+        const owners = promoteClassTeacherMap[dest] || [];
+        if (owners.length !== 1) noTeacherDest.add(dest);
+    });
+
+    if (!anyPromote && !anyRepeat) {
+        warningEl.style.display = 'none';
+        warningEl.innerHTML = '';
+        return;
+    }
+
+    let html = `<div style="display:flex;align-items:flex-start;gap:10px;">
+        <i class="fa-solid fa-triangle-exclamation" style="color:#c2410c;font-size:14px;margin-top:1px;flex-shrink:0;"></i>
+        <div style="flex:1;min-width:0;">`;
+
+    if (anyPromote) {
+        html += `<p style="font-size:12.5px;font-weight:700;color:#7c2d12;margin:0 0 4px;">Promoted students will leave your roster.</p>
+                 <p style="font-size:12px;color:#7c2d12;font-weight:500;margin:0 0 6px;line-height:1.5;">Once promoted, a student moves to their new class and will no longer appear here. Their full record is preserved and an admin can always reassign them if needed.</p>`;
+    } else if (anyRepeat) {
+        html += `<p style="font-size:12.5px;font-weight:700;color:#7c2d12;margin:0;">Confirm the students staying in their current class.</p>`;
+    }
+
+    if (noTeacherDest.size > 0) {
+        const list = [...noTeacherDest].map(c => escHtml(c)).join(', ');
+        html += `<p style="font-size:12px;color:#7c2d12;font-weight:500;margin:6px 0 0;line-height:1.5;"><strong>Note:</strong> ${noTeacherDest.size > 1 ? 'These classes have' : 'This class has'} no single assigned teacher (${list}). Students moved there will be <strong>unassigned</strong> until an admin places them with a teacher.</p>`;
+    }
+
+    html += `</div></div>`;
+    warningEl.innerHTML = html;
+    warningEl.style.display = 'block';
+}
 
 window.closePromoteModal = function() { closeOverlay('promoteModal', 'promoteModalInner'); };
 
@@ -1356,38 +1548,47 @@ window.confirmPromotion = async function() {
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing…';
     btn.disabled  = true;
 
-    const changedAt  = new Date().toISOString();
-    let   batch      = writeBatch(db);
-    let   opCount    = 0;
-    let   unresolved = 0;
+    const promoteNote = (document.getElementById('promoteNote')?.value || '').trim();
+    const gradeTypes  = session.teacherData.gradeTypes || session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES;
+    const changedAt   = new Date().toISOString();
+    let   batch       = writeBatch(db);
+    let   opCount     = 0;
+    let   unresolved  = 0;
 
     try {
         for (const { studentId, currentClass, dest } of toProcess) {
             const studentRef = doc(db, 'students', studentId);
 
+            // Build the academic snapshot for the class being left (reuse of the
+            // archive snapshot logic). Reads happen BEFORE the batch update — a
+            // getDocs cannot run inside a writeBatch. The snapshot stores COMPUTED
+            // averages (report-card style), not raw grade docs, and is appended to
+            // an accumulating classSnapshots array so each year is preserved.
+            const snapshot = await buildPromotionSnapshot(studentId, currentClass, gradeTypes, promoteNote, changedAt, dest);
+
+            const historyEntry = {
+                fromClass: currentClass,
+                toClass:   dest === '__repeat__' ? currentClass : dest,
+                changedAt,
+                reason:    dest === '__repeat__' ? 'Repeated' : 'Promoted',
+                schoolId:  session.schoolId,
+                ...(promoteNote ? { note: promoteNote } : {})
+            };
+
             if (dest === '__repeat__') {
-                // Stays in same class — stamp a year-boundary classHistory entry only
+                // Stays in same class — stamp a year-boundary classHistory entry,
+                // and still snapshot the year that just closed.
                 batch.update(studentRef, {
-                    classHistory: arrayUnion({
-                        fromClass: currentClass,
-                        toClass:   currentClass,
-                        changedAt,
-                        reason:    'Repeated',
-                        schoolId:  session.schoolId
-                    })
+                    classHistory:   arrayUnion(historyEntry),
+                    classSnapshots: arrayUnion(snapshot)
                 });
             } else {
                 // Move to destination class; auto-assign teacher if exactly one owns it
                 const owners = promoteClassTeacherMap[dest] || [];
                 const update = {
-                    className: dest,
-                    classHistory: arrayUnion({
-                        fromClass: currentClass,
-                        toClass:   dest,
-                        changedAt,
-                        reason:    'Promoted',
-                        schoolId:  session.schoolId
-                    })
+                    className:      dest,
+                    classHistory:   arrayUnion(historyEntry),
+                    classSnapshots: arrayUnion(snapshot)
                 };
 
                 if (owners.length === 1) {
@@ -1401,7 +1602,7 @@ window.confirmPromotion = async function() {
             }
 
             opCount++;
-            if (opCount >= 499) {
+            if (opCount >= 400) {
                 await batch.commit();
                 batch   = writeBatch(db);
                 opCount = 0;
@@ -1427,6 +1628,79 @@ window.confirmPromotion = async function() {
     btn.innerHTML = '<i class="fa-solid fa-arrow-up-right-dots"></i> Confirm Promotion';
     btn.disabled  = false;
 };
+
+// Build a computed academic snapshot for the class a student is leaving.
+// Mirrors the archive snapshot: grades for that class grouped by semester →
+// subject with weighted averages, plus the student's evaluations. Stored as a
+// summary (not raw grades); raw grades remain intact on the record.
+async function buildPromotionSnapshot(studentId, className, gradeTypes, note, changedAt, dest) {
+    try {
+        const gradesSnap = await getDocs(query(
+            collection(db, 'students', studentId, 'grades'),
+            where('schoolId', '==', session.schoolId)
+        ));
+        const classGrades = [];
+        gradesSnap.forEach(d => {
+            const g = { id: d.id, ...d.data() };
+            if (g.className === (className || '')) classGrades.push(g);
+        });
+
+        const evalSnap = await getDocs(query(
+            collection(db, 'students', studentId, 'evaluations'),
+            where('schoolId', '==', session.schoolId)
+        ));
+        const evaluations = [];
+        evalSnap.forEach(d => evaluations.push({ id: d.id, ...d.data() }));
+
+        const bySemester = {};
+        classGrades.forEach(g => {
+            if (!g.semesterId) return;
+            const sem     = rawSemesters.find(rs => rs.id === g.semesterId);
+            const semName = sem?.name || g.semesterId;
+            if (!bySemester[semName]) bySemester[semName] = {};
+            const subj = g.subject || 'Uncategorized';
+            if (!bySemester[semName][subj]) bySemester[semName][subj] = [];
+            bySemester[semName][subj].push(g);
+        });
+
+        const semesters = {};
+        Object.entries(bySemester).forEach(([semName, subjects]) => {
+            semesters[semName] = {};
+            const allSemGrades = [];
+            Object.entries(subjects).forEach(([subj, grades]) => {
+                semesters[semName][subj] = Math.round(calculateWeightedAverage(grades, gradeTypes));
+                allSemGrades.push(...grades);
+            });
+            if (allSemGrades.length) semesters[semName]._overall = Math.round(calculateWeightedAverage(allSemGrades, gradeTypes));
+        });
+
+        return {
+            className:    className || '',
+            promotedTo:   dest === '__repeat__' ? className || '' : dest,
+            outcome:      dest === '__repeat__' ? 'Repeated' : 'Promoted',
+            semesters,
+            evaluations,
+            schoolId:     session.schoolId,
+            snapshotDate: changedAt,
+            ...(note ? { note } : {})
+        };
+    } catch (snapErr) {
+        console.warn('[Roster] buildPromotionSnapshot warning:', snapErr.message);
+        // Even if the snapshot fails, return a minimal record so history still
+        // reflects the move — never block the promotion on snapshot failure.
+        return {
+            className:    className || '',
+            promotedTo:   dest === '__repeat__' ? className || '' : dest,
+            outcome:      dest === '__repeat__' ? 'Repeated' : 'Promoted',
+            semesters:    {},
+            evaluations:  [],
+            schoolId:     session.schoolId,
+            snapshotDate: changedAt,
+            snapshotError: true,
+            ...(note ? { note } : {})
+        };
+    }
+}
 
 // ── 16. EXPORT ────────────────────────────────────────────────────────────
 window.exportRosterCSV = function() {
