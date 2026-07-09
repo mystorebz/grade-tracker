@@ -739,8 +739,8 @@ function renderPanelMissing(semId) {
             <div style="display:flex;align-items:flex-start;gap:10px;">
                 <i class="fa-solid fa-circle-exclamation" style="color:#7f1d1d;font-size:13px;margin-top:1px;flex-shrink:0;"></i>
                 <div>
-                    <p style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#7f1d1d;margin:0 0 2px;">Needs Attention This Period</p>
-                    <p style="font-size:12.5px;color:#374f6b;font-weight:500;margin:0;line-height:1.5;">No grades have been entered for this student this period.</p>
+                    <p style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#7f1d1d;margin:0 0 2px;">No grades entered this period</p>
+                    <p style="font-size:12.5px;color:#374f6b;font-weight:500;margin:0;line-height:1.5;">This student has no grades recorded for this period yet.</p>
                 </div>
             </div>`;
         el.style.display = 'block';
@@ -763,14 +763,15 @@ function renderPanelMissing(semId) {
     }
 
     const chips = thinSubjects.map(s =>
-        `<span style="display:inline-flex;align-items:center;font-size:11.5px;font-weight:600;color:#78350f;background:#fef3c7;border:1px solid #fde68a;border-radius:3px;padding:3px 9px;">${escHtml(s)}</span>`
+        `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:#78350f;background:#fef3c7;border:1px solid #fde68a;border-radius:3px;padding:3px 9px;">${escHtml(s)} <span style="font-weight:700;opacity:0.75;">· 1 grade</span></span>`
     ).join('');
 
     el.innerHTML = `
         <div style="display:flex;align-items:flex-start;gap:10px;">
             <i class="fa-solid fa-circle-half-stroke" style="color:#78350f;font-size:13px;margin-top:1px;flex-shrink:0;"></i>
             <div style="flex:1;min-width:0;">
-                <p style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#78350f;margin:0 0 6px;">Only One Grade So Far</p>
+                <p style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#78350f;margin:0 0 3px;">Subjects with only 1 grade entered</p>
+                <p style="font-size:11.5px;color:#6b84a0;font-weight:500;margin:0 0 8px;line-height:1.4;">These subjects have just one grade recorded for this period. Consider adding more before the period closes.</p>
                 <div style="display:flex;flex-wrap:wrap;gap:6px;">${chips}</div>
             </div>
         </div>`;
