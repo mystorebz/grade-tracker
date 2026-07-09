@@ -1032,7 +1032,8 @@ window.saveEvaluation = async function() {
     let payload = {
         type, schoolId: session.schoolId, teacherId: session.teacherId,
         teacherName: session.teacherData.name, semesterId: semId,
-        semesterName: semName, date, createdAt: new Date().toISOString()
+        semesterName: semName, date, createdAt: new Date().toISOString(),
+        className: allStudentsCache.find(s => s.id === currentStudentId)?.className || ''
     };
 
     if (type === 'academic') {
@@ -1263,6 +1264,7 @@ window.saveAndGenerateReportCard = async function() {
         type: 'academic_report_card', reportCardType: selectedRcType,
         schoolId: session.schoolId, teacherId: session.teacherId, teacherName: session.teacherData.name,
         semesterId: semId, semesterName: semName, date: new Date().toISOString().split('T')[0], createdAt: new Date().toISOString(),
+        className: allStudentsCache.find(s => s.id === currentStudentId)?.className || '',
         attendance: { totalSessions: parseInt(document.getElementById('rcTotalSessions').value)||0, daysAbsent: parseInt(document.getElementById('rcDaysAbsent').value)||0, daysLate: parseInt(document.getElementById('rcDaysLate').value)||0 },
         ratings: { ...window.rcRatings }, comment: document.getElementById('rcComment').value.trim()
     };
