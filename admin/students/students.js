@@ -12,9 +12,12 @@ injectAdminLayout('students', 'School Directory', 'All enrolled students and the
 let allStudentsCache       = [];
 let allTeachersCache       = [];
 let rawSemesters           = [];
+let activeSemesterId       = '';   // resolved once at load for the end-of-term gate + missing-grade flag
+let activeSemesterObj      = null; // the active semester record (for startDate/endDate)
 let schoolClasses          = [];
 let currentStudentId       = null;
 let currentStudentGradesCache = [];
+let currentStudentEvalsCache  = [];   // evaluations for the open student (Class History breakdown)
 let currentTeacherWeights  = ['Test', 'Quiz', 'Assignment', 'Midterm Exam', 'Final Exam'];
 
 const tbody              = document.getElementById('studentsTableBody');
@@ -73,6 +76,13 @@ async function loadData() {
     try {
         const semSnap = await getDocs(collection(db, 'schools', session.schoolId, 'semesters'));
         rawSemesters  = semSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
+        // Resolve the active semester once (single read) for the end-of-term gate
+        // and the per-student missing-grade flag — reused across the whole list.
+        try {
+            const schoolDoc = await getDoc(doc(db, 'schools', session.schoolId));
+            if (schoolDoc.exists()) activeSemesterId = schoolDoc.data().activeSemesterId || '';
+        } catch (e) {}
+        activeSemesterObj = rawSemesters.find(s => s.id === activeSemesterId) || null;
     } catch (e) { console.error("Error loading semesters:", e); }
 
     await loadSchoolClasses();
@@ -103,12 +113,27 @@ async function loadData() {
         });
         await Promise.all(allStudentsCache.map(async s => {
             s.cumulativeAvg = null;
+            s.missingFlag   = null;   // 'none' | 'thin' | null — active term only, no extra reads
             try {
                 const gSnap = await getDocs(query(
                     collection(db, 'students', s.id, 'grades'),
                     where('schoolId', '==', session.schoolId)
                 ));
                 const grades = gSnap.docs.map(d => d.data());
+
+                // Missing-grade flag for the ACTIVE term, from grades already fetched.
+                // 'none' = no grades this term; 'thin' = a subject with only one grade this term.
+                if (activeSemesterId) {
+                    const termGrades = grades.filter(g => g.semesterId === activeSemesterId);
+                    if (!termGrades.length) {
+                        s.missingFlag = 'none';
+                    } else {
+                        const cnt = {};
+                        termGrades.forEach(g => { const sub = g.subject || 'Uncategorized'; cnt[sub] = (cnt[sub] || 0) + 1; });
+                        if (Object.values(cnt).some(n => n === 1)) s.missingFlag = 'thin';
+                    }
+                }
+
                 if (!grades.length) return;
 
                 const weights = teacherWeightsById[s.teacherId] || currentTeacherWeights;
@@ -150,6 +175,19 @@ async function loadData() {
     }
 }
 
+// ── END-OF-TERM WINDOW ─────────────────────────────────────────────────────
+// True when the active period ends within 7 days, or has already ended.
+// Gates the missing-grade indicators so they only appear when relevant.
+const ADMIN_PERIOD_WARN_DAYS = 7;
+function isEndOfTermWindow() {
+    if (!activeSemesterObj || !activeSemesterObj.endDate) return false;
+    const startOfDay = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const today    = startOfDay(new Date());
+    const end      = startOfDay(new Date(activeSemesterObj.endDate + 'T00:00:00'));
+    const daysLeft = Math.round((end - today) / (1000 * 60 * 60 * 24));
+    return daysLeft <= ADMIN_PERIOD_WARN_DAYS;
+}
+
 // ── 5. RENDER TABLE ───────────────────────────────────────────────────────
 function renderTable() {
     if (!tbody) return;
@@ -179,6 +217,14 @@ function renderTable() {
             ? `<span class="${st.badge} border font-black text-[10px] px-1.5 py-0.5 rounded">${s.cumulativeAvg}%</span>`
             : `<span class="${st.badge} border font-bold text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded">No grades</span>`;
 
+        // Missing-grade indicator — only in the end-of-term window.
+        let missingBadge = '';
+        if (isEndOfTermWindow() && s.missingFlag) {
+            missingBadge = s.missingFlag === 'none'
+                ? `<span class="bg-red-50 text-red-700 border border-red-200 font-black text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded" title="No grades entered this period"><i class="fa-solid fa-circle-exclamation" style="margin-right:3px;"></i>No grades this term</span>`
+                : `<span class="bg-amber-50 text-amber-700 border border-amber-200 font-black text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded" title="A subject has only one grade this period"><i class="fa-solid fa-circle-half-stroke" style="margin-right:3px;"></i>Thin grades</span>`;
+        }
+
         return `
         <tr class="trow border-b border-slate-100 hover:bg-slate-50 transition" style="${displayStyle}box-shadow: inset 4px 0 0 ${st.accent};" title="${st.label}">
             <td class="px-6 py-4">
@@ -189,6 +235,7 @@ function renderTable() {
                         <div class="flex items-center gap-2">
                             <span class="font-black text-slate-700">${escHtml(s.name || 'Unnamed')}</span>
                             ${avgBadge}
+                            ${missingBadge}
                         </div>
                         <span class="font-mono text-[10px] text-slate-400">${s.id}</span>
                     </div>
@@ -377,6 +424,16 @@ window.openStudentPanel = async function (studentId) {
         const gradesSnap = await getDocs(collection(db, 'students', studentId, 'grades'));
         currentStudentGradesCache = [];
         gradesSnap.forEach(d => currentStudentGradesCache.push({ id: d.id, ...d.data() }));
+
+        // Load this student's evaluations (for the Class History evaluations breakdown).
+        currentStudentEvalsCache = [];
+        try {
+            const evalSnap = await getDocs(query(
+                collection(db, 'students', studentId, 'evaluations'),
+                where('schoolId', '==', session.schoolId)
+            ));
+            evalSnap.forEach(d => currentStudentEvalsCache.push({ id: d.id, ...d.data() }));
+        } catch (e) { console.error('[Students] load evaluations:', e); }
 
         const semSelect = document.getElementById('sPanelSemester');
         let activeId    = '';
@@ -798,13 +855,96 @@ document.getElementById('exportCsvBtn')?.addEventListener('click', () => {
 });
 
 // ── 12. CLASS HISTORY ─────────────────────────────────────────────────────
+
+// Condensed evaluation summary for Class History. New evaluations carry a
+// className, so they group under their class. Older evaluations (filed before
+// className stamping) have none — those are shown once, together, in a
+// separate "Earlier Evaluations" block via renderUnclassifiedEvaluations.
+// Condensed = type, term, date, and status/outcome — NOT the written narratives.
+function evalTypeLabel(ev) {
+    switch (ev.type) {
+        case 'academic':             return 'Academic Progress';
+        case 'academic_report_card': return ev.reportCardType === 'midterm' ? 'Midterm Report Card' : 'Report Card';
+        case 'end_of_year':          return 'Comprehensive End-of-Year';
+        case 'behavioral':           return 'Behavioral & Conduct';
+        case 'midterm_review':       return 'Mid-Term Review';
+        case 'parent_conference':    return 'Parent Conference';
+        case 'learning_support':     return 'Learning Support Plan';
+        case 'custom':               return ev.customTypeName || 'Custom Evaluation';
+        default:                     return ev.type || 'Evaluation';
+    }
+}
+
+function evalRowHtml(ev, semNameFn) {
+    const statusLine = ev.status ? `<span class="text-[10px] font-bold text-slate-500">${escHtml(ev.status)}</span>` : '';
+    return `<div class="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0">
+        <div class="flex items-center gap-2 min-w-0">
+            <span class="text-xs font-semibold text-slate-600 truncate">${escHtml(evalTypeLabel(ev))}</span>
+            ${statusLine}
+        </div>
+        <span class="text-[10px] font-bold text-slate-400 flex-shrink-0">${escHtml(ev.date || '')}</span>
+    </div>`;
+}
+
+function evalTermSections(evs, semNameFn) {
+    const byTerm = {};
+    evs.forEach(ev => {
+        const t = ev.semesterName || semNameFn(ev.semesterId) || 'Unknown Period';
+        if (!byTerm[t]) byTerm[t] = [];
+        byTerm[t].push(ev);
+    });
+    return Object.entries(byTerm).map(([term, list]) => {
+        const rows = list.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).map(ev => evalRowHtml(ev, semNameFn)).join('');
+        return `<div class="mb-3 last:mb-0">
+            <div class="flex items-center justify-between mb-1.5">
+                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">${escHtml(term)}</span>
+                <span class="text-[10px] font-bold text-indigo-500">${list.length} evaluation${list.length !== 1 ? 's' : ''}</span>
+            </div>
+            <div class="bg-indigo-50/40 rounded-lg px-3 py-1">${rows}</div>
+        </div>`;
+    }).join('');
+}
+
+// Evaluations stamped with THIS class name, grouped by term. Returns '' if none.
+function renderClassEvaluations(className, semNameFn) {
+    const forClass = (currentStudentEvalsCache || []).filter(ev => (ev.className || '') === className);
+    if (!forClass.length) return '';
+    return `<div class="mt-4 pt-4 border-t border-slate-200">
+        <p class="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-2"><i class="fa-solid fa-clipboard-user mr-1.5"></i>Evaluations</p>
+        ${evalTermSections(forClass, semNameFn)}
+    </div>`;
+}
+
+// Older evaluations with NO className — shown once, as their own card, so
+// historical evaluations remain visible even though they predate class stamping.
+function renderUnclassifiedEvaluations(semNameFn) {
+    const orphans = (currentStudentEvalsCache || []).filter(ev => ev.schoolId === session.schoolId && !ev.className);
+    if (!orphans.length) return '';
+    return `<div class="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-sm">
+        <div class="flex items-center justify-between px-5 py-4 bg-slate-50 border-b border-slate-200 cursor-pointer" onclick="window.toggleSubjectAccordion(this)">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-indigo-500 text-white rounded flex items-center justify-center font-black text-xs"><i class="fa-solid fa-clipboard-list"></i></div>
+                <div>
+                    <p class="font-black text-slate-800 text-sm">Earlier Evaluations</p>
+                    <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">${orphans.length} record${orphans.length !== 1 ? 's' : ''} · not linked to a class</p>
+                </div>
+            </div>
+            <i class="fa-solid fa-chevron-down text-slate-400" style="transition:transform 0.2s"></i>
+        </div>
+        <div class="subject-body border-t border-slate-200">
+            <div class="p-4">${evalTermSections(orphans, semNameFn)}</div>
+        </div>
+    </div>`;
+}
+
 window.renderClassHistory = function (student) {
     const container = document.getElementById('classHistoryContainer');
     if (!container) return;
 
     const schoolGrades = currentStudentGradesCache.filter(g => g.schoolId === session.schoolId);
+    const schoolEvals  = (currentStudentEvalsCache || []).filter(e => e.schoolId === session.schoolId);
 
-    if (!schoolGrades.length) {
+    if (!schoolGrades.length && !schoolEvals.length) {
         container.innerHTML = `<div class="text-center py-16 bg-white rounded-xl border border-slate-200"><i class="fa-solid fa-clock-rotate-left text-4xl text-slate-300 mb-3"></i><p class="text-slate-400 font-semibold">No class history recorded yet.</p></div>`;
         return;
     }
@@ -820,6 +960,11 @@ window.renderClassHistory = function (student) {
         byClass[cls][semId][subj].push(g);
     });
 
+    // Ensure classes that have evaluations but no grades still get a block.
+    schoolEvals.forEach(ev => {
+        if (ev.className && !byClass[ev.className]) byClass[ev.className] = {};
+    });
+
     const semName = (semId) => {
         const s = rawSemesters.find(r => r.id === semId);
         return s ? s.name : semId;
@@ -827,8 +972,9 @@ window.renderClassHistory = function (student) {
 
     container.innerHTML = Object.entries(byClass).map(([className, semesters]) => {
         const allClassGrades = Object.values(semesters).flatMap(s => Object.values(s).flat());
-        const classAvg = Math.round(calculateWeightedAverage(allClassGrades, currentTeacherWeights));
-        const ca = classAvg >= 75 ? 'text-green-700 bg-green-50 border-green-200' : classAvg >= 60 ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-red-700 bg-red-50 border-red-200';
+        const hasGrades = allClassGrades.length > 0;
+        const classAvg = hasGrades ? Math.round(calculateWeightedAverage(allClassGrades, currentTeacherWeights)) : null;
+        const ca = classAvg === null ? '' : classAvg >= 75 ? 'text-green-700 bg-green-50 border-green-200' : classAvg >= 60 ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-red-700 bg-red-50 border-red-200';
 
         const termBlocks = Object.entries(semesters).map(([semId, subjects]) => {
             const allTermGrades = Object.values(subjects).flat();
@@ -862,19 +1008,19 @@ window.renderClassHistory = function (student) {
                     <div class="w-8 h-8 bg-slate-800 text-white rounded flex items-center justify-center font-black text-xs">${escHtml(className.charAt(0))}</div>
                     <div>
                         <p class="font-black text-slate-800 text-sm">${escHtml(className)}</p>
-                        <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">${Object.keys(semesters).length} term${Object.keys(semesters).length !== 1 ? 's' : ''} · ${allClassGrades.length} entries</p>
+                        <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">${hasGrades ? `${Object.keys(semesters).length} term${Object.keys(semesters).length !== 1 ? 's' : ''} · ${allClassGrades.length} entries` : 'Evaluations only'}</p>
                     </div>
                 </div>
                 <div class="flex items-center gap-3">
-                    <span class="${ca} border font-black text-xs px-2 py-1 rounded">${classAvg}% Overall</span>
+                    ${classAvg === null ? '' : `<span class="${ca} border font-black text-xs px-2 py-1 rounded">${classAvg}% Overall</span>`}
                     <i class="fa-solid fa-chevron-down text-slate-400" style="transition:transform 0.2s"></i>
                 </div>
             </div>
             <div class="subject-body border-t border-slate-200">
-                <div class="p-4">${termBlocks}</div>
+                <div class="p-4">${termBlocks}${renderClassEvaluations(className, semName)}</div>
             </div>
         </div>`;
-    }).join('');
+    }).join('') + renderUnclassifiedEvaluations(semName);
 };
 
 // ── INITIALIZE ────────────────────────────────────────────────────────────
