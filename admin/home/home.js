@@ -20,6 +20,8 @@ const activePeriodDisplay = document.getElementById('activePeriodDisplay');
 const analyticsLoader = document.getElementById('analyticsLoader');
 const analyticsSection = document.getElementById('analyticsSection');
 
+let activeSemesterObj = null;   // active semester record (for the end-of-term gate + started-recently)
+
 // ── 2. LOAD DASHBOARD STATS ───────────────────────────────────────────────
 async function loadOverviewStats() {
     try {
@@ -63,6 +65,7 @@ async function loadSemesters() {
         }
         const docRef = doc(db, 'schools', session.schoolId, 'semesters', session.activeSemesterId);
         const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) activeSemesterObj = { id: docSnap.id, ...docSnap.data() };
         activePeriodDisplay.textContent = docSnap.exists() ? docSnap.data().name : 'Unknown Period';
     } catch (error) {
         console.error("Error loading active semester:", error);
@@ -88,10 +91,18 @@ async function loadSchoolAnalytics(teachersList, studentsList) {
 
         const studentAverages = [];
         const classAveragesMap = {};
-        
+
         // Data Structures for the new Matrix
         const subjectStats = {};
         const teacherStats = {};
+
+        // End-of-term completeness accumulators (populated in the loop below).
+        const noGradeStudents      = [];   // active students with zero grades this term
+        const startedRecently      = [];   // students enrolled within the grace window
+        const inEotWindow          = isEndOfTermWindow(activeSemesterObj);
+        const termStart            = (activeSemesterObj && activeSemesterObj.startDate)
+            ? startOfDay(new Date(activeSemesterObj.startDate + 'T00:00:00'))
+            : null;
 
         // 2. Fetch Data for all active students (Grades ONLY)
         await Promise.all(studentsList.map(async (student) => {
@@ -102,6 +113,19 @@ async function loadSchoolAnalytics(teachersList, studentsList) {
             ));
             
             const grades = gSnap.docs.map(d => d.data());
+
+            // Completeness tracking (only meaningful at end-of-term; computed from
+            // the grades already fetched here — no extra reads).
+            if (inEotWindow) {
+                if (grades.length === 0) noGradeStudents.push(student);
+                if (termStart && student.createdAt) {
+                    const enrolled  = startOfDay(new Date(student.createdAt));
+                    const anchor    = enrolled > termStart ? enrolled : termStart;
+                    const today     = startOfDay(new Date());
+                    const daysSince = Math.round((today - anchor) / (1000 * 60 * 60 * 24));
+                    if (daysSince >= 0 && daysSince < SUMMARY_GRACE_DAYS) startedRecently.push(student);
+                }
+            }
             
             if (grades.length > 0) {
                 // A) Overall Student Averages (For the top row gauges)
@@ -306,6 +330,9 @@ async function loadSchoolAnalytics(teachersList, studentsList) {
             ${buildTrendCol()}
         `;
 
+        // School-wide end-of-term completeness summary (missing / started recently)
+        renderCompletenessSummary(inEotWindow, noGradeStudents, startedRecently);
+
         // Reveal
         analyticsLoader.classList.add('hidden');
         analyticsSection.classList.remove('hidden');
@@ -316,13 +343,82 @@ async function loadSchoolAnalytics(teachersList, studentsList) {
     }
 }
 
+// Render the school-wide end-of-term completeness summary into #completenessSummary.
+// Shows counts of students with no grades and students who started recently.
+// Hidden entirely outside the end-of-term window or when nothing to flag.
+function renderCompletenessSummary(inWindow, noGrade, startedRecent) {
+    const el = document.getElementById('completenessSummary');
+    if (!el) return;
+
+    if (!inWindow || (!noGrade.length && !startedRecent.length)) {
+        el.classList.add('hidden');
+        el.innerHTML = '';
+        return;
+    }
+
+    const chip = (s) =>
+        `<span class="inline-block bg-white border border-slate-200 text-slate-700 text-[11px] font-bold px-2 py-0.5 rounded-none">${escHtml(s.name || 'Unnamed')}</span>`;
+
+    let sections = '';
+
+    if (noGrade.length) {
+        sections += `
+            <div class="${startedRecent.length ? 'mb-4' : ''}">
+                <div class="flex items-center gap-2 mb-2">
+                    <i class="fa-solid fa-circle-exclamation text-red-500 text-sm"></i>
+                    <span class="text-[11px] font-black text-red-700 uppercase tracking-widest">${noGrade.length} student${noGrade.length !== 1 ? 's have' : ' has'} no grades this period</span>
+                </div>
+                <div class="flex flex-wrap gap-1.5">${noGrade.map(chip).join('')}</div>
+            </div>`;
+    }
+
+    if (startedRecent.length) {
+        sections += `
+            <div>
+                <div class="flex items-center gap-2 mb-2">
+                    <i class="fa-solid fa-user-clock text-amber-500 text-sm"></i>
+                    <span class="text-[11px] font-black text-amber-700 uppercase tracking-widest">${startedRecent.length} student${startedRecent.length !== 1 ? 's' : ''} started recently</span>
+                </div>
+                <div class="flex flex-wrap gap-1.5">${startedRecent.map(chip).join('')}</div>
+            </div>`;
+    }
+
+    el.innerHTML = `
+        <div class="bg-white border border-amber-200 shadow-sm p-6 rounded-none">
+            <div class="flex items-center gap-2 mb-4 border-b border-slate-100 pb-3">
+                <div class="w-8 h-8 bg-amber-100 text-amber-600 flex items-center justify-center text-sm rounded-none"><i class="fa-solid fa-list-check"></i></div>
+                <div>
+                    <h3 class="font-black text-slate-800 text-sm uppercase tracking-wider">End-of-Term Check</h3>
+                    <p class="text-[10px] font-semibold text-slate-400 mt-0.5">The grading period is closing — students still needing attention.</p>
+                </div>
+            </div>
+            ${sections}
+        </div>`;
+    el.classList.remove('hidden');
+}
+
 function escHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// True when the active semester ends within 7 days, or has already ended.
+// Gates the school-wide missing-grades summary so it only shows at end-of-term.
+const ADMIN_PERIOD_WARN_DAYS = 7;
+const SUMMARY_GRACE_DAYS = 21;   // "started recently" window from term start
+function startOfDay(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function isEndOfTermWindow(sem) {
+    if (!sem || !sem.endDate) return false;
+    const today    = startOfDay(new Date());
+    const end      = startOfDay(new Date(sem.endDate + 'T00:00:00'));
+    const daysLeft = Math.round((end - today) / (1000 * 60 * 60 * 24));
+    return daysLeft <= ADMIN_PERIOD_WARN_DAYS;
+}
+
 // ── INITIALIZE ────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    // Resolve the active semester first so its dates are available to the
+    // end-of-term gate inside the analytics engine, then load everything else.
+    await loadSemesters();
     loadOverviewStats();
-    loadSemesters();
 });
