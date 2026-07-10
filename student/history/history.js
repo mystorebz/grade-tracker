@@ -27,6 +27,7 @@ let currentViewGrades      = [];
 let schoolActiveSemesterId = null;
 let teacherRubricsCache    = {};
 let allSemestersCache      = [];   // for Class → Term grouping (id → name/order)
+let currentViewEvals       = [];   // evaluations for the current view (Class History breakdown)
 
 // ── 2. UI HELPERS ─────────────────────────────────────────────────────────
 function getGradeStyle(p) {
@@ -191,6 +192,21 @@ async function loadHistoricalGrades() {
         if (semId !== 'all') fetched = fetched.filter(g => g.semesterId === semId);
         currentViewGrades = fetched;
 
+        // Load evaluations for the Class History breakdown, applying the same
+        // term filter as grades so the two views stay consistent.
+        try {
+            const eSnap = await getDocs(query(
+                collection(db, 'students', session.studentId, 'evaluations'),
+                where('schoolId', '==', session.schoolId)
+            ));
+            let fetchedEvals = eSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            if (semId !== 'all') fetchedEvals = fetchedEvals.filter(e => e.semesterId === semId);
+            currentViewEvals = fetchedEvals;
+        } catch (e) {
+            console.error('Error fetching evaluations:', e);
+            currentViewEvals = [];
+        }
+
         const tCount = {};
         let topId = null, topN = 0;
         currentViewGrades.forEach(g => {
@@ -231,12 +247,116 @@ async function loadHistoricalGrades() {
 }
 
 // ── 6. RENDER: Class -> Term -> Subjects ───────────────────────────────────
+
+// Small escaper for evaluation text rendered into the class-history breakdown.
+function escHtmlEval(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Condensed evaluation summary shown inside each class block — matches the
+// admin Class History: grouped by class when the evaluation carries a
+// className, with a term-only fallback for older evaluations, and a catch-all
+// "Earlier Evaluations" block for evaluations with no className. Shows type,
+// term, date, and status/outcome — not the long written narratives (those
+// live on the dedicated Evaluations page).
+function evalTypeLabelHist(ev) {
+    switch (ev.type) {
+        case 'academic':             return 'Academic Progress';
+        case 'academic_report_card': return ev.reportCardType === 'midterm' ? 'Midterm Report Card' : 'Report Card';
+        case 'end_of_year':          return 'Comprehensive End-of-Year';
+        case 'behavioral':           return 'Behavioral & Conduct';
+        case 'midterm_review':       return 'Mid-Term Review';
+        case 'parent_conference':    return 'Parent Conference';
+        case 'learning_support':     return 'Learning Support Plan';
+        case 'custom':               return ev.customTypeName || 'Custom Evaluation';
+        default:                     return ev.type || 'Evaluation';
+    }
+}
+
+function evalRowHtmlHist(ev, semNameFn) {
+    const statusLine = ev.status
+        ? `<span class="text-[11px] font-bold text-slate-500">${escHtmlEval(ev.status)}</span>`
+        : '';
+    return `<div class="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
+        <div class="flex items-center gap-2 min-w-0">
+            <span class="text-sm font-bold text-slate-700 truncate">${escHtmlEval(evalTypeLabelHist(ev))}</span>
+            ${statusLine}
+        </div>
+        <span class="text-[11px] font-bold text-slate-400 flex-shrink-0 ml-2">${escHtmlEval(ev.date || '')}</span>
+    </div>`;
+}
+
+function evalTermSectionsHist(evs, semNameFn) {
+    const byTerm = {};
+    evs.forEach(ev => {
+        const t = ev.semesterName || semNameFn(ev.semesterId) || 'Unknown Period';
+        if (!byTerm[t]) byTerm[t] = [];
+        byTerm[t].push(ev);
+    });
+    return Object.entries(byTerm).map(([term, list]) => {
+        const rows = list
+            .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+            .map(ev => evalRowHtmlHist(ev, semNameFn)).join('');
+        return `<div class="mb-3 last:mb-0">
+            <div class="flex items-center justify-between mb-1.5 px-1">
+                <span class="text-[11px] font-black text-indigo-500 uppercase tracking-wider">${escHtmlEval(term)}</span>
+                <span class="text-[11px] font-bold text-indigo-400">${list.length} evaluation${list.length !== 1 ? 's' : ''}</span>
+            </div>
+            <div class="bg-indigo-50/50 rounded-xl px-3 py-1 border border-indigo-100">${rows}</div>
+        </div>`;
+    }).join('');
+}
+
+// Evaluations stamped with THIS class name, grouped by term. '' if none.
+function renderClassEvaluations(className, semNameFn) {
+    const forClass = (currentViewEvals || []).filter(ev => (ev.className || '') === className);
+    if (!forClass.length) return '';
+    return `<div class="mt-4 pt-4 border-t border-slate-200">
+        <p class="text-[11px] font-black text-indigo-600 uppercase tracking-wider mb-2 px-1">
+            <i class="fa-solid fa-clipboard-user mr-1.5"></i>Evaluations
+        </p>
+        ${evalTermSectionsHist(forClass, semNameFn)}
+    </div>`;
+}
+
+// Older evaluations with NO className — shown once, in their own block, so a
+// student's historical evaluations remain visible even though they predate
+// class stamping.
+function renderUnclassifiedEvaluations(semNameFn) {
+    const orphans = (currentViewEvals || []).filter(ev => ev.schoolId === session.schoolId && !ev.className);
+    if (!orphans.length) return '';
+    return `
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden transition-shadow hover:shadow-md mb-4 last:mb-0">
+            <div class="p-5 sm:p-6 border-b border-slate-100 flex justify-between items-center cursor-pointer bg-slate-50/50 hover:bg-slate-100/50 transition"
+                 onclick="window.toggleAccordion(this)">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-xl flex items-center justify-center font-black text-lg shadow-sm">
+                        <i class="fa-solid fa-clipboard-list"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg sm:text-xl font-extrabold text-slate-800">Earlier Evaluations</h3>
+                        <p class="text-xs text-slate-500 font-bold mt-1 uppercase tracking-wider">
+                            ${orphans.length} Record${orphans.length !== 1 ? 's' : ''} • Not Linked To A Class
+                        </p>
+                    </div>
+                </div>
+                <i class="fa-solid fa-chevron-down text-slate-400 transition-transform duration-200 text-lg"></i>
+            </div>
+            <div class="subject-body">
+                <div class="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 shadow-inner">${evalTermSectionsHist(orphans, semNameFn)}</div>
+            </div>
+        </div>`;
+}
+
 function renderSubjectAccordions(grades) {
-    if (!grades.length) {
+    const evalsForView = currentViewEvals || [];
+    if (!grades.length && !evalsForView.length) {
         historySubjectsContainer.innerHTML = '';
         noHistoryGradesMsg.classList.remove('hidden');
         return;
     }
+    noHistoryGradesMsg.classList.add('hidden');
 
     // Per-subject weighted average using that subject's teacher rubric.
     const subjectAvg = (gList) => {
@@ -262,6 +382,11 @@ function renderSubjectAccordions(grades) {
         if (!byClass[cls][sem]) byClass[cls][sem] = {};
         if (!byClass[cls][sem][sub]) byClass[cls][sem][sub] = [];
         byClass[cls][sem][sub].push(g);
+    });
+
+    // Ensure classes that have evaluations but no grades still get a block.
+    evalsForView.forEach(ev => {
+        if (ev.className && !byClass[ev.className]) byClass[ev.className] = {};
     });
 
     historySubjectsContainer.innerHTML = Object.entries(byClass).map(([className, terms]) => {
@@ -348,6 +473,11 @@ function renderSubjectAccordions(grades) {
         let classCount = 0;
         Object.values(terms).forEach(subs => Object.values(subs).forEach(gl => classCount += gl.length));
 
+        const classEvalHtml = renderClassEvaluations(className, semName);
+        const subheading = termIds.length
+            ? `${termIds.length} Term${termIds.length !== 1 ? 's' : ''} • ${classCount} Assignment${classCount !== 1 ? 's' : ''}`
+            : 'Evaluations only';
+
         return `
         <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden transition-shadow hover:shadow-md mb-4 last:mb-0">
             <div class="p-5 sm:p-6 border-b border-slate-100 flex justify-between items-center cursor-pointer bg-slate-50/50 hover:bg-slate-100/50 transition"
@@ -359,17 +489,17 @@ function renderSubjectAccordions(grades) {
                     <div>
                         <h3 class="text-lg sm:text-xl font-extrabold text-slate-800">${className}</h3>
                         <p class="text-xs text-slate-500 font-bold mt-1 uppercase tracking-wider">
-                            ${termIds.length} Term${termIds.length !== 1 ? 's' : ''} • ${classCount} Assignment${classCount !== 1 ? 's' : ''}
+                            ${subheading}
                         </p>
                     </div>
                 </div>
                 <i class="fa-solid fa-chevron-down text-slate-400 transition-transform duration-200 text-lg"></i>
             </div>
             <div class="subject-body">
-                <div class="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 shadow-inner">${termBlocks}</div>
+                <div class="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 shadow-inner">${termBlocks}${classEvalHtml}</div>
             </div>
         </div>`;
-    }).join('');
+    }).join('') + renderUnclassifiedEvaluations(semName);
 }
 
 // ── 7. GRADE DETAIL MODAL ─────────────────────────────────────────────────
