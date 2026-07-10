@@ -16,6 +16,7 @@ let activeSemesterId       = '';   // resolved once at load for the end-of-term 
 let activeSemesterObj      = null; // the active semester record (for startDate/endDate)
 let schoolClasses          = [];
 let currentStudentId       = null;
+let currentStudentClass    = '';   // the open student's CURRENT class — Academic tab is scoped to this
 let currentStudentGradesCache = [];
 let currentStudentEvalsCache  = [];   // evaluations for the open student (Class History breakdown)
 let currentTeacherWeights  = ['Test', 'Quiz', 'Assignment', 'Midterm Exam', 'Final Exam'];
@@ -222,7 +223,7 @@ function renderTable() {
         if (isEndOfTermWindow() && s.missingFlag) {
             missingBadge = s.missingFlag === 'none'
                 ? `<span class="bg-red-50 text-red-700 border border-red-200 font-black text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded" title="No grades entered this period"><i class="fa-solid fa-circle-exclamation" style="margin-right:3px;"></i>No grades this term</span>`
-                : `<span class="bg-amber-50 text-amber-700 border border-amber-200 font-black text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded" title="A subject has only one grade this period"><i class="fa-solid fa-circle-half-stroke" style="margin-right:3px;"></i>Thin grades</span>`;
+                : `<span class="bg-amber-50 text-amber-700 border border-amber-200 font-black text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded" title="At least one subject has only a single grade this period"><i class="fa-solid fa-circle-half-stroke" style="margin-right:3px;"></i>Needs more grades</span>`;
         }
 
         return `
@@ -387,6 +388,7 @@ window.toggleSEnrollDropdown = function () {
 window.openStudentPanel = async function (studentId) {
     currentStudentId = studentId;
     const student    = allStudentsCache.find(s => s.id === studentId);
+    currentStudentClass = student?.className || '';   // scope the Academic tab to this
 
     document.getElementById('sPanelName').textContent = student?.name || 'Student';
     document.getElementById('sPanelId').textContent   = student?.id   || '—';
@@ -482,6 +484,14 @@ window.renderAdminGrades = function () {
     const filterClass = document.getElementById('sPanelFilterClass')?.value || '';
 
     let filteredGrades = currentStudentGradesCache.filter(g => g.semesterId === termId);
+
+    // Scope the Academic tab to the student's CURRENT class only. A promoted
+    // student's old grades carry their previous class name, so they won't match
+    // the new current class — the Academic tab correctly shows empty for them,
+    // and their full record remains under Class History. If the student is
+    // unassigned (no current class), the Academic tab shows nothing here.
+    filteredGrades = filteredGrades.filter(g => (g.className || '') === currentStudentClass && currentStudentClass !== '');
+
     if (filterClass) filteredGrades = filteredGrades.filter(g => g.className === filterClass);
 
     const subjSet = [...new Set(filteredGrades.map(g => g.subject || 'Uncategorized'))].sort();
@@ -494,7 +504,18 @@ window.renderAdminGrades = function () {
     if (filterType) filteredGrades = filteredGrades.filter(g => g.type    === filterType);
 
     if (!filteredGrades.length) {
-        container.innerHTML = `<div class="text-center py-16 bg-white rounded-xl border border-slate-200"><i class="fa-solid fa-folder-open text-4xl text-slate-300 mb-3"></i><p class="text-slate-400 font-semibold">No grades recorded for these filters.</p></div>`;
+        // Distinguish the promoted/unassigned case from a simple no-grades case so
+        // the admin understands why the Academic tab is empty and where to look.
+        const hasHistoryGrades = currentStudentGradesCache.some(g => g.schoolId === session.schoolId);
+        let emptyMsg;
+        if (!currentStudentClass) {
+            emptyMsg = `This student is not currently assigned to a class, so there are no current grades. Their past record is available under <span class="font-bold text-slate-600">Class History</span>.`;
+        } else if (hasHistoryGrades) {
+            emptyMsg = `No grades yet for <span class="font-bold text-slate-600">${escHtml(currentStudentClass)}</span> this term. Earlier grades from previous classes are under <span class="font-bold text-slate-600">Class History</span>.`;
+        } else {
+            emptyMsg = `No grades recorded for these filters.`;
+        }
+        container.innerHTML = `<div class="text-center py-16 bg-white rounded-xl border border-slate-200"><i class="fa-solid fa-folder-open text-4xl text-slate-300 mb-3"></i><p class="text-slate-400 font-semibold max-w-md mx-auto leading-relaxed">${emptyMsg}</p></div>`;
         return;
     }
 
@@ -926,7 +947,7 @@ function renderUnclassifiedEvaluations(semNameFn) {
                 <div class="w-8 h-8 bg-indigo-500 text-white rounded flex items-center justify-center font-black text-xs"><i class="fa-solid fa-clipboard-list"></i></div>
                 <div>
                     <p class="font-black text-slate-800 text-sm">Earlier Evaluations</p>
-                    <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">${orphans.length} record${orphans.length !== 1 ? 's' : ''} · not linked to a class</p>
+                    <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">${orphans.length} record${orphans.length !== 1 ? 's' : ''} · filed before class tracking</p>
                 </div>
             </div>
             <i class="fa-solid fa-chevron-down text-slate-400" style="transition:transform 0.2s"></i>
