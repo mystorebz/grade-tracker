@@ -1,5 +1,5 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { collection, doc, getDocs, addDoc, updateDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js'; 
 import { openOverlay, closeOverlay } from '../../assets/js/utils.js';
@@ -17,6 +17,37 @@ let currentMidtermSemId = null; // tracks which term the midterm modal is for
 const activeListEl    = document.getElementById('activePeriodList');
 const inactiveListEl  = document.getElementById('inactiveSemestersList');
 const archivedListEl  = document.getElementById('archivedSemestersList');
+
+// ── PERIOD LIFECYCLE HELPERS ───────────────────────────────────────────────
+// A period has "passed" once its end date is before today. Passed periods are
+// frozen: their dates can't be edited and they can't be (re)activated — so an
+// old term can't be quietly rewritten and brought back. This is automatic.
+function hasPeriodPassed(sem) {
+    if (!sem || !sem.endDate) return false;
+    const startOfDay = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const today = startOfDay(new Date());
+    const end   = startOfDay(new Date(sem.endDate + 'T00:00:00'));
+    return end < today;
+}
+
+// Human-readable "end date has passed" string for the banner.
+function formatEndDate(sem) {
+    if (!sem || !sem.endDate) return '';
+    try {
+        return new Date(sem.endDate + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    } catch (e) { return sem.endDate; }
+}
+
+// Term label with the year appended (from the start date) so a new school
+// year's "Term 1" is distinguishable from last year's — e.g. "Term 1 · 2026".
+function termLabel(sem) {
+    const name = sem?.name || 'Untitled';
+    if (sem?.startDate) {
+        const y = new Date(sem.startDate + 'T00:00:00').getFullYear();
+        if (!Number.isNaN(y)) return `${name} · ${y}`;
+    }
+    return name;
+}
 
 // ── Accordion UI ──────────────────────────────────────────────────────────
 document.getElementById('toggleAddPeriodBtn').addEventListener('click', () => {
@@ -83,7 +114,22 @@ async function loadSemesters() {
         
         allSemesters = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.order - b.order);
         
-        const activeId = session.activeSemesterId || null;
+        // Read the active semester id FRESH from the school document, not from the
+        // cached session — a stale session made "Set Active" look like it did
+        // nothing and desynced the locked/active display.
+        let activeId = session.activeSemesterId || null;
+        try {
+            const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));
+            if (schoolSnap.exists()) {
+                activeId = schoolSnap.data().activeSemesterId || null;
+                if (session.activeSemesterId !== activeId) {
+                    session.activeSemesterId = activeId;
+                    try { setSessionData('admin', session); } catch (e) {}
+                }
+            }
+        } catch (e) {
+            console.error('Error reading active semester from school doc:', e);
+        }
         
         const activePeriod    = allSemesters.find(s => s.id === activeId);
         const inactivePeriods = allSemesters.filter(s => !s.archived && s.id !== activeId);
@@ -96,15 +142,17 @@ async function loadSemesters() {
                     <p class="text-sm text-amber-700 font-bold"><i class="fa-solid fa-circle-exclamation mr-1"></i> No period is currently active.</p>
                 </div>`;
         } else {
+            const activePassed = hasPeriodPassed(activePeriod);
             activeListEl.innerHTML = `
-                <div class="border border-green-300 bg-green-50/20 rounded-2xl shadow-sm overflow-hidden">
+                <div class="border ${activePassed ? 'border-amber-300' : 'border-green-300'} bg-green-50/20 rounded-2xl shadow-sm overflow-hidden">
                     <div class="flex items-center justify-between bg-white p-4 transition group">
                         <div>
                             <div class="flex items-center gap-3">
                                 <i class="fa-solid fa-check text-green-500"></i>
-                                <span class="font-black text-slate-800">${activePeriod.name}</span>
+                                <span class="font-black text-slate-800">${termLabel(activePeriod)}</span>
                                 <span class="badge badge-active ml-2 bg-green-100 text-green-700 border-green-200">Active</span>
                                 ${activePeriod.isLocked ? '<span class="bg-rose-100 text-rose-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ml-1"><i class="fa-solid fa-lock mr-1"></i>Locked</span>' : ''}
+                                ${activePassed ? '<span class="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ml-1"><i class="fa-solid fa-clock mr-1"></i>Ended</span>' : ''}
                             </div>
                             <p class="text-[10px] font-bold text-slate-500 mt-1 ml-7 uppercase tracking-wider">${activePeriod.startDate} TO ${activePeriod.endDate}</p>
                         </div>
@@ -116,10 +164,23 @@ async function loadSemesters() {
                                     <i class="fa-solid fa-plus text-[10px]"></i> Midterm
                                 </button>` : ''}
                             <button onclick="window.toggleLockSem('${activePeriod.id}', ${!!activePeriod.isLocked})" class="text-slate-400 hover:text-indigo-600 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-indigo-50" title="${activePeriod.isLocked ? 'Unlock Semester' : 'Lock Semester'}"><i class="fa-solid ${activePeriod.isLocked ? 'fa-lock text-rose-500' : 'fa-lock-open'}"></i></button>
-                            <button onclick="window.openEditSemModal('${activePeriod.id}')" class="text-slate-400 hover:text-amber-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-amber-50" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                            ${activePassed
+                                ? `<button onclick="window.explainFrozenPeriod()" class="text-slate-300 cursor-not-allowed h-8 w-8 flex items-center justify-center rounded-lg" title="This period has ended and can no longer be edited"><i class="fa-solid fa-lock"></i></button>`
+                                : `<button onclick="window.openEditSemModal('${activePeriod.id}')" class="text-slate-400 hover:text-amber-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-amber-50" title="Edit"><i class="fa-solid fa-pen"></i></button>`
+                            }
                         </div>
                     </div>
                     ${activePeriod.midterm ? renderMidtermRow(activePeriod.id, activePeriod.midterm) : ''}
+                    ${activePassed ? `
+                    <div class="border-t border-amber-200 bg-amber-50 px-4 py-3">
+                        <div class="flex items-start gap-2.5">
+                            <i class="fa-solid fa-circle-exclamation text-amber-500 text-sm mt-0.5 flex-shrink-0"></i>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-[12px] font-black text-amber-800">This grading period ended on ${formatEndDate(activePeriod)}.</p>
+                                <p class="text-[11px] font-semibold text-amber-700 mt-0.5 leading-relaxed">When you're ready, lock it to freeze grades, archive it, or create and set a new grading period below. Its dates are now locked and can't be changed.</p>
+                            </div>
+                        </div>
+                    </div>` : ''}
                 </div>`;
         }
 
@@ -127,43 +188,51 @@ async function loadSemesters() {
         if (inactivePeriods.length === 0) {
             inactiveListEl.innerHTML = '<p class="text-sm text-slate-400 italic font-semibold">No inactive periods found.</p>';
         } else {
-            inactiveListEl.innerHTML = inactivePeriods.map(s => `
+            inactiveListEl.innerHTML = inactivePeriods.map(s => {
+                const passed = hasPeriodPassed(s);
+                return `
                 <div class="border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
                     <div class="flex items-center justify-between bg-white p-4 transition group hover:shadow-md">
                         <div>
                             <div class="flex items-center gap-3">
                                 <i class="fa-solid fa-grip-lines text-slate-300"></i>
-                                <span class="font-black text-slate-600">${s.name}</span>
+                                <span class="font-black text-slate-600">${termLabel(s)}</span>
                                 ${s.isLocked ? '<span class="bg-rose-100 text-rose-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ml-1"><i class="fa-solid fa-lock mr-1"></i>Locked</span>' : ''}
+                                ${passed ? '<span class="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ml-1"><i class="fa-solid fa-clock mr-1"></i>Ended</span>' : ''}
                             </div>
                             ${(s.startDate || s.endDate) ? `<p class="text-[10px] font-bold text-slate-400 mt-1 ml-6 uppercase tracking-wider">${s.startDate || '???'} TO ${s.endDate || '???'}</p>` : ''}
                         </div>
                         <div class="flex items-center gap-2">
-                            ${!s.midterm ? `
+                            ${!s.midterm && !passed ? `
                                 <button onclick="window.openMidtermModal('${s.id}')"
                                     class="text-xs font-black text-violet-600 hover:bg-violet-600 hover:text-white border border-violet-300 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100 flex items-center gap-1.5"
                                     title="Add Midterm">
                                     <i class="fa-solid fa-plus text-[10px]"></i> Midterm
                                 </button>` : ''}
-                            ${s.startDate && s.endDate ? 
-                                `<button onclick="window.setActivePeriod('${s.id}')" class="text-xs font-black text-blue-600 hover:bg-blue-600 hover:text-white border border-blue-300 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100">Set Active</button>` 
-                                : 
-                                `<button onclick="alert('Please click the edit (pen) icon to set the Start and End dates before making this period active.')" class="text-xs font-black text-slate-400 border border-slate-200 hover:bg-slate-50 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100" title="Dates required">Needs Dates</button>`
+                            ${passed
+                                ? `<button onclick="window.explainFrozenPeriod()" class="text-xs font-black text-amber-600 border border-amber-200 bg-amber-50 px-3 py-1.5 rounded-lg cursor-not-allowed flex items-center gap-1.5" title="This period has ended and can't be reactivated"><i class="fa-solid fa-clock text-[10px]"></i> Ended</button>`
+                                : (s.startDate && s.endDate
+                                    ? `<button onclick="window.setActivePeriod('${s.id}')" class="text-xs font-black text-blue-600 hover:bg-blue-600 hover:text-white border border-blue-300 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100">Set Active</button>`
+                                    : `<button onclick="alert('Please click the edit (pen) icon to set the Start and End dates before making this period active.')" class="text-xs font-black text-slate-400 border border-slate-200 hover:bg-slate-50 px-3 py-1.5 rounded-lg transition opacity-0 group-hover:opacity-100" title="Dates required">Needs Dates</button>`)
                             }
                             <button onclick="window.toggleLockSem('${s.id}', ${!!s.isLocked})" class="text-slate-400 hover:text-indigo-600 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-indigo-50" title="${s.isLocked ? 'Unlock Semester' : 'Lock Semester'}"><i class="fa-solid ${s.isLocked ? 'fa-lock text-rose-500' : 'fa-lock-open'}"></i></button>
-                            <button onclick="window.openEditSemModal('${s.id}')" class="text-slate-400 hover:text-amber-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-amber-50" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                            ${passed
+                                ? `<button onclick="window.explainFrozenPeriod()" class="text-slate-300 cursor-not-allowed h-8 w-8 flex items-center justify-center rounded-lg" title="This period has ended and can no longer be edited"><i class="fa-solid fa-lock"></i></button>`
+                                : `<button onclick="window.openEditSemModal('${s.id}')" class="text-slate-400 hover:text-amber-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-amber-50" title="Edit"><i class="fa-solid fa-pen"></i></button>`
+                            }
                             <button onclick="window.archiveSem('${s.id}')" class="text-slate-400 hover:text-red-500 transition h-8 w-8 flex items-center justify-center rounded-lg hover:bg-red-50" title="Archive"><i class="fa-solid fa-box-archive"></i></button>
                         </div>
                     </div>
                     ${s.midterm ? renderMidtermRow(s.id, s.midterm) : ''}
-                </div>`).join('');
+                </div>`;
+            }).join('');
         }
 
         // ── Render ARCHIVED Periods ────────────────────────────────────────
         archivedListEl.innerHTML = archivedPeriods.length ? archivedPeriods.map(s => `
             <div class="flex items-center justify-between bg-slate-50 p-4 border border-slate-200 rounded-2xl shadow-sm">
                 <div>
-                    <div class="flex items-center gap-3"><i class="fa-solid fa-box-archive text-slate-300"></i><span class="font-black text-slate-500 line-through">${s.name}</span></div>
+                    <div class="flex items-center gap-3"><i class="fa-solid fa-box-archive text-slate-300"></i><span class="font-black text-slate-500 line-through">${termLabel(s)}</span></div>
                     ${(s.startDate || s.endDate) ? `<p class="text-[10px] font-bold text-slate-400 mt-1 ml-6 uppercase tracking-wider">${s.startDate || '???'} TO ${s.endDate || '???'}</p>` : ''}
                 </div>
                 <div class="flex items-center gap-2">
@@ -204,7 +273,13 @@ function renderMidtermRow(semId, midterm) {
         </div>`;
 }
 
-// ── 4. GLOBAL ACTIVE PERIOD SETTER (unchanged) ────────────────────────────
+// ── 4. GLOBAL ACTIVE PERIOD SETTER ────────────────────────────────────────
+// Explains why a passed period can't be edited or reactivated (shown when the
+// user clicks a frozen edit/activate control on an ended period).
+window.explainFrozenPeriod = function() {
+    alert("This grading period has already ended.\n\nIts dates are locked and it can no longer be edited or set active — this keeps past terms from being changed after the fact. To begin a new term, create a new grading period above.");
+};
+
 window.setActivePeriod = async function(id) {
     try {
         const sem = allSemesters.find(s => s.id === id);
@@ -214,12 +289,18 @@ window.setActivePeriod = async function(id) {
             return;
         }
 
+        // Guard: a period whose end date has passed can't be (re)activated.
+        if (hasPeriodPassed(sem)) {
+            window.explainFrozenPeriod();
+            return;
+        }
+
         await updateDoc(doc(db, 'schools', session.schoolId), { activeSemesterId: id });
         
         session.activeSemesterId = id;
         setSessionData('admin', session);
         
-        loadSemesters();
+        await loadSemesters();
     } catch (e) {
         console.error("Error setting active period:", e);
         alert("Failed to update active period.");
@@ -294,6 +375,12 @@ window.openEditSemModal = function(id) {
     currentEditSemId = id;
     const sem = allSemesters.find(s => s.id === id);
     if (!sem) return;
+
+    // Guard: passed periods are frozen — their dates can't be edited.
+    if (hasPeriodPassed(sem)) {
+        window.explainFrozenPeriod();
+        return;
+    }
     
     document.getElementById('editSemName').value  = sem.name      || '';
     document.getElementById('editSemStart').value = sem.startDate || '';
@@ -313,6 +400,14 @@ document.getElementById('saveSemEditBtn').addEventListener('click', async () => 
     
     if (!name) { alert("Name is required"); return; }
     if (startDate && endDate && new Date(startDate) >= new Date(endDate)) { alert("End date must be after Start date."); return; }
+
+    // Guard: never save edits to a period that has already passed.
+    const editingSem = allSemesters.find(s => s.id === currentEditSemId);
+    if (editingSem && hasPeriodPassed(editingSem)) {
+        window.closeEditSemModal();
+        window.explainFrozenPeriod();
+        return;
+    }
     
     const btn     = document.getElementById('saveSemEditBtn'); 
     btn.disabled  = true; 
