@@ -155,6 +155,18 @@ function infoCell(label, value) {
         </div>`;
 }
 
+// True when the given semester ends within 7 days, or has already ended.
+// Gates the per-teacher missing-grades alert so it only shows at end-of-term.
+const ADMIN_PERIOD_WARN_DAYS = 7;
+function isEndOfTermWindow(sem) {
+    if (!sem || !sem.endDate) return false;
+    const startOfDay = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const today    = startOfDay(new Date());
+    const end      = startOfDay(new Date(sem.endDate + 'T00:00:00'));
+    const daysLeft = Math.round((end - today) / (1000 * 60 * 60 * 24));
+    return daysLeft <= ADMIN_PERIOD_WARN_DAYS;
+}
+
 // ── 4. LOAD TEACHERS ────────────────────────────────────────────────────────
 async function loadTeachers() {
     tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center text-[#9ab0c6] italic font-semibold">
@@ -486,6 +498,8 @@ async function renderOverviewTab() {
     let hasActiveTerm   = false;
     let activeTermName  = '';
     let studentsByClass = {};
+    let activeSemObj    = null;   // active semester record (for end-of-term gate)
+    let activeStudentDocs = [];   // this teacher's active students (reused for missing-grades check)
 
     try {
         const [schoolSnap, studSnap] = await Promise.all([
@@ -502,14 +516,53 @@ async function renderOverviewTab() {
             if (semSnap.exists()) {
                 hasActiveTerm  = true;
                 activeTermName = semSnap.data().name || 'the current term';
+                activeSemObj   = { id: activeSemId, ...semSnap.data() };
             }
         }
 
-        studSnap.forEach(d => {
-            const cls = d.data().className || d.data().class || '';
+        activeStudentDocs = studSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        activeStudentDocs.forEach(s => {
+            const cls = s.className || s.class || '';
             if (cls) studentsByClass[cls] = (studentsByClass[cls] || 0) + 1;
         });
     } catch (_) {}
+
+    // Missing-grades summary for this teacher — end-of-term window only.
+    // Uses the active students already loaded above; fetches their grades for
+    // the active term (scoped to this one teacher, only when the panel opens).
+    let missingAlertHtml = '';
+    if (activeSemObj && isEndOfTermWindow(activeSemObj) && activeStudentDocs.length) {
+        try {
+            const noGrades = [];
+            await Promise.all(activeStudentDocs.map(async s => {
+                try {
+                    const gSnap = await getDocs(query(
+                        collection(db, 'students', s.id, 'grades'),
+                        where('schoolId', '==', session.schoolId),
+                        where('semesterId', '==', activeSemObj.id)
+                    ));
+                    if (gSnap.empty) noGrades.push(s);
+                } catch (e) {}
+            }));
+
+            if (noGrades.length) {
+                const names = noGrades.map(s => escHtml(s.name || 'Unnamed'))
+                    .map(n => `<span class="inline-block bg-white border border-red-200 text-red-700 text-[11px] font-bold px-2 py-0.5 rounded">${n}</span>`)
+                    .join(' ');
+                missingAlertHtml = `
+                    <div class="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4">
+                        <div class="flex items-start gap-3">
+                            <i class="fa-solid fa-circle-exclamation text-red-500 text-lg flex-shrink-0 mt-0.5"></i>
+                            <div class="min-w-0">
+                                <p class="font-black text-[12px] text-red-700 leading-tight">${noGrades.length} student${noGrades.length !== 1 ? 's have' : ' has'} no grades this period</p>
+                                <p class="text-[10px] font-semibold text-red-600/80 mt-0.5 mb-2">The grading period <strong>${escHtml(activeTermName)}</strong> is closing. These students still have no grades entered.</p>
+                                <div class="flex flex-wrap gap-1.5">${names}</div>
+                            </div>
+                        </div>
+                    </div>`;
+            }
+        } catch (e) { console.error('[Teachers] overview missing-grades:', e); }
+    }
 
     // Merge in any class this teacher already holds, even if it's no longer
     // in the school's master list, so existing assignments stay editable.
@@ -543,6 +596,7 @@ async function renderOverviewTab() {
         : classEmptyHtml();
 
     pane.innerHTML = `
+        ${missingAlertHtml}
         <div class="flex items-center justify-between mb-4">
             <div class="${complete
                 ? 'bg-green-50 border-green-200 text-green-700'
