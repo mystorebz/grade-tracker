@@ -5,172 +5,52 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Page Not Found | ConnectUs</title>
 
-    <link rel="stylesheet" href="assets/css/global.css">
-    <link rel="stylesheet" href="assets/css/landing.css">
-
-    <link rel="icon" type="image/x-icon" href="assets/images/favicon.ico">
-    <link rel="icon" type="image/png" sizes="32x32" href="assets/images/favicon-32x32.png">
+    <link rel="icon" type="image/x-icon" href="/assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32x32.png">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        :root{
+            --blue-900:#1e3a8a; --blue-700:#1d4ed8; --blue-600:#2563eb;
+            --bg:#f8faff; --text:#1f2937; --white:#ffffff;
+        }
+        *,*::before,*::after{box-sizing:border-box}
+        body{
+            margin:0;
+            font-family:'Nunito','Nunito Sans',system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+            color:var(--text); background:var(--bg); line-height:1.6;
+            min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+            text-align:center; padding:40px 20px;
+        }
+
+        .error-code{
+            font-size:15px; font-weight:800; letter-spacing:2px;
+            color:var(--blue-600); text-transform:uppercase; margin-bottom:14px;
+        }
+        h1{font-size:32px; font-weight:900; margin:0 0 12px; color:var(--blue-900)}
+        p{font-size:16px; font-weight:600; color:#4b5563; max-width:440px; margin:0 auto 28px}
+
+        .btn{
+            display:inline-flex; align-items:center; gap:8px;
+            padding:14px 32px; border-radius:9999px; font-weight:800; font-size:15px;
+            text-decoration:none; color:var(--white); background:var(--blue-600);
+            box-shadow:0 8px 18px rgba(37,99,235,.25);
+            transition:transform .2s, box-shadow .2s;
+        }
+        .btn:hover{transform:translateY(-2px)}
+
+        @media (max-width: 480px){
+            h1{font-size:26px}
+        }
+    </style>
 </head>
-<body class="min-h-screen flex flex-col text-slate-800 antialiased">
-
-    <!-- ── Navbar (minimal, same pattern as pricing.html) ── -->
-    <nav class="navbar">
-        <div class="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
-            <a href="index.html" class="flex items-center gap-3">
-                <img src="assets/images/logo.png" alt="ConnectUs Logo" class="h-10 w-auto">
-                <span class="font-black text-blue-900 text-xl tracking-tight hidden sm:block">ConnectUs</span>
-            </a>
-            <a href="index.html" class="text-sm font-black text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-5 py-2 rounded-full border border-blue-100 transition">
-                ← Back to Home
-            </a>
-        </div>
-    </nav>
-
-    <!-- ── 404 Message ── -->
-    <header class="pt-32 pb-16 px-4 text-center bg-gradient-to-b from-[#f0f6ff] to-white">
-        <div class="max-w-2xl mx-auto">
-            <span class="inline-flex items-center gap-2 bg-blue-100 text-blue-700 text-xs font-bold px-4 py-1.5 rounded-full border border-blue-200 shadow-sm mb-5">
-                🔍 &nbsp; Error 404
-            </span>
-            <h1 class="text-4xl md:text-5xl lg:text-6xl font-black text-blue-900 leading-tight mb-5 tracking-tight">
-                Page Not<br>
-                <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">Found.</span>
-            </h1>
-            <p class="text-lg md:text-xl text-slate-600 font-semibold leading-relaxed mb-8">
-                The page you're looking for doesn't exist, may have moved, or the link might have a typo. Head back to the homepage, or jump straight into a portal below.
-            </p>
-            <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
-                <a href="index.html" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-black py-4 px-10 rounded-2xl transition shadow-xl shadow-blue-300 text-lg">
-                    Back to Homepage →
-                </a>
-                <button id="secondaryReturnBtn" type="button" class="hidden inline-block bg-white hover:bg-blue-50 text-blue-700 font-black py-4 px-10 rounded-2xl transition border-2 border-blue-200 text-lg">
-                    Go Back
-                </button>
-            </div>
-        </div>
-    </header>
-
-    <!-- ── Portal Shortcuts (identical cards to index.html) ── -->
-    <section class="py-16 px-4 bg-[#f8faff]">
-        <div class="max-w-5xl mx-auto">
-            <div class="text-center mb-10">
-                <span class="text-xs font-black text-blue-500 uppercase tracking-widest">Looking for a Portal?</span>
-                <h2 class="text-3xl md:text-4xl font-black text-blue-900 mt-2">Jump Straight In</h2>
-                <p class="text-slate-500 font-semibold mt-2 text-base">Choose your role to log in or access your dashboard.</p>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <a href="admin/login.html" class="portal-card portal-card-admin p-7 shadow-sm border-slate-100">
-                    <div class="portal-icon bg-orange-50">🔑</div>
-                    <h3 class="font-black text-orange-700 text-xl text-center mb-2">School Admin</h3>
-                    <p class="text-sm text-slate-500 text-center font-semibold leading-relaxed">Manage teachers, configure grading periods, and oversee your school's data.</p>
-                    <div class="mt-5 text-center">
-                        <span class="inline-block bg-orange-50 text-orange-600 text-xs font-black px-4 py-2 rounded-full border border-orange-200">Admin Login →</span>
-                    </div>
-                </a>
-                <a href="teacher/login.html" class="portal-card portal-card-teacher p-7 shadow-sm border-slate-100">
-                    <div class="absolute top-4 right-4 bg-blue-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide">Most Used</div>
-                    <div class="portal-icon bg-blue-50">🎓</div>
-                    <h3 class="font-black text-blue-700 text-xl text-center mb-2">Teacher Portal</h3>
-                    <p class="text-sm text-slate-500 text-center font-semibold leading-relaxed">Enter grades, manage your class roster, and keep parents informed in real time.</p>
-                    <div class="mt-5 text-center">
-                        <span class="inline-block bg-blue-50 text-blue-600 text-xs font-black px-4 py-2 rounded-full border border-blue-200">Teacher Login →</span>
-                    </div>
-                </a>
-                <a href="student/login.html" class="portal-card portal-card-family p-7 shadow-sm border-slate-100">
-                    <div class="portal-icon bg-green-50">👪</div>
-                    <h3 class="font-black text-green-700 text-xl text-center mb-2">Student & Parent</h3>
-                    <p class="text-sm text-slate-500 text-center font-semibold leading-relaxed">View grades, assignment notes, and progress reports — anytime, from any device.</p>
-                    <div class="mt-5 text-center">
-                        <span class="inline-block bg-green-50 text-green-600 text-xs font-black px-4 py-2 rounded-full border border-green-200">Family Login →</span>
-                    </div>
-                </a>
-            </div>
-        </div>
-    </section>
-
-    <!-- ── Footer (identical to every other page) ── -->
-    <footer class="py-10 px-4 text-center">
-        <div class="max-w-4xl mx-auto">
-            <div class="flex items-center justify-center gap-3 mb-5">
-                <img src="assets/images/logo.png" alt="ConnectUs Logo" class="h-10 w-auto opacity-90">
-                <span class="font-black text-white text-2xl tracking-tight">ConnectUs</span>
-            </div>
-            <div class="flex items-center justify-center gap-6 text-slate-400 text-sm font-semibold mb-8">
-                <a href="index.html#features"    class="hover:text-white transition">Features</a>
-                <a href="index.html#get-started" class="hover:text-white transition">Portals</a>
-                <a href="pricing.html"           class="hover:text-white transition">Pricing & Plans</a>
-            </div>
-            <div class="border-t border-white/10 pt-6">
-                <p class="text-slate-500 text-sm font-semibold">
-                    © 2026 ConnectUs. All rights reserved. &nbsp;|&nbsp;
-                    <a href="about.html"         class="hover:text-white transition">About Us</a> &nbsp;|&nbsp;
-                    <a href="contact.html"       class="hover:text-white transition">Contact Us</a> &nbsp;|&nbsp;
-                    <a href="pricing.html"       class="hover:text-white transition">Pricing</a> &nbsp;|&nbsp;
-                    <a href="terms/privacy.html" class="hover:text-white transition">Privacy Policy</a> &nbsp;|&nbsp;
-                    <a href="terms/terms.html"   class="hover:text-white transition">Terms of Service</a>
-                </p>
-            </div>
-        </div>
-    </footer>
-
-    <script>
-        // If the person arrived here from inside a portal (admin, teacher,
-        // or student), let them jump back into that portal's dashboard
-        // instead of only offering the public homepage. Falls back to a
-        // plain "Go Back" (browser history) button when there was a
-        // previous page but it wasn't a portal, and hides the button
-        // entirely when there's no previous page to go back to at all
-        // (a bookmarked link, a typed-in URL, etc.).
-        (function () {
-            var PORTAL_HOME = {
-                admin:   { label: 'Admin',   href: 'admin/home/home.html' },
-                teacher: { label: 'Teacher', href: 'teacher/home/home.html' },
-                student: { label: 'Student', href: 'student/home/home.html' }
-            };
-
-            function detectPortal() {
-                if (!document.referrer) return null;
-                try {
-                    var referrerUrl = new URL(document.referrer);
-                    if (referrerUrl.origin !== window.location.origin) return null;
-                    var match = referrerUrl.pathname.match(/^\/(admin|teacher|student)\//);
-                    return match ? match[1] : null;
-                } catch (e) {
-                    return null;
-                }
-            }
-
-            var btn = document.getElementById('secondaryReturnBtn');
-            if (!btn) return;
-
-            var portal = detectPortal();
-
-            if (portal && PORTAL_HOME[portal]) {
-                btn.textContent = 'Return to ' + PORTAL_HOME[portal].label + ' Dashboard';
-                btn.addEventListener('click', function () {
-                    window.location.href = PORTAL_HOME[portal].href;
-                });
-            } else if (document.referrer) {
-                btn.textContent = 'Go Back';
-                btn.addEventListener('click', function () {
-                    window.history.back();
-                });
-            } else {
-                // No referrer at all — there's no known previous page in
-                // this tab, so leave the button hidden rather than wire
-                // up a "Go Back" that has nowhere reliable to go.
-                return;
-            }
-
-            btn.classList.remove('hidden');
-        })();
-    </script>
-
+<body>
+    <div class="error-code">Error 404</div>
+    <h1>Page Not Found</h1>
+    <p>The page you're looking for doesn't exist, may have moved, or the link might have a typo.</p>
+    <a href="/index.html" class="btn">Back to Home</a>
 </body>
 </html>
