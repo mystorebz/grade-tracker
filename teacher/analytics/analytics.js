@@ -11,6 +11,8 @@ if (session) {
     injectTeacherLayout('analytics', 'My Evaluations', 'Full career record — performance reviews across all schools', false);
 }
 
+const EVALS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes, same spirit as semesters cache
+
 function escHtml(s) {
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
@@ -37,21 +39,28 @@ let expanded  = new Set(); // tracks which eval IDs are expanded
 document.addEventListener('DOMContentLoaded', async () => {
     if (!session) return;
 
+    // Show a skeleton immediately so the page doesn't look frozen while data loads
+    showSkeleton();
+
     try {
-        await loadSemesters();
+        // Kick off semesters + evaluations in parallel instead of sequentially.
+        // Sidebar stats only need localStorage (synchronous), so run it now too.
         populateSidebarStats();
 
-        const snap = await getDocs(
-            collection(db, 'teachers', session.teacherId, 'evaluations')
-        );
+        const [, evalsResult] = await Promise.all([
+            loadSemesters(),
+            loadEvaluations()
+        ]);
 
-        allEvals = snap.docs
-            .map(d => ({ id: d.id, ...d.data() }))
-            .sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt));
+        allEvals = evalsResult;
 
         renderKpis(allEvals);
         renderCategories(allEvals);
         window.applyFilters();
+
+        // Re-run sidebar stats once semesters are guaranteed loaded (covers the
+        // no-cache-yet case where populateSidebarStats() ran before semesters existed)
+        populateSidebarStats();
 
     } catch (e) {
         console.error('[Evaluations] load error:', e);
@@ -59,6 +68,41 @@ document.addEventListener('DOMContentLoaded', async () => {
             '<p style="padding:24px;color:#e31b4a;font-weight:600;text-align:center">Error loading evaluations. Please try again.</p>';
     }
 });
+
+// ── SKELETON (perceived performance while data loads) ─────────────────────
+function showSkeleton() {
+    const kpiEl = document.getElementById('evalKpiCards');
+    if (kpiEl) {
+        kpiEl.innerHTML = Array.from({ length: 4 }).map(() => `
+            <div style="background:#fff;border:1px solid #dce3ed;border-radius:14px;padding:18px 20px;height:74px;overflow:hidden;position:relative;">
+                <div class="skeleton-shimmer" style="position:absolute;inset:0;"></div>
+            </div>`).join('');
+    }
+    const listEl = document.getElementById('evalList');
+    if (listEl) {
+        listEl.innerHTML = Array.from({ length: 4 }).map(() => `
+            <div style="border-bottom:1px solid #f0f4f8;padding:16px 24px;height:44px;position:relative;overflow:hidden;">
+                <div class="skeleton-shimmer" style="position:absolute;inset:0;"></div>
+            </div>`).join('');
+    }
+
+    if (!document.getElementById('skeleton-shimmer-style')) {
+        const style = document.createElement('style');
+        style.id = 'skeleton-shimmer-style';
+        style.textContent = `
+            .skeleton-shimmer {
+                background: linear-gradient(90deg, #f4f7fb 25%, #eef2f7 37%, #f4f7fb 63%);
+                background-size: 400% 100%;
+                animation: skeleton-loading 1.4s ease infinite;
+            }
+            @keyframes skeleton-loading {
+                0% { background-position: 100% 50%; }
+                100% { background-position: 0 50%; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
 
 function populateSidebarStats() {
     // Period label — use active semester from Firestore cache or first semester
@@ -123,6 +167,61 @@ async function loadSemesters() {
         });
         const sbPeriod = document.getElementById('sb-period');
         if (sbPeriod) sbPeriod.textContent = topSel.options[topSel.selectedIndex]?.text || '—';
+    }
+}
+
+// ── EVALUATIONS LOAD (with cache) ──────────────────────────────────────────
+async function loadEvaluations() {
+    const cacheKey = `connectus_evals_${session.teacherId}`;
+
+    try {
+        const cachedRaw = localStorage.getItem(cacheKey);
+        if (cachedRaw) {
+            const cached = JSON.parse(cachedRaw);
+            if (cached.savedAt && (Date.now() - cached.savedAt) < EVALS_CACHE_TTL_MS) {
+                // Serve cached data instantly, then refresh quietly in the background
+                refreshEvaluationsInBackground(cacheKey);
+                return cached.data;
+            }
+        }
+    } catch (e) {
+        console.warn('[Evaluations] Cache read failed, falling back to network:', e);
+    }
+
+    const fresh = await fetchEvaluationsFromFirestore();
+    try {
+        localStorage.setItem(cacheKey, JSON.stringify({ savedAt: Date.now(), data: fresh }));
+    } catch (e) {
+        console.warn('[Evaluations] Cache write failed:', e);
+    }
+    return fresh;
+}
+
+async function fetchEvaluationsFromFirestore() {
+    const snap = await getDocs(
+        collection(db, 'teachers', session.teacherId, 'evaluations')
+    );
+    return snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt));
+}
+
+// Silently refresh cache after serving stale-while-revalidate data.
+// If the fresh data differs from what's on screen, re-render.
+async function refreshEvaluationsInBackground(cacheKey) {
+    try {
+        const fresh = await fetchEvaluationsFromFirestore();
+        localStorage.setItem(cacheKey, JSON.stringify({ savedAt: Date.now(), data: fresh }));
+
+        const changed = JSON.stringify(fresh) !== JSON.stringify(allEvals);
+        if (changed) {
+            allEvals = fresh;
+            renderKpis(allEvals);
+            renderCategories(allEvals);
+            window.applyFilters();
+        }
+    } catch (e) {
+        console.warn('[Evaluations] Background refresh failed:', e);
     }
 }
 
