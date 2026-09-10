@@ -47,6 +47,36 @@ async function main() {
     await db.doc('students/student-1/exam_submissions/exam-sub-graded').set({ status: 'graded', examId: 'e1', score: 85 });
 
     await db.doc('exam_answer_keys/e1').set({ answers: ['A', 'B', 'C'] });
+
+    // ── Phase 0 correction: subjects/assignments/teaching_assignments, nested
+    // under schools/{schoolId}, relying on the existing isSchoolActive()
+    // wildcard rather than a new rule block. school-1 is active (isVerified
+    // true, seeded above); school-2 below is deliberately NOT verified, to
+    // confirm the same wildcard correctly denies access once a school goes
+    // inactive.
+    await db.doc('schools/school-2').set({ isVerified: false, name: 'Inactive School' });
+
+    await db.doc('schools/school-1/classes/class-1').set({ name: 'Room A', order: 0 });
+    await db.doc('schools/school-1/classes/class-1/subjects/subj-1').set({
+      name: 'Mathematics', schoolId: 'school-1', classId: 'class-1', archived: false,
+    });
+    await db.doc('schools/school-1/classes/class-1/subjects/subj-1/assignments/asg-1').set({
+      title: 'Fractions Test', subjectId: 'subj-1', classId: 'class-1', schoolId: 'school-1',
+    });
+    await db.doc('schools/school-1/teaching_assignments/ta-1').set({
+      teacherId: 'teacher-1', classId: 'class-1', subjectId: 'subj-1',
+      subjectName: 'Mathematics', weighting: [{ name: 'Test', weight: 40 }],
+    });
+
+    // Same shapes under the inactive school-2, to confirm the wildcard's
+    // denial applies here too, not just to the collections it already covered.
+    await db.doc('schools/school-2/classes/class-x').set({ name: 'Room X', order: 0 });
+    await db.doc('schools/school-2/classes/class-x/subjects/subj-x').set({
+      name: 'History', schoolId: 'school-2', classId: 'class-x', archived: false,
+    });
+    await db.doc('schools/school-2/teaching_assignments/ta-x').set({
+      teacherId: 'teacher-x', classId: 'class-x', subjectId: 'subj-x', subjectName: 'History', weighting: [],
+    });
   });
 
   const student1Ctx = testEnv.authenticatedContext('uid-student-1', {
@@ -58,6 +88,7 @@ async function main() {
   const teacher1Ctx = testEnv.authenticatedContext('uid-teacher-1', {
     role: 'teacher', teacherId: 'teacher-1', schoolId: 'school-1',
   });
+  const unauthedCtx = testEnv.unauthenticatedContext();
 
   // Call .firestore() exactly once per context and reuse the same instance
   // for every operation below — calling it again after the instance has
@@ -65,6 +96,7 @@ async function main() {
   const student1 = student1Ctx.firestore();
   const student2 = student2Ctx.firestore();
   const teacher1 = teacher1Ctx.firestore();
+  const unauthed = unauthedCtx.firestore();
 
   console.log('\n--- students/{id}/submissions (assignment submissions) ---');
 
@@ -147,6 +179,76 @@ async function main() {
   await check(
     'Student tries to read the answer key directly (should be blocked)',
     student1.doc('exam_answer_keys/e1').get(),
+    false
+  );
+
+  console.log('\n--- schools/{schoolId}/classes/.../subjects, assignments, teaching_assignments ---');
+  console.log('    (Phase 0 correction: nested under the school, no new rule block — verifying');
+  console.log('     the existing isSchoolActive() wildcard actually covers these as expected)');
+
+  await check(
+    'Teacher at the active school reads a subject',
+    teacher1.doc('schools/school-1/classes/class-1/subjects/subj-1').get(),
+    true
+  );
+
+  await check(
+    'Student at the active school reads a subject',
+    student1.doc('schools/school-1/classes/class-1/subjects/subj-1').get(),
+    true
+  );
+
+  await check(
+    'Unauthenticated caller reads a subject at an active school (matches the existing wildcard\'s shape — same openness classes/semesters already have, not a new gap)',
+    unauthed.doc('schools/school-1/classes/class-1/subjects/subj-1').get(),
+    true
+  );
+
+  await check(
+    'Teacher creates a new subject at the active school',
+    teacher1.doc('schools/school-1/classes/class-1/subjects/subj-new').set({ name: 'Science', schoolId: 'school-1', classId: 'class-1', archived: false }),
+    true
+  );
+
+  await check(
+    'Teacher reads an assignment nested under a subject',
+    teacher1.doc('schools/school-1/classes/class-1/subjects/subj-1/assignments/asg-1').get(),
+    true
+  );
+
+  await check(
+    'Teacher reads the teaching_assignments document (weighting)',
+    teacher1.doc('schools/school-1/teaching_assignments/ta-1').get(),
+    true
+  );
+
+  await check(
+    'Student reads the teaching_assignments document (weighting is not sensitive on its own)',
+    student1.doc('schools/school-1/teaching_assignments/ta-1').get(),
+    true
+  );
+
+  await check(
+    "Teacher updates the teaching_assignments document's weighting",
+    teacher1.doc('schools/school-1/teaching_assignments/ta-1').update({ weighting: [{ name: 'Test', weight: 50 }, { name: 'Quiz', weight: 50 }] }),
+    true
+  );
+
+  await check(
+    'Anyone reading a subject at an INACTIVE school is blocked (school-2 has isVerified: false)',
+    teacher1.doc('schools/school-2/classes/class-x/subjects/subj-x').get(),
+    false
+  );
+
+  await check(
+    'Anyone reading a teaching_assignments document at an INACTIVE school is blocked',
+    student1.doc('schools/school-2/teaching_assignments/ta-x').get(),
+    false
+  );
+
+  await check(
+    'Writing a subject at an INACTIVE school is blocked',
+    teacher1.doc('schools/school-2/classes/class-x/subjects/subj-x').update({ name: 'Changed' }),
     false
   );
 
