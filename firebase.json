@@ -19,5 +19,21 @@
   ],
   "extensions": {
     "firestore-send-email-7pcl": "firebase/firestore-send-email@0.2.8"
+  },
+  "emulators": {
+    "auth": {
+      "port": 9099
+    },
+    "functions": {
+      "port": 5001
+    },
+    "firestore": {
+      "port": 8080
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4000
+    },
+    "singleProjectMode": true
   }
 }
