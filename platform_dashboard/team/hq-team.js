@@ -3,11 +3,18 @@ import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc } from "https://
 
 // ── Boot Sequence ──────────────────────────────────────────────────────────
 const rawSession = localStorage.getItem('connectus_hq_session');
+if (!rawSession) window.location.replace('../hq-login.html');
 const session = JSON.parse(rawSession);
 
-document.getElementById('hqAdminName').textContent = session.name;
-document.getElementById('hqAdminId').textContent = session.id;
+document.getElementById('hqAdminName').textContent  = session.name;
+document.getElementById('hqAdminId').textContent    = session.id;
 document.getElementById('hqAdminBadge').textContent = `Role: ${session.role}`;
+if (session.role !== 'Owner') window.location.replace('../index.html');
+
+document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('connectus_hq_session');
+    window.location.replace('../hq-login.html');
+});
 
 const tbody = document.getElementById('teamTableBody');
 let allTeam = [];

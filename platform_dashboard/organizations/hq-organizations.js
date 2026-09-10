@@ -3,7 +3,7 @@ import { collection, getDocs, doc, setDoc, updateDoc } from "https://www.gstatic
 
 // ── Boot Sequence: Security Check & Setup ──────────────────────────────────
 const rawSession = localStorage.getItem('connectus_hq_session');
-if (!rawSession) window.location.replace('../core/hq-login.html');
+if (!rawSession) window.location.replace('../hq-login.html');
 const session = JSON.parse(rawSession);
 
 document.getElementById('hqAdminName').textContent = session.name;
@@ -13,7 +13,7 @@ if (session.role !== 'Owner') document.getElementById('navTeamBtn').classList.ad
 
 document.getElementById('logoutBtn').addEventListener('click', () => {
     localStorage.removeItem('connectus_hq_session');
-    window.location.replace('../core/hq-login.html');
+    window.location.replace('../hq-login.html');
 });
 
 const tbody = document.getElementById('orgsTableBody');

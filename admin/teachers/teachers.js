@@ -17,9 +17,9 @@ injectAdminLayout('teachers', 'Teaching Staff', 'Manage active educators, transf
 let allTeachersCache  = [];
 let currentTeacherId  = null;
 let currentTeacherData = null;
-let claimedTeacherDoc = null;
 let slipData          = { name: '', id: '', pin: '' };
 let dynamicEvalTypes  = new Set();
+let schoolClasses     = [];   // ← class names from schools/{id}/classes subcollection
 
 const tbody = document.getElementById('teachersTableBody');
 
@@ -61,14 +61,39 @@ function isProfileComplete(t) {
     );
 }
 
-function getClassOptions() {
-    const type = (session.schoolType || '').toLowerCase();
-    if (type === 'highschool' || type === 'secondary') {
-        return ['First Form', 'Second Form', 'Third Form', 'Fourth Form', 'Fifth Form', 'Sixth Form'];
-    } else if (type === 'juniorcollege' || type === 'tertiary') {
-        return ['Year 1 — Semester 1', 'Year 1 — Semester 2', 'Year 2 — Semester 1', 'Year 2 — Semester 2'];
+// ── Load the school's class list (single source of truth) ───────────────────
+async function loadSchoolClasses() {
+    try {
+        const snap = await getDocs(collection(db, 'schools', session.schoolId, 'classes'));
+        schoolClasses = snap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.name || '').localeCompare(b.name || ''))
+            .map(c => c.name)
+            .filter(Boolean);
+    } catch (e) {
+        console.error('[Teachers] loadSchoolClasses:', e);
+        schoolClasses = [];
     }
-    return ['Infant 1', 'Infant 2', 'Standard 1', 'Standard 2', 'Standard 3', 'Standard 4', 'Standard 5', 'Standard 6'];
+}
+
+// Returns the admin-defined class names. Any class a teacher is already
+// assigned to is merged in too, so legacy assignments never silently vanish.
+function getClassOptions(extra = []) {
+    const merged = [...schoolClasses];
+    extra.forEach(c => { if (c && !merged.includes(c)) merged.push(c); });
+    return merged;
+}
+
+// Shared empty-state markup when the school has no classes defined yet
+function classEmptyHtml() {
+    return `
+        <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 text-center">
+            <i class="fa-solid fa-layer-group text-amber-400 text-xl mb-2"></i>
+            <p class="text-[12px] font-bold text-amber-800 mb-0.5">No classes set up yet</p>
+            <p class="text-[11px] font-semibold text-amber-700 leading-relaxed">
+                Add your school's classes on the <strong>Classes</strong> page first, then come back to assign this teacher.
+            </p>
+        </div>`;
 }
 
 function blankTeacherDoc(overrides = {}) {
@@ -102,9 +127,9 @@ function blankTeacherDoc(overrides = {}) {
         employmentType:         '',
         gradeLevelSpec:         '',
         subjects: [
-            { id: `sub_${now}_1`, name: 'Mathematics',           archived: false, description: '' },
-            { id: `sub_${now}_2`, name: 'English Language Arts', archived: false, description: '' },
-            { id: `sub_${now}_3`, name: 'Science',               archived: false, description: '' }
+            { id: `sub_${now}_1`, name: 'Mathematics',           archived: false, description: '', assignments: [] },
+            { id: `sub_${now}_2`, name: 'English Language Arts', archived: false, description: '', assignments: [] },
+            { id: `sub_${now}_3`, name: 'Science',               archived: false, description: '', assignments: [] }
         ],
         classes:            [],
         className:          '',
@@ -130,10 +155,22 @@ function infoCell(label, value) {
         </div>`;
 }
 
+// True when the given semester ends within 7 days, or has already ended.
+// Gates the per-teacher missing-grades alert so it only shows at end-of-term.
+const ADMIN_PERIOD_WARN_DAYS = 7;
+function isEndOfTermWindow(sem) {
+    if (!sem || !sem.endDate) return false;
+    const startOfDay = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const today    = startOfDay(new Date());
+    const end      = startOfDay(new Date(sem.endDate + 'T00:00:00'));
+    const daysLeft = Math.round((end - today) / (1000 * 60 * 60 * 24));
+    return daysLeft <= ADMIN_PERIOD_WARN_DAYS;
+}
+
 // ── 4. LOAD TEACHERS ────────────────────────────────────────────────────────
 async function loadTeachers() {
     tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center text-[#9ab0c6] italic font-semibold">
-        <i class="fa-solid fa-spinner fa-spin mr-2 text-[#2563eb]"></i>Syncing with National Registry...
+        <i class="fa-solid fa-spinner fa-spin mr-2 text-[#2563eb]"></i>Syncing with Registry...
     </td></tr>`;
 
     try {
@@ -232,7 +269,14 @@ document.getElementById('searchInput')?.addEventListener('input', renderTable);
 function populateClassCheckboxes(containerId = 'classCheckboxGroup', checked = []) {
     const group = document.getElementById(containerId);
     if (!group) return;
-    group.innerHTML = getClassOptions().map(c => `
+
+    const options = getClassOptions(checked);
+    if (!options.length) {
+        group.innerHTML = classEmptyHtml();
+        return;
+    }
+
+    group.innerHTML = options.map(c => `
         <label class="flex items-center gap-2 cursor-pointer select-none">
             <input type="checkbox" class="class-checkbox accent-[#2563eb]" value="${escHtml(c)}" ${checked.includes(c) ? 'checked' : ''}>
             <span class="text-[12px] font-semibold text-[#374f6b]">${escHtml(c)}</span>
@@ -241,195 +285,19 @@ function populateClassCheckboxes(containerId = 'classCheckboxGroup', checked = [
 }
 
 window.openAddTeacherModal = () => {
-    ['tFirstName', 'tLastName', 'tEmail', 'tPhone', 'teacherSearchInput'].forEach(id => {
+    ['tFirstName', 'tLastName', 'tEmail', 'tPhone'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
     });
-    ['teacherSearchResults', 'claimTeacherPreview', 'claimSearchEmpty', 'addTeacherMsg'].forEach(id =>
+    ['addTeacherMsg'].forEach(id =>
         document.getElementById(id)?.classList.add('hidden')
     );
-    claimedTeacherDoc = null;
     populateClassCheckboxes();
     openOverlay('addTeacherModal', 'addTeacherModalInner');
 };
 
 window.closeAddTeacherModal = () => {
     closeOverlay('addTeacherModal', 'addTeacherModalInner');
-    claimedTeacherDoc = null;
 };
-
-document.getElementById('teacherSearchInput').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('searchTeacherBtn').click(); }
-});
-
-document.getElementById('searchTeacherBtn').addEventListener('click', async () => {
-    const input     = document.getElementById('teacherSearchInput').value.trim();
-    const resultsEl = document.getElementById('teacherSearchResults');
-    const emptyEl   = document.getElementById('claimSearchEmpty');
-    const previewEl = document.getElementById('claimTeacherPreview');
-
-    resultsEl.classList.add('hidden');
-    emptyEl.classList.add('hidden');
-    previewEl.classList.add('hidden');
-    claimedTeacherDoc = null;
-
-    if (!input) { alert('Enter a name, email, or Teacher ID to search.'); return; }
-
-    const btn = document.getElementById('searchTeacherBtn');
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-    btn.disabled  = true;
-
-    try {
-        let results    = [];
-        const lower    = input.toLowerCase();
-        const looksLikeId = input.includes('-');
-
-        if (looksLikeId) {
-            const normalizedId = input.toUpperCase().replace(/\s/g, '');
-            const snap = await getDoc(doc(db, 'teachers', normalizedId));
-            if (snap.exists()) {
-                const d = { id: snap.id, ...snap.data() };
-                if (!d.currentSchoolId || d.currentSchoolId === '') {
-                    results = [d];
-                } else if (d.currentSchoolId === session.schoolId) {
-                    emptyEl.querySelector('p').textContent = 'That teacher is already active at your school.';
-                    emptyEl.classList.remove('hidden');
-                    btn.innerHTML = '<i class="fa-solid fa-magnifying-glass mr-1"></i> Search';
-                    btn.disabled  = false;
-                    return;
-                }
-            }
-        }
-
-        if (!results.length) {
-            const snap = await getDocs(
-                query(collection(db, 'teachers'), where('currentSchoolId', '==', ''))
-            );
-            results = snap.docs
-                .map(d => ({ id: d.id, ...d.data() }))
-                .filter(t =>
-                    (t.name || '').toLowerCase().includes(lower) ||
-                    (t.email || '').toLowerCase().includes(lower) ||
-                    t.id.toLowerCase().includes(lower)
-                );
-        }
-
-        if (!results.length) {
-            emptyEl.classList.remove('hidden');
-        } else {
-            resultsEl.innerHTML = results.map(t => `
-                <div onclick="window.selectTeacherResult('${t.id}')"
-                    class="px-4 py-3 hover:bg-[#eef4ff] cursor-pointer border-b border-[#f0f4f8] last:border-0 flex items-center justify-between transition">
-                    <div>
-                        <p class="font-bold text-[#0d1f35] text-[13px]">${escHtml(t.name || 'Unknown')}</p>
-                        <p class="font-mono text-[10px] text-[#9ab0c6] uppercase mt-0.5">${t.id} ${t.email ? `• ${t.email}` : ''}</p>
-                    </div>
-                    <i class="fa-solid fa-chevron-right text-[#c5d0db] text-[11px]"></i>
-                </div>
-            `).join('');
-            resultsEl.classList.remove('hidden');
-        }
-    } catch (e) {
-        console.error('[Teachers] search:', e);
-        alert('Search failed. Please try again.');
-    }
-
-    btn.innerHTML = '<i class="fa-solid fa-magnifying-glass mr-1"></i> Search';
-    btn.disabled  = false;
-});
-
-window.selectTeacherResult = async (teacherId) => {
-    document.getElementById('teacherSearchResults').classList.add('hidden');
-
-    try {
-        const snap = await getDoc(doc(db, 'teachers', teacherId));
-        if (!snap.exists()) return;
-
-        claimedTeacherDoc = { id: snap.id, ...snap.data() };
-        const t = claimedTeacherDoc;
-
-        document.getElementById('claimPreviewName').textContent = t.name || 'Unknown';
-        document.getElementById('claimPreviewId').textContent   = t.id;
-
-        const details = [
-            ['Email',        t.email              || null],
-            ['Phone',        t.phone              || null],
-            ['License No.',  t.teacherLicenseNumber || null],
-            ['License Type', t.licenseType        || null],
-            ['Education',    t.highestEducationLevel || null],
-            ['Employment',   t.employmentType     || null],
-        ];
-
-        document.getElementById('claimPreviewDetails').innerHTML = details.map(([label, val]) => `
-            <div class="bg-white rounded-lg p-2.5 border border-[#dce3ed]">
-                <p class="text-[9px] font-bold text-[#9ab0c6] uppercase tracking-widest mb-0.5">${label}</p>
-                <p class="text-[12px] font-bold text-[#0d1f35]">
-                    ${val ? escHtml(val) : '<span class="text-[#c5d0db] italic text-[11px] font-semibold">Not on file</span>'}
-                </p>
-            </div>
-        `).join('');
-
-        const warningEl   = document.getElementById('claimPreviewWarning');
-        const warningText = document.getElementById('claimPreviewWarningText');
-        if (!t.email) {
-            warningText.textContent = 'No email on file — the teacher should add one during their first login setup.';
-            warningEl.classList.remove('hidden');
-        } else {
-            warningEl.classList.add('hidden');
-        }
-
-        document.getElementById('claimTeacherPreview').classList.remove('hidden');
-    } catch (e) {
-        console.error('[Teachers] selectTeacherResult:', e);
-        alert('Could not load teacher details. Please try again.');
-    }
-};
-
-window.clearTeacherSelection = () => {
-    document.getElementById('claimTeacherPreview').classList.add('hidden');
-    document.getElementById('teacherSearchInput').value = '';
-    claimedTeacherDoc = null;
-};
-
-document.getElementById('claimTeacherBtn').addEventListener('click', async () => {
-    if (!claimedTeacherDoc) return;
-    const btn = document.getElementById('claimTeacherBtn');
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Claiming...';
-    btn.disabled  = true;
-
-    try {
-        const limitCheck = await isTeacherLimitReached();
-        if (limitCheck.reached) {
-            alert(`Teacher limit reached (${limitCheck.current}/${limitCheck.limit}). Contact ConnectUs to upgrade your plan.`);
-            btn.disabled  = false;
-            btn.innerHTML = '<i class="fa-solid fa-handshake mr-2"></i> Claim This Teacher';
-            return;
-        }
-
-        const tempPin = generatePin();
-        const tRef    = doc(db, 'teachers', claimedTeacherDoc.id);
-        const updates = {
-            currentSchoolId:  session.schoolId,
-            pin:              tempPin,
-            requiresPinReset: true
-        };
-        if (claimedTeacherDoc.currentSchoolId && claimedTeacherDoc.currentSchoolId !== '') {
-            updates.archivedSchoolIds = arrayUnion(claimedTeacherDoc.currentSchoolId);
-        }
-        await updateDoc(tRef, updates);
-
-        slipData = { name: claimedTeacherDoc.name, id: claimedTeacherDoc.id, pin: tempPin };
-        window.closeAddTeacherModal();
-        window.showCredentialSlip();
-        loadTeachers();
-
-    } catch (e) {
-        console.error('[Teachers] claim:', e);
-        alert('Error claiming teacher. Please try again.');
-    }
-
-    btn.disabled  = false;
-    btn.innerHTML = '<i class="fa-solid fa-handshake mr-2"></i> Claim This Teacher';
-});
 
 document.getElementById('saveTeacherBtn').addEventListener('click', async () => {
     const btn   = document.getElementById('saveTeacherBtn');
@@ -451,6 +319,7 @@ document.getElementById('saveTeacherBtn').addEventListener('click', async () => 
     if (!firstName || !lastName) { showMsg('First and last name are required.'); return; }
     if (!email)                  { showMsg('Email address is required for PIN recovery.'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showMsg('Please enter a valid email address.'); return; }
+    if (!schoolClasses.length)   { showMsg('No classes exist yet. Add classes on the Classes page first.'); return; }
     if (selectedClasses.length === 0) { showMsg('You must assign the teacher to at least one class.'); return; }
 
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processing...';
@@ -629,6 +498,8 @@ async function renderOverviewTab() {
     let hasActiveTerm   = false;
     let activeTermName  = '';
     let studentsByClass = {};
+    let activeSemObj    = null;   // active semester record (for end-of-term gate)
+    let activeStudentDocs = [];   // this teacher's active students (reused for missing-grades check)
 
     try {
         const [schoolSnap, studSnap] = await Promise.all([
@@ -645,41 +516,87 @@ async function renderOverviewTab() {
             if (semSnap.exists()) {
                 hasActiveTerm  = true;
                 activeTermName = semSnap.data().name || 'the current term';
+                activeSemObj   = { id: activeSemId, ...semSnap.data() };
             }
         }
 
-        studSnap.forEach(d => {
-            const cls = d.data().className || d.data().class || '';
+        activeStudentDocs = studSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        activeStudentDocs.forEach(s => {
+            const cls = s.className || s.class || '';
             if (cls) studentsByClass[cls] = (studentsByClass[cls] || 0) + 1;
         });
     } catch (_) {}
 
-    const classCheckboxes = getClassOptions().map(c => {
-        const isAssigned   = classes.includes(c);
-        const studentCount = studentsByClass[c] || 0;
-        const isLocked     = isAssigned && hasActiveTerm && studentCount > 0;
+    // Missing-grades summary for this teacher — end-of-term window only.
+    // Uses the active students already loaded above; fetches their grades for
+    // the active term (scoped to this one teacher, only when the panel opens).
+    let missingAlertHtml = '';
+    if (activeSemObj && isEndOfTermWindow(activeSemObj) && activeStudentDocs.length) {
+        try {
+            const noGrades = [];
+            await Promise.all(activeStudentDocs.map(async s => {
+                try {
+                    const gSnap = await getDocs(query(
+                        collection(db, 'students', s.id, 'grades'),
+                        where('schoolId', '==', session.schoolId),
+                        where('semesterId', '==', activeSemObj.id)
+                    ));
+                    if (gSnap.empty) noGrades.push(s);
+                } catch (e) {}
+            }));
 
-        if (isLocked) {
+            if (noGrades.length) {
+                const names = noGrades.map(s => escHtml(s.name || 'Unnamed'))
+                    .map(n => `<span class="inline-block bg-white border border-red-200 text-red-700 text-[11px] font-bold px-2 py-0.5 rounded">${n}</span>`)
+                    .join(' ');
+                missingAlertHtml = `
+                    <div class="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4">
+                        <div class="flex items-start gap-3">
+                            <i class="fa-solid fa-circle-exclamation text-red-500 text-lg flex-shrink-0 mt-0.5"></i>
+                            <div class="min-w-0">
+                                <p class="font-black text-[12px] text-red-700 leading-tight">${noGrades.length} student${noGrades.length !== 1 ? 's have' : ' has'} no grades this period</p>
+                                <p class="text-[10px] font-semibold text-red-600/80 mt-0.5 mb-2">The grading period <strong>${escHtml(activeTermName)}</strong> is closing. These students still have no grades entered.</p>
+                                <div class="flex flex-wrap gap-1.5">${names}</div>
+                            </div>
+                        </div>
+                    </div>`;
+            }
+        } catch (e) { console.error('[Teachers] overview missing-grades:', e); }
+    }
+
+    // Merge in any class this teacher already holds, even if it's no longer
+    // in the school's master list, so existing assignments stay editable.
+    const classOptions = getClassOptions(classes);
+
+    const classCheckboxes = classOptions.length
+        ? classOptions.map(c => {
+            const isAssigned   = classes.includes(c);
+            const studentCount = studentsByClass[c] || 0;
+            const isLocked     = isAssigned && hasActiveTerm && studentCount > 0;
+
+            if (isLocked) {
+                return `
+                    <label class="flex items-center gap-2 select-none cursor-not-allowed" title="Cannot remove — ${studentCount} active student${studentCount !== 1 ? 's' : ''} in ${activeTermName}">
+                        <input type="checkbox" class="manage-class-checkbox accent-[#2563eb]"
+                            value="${escHtml(c)}" checked disabled>
+                        <span class="text-[12px] font-semibold text-[#374f6b]">${escHtml(c)}</span>
+                        <span class="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded ml-auto">
+                            <i class="fa-solid fa-lock text-[8px]"></i> ${studentCount} student${studentCount !== 1 ? 's' : ''}
+                        </span>
+                    </label>`;
+            }
+
             return `
-                <label class="flex items-center gap-2 select-none cursor-not-allowed" title="Cannot remove — ${studentCount} active student${studentCount !== 1 ? 's' : ''} in ${activeTermName}">
+                <label class="flex items-center gap-2 cursor-pointer select-none">
                     <input type="checkbox" class="manage-class-checkbox accent-[#2563eb]"
-                        value="${escHtml(c)}" checked disabled>
+                        value="${escHtml(c)}" ${isAssigned ? 'checked' : ''}>
                     <span class="text-[12px] font-semibold text-[#374f6b]">${escHtml(c)}</span>
-                    <span class="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded ml-auto">
-                        <i class="fa-solid fa-lock text-[8px]"></i> ${studentCount} student${studentCount !== 1 ? 's' : ''}
-                    </span>
                 </label>`;
-        }
-
-        return `
-            <label class="flex items-center gap-2 cursor-pointer select-none">
-                <input type="checkbox" class="manage-class-checkbox accent-[#2563eb]"
-                    value="${escHtml(c)}" ${isAssigned ? 'checked' : ''}>
-                <span class="text-[12px] font-semibold text-[#374f6b]">${escHtml(c)}</span>
-            </label>`;
-    }).join('');
+        }).join('')
+        : classEmptyHtml();
 
     pane.innerHTML = `
+        ${missingAlertHtml}
         <div class="flex items-center justify-between mb-4">
             <div class="${complete
                 ? 'bg-green-50 border-green-200 text-green-700'
@@ -736,10 +653,10 @@ async function renderOverviewTab() {
         <div class="bg-white border border-[#dce3ed] rounded-xl p-5 shadow-sm">
             <div class="flex items-center justify-between mb-3">
                 <h4 class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Assigned Classes</h4>
-                <button onclick="window.saveClassAssignment()"
+                ${classOptions.length ? `<button onclick="window.saveClassAssignment()"
                     class="text-[11px] font-bold text-[#2563eb] bg-[#eef4ff] border border-[#c7d9fd] px-3 py-1.5 rounded hover:bg-[#dbeafe] transition">
                     <i class="fa-solid fa-floppy-disk mr-1"></i> Save
-                </button>
+                </button>` : ''}
             </div>
             <div class="grid grid-cols-2 gap-2" id="manageClassCheckboxes">
                 ${classCheckboxes}
@@ -983,7 +900,7 @@ document.getElementById('saveSubjectBtn').addEventListener('click', async () => 
 });
 
 async function addSubject(name, description = '') {
-    const newSubject = { id: `sub_${Date.now()}`, name, archived: false, description };
+    const newSubject = { id: `sub_${Date.now()}`, name, archived: false, description, assignments: [] };
     const updated    = [...(currentTeacherData.subjects || []), newSubject];
     try {
         await updateDoc(doc(db, 'teachers', currentTeacherId), { subjects: updated });
@@ -1261,7 +1178,7 @@ function renderArchiveTab() {
                 <h4 class="font-black text-[#be123c] text-[15px] mb-2">Archive This Teacher</h4>
                 <p class="text-[12px] text-[#374f6b] font-semibold leading-relaxed">
                     Archiving removes <strong>${escHtml(currentTeacherData?.name)}</strong> from your active staff,
-                    files a mandatory exit evaluation, and generates a career snapshot for their national passport.
+                    files a mandatory exit evaluation, and generates a career snapshot for their passport.
                 </p>
             </div>
             <div class="bg-white border border-[#dce3ed] rounded-xl p-5 mb-5 space-y-2">
@@ -1351,10 +1268,9 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
         let semesterName        = '';
         let subjectAverages     = {};
         let studentCount        = 0;
-        let snapshotEvaluations = []; // ── FIX: collect existing evaluations for snapshot
+        let snapshotEvaluations = [];
 
         try {
-            // Get active semester
             const schoolSnap  = await getDoc(doc(db, 'schools', session.schoolId));
             const activeSemId = schoolSnap.exists() ? schoolSnap.data().activeSemesterId : null;
 
@@ -1366,7 +1282,6 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
                 }
             }
 
-            // Get all students this teacher had
             const studSnap = await getDocs(
                 query(collection(db, 'students'),
                     where('teacherId', '==', currentTeacherId),
@@ -1375,7 +1290,6 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
             const studentIds = studSnap.docs.map(d => d.id);
             studentCount     = studentIds.length;
 
-            // Fetch all grades for this term across all students
             if (studentIds.length && semesterId) {
                 const gradePromises = studentIds.map(sid =>
                     getDocs(query(
@@ -1389,7 +1303,6 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
                 const allGrades = [];
                 gradeResults.forEach(snap => snap.forEach(d => allGrades.push(d.data())));
 
-                // Group by subject and compute average
                 const gradeTypes = t.gradeTypes || t.customGradeTypes || ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
                 const bySubject  = {};
                 allGrades.forEach(g => {
@@ -1403,7 +1316,6 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
                 });
             }
 
-            // ── FIX: fetch all existing evaluations for this school into snapshot
             const evalSnap = await getDocs(query(
                 collection(db, 'teachers', currentTeacherId, 'evaluations'),
                 where('schoolId', '==', session.schoolId)
@@ -1415,7 +1327,6 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
             console.warn('[Teachers] snapshot computation warning:', snapErr.message);
         }
 
-        // ── FIX: build exit eval as named object so it can be included in snapshot
         const exitEvalData = {
             evaluatorId:      session.adminId || 'Admin',
             schoolId:         session.schoolId,
@@ -1427,7 +1338,6 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
             timestamp:        new Date().toISOString()
         };
 
-        // ── FIX: prepend exit eval to snapshot so it's included even before batch commits
         snapshotEvaluations.unshift(exitEvalData);
 
         const teachingSnapshot = {
@@ -1437,8 +1347,8 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
             classes:        getTeacherClasses(t),
             subjects:       getSubjectNames(t.subjects),
             studentCount,
-            subjectAverages,  // { Mathematics: 78, Science: 65, ... }
-            evaluations:    snapshotEvaluations, // ── FIX: evaluations saved in snapshot
+            subjectAverages,
+            evaluations:    snapshotEvaluations,
             snapshotDate:   new Date().toISOString()
         };
 
@@ -1449,12 +1359,17 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
 
         batch.update(tRef, {
             currentSchoolId:   '',
+            archived:          true,                           // ── FIX: marks teacher as archived so auth watcher and mintTeacherToken block access
             archivedSchoolIds: arrayUnion(session.schoolId),
-            teachingHistory:   arrayUnion(teachingSnapshot)   // ← snapshot appended
+            teachingHistory:   arrayUnion(teachingSnapshot)
         });
 
-        // ── FIX: reuse exitEvalData for the subcollection write
         batch.set(evalRef, exitEvalData);
+
+        // ── FIX: free the email so this teacher can be re-enrolled elsewhere ──
+        if (t.email) {
+            batch.delete(doc(db, 'registered_emails', t.email.toLowerCase().trim()));
+        }
 
         await batch.commit();
         window.closeExitModal();
@@ -1476,7 +1391,7 @@ window.printTeacherPortfolio = async (tId) => {
     if (!t || t.id !== tId) return;
 
     const w = window.open('', '_blank');
-    w.document.write('<div style="font-family: sans-serif; padding: 40px; color: #64748b;">Generating National Portfolio Data...</div>');
+    w.document.write('<div style="font-family: sans-serif; padding: 40px; color: #64748b;">Generating Portfolio Data...</div>');
 
     try {
         const evalSnap = await getDocs(query(collection(db, 'teachers', tId, 'evaluations'), where('schoolId', '==', session.schoolId)));
@@ -1489,7 +1404,6 @@ window.printTeacherPortfolio = async (tId) => {
         const classesAssigned = getTeacherClasses(t).join(', ') || 'None';
         const subjectsAssigned = getSubjectNames(t.subjects).join(', ') || 'None';
 
-        // Teaching history section
         const history = t.teachingHistory || [];
         const historyHtml = history.length === 0
             ? `<p style="color:#94a3b8;font-style:italic;">No prior school history recorded yet.</p>`
@@ -1637,4 +1551,8 @@ document.getElementById('exportCsvBtn').addEventListener('click', () => {
 });
 
 // ── BOOT ──────────────────────────────────────────────────────────────────
-loadTeachers();
+async function boot() {
+    await loadSchoolClasses();   // class list ready before any modal can open
+    loadTeachers();
+}
+boot();

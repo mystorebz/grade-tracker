@@ -12,7 +12,11 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="assets/css/global.css">
+    <link rel="stylesheet" href="assets/css/landing.css">
     <script src="https://cdn.tailwindcss.com"></script>
+
+    <script src="https://www.paypal.com/sdk/js?client-id=BAAhXsbZgDW5jGo0Si8njtFHI2dGsZJPVxyoinNCz_HiewmcGQ6us-loylu319j9noes5xkUZ39n4TbCXQ&vault=true&intent=subscription" data-sdk-integration-source="button-factory"></script>
 
     <style>
         * { font-family: 'Nunito', sans-serif; }
@@ -21,7 +25,7 @@
         /* ── Nav ── */
         .navbar {
             position: sticky; top: 0; z-index: 50;
-            background: rgba(255,255,255,0.92);
+            background: rgba(255,255,255,0.95);
             backdrop-filter: blur(12px);
             border-bottom: 1px solid #e0e7ff;
             box-shadow: 0 1px 12px rgba(37,99,235,0.06);
@@ -39,12 +43,44 @@
             background: radial-gradient(circle, rgba(99,179,237,0.18) 0%, transparent 70%);
             top: -150px; right: -100px; pointer-events: none;
         }
-        .hero-bg::after {
-            content: '';
-            position: absolute;
-            width: 400px; height: 400px; border-radius: 50%;
-            background: radial-gradient(circle, rgba(37,99,235,0.1) 0%, transparent 70%);
-            bottom: -80px; left: -80px; pointer-events: none;
+
+        /* ── Toggle ── */
+        .billing-toggle {
+            display: inline-flex;
+            background: #f1f5f9;
+            border-radius: 999px;
+            padding: 4px;
+            gap: 2px;
+            border: 1px solid #e2e8f0;
+        }
+        .toggle-btn {
+            padding: 8px 24px;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 800;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            color: #64748b;
+            transition: all 0.2s ease;
+        }
+        .toggle-btn.active {
+            background: #fff;
+            color: #1e293b;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .save-badge {
+            display: inline-block;
+            background: #dcfce7;
+            color: #15803d;
+            font-size: 10px;
+            font-weight: 900;
+            padding: 2px 10px;
+            border-radius: 999px;
+            border: 1px solid #bbf7d0;
+            letter-spacing: 0.05em;
+            vertical-align: middle;
+            margin-left: 6px;
         }
 
         /* ── Included strip ── */
@@ -63,92 +99,36 @@
             transition: transform 0.25s ease, box-shadow 0.25s ease;
         }
         .plan-card:hover {
-            transform: translateY(-6px);
-            box-shadow: 0 20px 48px rgba(37,99,235,0.12);
+            transform: translateY(-4px);
+            box-shadow: 0 20px 48px rgba(37,99,235,0.1);
         }
         .plan-card.featured {
             border-color: #2563eb;
             box-shadow: 0 8px 32px rgba(37,99,235,0.15);
         }
-        .plan-card.pro {
-            background: #0f172a;
-            border-color: #1e293b;
-            color: #f1f5f9;
-        }
+        /* price display */
+        .price-monthly, .price-annual { transition: opacity 0.2s ease; }
+        .price-annual { display: none; }
+        body.annual .price-monthly { display: none; }
+        body.annual .price-annual { display: block; }
 
-        /* login stats */
+        /* paypal containers */
+        .paypal-monthly { }
+        .paypal-annual  { display: none; }
+        body.annual .paypal-monthly { display: none; }
+        body.annual .paypal-annual  { display: block; }
+
+        /* stats */
         .stat-row {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin: 20px 0 24px;
-            padding: 20px;
-            background: #f8faff;
-            border-radius: 14px;
+            display: flex; flex-direction: column; gap: 10px;
+            margin: 20px 0 24px; padding: 20px;
+            background: #f8faff; border-radius: 14px;
         }
-        .plan-card.pro .stat-row {
-            background: #1e293b;
-        }
-        .stat-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            font-size: 14px;
-        }
-        .stat-label {
-            font-weight: 700;
-            color: #64748b;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .plan-card.pro .stat-label { color: #94a3b8; }
-        .stat-value {
-            font-weight: 900;
-            color: #1e293b;
-            font-size: 15px;
-        }
-        .plan-card.pro .stat-value { color: #f1f5f9; }
+        .stat-item { display: flex; align-items: center; justify-content: space-between; font-size: 14px; }
+        .stat-label { font-weight: 700; color: #64748b; display: flex; align-items: center; gap: 8px; }
+        .stat-value { font-weight: 900; color: #1e293b; font-size: 15px; }
 
-        /* divider */
-        .card-divider {
-            height: 1px; background: #f1f5f9; margin: 0 0 20px;
-        }
-        .plan-card.pro .card-divider { background: #1e293b; }
-
-        /* standout feature */
-        .standout-feature {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 13px;
-            font-weight: 800;
-            color: #2563eb;
-            margin-bottom: 24px;
-        }
-        .plan-card.pro .standout-feature { color: #93c5fd; }
-
-        /* CTA button */
-        .cta-btn {
-            display: block; width: 100%; text-align: center;
-            padding: 14px 20px; border-radius: 14px;
-            font-weight: 900; font-size: 15px;
-            transition: all 0.2s ease; margin-top: auto;
-            text-decoration: none;
-        }
-        .cta-btn-outline {
-            border: 2px solid #bfdbfe; color: #2563eb; background: #eff6ff;
-        }
-        .cta-btn-outline:hover { background: #2563eb; color: #fff; border-color: #2563eb; }
-        .cta-btn-primary {
-            background: #2563eb; color: #fff;
-            box-shadow: 0 6px 20px rgba(37,99,235,0.3);
-        }
-        .cta-btn-primary:hover { background: #1d4ed8; }
-        .cta-btn-pro {
-            background: #fff; color: #0f172a; font-weight: 900;
-        }
-        .cta-btn-pro:hover { background: #e0e7ff; }
+        .card-divider { height: 1px; background: #f1f5f9; margin: 0 0 20px; }
 
         /* badge */
         .popular-badge {
@@ -161,25 +141,16 @@
             white-space: nowrap;
         }
 
-        /* ── Final CTA ── */
-        .final-cta {
-            background: linear-gradient(135deg, #1d4ed8 0%, #0ea5e9 100%);
-        }
-
         /* ── Footer ── */
         footer { background: #0f172a; }
 
         /* ── Fade in ── */
-        .fade-up {
-            opacity: 0; transform: translateY(24px);
-            transition: opacity 0.5s ease, transform 0.5s ease;
-        }
+        .fade-up { opacity: 0; transform: translateY(24px); transition: opacity 0.5s ease, transform 0.5s ease; }
         .fade-up.visible { opacity: 1; transform: translateY(0); }
     </style>
 </head>
 <body class="min-h-screen flex flex-col">
 
-    <!-- NAV -->
     <nav class="navbar">
         <div class="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
             <a href="index.html" class="flex items-center gap-3">
@@ -192,24 +163,28 @@
         </div>
     </nav>
 
-    <!-- HERO -->
-    <header class="hero-bg py-20 px-4 text-center">
+    <header class="hero-bg py-16 px-4 text-center">
         <div class="max-w-3xl mx-auto relative z-10">
-            <span class="inline-flex items-center gap-2 bg-blue-100 text-blue-700 text-xs font-black px-4 py-1.5 rounded-full border border-blue-200 mb-6">
-                ✅ &nbsp; No Surprises &nbsp;·&nbsp; No Hidden Fees &nbsp;·&nbsp; Custom Quote in 48 Hours
-            </span>
-            <h1 class="text-4xl md:text-5xl lg:text-6xl font-black text-blue-900 leading-tight mb-5 tracking-tight">
-                The right plan<br>
-                <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">for every school.</span>
+            <h1 class="text-4xl md:text-5xl lg:text-6xl font-black text-blue-900 leading-tight mb-4 tracking-tight">
+                Simple, transparent<br>
+                <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">pricing.</span>
             </h1>
-            <p class="text-lg text-slate-600 font-semibold leading-relaxed max-w-xl mx-auto">
-                Find the tier that matches your school's size, tell us about it, and we'll send you a custom quote within 24–48 hours.
+            <p class="text-lg text-slate-600 font-semibold leading-relaxed max-w-xl mx-auto mb-8">
+                Pick the plan that fits your school. Subscribe today and your portal is ready instantly.
             </p>
+
+            <div class="flex items-center justify-center gap-3">
+                <div class="billing-toggle">
+                    <button class="toggle-btn active" id="toggleMonthly" onclick="setBilling('monthly')">Monthly</button>
+                    <button class="toggle-btn" id="toggleAnnual" onclick="setBilling('annual')">
+                        Annual <span class="save-badge">2 MONTHS FREE</span>
+                    </button>
+                </div>
+            </div>
         </div>
     </header>
 
-    <!-- WHAT EVERY PLAN INCLUDES -->
-    <section class="py-12 px-4 bg-white">
+    <section class="py-10 px-4 bg-white">
         <div class="max-w-5xl mx-auto fade-up">
             <p class="text-center text-xs font-black text-blue-500 uppercase tracking-widest mb-6">What every plan includes</p>
             <div class="included-strip px-8 py-6">
@@ -243,16 +218,24 @@
         </div>
     </section>
 
-    <!-- PLAN CARDS -->
-    <section class="py-16 px-4 bg-[#f8faff]">
-        <div class="max-w-6xl mx-auto">
-            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 items-stretch">
+    <section class="py-14 px-4 bg-[#f8faff]">
+        <div class="max-w-7xl mx-auto">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch w-full mx-auto">
 
-                <!-- STARTER -->
                 <div class="plan-card p-7 fade-up">
                     <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Starter</p>
                     <h3 class="text-xl font-black text-slate-800 mb-1">Small Academies</h3>
-                    <p class="text-slate-400 text-xs font-semibold leading-relaxed">Ideal for rural and small community schools getting started with digital grade management.</p>
+                    <p class="text-slate-400 text-xs font-semibold leading-relaxed mb-4">Ideal for rural and small community schools getting started with digital grade management.</p>
+
+                    <div class="price-monthly">
+                        <span class="text-4xl font-black text-slate-800">$49</span><span class="text-lg font-bold text-slate-400">.99</span>
+                        <span class="text-sm font-bold text-slate-400 ml-1">/ month</span>
+                    </div>
+                    <div class="price-annual">
+                        <span class="text-4xl font-black text-slate-800">$499</span><span class="text-lg font-bold text-slate-400">.90</span>
+                        <span class="text-sm font-bold text-slate-400 ml-1">/ year</span>
+                        <p class="text-xs font-bold text-green-600 mt-1">Save $99.98 vs monthly</p>
+                    </div>
 
                     <div class="stat-row">
                         <div class="stat-item">
@@ -270,19 +253,26 @@
                     </div>
 
                     <div class="card-divider"></div>
-                    <div class="standout-feature">
-                        <i class="fa-solid fa-circle-check"></i> Core Portal Access
-                    </div>
 
-                    <a href="index.html#register" class="cta-btn cta-btn-outline">Get a Quote →</a>
+                    <div class="paypal-monthly" id="paypal-starter-monthly"></div>
+                    <div class="paypal-annual"  id="paypal-starter-annual"></div>
                 </div>
 
-                <!-- GROWTH (featured) -->
                 <div class="plan-card featured p-7 fade-up relative">
                     <div class="popular-badge">Most Popular</div>
                     <p class="text-xs font-black text-blue-400 uppercase tracking-widest mb-1 mt-3">Growth</p>
                     <h3 class="text-xl font-black text-slate-800 mb-1">Primary Schools</h3>
-                    <p class="text-slate-400 text-xs font-semibold leading-relaxed">For growing primary schools that need a reliable, full-featured platform from day one.</p>
+                    <p class="text-slate-400 text-xs font-semibold leading-relaxed mb-4">For growing primary schools that need a reliable, full-featured platform from day one.</p>
+
+                    <div class="price-monthly">
+                        <span class="text-4xl font-black text-slate-800">$99</span><span class="text-lg font-bold text-slate-400">.99</span>
+                        <span class="text-sm font-bold text-slate-400 ml-1">/ month</span>
+                    </div>
+                    <div class="price-annual">
+                        <span class="text-4xl font-black text-slate-800">$999</span><span class="text-lg font-bold text-slate-400">.90</span>
+                        <span class="text-sm font-bold text-slate-400 ml-1">/ year</span>
+                        <p class="text-xs font-bold text-green-600 mt-1">Save $199.98 vs monthly</p>
+                    </div>
 
                     <div class="stat-row">
                         <div class="stat-item">
@@ -300,18 +290,25 @@
                     </div>
 
                     <div class="card-divider"></div>
-                    <div class="standout-feature">
-                        <i class="fa-solid fa-circle-check"></i> Priority Support
-                    </div>
 
-                    <a href="index.html#register" class="cta-btn cta-btn-primary">Get a Quote →</a>
+                    <div class="paypal-monthly" id="paypal-growth-monthly"></div>
+                    <div class="paypal-annual"  id="paypal-growth-annual"></div>
                 </div>
 
-                <!-- ENTERPRISE -->
                 <div class="plan-card p-7 fade-up">
                     <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Enterprise</p>
                     <h3 class="text-xl font-black text-slate-800 mb-1">Large Schools</h3>
-                    <p class="text-slate-400 text-xs font-semibold leading-relaxed">For large secondary schools and campuses with bigger staff teams and broader admin needs.</p>
+                    <p class="text-slate-400 text-xs font-semibold leading-relaxed mb-4">For large secondary schools and campuses with bigger staff teams and broader admin needs.</p>
+
+                    <div class="price-monthly">
+                        <span class="text-4xl font-black text-slate-800">$199</span><span class="text-lg font-bold text-slate-400">.99</span>
+                        <span class="text-sm font-bold text-slate-400 ml-1">/ month</span>
+                    </div>
+                    <div class="price-annual">
+                        <span class="text-4xl font-black text-slate-800">$1,999</span><span class="text-lg font-bold text-slate-400">.90</span>
+                        <span class="text-sm font-bold text-slate-400 ml-1">/ year</span>
+                        <p class="text-xs font-bold text-green-600 mt-1">Save $399.98 vs monthly</p>
+                    </div>
 
                     <div class="stat-row">
                         <div class="stat-item">
@@ -329,69 +326,71 @@
                     </div>
 
                     <div class="card-divider"></div>
-                    <div class="standout-feature">
-                        <i class="fa-solid fa-circle-check"></i> Custom Training
-                    </div>
 
-                    <a href="index.html#register" class="cta-btn cta-btn-outline">Get a Quote →</a>
+                    <div class="paypal-monthly" id="paypal-enterprise-monthly"></div>
+                    <div class="paypal-annual"  id="paypal-enterprise-annual"></div>
                 </div>
 
-                <!-- PRO (dark) -->
-                <div class="plan-card pro p-7 fade-up">
-                    <p class="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Pro</p>
-                    <h3 class="text-xl font-black text-white mb-1">Districts & Networks</h3>
-                    <p class="text-slate-400 text-xs font-semibold leading-relaxed">Complete institutional power for multi-campus networks, districts, and large-scale deployments.</p>
+                <div class="plan-card p-7 fade-up bg-slate-50 border-slate-200 border-dashed">
+                    <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Institution</p>
+                    <h3 class="text-xl font-black text-slate-800 mb-1">Custom Size</h3>
+                    <p class="text-slate-400 text-xs font-semibold leading-relaxed mb-4">You don't see a subscription that matches your needs here? We provide custom deployment scales.</p>
 
-                    <div class="stat-row">
+                    <div class="price-monthly mb-1">
+                        <span class="text-4xl font-black text-slate-800">Quote</span>
+                    </div>
+                    <div class="price-annual mb-1">
+                        <span class="text-4xl font-black text-slate-800">Quote</span>
+                    </div>
+
+                    <div class="stat-row bg-white border border-slate-100">
                         <div class="stat-item">
-                            <span class="stat-label"><i class="fa-solid fa-user-graduate text-blue-400"></i> Students</span>
-                            <span class="stat-value">Unlimited</span>
+                            <span class="stat-label"><i class="fa-solid fa-user-graduate text-slate-400"></i> Students</span>
+                            <span class="stat-value">Custom</span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-label"><i class="fa-solid fa-chalkboard-user text-blue-400"></i> Teachers</span>
-                            <span class="stat-value">Unlimited</span>
+                            <span class="stat-label"><i class="fa-solid fa-chalkboard-user text-slate-400"></i> Teachers</span>
+                            <span class="stat-value">Custom</span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-label"><i class="fa-solid fa-key text-blue-400"></i> Admins</span>
-                            <span class="stat-value">Unlimited</span>
+                            <span class="stat-label"><i class="fa-solid fa-key text-slate-400"></i> Admins</span>
+                            <span class="stat-value">Custom</span>
                         </div>
                     </div>
 
                     <div class="card-divider"></div>
-                    <div class="standout-feature">
-                        <i class="fa-solid fa-circle-check"></i> Multi-Campus Portal
-                    </div>
 
-                    <a href="index.html#register" class="cta-btn cta-btn-pro">Get a Quote →</a>
+                    <button onclick="openQuoteModal()" class="w-full bg-slate-800 hover:bg-slate-900 active:bg-slate-950 text-white font-black py-4 px-4 rounded-xl transition shadow-lg mt-auto text-sm border border-slate-700">
+                        Request a Quote →
+                    </button>
                 </div>
 
             </div>
-
-            <!-- Sub-note -->
-            <p class="text-center text-slate-400 text-xs font-bold mt-8 fade-up">
-                Need more than 300 students but not quite district scale? <a href="index.html#register" class="text-blue-500 hover:underline font-black">Tell us on the quote form</a> and we'll build around you.
-</p>
         </div>
     </section>
 
-    <!-- FINAL CTA -->
-    <section class="final-cta py-20 px-4">
-        <div class="max-w-2xl mx-auto text-center fade-up">
-            <h2 class="text-3xl md:text-4xl font-black text-white mb-4 leading-tight">
-                Found your plan?<br>Let's make it official.
-            </h2>
-            <p class="text-blue-100 font-semibold text-base mb-8 leading-relaxed max-w-lg mx-auto">
-                Fill out a short form and our team will send you a custom quote within 24–48 hours. No commitment, no pressure.
+    <section class="py-10 px-4 bg-white border-t border-slate-100">
+        <div class="max-w-3xl mx-auto text-center">
+            <div class="inline-flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-2xl px-6 py-4 mb-5">
+                <i class="fa-solid fa-shield-halved text-blue-500 text-lg flex-shrink-0"></i>
+                <p class="text-sm font-bold text-slate-600 text-left leading-relaxed">
+                    <strong class="text-blue-700">14-Day Satisfaction Guarantee on Annual Plans.</strong>
+                    If you're not satisfied within your first 14 days, contact us at
+                    <a href="mailto:info@connectusonline.org" class="text-blue-600 hover:underline">info@connectusonline.org</a>
+                    for a full refund. Kindly review our <a href="terms/terms.html" class="text-blue-600 hover:underline font-bold">Terms of Service</a> before subscribing.
+                </p>
+            </div>
+            <p class="text-xs font-semibold text-slate-400 leading-relaxed">
+                All payments are processed securely by PayPal. By subscribing you agree to our
+                <a href="terms/terms.html" class="text-blue-500 hover:underline font-bold">Terms of Service</a>
+                and
+                <a href="terms/privacy.html" class="text-blue-500 hover:underline font-bold">Privacy Policy</a>.
+                Please review them carefully before completing your subscription.
             </p>
-            <a href="index.html#register"
-               class="inline-block bg-white hover:bg-blue-50 text-blue-700 font-black py-4 px-10 rounded-2xl transition shadow-xl text-lg">
-                Request a Free Quote →
-            </a>
         </div>
     </section>
 
-    <!-- FOOTER -->
-    <footer class="py-10 px-4 text-center">
+    <footer class="py-10 px-4 text-center mt-auto">
         <div class="max-w-4xl mx-auto">
             <div class="flex items-center justify-center gap-3 mb-5">
                 <img src="assets/images/logo.png" alt="ConnectUs Logo" class="h-10 w-auto opacity-90">
@@ -400,18 +399,260 @@
             <div class="flex items-center justify-center gap-6 text-slate-400 text-sm font-semibold mb-8">
                 <a href="index.html#features"    class="hover:text-white transition">Features</a>
                 <a href="index.html#get-started" class="hover:text-white transition">Portals</a>
-                <a href="index.html#register"    class="hover:text-white transition">Get a Quote</a>
+                <a href="pricing.html"           class="hover:text-white transition">Pricing</a>
             </div>
-            <div class="border-t border-white/10 pt-6">
-                <p class="text-slate-500 text-sm font-semibold">
-                    © 2026 ConnectUs. All rights reserved. &nbsp;|&nbsp;
-                    <a href="terms/terms.html"   class="hover:text-white transition">Terms of Service</a> &nbsp;|&nbsp;
-                    <a href="terms/privacy.html" class="hover:text-white transition">Privacy Policy</a> &nbsp;|&nbsp;
-                    <a href="pricing.html"        class="hover:text-white transition">Pricing</a>
-                </p>
+              <div class="border-t border-white/10 pt-6">
+             <p class="text-slate-500 text-sm font-semibold">
+            © 2026 ConnectUs. All rights reserved. &nbsp;|&nbsp;
+            <a href="about.html"         class="hover:text-white transition">About Us</a> &nbsp;|&nbsp;
+            <a href="contact.html"       class="hover:text-white transition">Contact Us</a> &nbsp;|&nbsp;
+            <a href="pricing.html"       class="hover:text-white transition">Pricing</a> &nbsp;|&nbsp;
+            <a href="terms/privacy.html" class="hover:text-white transition">Privacy Policy</a> &nbsp;|&nbsp;
+            <a href="terms/terms.html"   class="hover:text-white transition">Terms of Service</a>
+            </p>
             </div>
         </div>
     </footer>
+
+    <!-- Post-PayPal Success Overlay -->
+<div id="paypalSuccessOverlay" class="fixed inset-0 z-[200] hidden items-center justify-center bg-slate-900/70 backdrop-blur-sm">
+    <div class="relative w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 m-4 text-center border border-blue-100">
+        <div class="text-6xl mb-4">🎉</div>
+        <h2 class="text-2xl font-black text-blue-900 mb-3">Payment Successful!</h2>
+        <p class="text-slate-600 font-semibold text-sm leading-relaxed mb-5">
+            Thank you for subscribing to ConnectUs. Your payment has been received.
+        </p>
+        <div class="bg-blue-50 border border-blue-100 rounded-2xl p-5 mb-6 text-left">
+            <p class="text-xs font-black text-blue-500 uppercase tracking-widest mb-3">What happens next?</p>
+            <ul class="space-y-2.5 text-sm text-slate-600 font-semibold">
+                <li class="flex items-start gap-2.5">
+                    <i class="fa-solid fa-envelope text-blue-500 mt-0.5 flex-shrink-0"></i>
+                    Check your email — we just sent your onboarding link.
+                </li>
+                <li class="flex items-start gap-2.5">
+                    <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i>
+                    Click the link to set up your School ID and admin code.
+                </li>
+                <li class="flex items-start gap-2.5">
+                    <i class="fa-solid fa-clock text-blue-500 mt-0.5 flex-shrink-0"></i>
+                    Email may take 1–2 minutes to arrive. Check your spam folder if you don't see it.
+                </li>
+            </ul>
+        </div>
+        <p class="text-xs font-semibold text-slate-500 leading-relaxed">
+            Questions? Email us at <a href="mailto:info@connectusonline.org" class="text-blue-600 font-bold hover:underline">info@connectusonline.org</a>
+        </p>
+    </div>
+</div>
+    <div id="quoteModal" class="fixed inset-0 z-[100] hidden items-center justify-center">
+        <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onclick="closeQuoteModal()"></div>
+        
+        <div class="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl p-6 md:p-8 max-h-[90vh] overflow-y-auto m-4 border border-blue-100">
+            <button onclick="closeQuoteModal()" class="absolute top-5 right-5 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+
+            <div id="registrationFormContainer" class="space-y-5 mt-2">
+                <div class="text-center mb-6">
+                    <span class="text-xs font-black text-blue-500 uppercase tracking-widest">Get a Quote</span>
+                    <h2 class="text-2xl md:text-3xl font-black text-blue-900 mt-2">Bring ConnectUs to Your School</h2>
+                </div>
+
+                <p class="form-section no-border font-bold text-slate-700 text-sm border-b pb-2">
+                    <i class="fa-solid fa-address-card mr-2 text-blue-500"></i> Your Contact Information
+                </p>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="form-label block text-xs font-bold text-slate-600 mb-1">First Name *</label>
+                        <input type="text" id="firstName" placeholder="e.g. Maria" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                    </div>
+                    <div>
+                        <label class="form-label block text-xs font-bold text-slate-600 mb-1">Last Name *</label>
+                        <input type="text" id="lastName" placeholder="e.g. Torres" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="form-label block text-xs font-bold text-slate-600 mb-1">Job Title / Role *</label>
+                    <select id="jobTitle" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                        <option value="">Select your role</option>
+                        <option value="Principal">Principal</option>
+                        <option value="Vice Principal">Vice Principal</option>
+                        <option value="IT Director">IT Director</option>
+                        <option value="District Administrator">District Administrator</option>
+                        <option value="School Administrator">School Administrator</option>
+                        <option value="Teacher">Teacher</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="form-label block text-xs font-bold text-slate-600 mb-1">Work Email *</label>
+                        <input type="email" id="workEmail" placeholder="you@school.edu" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                    </div>
+                    <div>
+                        <label class="form-label block text-xs font-bold text-slate-600 mb-1">Phone Number *</label>
+                        <input type="tel" id="phone" placeholder="e.g. +501 600-0000" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                    </div>
+                </div>
+
+                <p class="form-section font-bold text-slate-700 text-sm border-b pb-2 pt-4">
+                    <i class="fa-solid fa-school mr-2 text-blue-500"></i> School Information
+                </p>
+
+                <div>
+                    <label class="form-label block text-xs font-bold text-slate-600 mb-1">School Name *</label>
+                    <input type="text" id="schoolName" placeholder="e.g. Valley High School" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="form-label block text-xs font-bold text-slate-600 mb-1">School Type *</label>
+                        <select id="schoolType" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                            <option value="">Select Type</option>
+                            <option value="Primary / Elementary">Primary / Elementary</option>
+                            <option value="Middle School">Middle School</option>
+                            <option value="High School / Secondary">High School / Secondary</option>
+                            <option value="Junior College">Junior College</option>
+                            <option value="University / College">University / College</option>
+                            <option value="Vocational / Technical">Vocational / Technical</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label block text-xs font-bold text-slate-600 mb-1">Country *</label>
+                        <select id="country" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                            <option value="">Select Country</option>
+                            <option value="Belize">Belize</option>
+                            <option value="United States">United States</option>
+                            <option value="Canada">Canada</option>
+                            <option value="United Kingdom">United Kingdom</option>
+                            <option value="Australia">Australia</option>
+                            <option value="Jamaica">Jamaica</option>
+                            <option value="Trinidad and Tobago">Trinidad and Tobago</option>
+                            <option value="Barbados">Barbados</option>
+                            <option value="Guyana">Guyana</option>
+                            <option disabled>──────────</option>
+                            <option value="Other / Global">Other / Global</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="form-label block text-xs font-bold text-slate-600 mb-1">City *</label>
+                        <input type="text" id="city" placeholder="e.g. Belize City" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                    </div>
+                    <div>
+                        <label class="form-label block text-xs font-bold text-slate-600 mb-1">State / Province / District</label>
+                        <input type="text" id="stateProvince" placeholder="e.g. California, Ontario, or Cayo" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                    </div>
+                </div>
+
+                <p class="form-section font-bold text-slate-700 text-sm border-b pb-2 pt-4">
+                    <i class="fa-solid fa-users mr-2 text-blue-500"></i> School Size
+                </p>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="form-label block text-xs font-bold text-slate-600 mb-1">Estimated Students *</label>
+                        <input type="number" id="studentsCount" placeholder="e.g. 350" min="1" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                    </div>
+                    <div>
+                        <label class="form-label block text-xs font-bold text-slate-600 mb-1">Estimated Teachers *</label>
+                        <input type="number" id="teachersCount" placeholder="e.g. 25" min="1" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                    </div>
+                </div>
+
+                <p class="form-section font-bold text-slate-700 text-sm border-b pb-2 pt-4">
+                    <i class="fa-solid fa-file-contract mr-2 text-blue-500"></i> Preferred Contract Term
+                </p>
+
+                <div>
+                    <label class="form-label block text-xs font-bold text-slate-600 mb-1">Contract Term *</label>
+                    <select id="contractTerm" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                        <option value="">Select preferred term</option>
+                        <option value="Monthly">Monthly</option>
+                        <option value="Annual">Annual Contract — 1 year</option>
+                        <option value="Multi-Year">Multi-Year Contract — 2 or 3 years</option>
+                    </select>
+                </div>
+
+                <div id="contractYearsWrap" class="hidden">
+                    <label class="form-label block text-xs font-bold text-slate-600 mb-1">How many years? *</label>
+                    <select id="contractYears" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                        <option value="">Select number of years</option>
+                        <option value="2">2 Years</option>
+                        <option value="3">3 Years</option>
+                    </select>
+                    <p class="text-xs text-slate-400 font-semibold mt-1.5">Multi-year contracts may qualify for a discounted rate — we will include this in your quote.</p>
+                </div>
+
+                <p class="form-section font-bold text-slate-700 text-sm border-b pb-2 pt-4">
+                    <i class="fa-solid fa-circle-info mr-2 text-blue-500"></i> Additional Information
+                </p>
+
+                <div>
+                    <label class="form-label block text-xs font-bold text-slate-600 mb-1">How did you hear about us?</label>
+                    <select id="hearAboutUs" class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
+                        <option value="">Select an option</option>
+                        <option value="Google Search">Google Search</option>
+                        <option value="Social Media">Social Media</option>
+                        <option value="Word of Mouth">Word of Mouth</option>
+                        <option value="Referral from another school">Referral from another school</option>
+                        <option value="Conference or Event">Conference or Event</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="form-label block text-xs font-bold text-slate-600 mb-1">Tell us more <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
+                    <textarea id="message" placeholder="Any specific needs, questions, or goals you'd like us to know about..." class="form-input w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition text-sm h-24 resize-none"></textarea>
+                </div>
+
+                <button id="registerBtn" class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-black py-4 px-4 rounded-2xl transition shadow-lg shadow-blue-200 text-base mt-2">
+                    Request a Quote →
+                </button>
+
+                <!-- ADDED: error/status message element (was missing from modal) -->
+                <p id="regMessage" class="text-sm text-center font-bold hidden mt-2"></p>
+            </div>
+
+            <div id="successScreen" class="hidden text-center py-8">
+                <div class="text-7xl mb-4">🎉</div>
+                <h2 class="text-2xl font-black text-slate-800 mb-2">Request Received!</h2>
+                <p class="text-slate-500 font-semibold mb-5 text-sm leading-relaxed">
+                    Thank you for your interest in ConnectUs. We've sent a confirmation to your email and our team will be in touch within <strong class="text-slate-700">24–48 hours</strong> with a custom quote.
+                </p>
+                <div class="bg-blue-50 border border-blue-100 rounded-2xl p-5 mb-6 text-left">
+                    <p class="text-xs font-black text-blue-500 uppercase tracking-widest mb-3">What happens next?</p>
+                    <ul class="space-y-2.5 text-sm text-slate-600 font-semibold">
+                        <li class="flex items-start gap-2.5">
+                            <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i>
+                            Check your email for a confirmation from info@connectusonline.org
+                        </li>
+                        <li class="flex items-start gap-2.5">
+                            <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i>
+                            Our team will review your details and prepare a custom quote
+                        </li>
+                        <li class="flex items-start gap-2.5">
+                            <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i>
+                            We will send you an invoice or payment link based on your preferred term
+                        </li>
+                        <li class="flex items-start gap-2.5">
+                            <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i>
+                            Once confirmed and paid, we will send your onboarding link to set up your school
+                        </li>
+                    </ul>
+                </div>
+                <button onclick="resetAndCloseModal()" class="text-blue-600 font-black hover:underline text-sm bg-blue-50 py-2.5 px-6 rounded-full border border-blue-100 transition hover:bg-blue-100">
+                    Close Window
+                </button>
+            </div>
+        </div>
+    </div>
 
     <script>
         const observer = new IntersectionObserver((entries) => {
@@ -423,6 +664,214 @@
             });
         }, { threshold: 0.08 });
         document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+
+        // ── Billing toggle ──
+        function setBilling(mode) {
+            document.body.classList.toggle('annual', mode === 'annual');
+            document.getElementById('toggleMonthly').classList.toggle('active', mode === 'monthly');
+            document.getElementById('toggleAnnual').classList.toggle('active', mode === 'annual');
+        }
+    </script>
+
+    <script>
+        // ── Plan IDs ──
+        const PLANS = {
+            starter:    { monthly: 'P-0UL37863M97063045NIW37PI', annual: 'P-5J910723KW0535525NIW4G4A' },
+            growth:     { monthly: 'P-28435725CS726141KNIW4B6Q', annual: 'P-03P84578KM718651VNIW4HWY' },
+            enterprise: { monthly: 'P-0RT15498C13842600NIW4DRY', annual: 'P-70B49562LT272180NNIW4IPI' }
+        };
+
+        const BUTTON_STYLE = {
+            shape:  'rect',
+            color:  'blue',
+            layout: 'vertical',
+            label:  'subscribe'
+        };
+
+        function renderPayPalButton(containerId, planId) {
+            paypal.Buttons({
+                style: BUTTON_STYLE,
+                createSubscription: function(data, actions) {
+                    return actions.subscription.create({ plan_id: planId });
+                },
+                onApprove: function(data, actions) {
+                    // Show success overlay — the webhook fires asynchronously and emails the
+                    // onboarding link. Do NOT redirect to onboarding directly because the
+                    // quote_requests doc may not exist yet (webhook race).
+                    document.getElementById('paypalSuccessOverlay').classList.remove('hidden');
+                    document.getElementById('paypalSuccessOverlay').classList.add('flex');
+                    document.body.style.overflow = 'hidden';
+                },
+                onError: function(err) {
+                    console.error('PayPal error:', err);
+                }
+            }).render('#' + containerId);
+        }
+
+        renderPayPalButton('paypal-starter-monthly',    PLANS.starter.monthly);
+        renderPayPalButton('paypal-starter-annual',     PLANS.starter.annual);
+        renderPayPalButton('paypal-growth-monthly',     PLANS.growth.monthly);
+        renderPayPalButton('paypal-growth-annual',      PLANS.growth.annual);
+        renderPayPalButton('paypal-enterprise-monthly', PLANS.enterprise.monthly);
+        renderPayPalButton('paypal-enterprise-annual',  PLANS.enterprise.annual);
+    </script>
+
+    <script>
+        // ── Modal open/close (unchanged) ──
+        const modal = document.getElementById('quoteModal');
+        const contractTermSelect = document.getElementById('contractTerm');
+        const contractYearsWrap  = document.getElementById('contractYearsWrap');
+
+        function openQuoteModal() {
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeQuoteModal() {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            document.body.style.overflow = '';
+        }
+
+        function resetAndCloseModal() {
+            closeQuoteModal();
+            setTimeout(() => {
+                document.getElementById('registrationFormContainer').classList.remove('hidden');
+                document.getElementById('successScreen').classList.add('hidden');
+            }, 300);
+        }
+
+        contractTermSelect.addEventListener('change', function(e) {
+            contractYearsWrap.classList.toggle('hidden', e.target.value !== 'Multi-Year');
+        });
+    </script>
+
+    <!-- ADDED: Firebase module script with real quote submission logic -->
+    <script type="module">
+        import { db } from './assets/js/firebase-init.js';
+        import { doc, setDoc, getDoc, getDocs, collection, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        function btnLoadingState(isLoading) {
+            const btn   = document.getElementById('registerBtn');
+            const msgEl = document.getElementById('regMessage');
+            if (isLoading) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Submitting...';
+                btn.classList.add('opacity-75', 'cursor-not-allowed');
+                msgEl.textContent = 'Sending your request...';
+                msgEl.className = 'text-sm text-center font-bold mt-2 text-blue-600 block';
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = 'Request a Quote →';
+                btn.classList.remove('opacity-75', 'cursor-not-allowed');
+            }
+        }
+
+        document.getElementById('registerBtn').addEventListener('click', async () => {
+            const msgEl = document.getElementById('regMessage');
+
+            const firstName     = document.getElementById('firstName').value.trim();
+            const lastName      = document.getElementById('lastName').value.trim();
+            const jobTitle      = document.getElementById('jobTitle').value.trim();
+            const workEmail     = document.getElementById('workEmail').value.trim();
+            const phone         = document.getElementById('phone').value.trim();
+            const schoolName    = document.getElementById('schoolName').value.trim();
+            const schoolType    = document.getElementById('schoolType').value;
+            const country       = document.getElementById('country').value;
+            const city          = document.getElementById('city').value.trim();
+            const stateProvince = document.getElementById('stateProvince').value.trim();
+            const studentsCount = document.getElementById('studentsCount').value.trim();
+            const teachersCount = document.getElementById('teachersCount').value.trim();
+            const contractTerm  = document.getElementById('contractTerm').value;
+            const contractYears = document.getElementById('contractYears')?.value || null;
+            const hearAboutUs   = document.getElementById('hearAboutUs').value;
+            const message       = document.getElementById('message').value.trim();
+
+            if (!firstName || !lastName || !jobTitle || !workEmail || !phone ||
+                !schoolName || !schoolType || !country || !city ||
+                !studentsCount || !teachersCount || !contractTerm) {
+                msgEl.textContent = 'Please fill in all required fields (*).';
+                msgEl.className = 'text-sm text-center font-bold mt-2 text-red-600 block';
+                return;
+            }
+
+            if (contractTerm === 'Multi-Year' && !contractYears) {
+                msgEl.textContent = 'Please select how many years for your multi-year contract.';
+                msgEl.className = 'text-sm text-center font-bold mt-2 text-red-600 block';
+                return;
+            }
+
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(workEmail)) {
+                msgEl.textContent = 'Please enter a valid email address.';
+                msgEl.className = 'text-sm text-center font-bold mt-2 text-red-600 block';
+                return;
+            }
+
+            btnLoadingState(true);
+
+            const targetEmail = workEmail.toLowerCase().trim();
+
+            try {
+                const regSnap = await getDoc(doc(db, 'registered_emails', targetEmail));
+                if (regSnap.exists()) {
+                    msgEl.textContent = 'This email is already registered to an account in our system.';
+                    msgEl.className = 'text-sm text-center font-bold mt-2 text-red-600 block';
+                    btnLoadingState(false);
+                    return;
+                }
+
+                const qSnap = await getDocs(query(collection(db, 'quote_requests'), where('workEmail', '==', targetEmail)));
+                if (!qSnap.empty) {
+                    msgEl.textContent = 'A quote request with this email is already pending.';
+                    msgEl.className = 'text-sm text-center font-bold mt-2 text-red-600 block';
+                    btnLoadingState(false);
+                    return;
+                }
+
+                const timestamp = new Date().toISOString();
+                const fullName  = `${firstName} ${lastName}`;
+
+                const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+                let rand = '';
+                for (let i = 0; i < 5; i++) rand += chars.charAt(Math.floor(Math.random() * chars.length));
+                const reqId = `REQ-${rand}`;
+
+                await setDoc(doc(db, 'quote_requests', reqId), {
+                    requestId:     reqId,
+                    firstName,
+                    lastName,
+                    fullName,
+                    jobTitle,
+                    workEmail:     targetEmail,
+                    phone,
+                    schoolName,
+                    schoolType,
+                    country,
+                    city,
+                    stateProvince,
+                    studentsCount: parseInt(studentsCount),
+                    teachersCount: parseInt(teachersCount),
+                    contractTerm,
+                    contractYears: contractTerm === 'Multi-Year' ? parseInt(contractYears) : null,
+                    hearAboutUs,
+                    message,
+                    status:        'Pending',
+                    fulfilled:     false,
+                    createdAt:     timestamp,
+                });
+
+                document.getElementById('registrationFormContainer').classList.add('hidden');
+                document.getElementById('successScreen').classList.remove('hidden');
+                document.getElementById('successScreen').scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            } catch (error) {
+                console.error('Quote submission error:', error);
+                msgEl.textContent = 'Error submitting your request. Please try again.';
+                msgEl.className = 'text-sm text-center font-bold mt-2 text-red-600 block';
+                btnLoadingState(false);
+            }
+        });
     </script>
 
 </body>

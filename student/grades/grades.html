@@ -19,7 +19,7 @@
         /* Required hidden class for JS toggles */
         .hidden { display: none !important; }
 
-        /* ── Page header (Restored exactly to your original) ── */
+        /* ── Page header ── */
         .gb-topbar {
             background: linear-gradient(120deg, #1e1b4b 0%, #3730a3 55%, #4f46e5 100%);
             padding: 32px 40px;
@@ -54,6 +54,26 @@
         .page-loader i { font-size: 32px; color: #6366f1; }
         .page-loader p { font-size: 13.5px; color: #94a3b8; font-weight: 600; margin: 0; }
 
+        /* ── Mobile: fix topbar layout on small screens ── */
+        @media (max-width: 767px) {
+            .gb-topbar {
+                padding: 20px;
+                gap: 16px;
+            }
+            .gb-avg-ring {
+                width: 80px;
+                height: 80px;
+            }
+            .gb-avg-ring .num { font-size: 24px; }
+            .gb-info h1 { font-size: 20px; }
+            /* Push print button to its own full-width row so the
+               ring + title have the full width to breathe naturally */
+            .gb-print-btn {
+                flex-basis: 100%;
+                justify-content: center;
+            }
+        }
+
         @media print {
             #layout-sidebar-container, #layout-topbar-container { display: none !important; }
             body { background: #fff !important; }
@@ -81,7 +101,7 @@
                     <p id="gbTerm">Loading…</p>
                     <div id="gbStanding" class="gb-standing" style="display:none;"></div>
                 </div>
-                <button class="gb-print-btn" onclick="window.print()">
+                <button class="gb-print-btn" onclick="window.printGradebook()">
                     <i class="fa-solid fa-print"></i> Print Gradebook
                 </button>
             </div>
@@ -98,7 +118,7 @@
 
             <div id="gradesTable" class="hidden" style="margin: 0; padding: 24px 40px;">
                 <div id="subjectRows"></div>
-            </div>
+        </div>
 
         </div>
     </main>

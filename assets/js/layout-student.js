@@ -7,16 +7,16 @@ import { logout, requireAuth } from './auth.js';
  * @param {string} pageSub - The small subtitle for the topbar
  */
 export function injectStudentLayout(activePageId, pageTitle, pageSub) {
-    
-    // Retrieve session data to populate sidebar dynamically from the secure student document
-    const session = requireAuth('student', '../login.html');
-    const studentName = session?.studentData?.name || 'Loading...';
-    const studentInitial = session?.studentData?.name ? session.studentData.name.charAt(0).toUpperCase() : 'S';
-    const studentId = session?.studentId || '—';
-    const studentClass = session?.studentData?.className || '—';
-    const schoolId = session?.schoolId || '—';
 
-    // 1. The Family/Student Sidebar HTML
+    const session        = requireAuth('student', '../login.html');
+    const studentName    = session?.studentData?.name || 'Loading...';
+    const studentInitial = session?.studentData?.name ? session.studentData.name.charAt(0).toUpperCase() : 'S';
+    const studentId      = session?.studentId || '—';
+    const studentClass   = session?.studentData?.className || '—';
+    const schoolId       = session?.schoolId || '—';
+
+    // ── 1. SIDEBAR HTML ───────────────────────────────────────────────────
+    // Unchanged: every ID, every nav link, every class, the logout button.
     const sidebarHTML = `
       <aside id="sidebar" class="text-slate-300 flex flex-col shadow-2xl z-20 flex-shrink-0 h-screen" style="width:272px; background: linear-gradient(180deg, #1e1b4b 0%, #312e81 50%, #3730a3 100%); border-right: 1px solid rgba(255,255,255,0.04);">
         <div class="p-5 border-b border-white/5">
@@ -32,7 +32,7 @@ export function injectStudentLayout(activePageId, pageTitle, pageSub) {
           <a href="../home/home.html" id="nav-overview" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-house w-5 text-base opacity-90"></i> Dashboard</a>
           <a href="../grades/grades.html" id="nav-gradebook" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-book-open w-5 text-base opacity-70"></i> Current Grades</a>
           <a href="../history/history.html" id="nav-history" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-clock-rotate-left w-5 text-base opacity-70"></i> Academic History</a>
-          
+
           <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-3 mt-6 mb-2">Records & Reports</p>
           <a href="../analytics/evaluations.html" id="nav-analytics" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-star-half-stroke w-5 text-base opacity-70"></i> My Evaluations</a>
           <a href="../reports/reports.html" id="nav-reports" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-file-lines w-5 text-base opacity-70"></i> Reports</a>
@@ -53,18 +53,26 @@ export function injectStudentLayout(activePageId, pageTitle, pageSub) {
       </aside>
     `;
 
-    // 2. The Family/Student Topbar HTML
+    // ── 2. TOPBAR HTML ────────────────────────────────────────────────────
+    // Hamburger: flex md:hidden — only appears on mobile, never on desktop.
+    // One activeSemesterDisplay ID — compacts gracefully on small screens.
     const topbarHTML = `
-      <header class="topbar h-16 bg-white border-b border-slate-200 flex items-center px-8 z-10 justify-between flex-shrink-0 shadow-sm">
-        <div>
-          <h1 id="topbarTitle" class="text-xl font-black text-slate-800 leading-none">${pageTitle}</h1>
-          <p id="topbarSub" class="text-xs text-slate-400 font-semibold mt-0.5">${pageSub}</p>
+      <header class="topbar h-16 bg-white border-b border-slate-200 flex items-center px-4 md:px-8 z-10 justify-between flex-shrink-0 shadow-sm">
+        <div class="flex items-center gap-3">
+          <button id="sidebarToggle" aria-label="Open menu"
+            class="flex md:hidden items-center justify-center w-10 h-10 rounded-xl bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-600 transition flex-shrink-0">
+            <i class="fa-solid fa-bars text-base"></i>
+          </button>
+          <div>
+            <h1 id="topbarTitle" class="text-lg md:text-xl font-black text-slate-800 leading-none">${pageTitle}</h1>
+            <p id="topbarSub" class="text-xs text-slate-400 font-semibold mt-0.5 hidden sm:block">${pageSub}</p>
+          </div>
         </div>
-        <div class="flex items-center gap-4">
-          <div class="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2">
-            <i class="fa-solid fa-calendar-days text-indigo-500 text-sm"></i>
-            <span class="text-xs font-black text-indigo-700 uppercase tracking-wider">Current Period:</span>
-            <span id="activeSemesterDisplay" class="text-sm font-black text-indigo-800">Loading...</span>
+        <div class="flex items-center gap-2 md:gap-4">
+          <div class="flex items-center gap-1.5 md:gap-2 bg-indigo-50 border border-indigo-100 rounded-xl px-2.5 md:px-3 py-1.5 md:py-2">
+            <i class="fa-solid fa-calendar-days text-indigo-500 text-xs md:text-sm"></i>
+            <span class="text-xs font-black text-indigo-700 uppercase tracking-wider hidden md:inline">Current Period:</span>
+            <span id="activeSemesterDisplay" class="text-xs md:text-sm font-black text-indigo-800">Loading...</span>
           </div>
           <img src="../../assets/images/logo.png" alt="ConnectUs" class="h-8 w-auto opacity-30 hidden sm:block">
         </div>
@@ -72,15 +80,50 @@ export function injectStudentLayout(activePageId, pageTitle, pageSub) {
     `;
 
     document.getElementById('layout-sidebar-container').innerHTML = sidebarHTML;
-    document.getElementById('layout-topbar-container').innerHTML = topbarHTML;
+    document.getElementById('layout-topbar-container').innerHTML  = topbarHTML;
 
+    // ── 3. OVERLAY ────────────────────────────────────────────────────────
+    // Appended to body. CSS gives it z-index: 15.
+    // WHY 15: #layout-sidebar-container has Tailwind's z-20, making it a
+    // flex-child stacking context at level 20 in the root. The overlay must
+    // be BELOW that (15 < 20) so the sidebar paints above it and receives
+    // taps. The overlay at 15 still covers #dashboardMain which has no
+    // numeric z-index (auto / effectively 0), so the dim effect works.
+    // Visibility is controlled ONLY by opacity + pointer-events in CSS —
+    // never by display — so there is zero window where it blocks taps.
+    const overlay  = document.createElement('div');
+    overlay.id     = 'sidebarOverlay';
+    document.body.appendChild(overlay);
+
+    // ── 4. ACTIVE NAV ─────────────────────────────────────────────────────
     const activeNav = document.getElementById(`nav-${activePageId}`);
     if (activeNav) {
         activeNav.classList.remove('text-slate-400');
         activeNav.classList.add('active');
     }
 
+    // ── 5. LOGOUT ─────────────────────────────────────────────────────────
     document.getElementById('logoutBtn').addEventListener('click', () => {
         logout('../../student/login.html');
     });
+
+    // ── 6. MOBILE SIDEBAR TOGGLE ──────────────────────────────────────────
+    // Only CSS classes are toggled — no body overflow manipulation,
+    // no display toggling, no setTimeout.
+    // Nav <a> links navigate on their own; no extra listeners needed.
+    const sidebar   = document.getElementById('sidebar');
+    const toggleBtn = document.getElementById('sidebarToggle');
+
+    function openSidebar() {
+        sidebar.classList.add('sidebar-open');
+        overlay.classList.add('visible');
+    }
+
+    function closeSidebar() {
+        sidebar.classList.remove('sidebar-open');
+        overlay.classList.remove('visible');
+    }
+
+    if (toggleBtn) toggleBtn.addEventListener('click', openSidebar);
+    overlay.addEventListener('click', closeSidebar);
 }

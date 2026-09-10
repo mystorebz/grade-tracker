@@ -13,6 +13,13 @@ injectStudentLayout('settings', 'Settings', 'Manage your personal profile and ac
 // State
 let fullStudentData = null;
 
+// ── SHA-256 TRIM-ONLY (matches sha256Trim on the server — for PINs) ──────────
+async function sha256Trim(text) {
+    const encoded = new TextEncoder().encode(String(text).trim());
+    const buffer  = await crypto.subtle.digest('SHA-256', encoded);
+    return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 // Helper to lock/unlock the profile fields via JS
 function toggleProfileEditMode(isEditing) {
     const profileInputs = ['sName', 'sEmail', 'sDob', 'sParentName', 'sParentPhone'];
@@ -240,7 +247,13 @@ document.getElementById('updatePinBtn').addEventListener('click', async () => {
         return;
     }
 
-    if (String(curPin) !== String(fullStudentData.pin)) {
+    // Match against hash first (logged-in students), then plain text
+    // (never-logged-in students whose PIN hasn't been upgraded yet)
+    const curHash = await sha256Trim(curPin);
+    const storedPin = fullStudentData.pin;
+    const pinMatches = storedPin === curHash || String(storedPin) === String(curPin);
+
+    if (!pinMatches) {
         showMsg(msgId, 'Current PIN is incorrect.', true, 'bg-red-50 text-red-700 border border-red-200');
         return;
     }
@@ -259,8 +272,9 @@ document.getElementById('updatePinBtn').addEventListener('click', async () => {
     btn.disabled = true;
 
     try {
-        await updateDoc(doc(db, 'students', session.studentId), { pin: String(newPin) });
-        fullStudentData.pin = String(newPin);
+        const newPinHashed = await sha256Trim(newPin);
+        await updateDoc(doc(db, 'students', session.studentId), { pin: newPinHashed });
+        fullStudentData.pin = newPinHashed;
         
         document.getElementById('currentPin').value = '';
         document.getElementById('newPin').value = '';

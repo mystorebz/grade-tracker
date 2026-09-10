@@ -30,9 +30,9 @@
                 <a href="#features"     class="hover:text-blue-600 transition">Features</a>
                 <a href="#testimonials" class="hover:text-blue-600 transition">Stories</a>
                 <a href="#get-started"  class="hover:text-blue-600 transition">Portals</a>
-                <a href="#register"     class="bg-blue-600 hover:bg-blue-700 text-white py-2 px-5 rounded-full transition shadow-md shadow-blue-200">Get a Quote</a>
+                <a href="pricing.html"  class="bg-blue-600 hover:bg-blue-700 text-white py-2 px-5 rounded-full transition shadow-md shadow-blue-200">Subscribe</a>
             </div>
-            <a href="#register" class="md:hidden bg-blue-600 text-white text-sm font-bold py-2 px-4 rounded-full">Get a Quote</a>
+            <a href="pricing.html" class="md:hidden bg-blue-600 text-white text-sm font-bold py-2 px-4 rounded-full">Subscribe</a>
         </div>
     </nav>
 
@@ -65,8 +65,8 @@
         </div>
 
         <div class="relative z-10 view-section fade-up-4 mt-6 flex flex-col sm:flex-row gap-4 justify-center">
-            <a href="#register" class="bg-blue-600 hover:bg-blue-700 text-white font-black py-4 px-8 rounded-2xl transition shadow-xl shadow-blue-300 text-lg">
-                Request a Quote →
+            <a href="pricing.html" class="bg-blue-600 hover:bg-blue-700 text-white font-black py-4 px-8 rounded-2xl transition shadow-xl shadow-blue-300 text-lg">
+                View Plans & Subscribe →
             </a>
             <a href="#get-started" class="bg-white hover:bg-blue-50 text-blue-700 font-black py-4 px-8 rounded-2xl transition border-2 border-blue-200 text-lg">
                 Log In to Portal
@@ -200,218 +200,7 @@
         </div>
     </section>
 
-    <section id="register" class="py-20 px-4 bg-blue-50">
-        <div class="max-w-2xl mx-auto">
-            <div class="text-center mb-8">
-                <span class="text-xs font-black text-blue-500 uppercase tracking-widest">Get a Quote</span>
-                <h2 class="text-3xl md:text-4xl font-black text-blue-900 mt-2">Bring ConnectUs to Your School</h2>
-                <p class="text-slate-500 font-semibold mt-3 text-sm max-w-sm mx-auto">
-                    Fill out the form below and our team will reach out with a custom quote within 24–48 hours.
-                </p>
-            </div>
 
-            <div class="bg-white rounded-3xl shadow-xl border border-blue-100 p-8 relative overflow-hidden">
-                <div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-600 rounded-t-3xl"></div>
-
-                <div id="registrationFormContainer" class="space-y-5 mt-3">
-
-                    <p class="form-section no-border">
-                        <i class="fa-solid fa-address-card"></i> Your Contact Information
-                    </p>
-
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label class="form-label">First Name *</label>
-                            <input type="text" id="firstName" placeholder="e.g. Maria" class="form-input">
-                        </div>
-                        <div>
-                            <label class="form-label">Last Name *</label>
-                            <input type="text" id="lastName" placeholder="e.g. Torres" class="form-input">
-                        </div>
-                    </div>
-
-                    <div>
-                        <label class="form-label">Job Title / Role *</label>
-                        <select id="jobTitle" class="form-input">
-                            <option value="">Select your role</option>
-                            <option value="Principal">Principal</option>
-                            <option value="Vice Principal">Vice Principal</option>
-                            <option value="IT Director">IT Director</option>
-                            <option value="District Administrator">District Administrator</option>
-                            <option value="School Administrator">School Administrator</option>
-                            <option value="Teacher">Teacher</option>
-                            <option value="Other">Other</option>
-                        </select>
-                    </div>
-
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label class="form-label">Work Email *</label>
-                            <input type="email" id="workEmail" placeholder="you@school.edu" class="form-input">
-                        </div>
-                        <div>
-                            <label class="form-label">Phone Number *</label>
-                            <input type="tel" id="phone" placeholder="e.g. +501 600-0000" class="form-input">
-                        </div>
-                    </div>
-
-                    <p class="form-section">
-                        <i class="fa-solid fa-school"></i> School Information
-                    </p>
-
-                    <div>
-                        <label class="form-label">School Name *</label>
-                        <input type="text" id="schoolName" placeholder="e.g. Valley High School" class="form-input">
-                    </div>
-
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label class="form-label">School Type *</label>
-                            <select id="schoolType" class="form-input">
-                                <option value="">Select Type</option>
-                                <option value="Primary / Elementary">Primary / Elementary</option>
-                                <option value="Middle School">Middle School</option>
-                                <option value="High School / Secondary">High School / Secondary</option>
-                                <option value="Junior College">Junior College</option>
-                                <option value="University / College">University / College</option>
-                                <option value="Vocational / Technical">Vocational / Technical</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="form-label">Country *</label>
-                            <select id="country" class="form-input">
-                                <option value="">Select Country</option>
-                                <option value="Belize">Belize</option>
-                                <option value="Guatemala">Guatemala</option>
-                                <option value="Honduras">Honduras</option>
-                                <option value="Mexico">Mexico</option>
-                                <option value="Jamaica">Jamaica</option>
-                                <option value="Trinidad and Tobago">Trinidad and Tobago</option>
-                                <option value="Barbados">Barbados</option>
-                                <option value="Guyana">Guyana</option>
-                                <option value="United States">United States</option>
-                                <option value="United Kingdom">United Kingdom</option>
-                                <option value="Canada">Canada</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label class="form-label">City *</label>
-                            <input type="text" id="city" placeholder="e.g. Belize City" class="form-input">
-                        </div>
-                        <div>
-                            <label class="form-label">State / Province / District</label>
-                            <input type="text" id="stateProvince" placeholder="e.g. Cayo District" class="form-input">
-                        </div>
-                    </div>
-
-                    <p class="form-section">
-                        <i class="fa-solid fa-users"></i> School Size
-                    </p>
-
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label class="form-label">Estimated Students *</label>
-                            <input type="number" id="studentsCount" placeholder="e.g. 350" min="1" class="form-input">
-                        </div>
-                        <div>
-                            <label class="form-label">Estimated Teachers *</label>
-                            <input type="number" id="teachersCount" placeholder="e.g. 25" min="1" class="form-input">
-                        </div>
-                    </div>
-
-                    <p class="form-section">
-                        <i class="fa-solid fa-file-contract"></i> Preferred Contract Term
-                    </p>
-
-                    <div>
-                        <label class="form-label">Contract Term *</label>
-                        <select id="contractTerm" class="form-input">
-                            <option value="">Select preferred term</option>
-                            <option value="6 Months">6 Months — Pilot Program</option>
-                            <option value="Annual">Annual Contract — 1 year</option>
-                            <option value="Multi-Year">Multi-Year Contract — 2 or 3 years</option>
-                        </select>
-                    </div>
-
-                    <div id="contractYearsWrap" class="hidden">
-                        <label class="form-label">How many years? *</label>
-                        <select id="contractYears" class="form-input">
-                            <option value="">Select number of years</option>
-                            <option value="2">2 Years</option>
-                            <option value="3">3 Years</option>
-                        </select>
-                        <p class="text-xs text-slate-400 font-semibold mt-1.5">Multi-year contracts may qualify for a discounted rate — we will include this in your quote.</p>
-                    </div>
-
-                    <p class="form-section">
-                        <i class="fa-solid fa-circle-info"></i> Additional Information
-                    </p>
-
-                    <div>
-                        <label class="form-label">How did you hear about us?</label>
-                        <select id="hearAboutUs" class="form-input">
-                            <option value="">Select an option</option>
-                            <option value="Google Search">Google Search</option>
-                            <option value="Social Media">Social Media</option>
-                            <option value="Word of Mouth">Word of Mouth</option>
-                            <option value="Referral from another school">Referral from another school</option>
-                            <option value="Conference or Event">Conference or Event</option>
-                            <option value="Other">Other</option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label class="form-label">Tell us more <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
-                        <textarea id="message" placeholder="Any specific needs, questions, or goals you'd like us to know about..." class="form-input h-24 resize-none"></textarea>
-                    </div>
-
-                    <button id="registerBtn"
-                        class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-black py-4 px-4 rounded-2xl transition shadow-lg shadow-blue-200 text-base mt-2">
-                        Request a Quote →
-                    </button>
-                    <p id="regMessage" class="text-sm text-center font-bold hidden mt-2"></p>
-                </div>
-
-                <div id="successScreen" class="hidden text-center py-8">
-                    <div class="text-7xl mb-4">🎉</div>
-                    <h2 class="text-2xl font-black text-slate-800 mb-2">Request Received!</h2>
-                    <p class="text-slate-500 font-semibold mb-5 text-sm leading-relaxed">
-                        Thank you for your interest in ConnectUs. We've sent a confirmation to your email and our team will be in touch within <strong class="text-slate-700">24–48 hours</strong> with a custom quote.
-                    </p>
-                    <div class="bg-blue-50 border border-blue-100 rounded-2xl p-5 mb-6 text-left">
-                        <p class="text-xs font-black text-blue-500 uppercase tracking-widest mb-3">What happens next?</p>
-                        <ul class="space-y-2.5 text-sm text-slate-600 font-semibold">
-                            <li class="flex items-start gap-2.5">
-                                <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i>
-                                Check your email for a confirmation from info@connectusonline.org
-                            </li>
-                            <li class="flex items-start gap-2.5">
-                                <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i>
-                                Our team will review your details and prepare a custom quote
-                            </li>
-                            <li class="flex items-start gap-2.5">
-                                <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i>
-                                We will send you an invoice or payment link based on your preferred term
-                            </li>
-                            <li class="flex items-start gap-2.5">
-                                <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 flex-shrink-0"></i>
-                                Once confirmed and paid, we will send your onboarding link to set up your school
-                            </li>
-                        </ul>
-                    </div>
-                    <button onclick="location.reload()"
-                        class="text-blue-600 font-black hover:underline text-sm bg-blue-50 py-2.5 px-6 rounded-full border border-blue-100 transition hover:bg-blue-100">
-                        ← Back to Home
-                    </button>
-                </div>
-            </div>
-        </div>
-    </section>
 
     <footer class="py-10 px-4 text-center">
         <div class="max-w-4xl mx-auto">
@@ -422,21 +211,18 @@
             <div class="flex items-center justify-center gap-6 text-slate-400 text-sm font-semibold mb-8">
                 <a href="#features"    class="hover:text-white transition">Features</a>
                 <a href="#get-started" class="hover:text-white transition">Portals</a>
-                <a href="#register"    class="hover:text-white transition">Get a Quote</a>
+                <a href="pricing.html" class="hover:text-white transition">Pricing & Plans</a>
             </div>
-            <div class="border-t border-white/10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <p class="text-slate-500 text-sm font-semibold">
-                    © 2026 ConnectUs. All rights reserved. &nbsp;|&nbsp; 
-                    <a href="terms/terms.html" class="hover:text-white transition">Terms of Service</a> &nbsp;|&nbsp; 
-                    <a href="terms/privacy.html" class="hover:text-white transition">Privacy Policy</a> &nbsp;|&nbsp; 
-                    <a href="pricing.html" class="hover:text-white transition">Pricing</a>
-                </p>
-                <div class="footer-logo-wrap">
-                    <span class="text-slate-300 text-sm font-bold">Powered by</span>
-                    <span class="text-white font-black text-sm">Kismet Code Digital</span>
-                    <img src="assets/images/blogo.png" alt="Kismet Code Digital Logo" class="h-7 w-auto brightness-110">
+                <div class="border-t border-white/10 pt-6">
+                    <p class="text-slate-500 text-sm font-semibold">
+                    © 2026 ConnectUs. All rights reserved. &nbsp;|&nbsp;
+                    <a href="about.html"         class="hover:text-white transition">About Us</a> &nbsp;|&nbsp;
+                    <a href="contact.html"       class="hover:text-white transition">Contact Us</a> &nbsp;|&nbsp;
+                    <a href="pricing.html"       class="hover:text-white transition">Pricing</a> &nbsp;|&nbsp;
+                    <a href="terms/privacy.html" class="hover:text-white transition">Privacy Policy</a> &nbsp;|&nbsp;
+                    <a href="terms/terms.html"   class="hover:text-white transition">Terms of Service</a>
+                    </p>
                 </div>
-            </div>
         </div>
     </footer>
 

@@ -1,392 +1,601 @@
-import { db, storage } from '../../assets/js/firebase-init.js'; 
-import { collection, query, where, getDocs, doc, updateDoc, setDoc, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { db, storage } from '../../assets/js/firebase-init.js';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, setDoc, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
-// ── Boot Sequence & Setup ────────────────────────────────────────────────
+// ── Boot Sequence ─────────────────────────────────────────────────────────────
 const rawSession = localStorage.getItem('connectus_hq_session');
-if (!rawSession) window.location.replace('../core/hq-login.html');
+if (!rawSession) window.location.replace('../hq-login.html');
 const session = JSON.parse(rawSession);
 
-document.getElementById('hqAdminName').textContent = session.name;
-document.getElementById('hqAdminId').textContent = session.id;
+document.getElementById('hqAdminName').textContent  = session.name;
+document.getElementById('hqAdminId').textContent    = session.id;
 document.getElementById('hqAdminBadge').textContent = `Role: ${session.role}`;
 if (session.role !== 'Owner') document.getElementById('navTeamBtn').classList.add('hidden');
 
 document.getElementById('logoutBtn').addEventListener('click', () => {
     localStorage.removeItem('connectus_hq_session');
-    window.location.replace('../core/hq-login.html');
+    window.location.replace('../hq-login.html');
 });
 
-const tbody = document.getElementById('quotesTableBody');
-let allQuotes = []; 
-let currentQuote = null;
-let availablePlans = []; // Store fetched subscription plans
+// ── State ─────────────────────────────────────────────────────────────────────
+let allPayPalSubs   = [];
+let allManualQuotes = [];
+let currentQuote    = null;
+let activeTab       = 'paypal';
+let contactEditMode = false;
 
-// ── GLOBAL EMAIL SCANNER ──────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function escHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function formatDate(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatRenewal(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+window.switchTab = function(tab) {
+    activeTab = tab;
+    document.getElementById('tabPayPal').classList.toggle('tab-active',   tab === 'paypal');
+    document.getElementById('tabManual').classList.toggle('tab-active',   tab === 'manual');
+    document.getElementById('tabPayPal').classList.toggle('tab-inactive', tab !== 'paypal');
+    document.getElementById('tabManual').classList.toggle('tab-inactive', tab !== 'manual');
+    document.getElementById('paypalPanel').classList.toggle('hidden', tab !== 'paypal');
+    document.getElementById('manualPanel').classList.toggle('hidden', tab !== 'manual');
+};
+
+// ── Global email scanner ──────────────────────────────────────────────────────
 async function checkEmailGlobalUse(email, currentReqId) {
     if (!email) return null;
     const targetEmail = email.toLowerCase().trim();
-    let conflicts = [];
+    const conflicts   = [];
+    try {
+        const [tSnap, sSnap, schSnap, qSnap] = await Promise.all([
+            getDocs(query(collection(db, 'teachers'),       where('email',        '==', targetEmail))),
+            getDocs(query(collection(db, 'students'),       where('email',        '==', targetEmail))),
+            getDocs(query(collection(db, 'schools'),        where('contactEmail', '==', targetEmail))),
+            getDocs(query(collection(db, 'quote_requests'), where('workEmail',    '==', targetEmail)))
+        ]);
+        tSnap.forEach(d   => conflicts.push(`Teacher Account (ID: ${d.id})`));
+        sSnap.forEach(d   => conflicts.push(`Student Account (ID: ${d.id})`));
+        schSnap.forEach(d => conflicts.push(`School Admin (School ID: ${d.id})`));
+        qSnap.forEach(d   => { if (d.id !== currentReqId) conflicts.push(`Other Quote (ID: ${d.id})`); });
+        return conflicts.length ? conflicts : null;
+    } catch (e) {
+        console.error('Email check failed:', e);
+        return ['Error checking database for conflicts.'];
+    }
+}
+
+
+// ── Load all data ─────────────────────────────────────────────────────────────
+async function loadAll() {
+    document.getElementById('paypalTableBody').innerHTML = `
+        <tr><td colspan="6" class="p-8 text-center text-emerald-400 font-semibold">
+            <i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading subscriptions...
+        </td></tr>`;
+    document.getElementById('manualTableBody').innerHTML = `
+        <tr><td colspan="5" class="p-8 text-center text-emerald-400 font-semibold">
+            <i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading quotes...
+        </td></tr>`;
 
     try {
-        // 1. Check Teachers
-        const tSnap = await getDocs(query(collection(db, 'teachers'), where('email', '==', targetEmail)));
-        tSnap.forEach(doc => conflicts.push(`Teacher Account (ID: ${doc.id})`));
-
-        // 2. Check Students
-        const sSnap = await getDocs(query(collection(db, 'students'), where('email', '==', targetEmail)));
-        sSnap.forEach(doc => conflicts.push(`Student Account (ID: ${doc.id})`));
-
-        // 3. Check Active Schools (Admins)
-        const schSnap = await getDocs(query(collection(db, 'schools'), where('contactEmail', '==', targetEmail)));
-        schSnap.forEach(doc => conflicts.push(`School Admin (School ID: ${doc.id})`));
-
-        // 4. Check Pending Quote Requests
-        const qSnap = await getDocs(query(collection(db, 'quote_requests'), where('workEmail', '==', targetEmail)));
-        qSnap.forEach(doc => {
-            if (doc.id !== currentReqId) {
-                conflicts.push(`Other Pending Quote (Quote ID: ${doc.id})`);
+        const snap = await getDocs(query(collection(db, 'quote_requests'), orderBy('createdAt', 'desc')));
+        allPayPalSubs   = [];
+        allManualQuotes = [];
+        snap.forEach(d => {
+            const data = { id: d.id, ...d.data() };
+            if (data.source === 'paypal') {
+                if (!data.fulfilled) allPayPalSubs.push(data);
+            } else {
+                if (!data.fulfilled) allManualQuotes.push(data);
             }
         });
-
-        return conflicts.length > 0 ? conflicts : null;
-    } catch(e) {
-        console.error("Email check failed:", e);
-        return ["Error checking database for conflicts."];
-    }
-}
-
-// ── Load Subscription Plans ──────────────────────────────────────────────
-async function loadSubscriptionPlans() {
-    const planSelect = document.getElementById('payPlan');
-    try {
-        const snap = await getDocs(collection(db, 'subscriptionPlans'));
-        availablePlans = [];
-        let options = '<option value="">Select a subscription tier...</option>';
-        
-        snap.forEach(doc => {
-            const data = doc.data();
-            data.id = doc.id;
-            availablePlans.push(data);
-            options += `<option value="${data.id}">${data.name}</option>`;
-        });
-        planSelect.innerHTML = options;
+        renderPayPalTable();
+        renderManualTable();
+        updateBadges();
     } catch (e) {
-        console.error("Failed to load subscription plans:", e);
-        planSelect.innerHTML = '<option value="">Error loading plans. Check Firebase rules.</option>';
+        console.error('Failed to load data:', e);
+        document.getElementById('paypalTableBody').innerHTML = `<tr><td colspan="6" class="p-8 text-center text-red-400 font-bold">Failed to load. Check Firestore rules.</td></tr>`;
+        document.getElementById('manualTableBody').innerHTML = `<tr><td colspan="5" class="p-8 text-center text-red-400 font-bold">Failed to load. Check Firestore rules.</td></tr>`;
     }
 }
 
-// Display Limits when a plan is selected
-document.getElementById('payPlan').addEventListener('change', (e) => {
-    const display = document.getElementById('planLimitsDisplay');
-    const selected = availablePlans.find(p => p.id === e.target.value);
-    
-    if (selected) {
-        display.innerHTML = `<i class="fa-solid fa-circle-check mr-1"></i> Limits: ${selected.studentLimit} Students | ${selected.teacherLimit} Teachers | ${selected.adminLimit} Admins`;
-        display.classList.remove('hidden');
-    } else {
-        display.classList.add('hidden');
-    }
-});
-
-// ── Load Quotes ────────────────────────────────────────────────────────────
-async function loadQuotes() {
-    tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-emerald-400 font-semibold"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Scanning pipeline...</td></tr>`;
-    
-    try {
-        const q = query(collection(db, 'quote_requests'), orderBy('createdAt', 'desc'));
-        const snap = await getDocs(q);
-        
-        allQuotes = []; 
-        let rows = '';
-        let pendingCount = 0;
-
-        snap.forEach(docSnap => {
-            const data = docSnap.data();
-            data.id = docSnap.id; 
-            allQuotes.push(data); 
-
-            if (data.fulfilled) return; 
-
-            pendingCount++;
-            const date = new Date(data.createdAt).toLocaleDateString();
-            const isApproved = data.paymentCleared;
-            
-            const statusBadge = isApproved 
-                ? `<span class="bg-blue-900/40 text-blue-400 border border-blue-800 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider">Link Sent</span>`
-                : `<span class="bg-amber-900/40 text-amber-400 border border-amber-800 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider">Pending Payment</span>`;
-
-            const actionBtn = `<button onclick="window.openApprovalModal('${data.id}')" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition border border-slate-600 shadow-md">Manage</button>`;
-
-            rows += `
-                <tr class="border-b border-slate-800 hover:bg-slate-800/50 transition">
-                    <td class="p-4 text-slate-400">${date}</td>
-                    <td class="p-4 font-bold text-white">${data.schoolName}</td>
-                    <td class="p-4">
-                        <p class="font-bold text-slate-300">${data.firstName} ${data.lastName}</p>
-                        <p class="text-xs text-slate-500">${data.workEmail}</p>
-                    </td>
-                    <td class="p-4">${statusBadge}</td>
-                    <td class="p-4 text-right">${actionBtn}</td>
-                </tr>`;
-        });
-
-        tbody.innerHTML = pendingCount > 0 ? rows : `<tr><td colspan="5" class="p-8 text-center text-slate-500 font-semibold italic">Pipeline is clear. No pending quotes.</td></tr>`;
-
-    } catch (e) {
-        console.error("Failed to load quotes:", e);
-        tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-red-400 font-bold">Failed to load data. Make sure rules are updated.</td></tr>`;
-    }
+function updateBadges() {
+    const pendingPayPal = allPayPalSubs.filter(s => !s.fulfilled).length;
+    const pendingManual = allManualQuotes.filter(q => !q.paymentCleared).length;
+    document.getElementById('paypalBadge').textContent = pendingPayPal || '';
+    document.getElementById('manualBadge').textContent = pendingManual || '';
+    document.getElementById('paypalBadge').classList.toggle('hidden', !pendingPayPal);
+    document.getElementById('manualBadge').classList.toggle('hidden', !pendingManual);
 }
 
-// ── Form Interactions ────────────────────────────────────────────────────
-document.getElementById('payCycle').addEventListener('change', (e) => {
-    const customWrap = document.getElementById('customCycleWrap');
-    if (e.target.value === 'Other') customWrap.classList.remove('hidden');
-    else customWrap.classList.add('hidden');
-});
+// ── Render PayPal table ───────────────────────────────────────────────────────
+function renderPayPalTable() {
+    const tbody = document.getElementById('paypalTableBody');
+    if (!allPayPalSubs.length) {
+        tbody.innerHTML = `<tr><td colspan="6" class="p-12 text-center text-slate-500 italic font-semibold">No self-service subscriptions yet.</td></tr>`;
+        return;
+    }
+    tbody.innerHTML = allPayPalSubs.map(s => {
+        const planName = s.approvedPlanName     || '—';
+        const billing  = s.approvedBillingCycle || '—';
+        const limits   = s.approvedLimits       || {};
+        const renewal  = formatDate(s.calculatedRenewalDate);
+        const date     = formatDate(s.createdAt);
+        const statusBadge = s.fulfilled
+            ? `<span class="inline-flex items-center gap-1 bg-emerald-900/40 text-emerald-400 border border-emerald-800 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider"><i class="fa-solid fa-circle-check text-[8px]"></i> Fulfilled</span>`
+            : `<span class="inline-flex items-center gap-1 bg-blue-900/40 text-blue-400 border border-blue-800 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider"><i class="fa-solid fa-clock text-[8px]"></i> Awaiting Setup</span>`;
+        return `
+        <tr class="border-b border-slate-800 hover:bg-slate-800/40 transition cursor-pointer" onclick="window.openPayPalModal('${s.id}')">
+            <td class="p-4 text-slate-400 text-xs">${date}</td>
+            <td class="p-4">
+                <p class="font-bold text-white text-sm">${escHtml(s.firstName)} ${escHtml(s.lastName)}</p>
+                <p class="text-xs text-slate-500 mt-0.5">${escHtml(s.workEmail)}</p>
+            </td>
+            <td class="p-4">
+                <p class="font-bold text-slate-200 text-sm">${escHtml(planName)}</p>
+                <p class="text-xs text-slate-500 mt-0.5">${escHtml(billing)}</p>
+            </td>
+            <td class="p-4 text-xs text-slate-400">
+                <span class="font-bold text-slate-300">${limits.studentLimit || '—'}</span> stu ·
+                <span class="font-bold text-slate-300">${limits.teacherLimit || '—'}</span> tch ·
+                <span class="font-bold text-slate-300">${limits.adminLimit   || '—'}</span> adm
+            </td>
+            <td class="p-4 text-xs text-slate-400">${renewal}</td>
+            <td class="p-4 text-right">${statusBadge}</td>
+        </tr>`;
+    }).join('');
+}
 
-// ── Modal Handlers (View & Populate Details) ─────────────────────────────
-window.openApprovalModal = (reqId) => {
-    currentQuote = allQuotes.find(q => q.id === reqId);
+// ── Render manual quotes table ────────────────────────────────────────────────
+function renderManualTable() {
+    const tbody = document.getElementById('manualTableBody');
+    if (!allManualQuotes.length) {
+        tbody.innerHTML = `<tr><td colspan="5" class="p-12 text-center text-slate-500 italic font-semibold">Pipeline is clear. No pending quotes.</td></tr>`;
+        return;
+    }
+    tbody.innerHTML = allManualQuotes.map(q => {
+        const date       = formatDate(q.createdAt);
+        const isApproved = q.paymentCleared;
+        const statusBadge = isApproved
+            ? `<span class="bg-blue-900/40 text-blue-400 border border-blue-800 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider">Link Sent</span>`
+            : `<span class="bg-amber-900/40 text-amber-400 border border-amber-800 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider">Pending Payment</span>`;
+        return `
+        <tr class="border-b border-slate-800 hover:bg-slate-800/40 transition">
+            <td class="p-4 text-slate-400 text-xs">${date}</td>
+            <td class="p-4 font-bold text-white">${escHtml(q.schoolName) || '<span class="text-slate-500 italic">Not set</span>'}</td>
+            <td class="p-4">
+                <p class="font-bold text-slate-300 text-sm">${escHtml(q.firstName)} ${escHtml(q.lastName)}</p>
+                <p class="text-xs text-slate-500">${escHtml(q.workEmail)}</p>
+            </td>
+            <td class="p-4">${statusBadge}</td>
+            <td class="p-4 text-right">
+                <button onclick="window.openManualModal('${q.id}')" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition border border-slate-600">
+                    Manage
+                </button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+// ── PayPal modal ──────────────────────────────────────────────────────────────
+window.openPayPalModal = function(subId) {
+    currentQuote = allPayPalSubs.find(s => s.id === subId);
     if (!currentQuote) return;
-
-    // Remove any old warning banners
-    const oldWarning = document.getElementById('duplicateEmailWarning');
-    if (oldWarning) oldWarning.remove();
-
-    // 1. Populate UI - Left Side
-    document.getElementById('vReqId').textContent = currentQuote.id;
-    document.getElementById('vName').textContent = `${currentQuote.firstName} ${currentQuote.lastName}`;
-    document.getElementById('vRole').textContent = currentQuote.jobTitle || 'N/A';
-    
-    // Set email with a loading spinner while we run the global check
-    document.getElementById('vEmail').innerHTML = `${currentQuote.workEmail || 'N/A'} <i class="fa-solid fa-circle-notch fa-spin text-slate-500 ml-2 text-[10px]" id="emailCheckSpin"></i>`;
-    
-    document.getElementById('vPhone').textContent = currentQuote.phone || 'N/A';
-    
-    document.getElementById('vSchoolName').textContent = currentQuote.schoolName;
-    document.getElementById('vSchoolType').textContent = currentQuote.schoolType || 'N/A';
-    const city = currentQuote.city || '';
-    const state = currentQuote.stateProvince ? `, ${currentQuote.stateProvince}` : '';
-    const country = currentQuote.country ? ` - ${currentQuote.country}` : '';
-    document.getElementById('vLocation').textContent = `${city}${state}${country}`;
-    
-    document.getElementById('vStudents').textContent = currentQuote.studentsCount || '0';
-    document.getElementById('vTeachers').textContent = currentQuote.teachersCount || '0';
-    
-    document.getElementById('vContractTerm').textContent = currentQuote.contractTerm || 'Not Specified';
-    let duration = "Rolling";
-    if (currentQuote.contractMonths) duration = `${currentQuote.contractMonths} Months`;
-    if (currentQuote.contractYears) duration = `${currentQuote.contractYears} Years`;
-    document.getElementById('vContractDuration').textContent = duration;
-    
-    document.getElementById('vSource').textContent = currentQuote.hearAboutUs || 'N/A';
-    document.getElementById('vMessage').textContent = currentQuote.message || 'No additional message provided.';
-
-    // Run Background Check for duplicate email
-    if (currentQuote.workEmail) {
-        checkEmailGlobalUse(currentQuote.workEmail, reqId).then(conflicts => {
-            const spinner = document.getElementById('emailCheckSpin');
-            if (spinner) spinner.remove();
-
-            if (conflicts) {
-                // Highlight the email in red
-                document.getElementById('vEmail').innerHTML = `<span class="text-red-400 font-bold">${currentQuote.workEmail}</span>`;
-                
-                // Build the warning banner
-                const warnDiv = document.createElement('div');
-                warnDiv.id = 'duplicateEmailWarning';
-                warnDiv.className = 'mt-3 p-3 bg-red-900/40 border border-red-500/50 rounded-lg text-red-200 text-xs leading-relaxed';
-                warnDiv.innerHTML = `
-                    <p class="font-bold text-red-400 mb-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i> EMAIL ALREADY IN USE</p>
-                    <ul class="list-disc list-inside pl-1 space-y-1 text-[11px] font-mono">
-                        ${conflicts.map(c => `<li>${c}</li>`).join('')}
-                    </ul>
-                    <p class="mt-2 text-[10px] text-red-300/80 italic">Contact the applicant to provide an alternative email, or edit it using the panel on the right.</p>`;
-                
-                // Inject right under the email element's parent container
-                const emailContainer = document.getElementById('vEmail').parentNode;
-                emailContainer.appendChild(warnDiv);
-            }
-        });
+    const s      = currentQuote;
+    const limits = s.approvedLimits || {};
+    document.getElementById('ppSubId').textContent     = s.id;
+    document.getElementById('ppPaypalId').textContent  = s.paypalSubscriptionId || '—';
+    document.getElementById('ppName').textContent      = `${s.firstName || ''} ${s.lastName || ''}`.trim() || '—';
+    document.getElementById('ppEmail').textContent     = s.workEmail || '—';
+    document.getElementById('ppPlan').textContent      = s.approvedPlanName || '—';
+    document.getElementById('ppBilling').textContent   = s.approvedBillingCycle || '—';
+    document.getElementById('ppRenewal').textContent   = formatRenewal(s.calculatedRenewalDate);
+    document.getElementById('ppCreated').textContent   = formatDate(s.createdAt);
+    document.getElementById('ppSchool').textContent    = s.schoolName || '(Not yet set — pending onboarding)';
+    document.getElementById('ppGenSchool').textContent = s.generatedSchoolId || '—';
+    document.getElementById('ppStudentLimit').value = limits.studentLimit || '';
+    document.getElementById('ppTeacherLimit').value = limits.teacherLimit || '';
+    document.getElementById('ppAdminLimit').value   = limits.adminLimit   || '';
+    document.getElementById('ppEditEmail').value    = s.workEmail || '';
+    const statusEl = document.getElementById('ppStatusBadge');
+    if (s.fulfilled) {
+        statusEl.className = 'inline-flex items-center gap-1.5 bg-emerald-900/40 text-emerald-400 border border-emerald-800 px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider';
+        statusEl.innerHTML = '<i class="fa-solid fa-circle-check"></i> Fulfilled — School is Live';
+    } else {
+        statusEl.className = 'inline-flex items-center gap-1.5 bg-blue-900/40 text-blue-400 border border-blue-800 px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider';
+        statusEl.innerHTML = '<i class="fa-solid fa-clock"></i> Awaiting Setup — Onboarding Link Sent';
     }
+    document.getElementById('ppSaveMsg').classList.add('hidden');
+    showModal('paypalModal');
+};
 
-    // 2. Logic Switch: Which right-side panel do we show?
-    if (currentQuote.paymentCleared) {
+window.closePayPalModal = () => hideModal('paypalModal');
+
+document.getElementById('ppSaveLimitsBtn').addEventListener('click', async () => {
+    if (!currentQuote) return;
+    const btn        = document.getElementById('ppSaveLimitsBtn');
+    const msgEl      = document.getElementById('ppSaveMsg');
+    const studentLim = parseInt(document.getElementById('ppStudentLimit').value);
+    const teacherLim = parseInt(document.getElementById('ppTeacherLimit').value);
+    const adminLim   = parseInt(document.getElementById('ppAdminLimit').value);
+    if (isNaN(studentLim) || isNaN(teacherLim) || isNaN(adminLim) || studentLim < 1 || teacherLim < 1 || adminLim < 1) {
+        showSaveMsg(msgEl, 'All limits must be valid numbers greater than 0.', false);
+        return;
+    }
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Saving...';
+    btn.disabled  = true;
+    try {
+        const newLimits = { studentLimit: studentLim, teacherLimit: teacherLim, adminLimit: adminLim };
+        await updateDoc(doc(db, 'quote_requests', currentQuote.id), { approvedLimits: newLimits });
+        if (currentQuote.generatedSchoolId) {
+            await updateDoc(doc(db, 'schools', currentQuote.generatedSchoolId), { limits: newLimits });
+        }
+        const idx = allPayPalSubs.findIndex(s => s.id === currentQuote.id);
+        if (idx > -1) allPayPalSubs[idx].approvedLimits = newLimits;
+        currentQuote.approvedLimits = newLimits;
+        showSaveMsg(msgEl, '✓ Limits saved successfully.', true);
+        renderPayPalTable();
+    } catch (e) {
+        console.error('Save limits failed:', e);
+        showSaveMsg(msgEl, 'Error saving limits. Please try again.', false);
+    }
+    btn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-1"></i> Save Limits';
+    btn.disabled  = false;
+});
+
+document.getElementById('ppSaveEmailBtn').addEventListener('click', async () => {
+    if (!currentQuote) return;
+    const newEmail = document.getElementById('ppEditEmail').value.trim();
+    const msgEl    = document.getElementById('ppSaveMsg');
+    if (!newEmail) return;
+    const btn = document.getElementById('ppSaveEmailBtn');
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    btn.disabled  = true;
+    const conflicts = await checkEmailGlobalUse(newEmail, currentQuote.id);
+    if (conflicts) {
+        showSaveMsg(msgEl, 'Email already in use: ' + conflicts[0], false);
+        btn.innerHTML = 'Update';
+        btn.disabled  = false;
+        return;
+    }
+    try {
+        await updateDoc(doc(db, 'quote_requests', currentQuote.id), { workEmail: newEmail });
+        currentQuote.workEmail = newEmail;
+        document.getElementById('ppEmail').textContent = newEmail;
+        const idx = allPayPalSubs.findIndex(s => s.id === currentQuote.id);
+        if (idx > -1) allPayPalSubs[idx].workEmail = newEmail;
+        showSaveMsg(msgEl, '✓ Email updated.', true);
+        renderPayPalTable();
+    } catch (e) {
+        console.error(e);
+        showSaveMsg(msgEl, 'Error updating email.', false);
+    }
+    btn.innerHTML = 'Update';
+    btn.disabled  = false;
+});
+
+document.getElementById('ppResendBtn').addEventListener('click', async () => {
+    if (!currentQuote) return;
+    const btn   = document.getElementById('ppResendBtn');
+    const msgEl = document.getElementById('ppSaveMsg');
+    const orig  = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Sending...';
+    btn.disabled  = true;
+    try {
+        await updateDoc(doc(db, 'quote_requests', currentQuote.id), { resendTrigger: Date.now() });
+        btn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Sent!';
+        showSaveMsg(msgEl, '✓ Onboarding email resent.', true);
+        setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 3000);
+    } catch (e) {
+        console.error(e);
+        btn.innerHTML = orig;
+        btn.disabled  = false;
+        showSaveMsg(msgEl, 'Error resending email.', false);
+    }
+});
+
+// ── Manual quote modal ────────────────────────────────────────────────────────
+window.openManualModal = function(reqId) {
+    currentQuote    = allManualQuotes.find(q => q.id === reqId);
+    contactEditMode = false;
+    if (!currentQuote) return;
+    const q = currentQuote;
+    document.getElementById('duplicateEmailWarning')?.remove();
+    renderContactReadOnly(q);
+    if (q.paymentCleared) {
         document.getElementById('paymentFormContainer').classList.add('hidden');
         document.getElementById('manageLinkContainer').classList.remove('hidden');
-        document.getElementById('editEmailInput').value = currentQuote.workEmail;
+        document.getElementById('editEmailInput').value = q.workEmail || '';
     } else {
         document.getElementById('paymentFormContainer').classList.remove('hidden');
         document.getElementById('manageLinkContainer').classList.add('hidden');
-        
-        // Reset Inputs
-        document.getElementById('payPlan').value = '';
-        document.getElementById('planLimitsDisplay').classList.add('hidden');
-        document.getElementById('payAmount').value = '';
-        const cycleSelect = document.getElementById('payCycle');
-        if (currentQuote.contractTerm === 'Annual') cycleSelect.value = 'Annual';
-        else if (currentQuote.contractTerm === 'Multi-Year') cycleSelect.value = 'Multi-Year';
-        else cycleSelect.value = 'Monthly';
-        
+        document.getElementById('payStudentLimit').value  = '';
+        document.getElementById('payTeacherLimit').value  = '';
+        document.getElementById('payAdminLimit').value    = '';
+        document.getElementById('payAmount').value        = '';
+        document.getElementById('payCycle').value         = q.contractTerm === 'Annual' ? 'Annual' : q.contractTerm === 'Multi-Year' ? 'Multi-Year' : 'Monthly';
         document.getElementById('customCycleWrap').classList.add('hidden');
-        document.getElementById('payCustomCycle').value = ''; 
-        document.getElementById('payNotes').value = ''; 
-        document.getElementById('payReceipt').value = ''; 
+        document.getElementById('payCustomCycle').value   = '';
+        document.getElementById('payNotes').value         = '';
+        document.getElementById('payReceipt').value       = '';
         document.getElementById('paymentErrorMsg').classList.add('hidden');
     }
-    
-    // 3. Show Modal
-    const modal = document.getElementById('paymentModal');
-    const inner = document.getElementById('paymentModalInner');
-    modal.classList.remove('hidden');
-    setTimeout(() => { modal.classList.remove('opacity-0'); inner.classList.remove('scale-95'); }, 10);
+    showModal('manualModal');
 };
 
-const closePaymentModal = () => {
-    const modal = document.getElementById('paymentModal');
-    const inner = document.getElementById('paymentModalInner');
-    modal.classList.add('opacity-0'); inner.classList.add('scale-95');
-    setTimeout(() => modal.classList.add('hidden'), 300);
-    currentQuote = null;
-};
-document.getElementById('closeModalBtnDesktop').addEventListener('click', closePaymentModal);
-document.getElementById('closeModalBtnMobile').addEventListener('click', closePaymentModal);
+// ── Contact read-only render ──────────────────────────────────────────────────
+function renderContactReadOnly(q) {
+    const city     = q.city          || '';
+    const state    = q.stateProvince ? `, ${q.stateProvince}` : '';
+    const country  = q.country       ? ` — ${q.country}`      : '';
+    const location = `${city}${state}${country}` || '—';
 
-// ── Calculate Renewal Date Helper ─────────────────────────────────────────
-function calculateRenewalDate(cycleType) {
-    const date = new Date();
-    if (cycleType === 'Monthly') {
-        date.setMonth(date.getMonth() + 1);
-    } else if (cycleType === 'Annual') {
-        date.setFullYear(date.getFullYear() + 1);
-    } else if (cycleType === 'Multi-Year') {
-        const years = currentQuote.contractYears ? parseInt(currentQuote.contractYears) : 2;
-        date.setFullYear(date.getFullYear() + years);
-    } else {
-        date.setFullYear(date.getFullYear() + 1);
+    document.getElementById('vReqId').textContent       = q.id;
+    document.getElementById('vName').textContent        = `${q.firstName || ''} ${q.lastName || ''}`.trim() || '—';
+    document.getElementById('vRole').textContent        = q.jobTitle    || '—';
+    document.getElementById('vEmail').textContent       = q.workEmail   || '—';
+    document.getElementById('vPhone').textContent       = q.phone       || '—';
+    document.getElementById('vSchoolName').textContent  = q.schoolName  || '—';
+    document.getElementById('vSchoolType').textContent  = q.schoolType  || '—';
+    document.getElementById('vLocation').textContent    = location;
+    document.getElementById('vStudents').textContent    = q.studentsCount || '0';
+    document.getElementById('vTeachers').textContent    = q.teachersCount || '0';
+    document.getElementById('vContractTerm').textContent= q.contractTerm  || 'Not Specified';
+
+    let duration = 'Rolling';
+    if (q.contractMonths) duration = `${q.contractMonths} Months`;
+    if (q.contractYears)  duration = `${q.contractYears} Years`;
+    document.getElementById('vContractDuration').textContent = duration;
+    document.getElementById('vSource').textContent   = q.hearAboutUs || '—';
+    document.getElementById('vMessage').textContent  = q.message     || 'No additional message.';
+
+    document.getElementById('contactReadOnly').classList.remove('hidden');
+    document.getElementById('contactEditForm').classList.add('hidden');
+    document.getElementById('contactEditBtn').classList.remove('hidden');
+    document.getElementById('contactSaveBtn').classList.add('hidden');
+    document.getElementById('contactCancelBtn').classList.add('hidden');
+    document.getElementById('contactSaveMsg').classList.add('hidden');
+    contactEditMode = false;
+
+    // Background email check
+    document.getElementById('duplicateEmailWarning')?.remove();
+    if (q.workEmail) {
+        checkEmailGlobalUse(q.workEmail, q.id).then(conflicts => {
+            if (!conflicts) return;
+            const warnDiv = document.createElement('div');
+            warnDiv.id        = 'duplicateEmailWarning';
+            warnDiv.className = 'mt-3 p-3 bg-red-900/40 border border-red-500/50 rounded-lg text-red-200 text-xs leading-relaxed';
+            warnDiv.innerHTML = `
+                <p class="font-bold text-red-400 mb-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i> EMAIL ALREADY IN USE</p>
+                <ul class="list-disc list-inside pl-1 space-y-1 text-[11px] font-mono">${conflicts.map(c => `<li>${escHtml(c)}</li>`).join('')}</ul>
+                <p class="mt-2 text-[10px] text-red-300/80 italic">Click Edit to fix the email before approving.</p>`;
+            document.getElementById('vEmail')?.parentNode?.appendChild(warnDiv);
+        });
     }
-    return date.toISOString();
 }
 
-// ── LOGIC A: Process Initial Approval ─────────────────────────────────────
-document.getElementById('confirmApproveBtn').addEventListener('click', async () => {
-    const planId = document.getElementById('payPlan').value;
-    const amount = document.getElementById('payAmount').value;
-    const cycleSelect = document.getElementById('payCycle').value;
-    const customCycle = document.getElementById('payCustomCycle').value;
-    const internalNote = document.getElementById('payNotes').value.trim();
-    const receiptFile = document.getElementById('payReceipt').files[0]; 
-    const errorMsg = document.getElementById('paymentErrorMsg');
+// ── Contact edit mode ─────────────────────────────────────────────────────────
+window.activateContactEdit = function() {
+    const q = currentQuote;
+    if (!q) return;
+    document.getElementById('eFirstName').value     = q.firstName     || '';
+    document.getElementById('eLastName').value      = q.lastName      || '';
+    document.getElementById('eEmail').value         = q.workEmail     || '';
+    document.getElementById('ePhone').value         = q.phone         || '';
+    document.getElementById('eSchoolName').value    = q.schoolName    || '';
+    document.getElementById('eSchoolType').value    = q.schoolType    || '';
+    document.getElementById('eCity').value          = q.city          || '';
+    document.getElementById('eStateProvince').value = q.stateProvince || '';
+    document.getElementById('eCountry').value       = q.country       || '';
+    document.getElementById('eStudents').value      = q.studentsCount || '';
+    document.getElementById('eTeachers').value      = q.teachersCount || '';
+    document.getElementById('contactSaveMsg').classList.add('hidden');
+    document.getElementById('contactReadOnly').classList.add('hidden');
+    document.getElementById('contactEditForm').classList.remove('hidden');
+    document.getElementById('contactEditBtn').classList.add('hidden');
+    document.getElementById('contactSaveBtn').classList.remove('hidden');
+    document.getElementById('contactCancelBtn').classList.remove('hidden');
+    contactEditMode = true;
+};
 
-    if (!planId) {
-        errorMsg.textContent = "Please select a Subscription Tier.";
-        errorMsg.classList.remove('hidden'); return;
+window.cancelContactEdit = function() {
+    renderContactReadOnly(currentQuote);
+};
+
+window.saveContactInfo = async function() {
+    const btn   = document.getElementById('contactSaveBtn');
+    const orig  = btn.innerHTML;
+    const firstName     = document.getElementById('eFirstName').value.trim();
+    const lastName      = document.getElementById('eLastName').value.trim();
+    const email         = document.getElementById('eEmail').value.trim().toLowerCase();
+    const phone         = document.getElementById('ePhone').value.trim();
+    const schoolName    = document.getElementById('eSchoolName').value.trim();
+    const schoolType    = document.getElementById('eSchoolType').value.trim();
+    const city          = document.getElementById('eCity').value.trim();
+    const stateProvince = document.getElementById('eStateProvince').value.trim();
+    const country       = document.getElementById('eCountry').value.trim();
+    const studentsCount = parseInt(document.getElementById('eStudents').value) || 0;
+    const teachersCount = parseInt(document.getElementById('eTeachers').value) || 0;
+
+    if (!firstName || !lastName || !email) {
+        showContactMsg('First name, last name, and email are required.', false); return;
     }
-    if (!amount || amount <= 0) {
-        errorMsg.textContent = "Please enter a valid payment amount.";
-        errorMsg.classList.remove('hidden'); return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        showContactMsg('Please enter a valid email address.', false); return;
     }
 
-    const selectedPlan = availablePlans.find(p => p.id === planId);
-    const actualCycle = cycleSelect === 'Other' ? (customCycle || 'Custom') : cycleSelect;
-    const btn = document.getElementById('confirmApproveBtn');
-    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Saving...';
+    btn.disabled  = true;
+
+    if (email !== (currentQuote.workEmail || '').toLowerCase()) {
+        const conflicts = await checkEmailGlobalUse(email, currentQuote.id);
+        if (conflicts) {
+            showContactMsg('Email already in use: ' + conflicts[0], false);
+            btn.innerHTML = orig;
+            btn.disabled  = false;
+            return;
+        }
+    }
 
     try {
-        const paymentId = `PAY-${Date.now()}`;
-        const timestamp = new Date().toISOString();
-        let receiptUrl = null;
+        const updates = {
+            firstName, lastName,
+            fullName: `${firstName} ${lastName}`.trim(),
+            workEmail: email, phone, schoolName, schoolType,
+            city, stateProvince, country, studentsCount, teachersCount
+        };
+        await updateDoc(doc(db, 'quote_requests', currentQuote.id), updates);
+        Object.assign(currentQuote, updates);
+        const idx = allManualQuotes.findIndex(q => q.id === currentQuote.id);
+        if (idx > -1) Object.assign(allManualQuotes[idx], updates);
+        renderContactReadOnly(currentQuote);
+        renderManualTable();
+        showContactMsg('✓ Contact info saved.', true);
+    } catch (e) {
+        console.error('Save contact failed:', e);
+        showContactMsg('Error saving. Please try again.', false);
+        btn.innerHTML = orig;
+        btn.disabled  = false;
+    }
+};
+
+function showContactMsg(text, success) {
+    const msgEl = document.getElementById('contactSaveMsg');
+    if (!msgEl) return;
+    msgEl.textContent = text;
+    msgEl.className   = `text-xs font-bold mt-3 ${success ? 'text-emerald-400' : 'text-red-400'}`;
+    msgEl.classList.remove('hidden');
+    if (success) setTimeout(() => msgEl.classList.add('hidden'), 3000);
+}
+
+window.closeManualModal = () => hideModal('manualModal');
+
+document.getElementById('payCycle').addEventListener('change', (e) => {
+    document.getElementById('customCycleWrap').classList.toggle('hidden', e.target.value !== 'Other');
+});
+
+// ── Manual approval ───────────────────────────────────────────────────────────
+document.getElementById('confirmApproveBtn').addEventListener('click', async () => {
+    const planName_input = document.getElementById('payPlanName').value.trim();
+    const amount      = document.getElementById('payAmount').value;
+    const cycleSelect = document.getElementById('payCycle').value;
+    const customCycle = document.getElementById('payCustomCycle').value.trim();
+    const notes       = document.getElementById('payNotes').value.trim();
+    const receiptFile = document.getElementById('payReceipt').files[0];
+    const errorMsg    = document.getElementById('paymentErrorMsg');
+    const studentLim  = parseInt(document.getElementById('payStudentLimit').value);
+    const teacherLim  = parseInt(document.getElementById('payTeacherLimit').value);
+    const adminLim    = parseInt(document.getElementById('payAdminLimit').value);
+
+    if (!planName_input) {
+        errorMsg.textContent = 'Please enter a plan name.';
+        errorMsg.classList.remove('hidden'); return;
+    }
+    if (!amount || parseFloat(amount) <= 0) {
+        errorMsg.textContent = 'Please enter a valid payment amount.';
+        errorMsg.classList.remove('hidden'); return;
+    }
+    if (isNaN(studentLim) || isNaN(teacherLim) || isNaN(adminLim) || studentLim < 1 || teacherLim < 1 || adminLim < 1) {
+        errorMsg.textContent = 'Student, Teacher, and Admin limits must all be set and greater than 0.';
+        errorMsg.classList.remove('hidden'); return;
+    }
+
+    errorMsg.classList.add('hidden');
+
+    const planName     = planName_input;
+    const actualCycle  = cycleSelect === 'Other' ? (customCycle || 'Custom') : cycleSelect;
+    const btn          = document.getElementById('confirmApproveBtn');
+    btn.disabled       = true;
+
+    try {
+        const paymentId   = `PAY-${Date.now()}`;
+        const timestamp   = new Date().toISOString();
+        let   receiptUrl  = null;
 
         if (receiptFile) {
             btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up fa-spin mr-2"></i> Uploading Receipt...';
-            const storageRef = ref(storage, `receipts/${paymentId}_${receiptFile.name}`);
-            await uploadBytes(storageRef, receiptFile);
-            receiptUrl = await getDownloadURL(storageRef);
+            try {
+                const storageRef = ref(storage, `receipts/${paymentId}_${receiptFile.name}`);
+                await uploadBytes(storageRef, receiptFile);
+                receiptUrl = await getDownloadURL(storageRef);
+            } catch (uploadErr) {
+                console.error('[Approvals] Receipt upload failed:', uploadErr);
+                errorMsg.textContent = 'Receipt upload failed. Check your Storage rules, then try again. You can approve without a receipt by clearing the file selection.';
+                errorMsg.classList.remove('hidden');
+                btn.disabled  = false;
+                btn.innerHTML = 'Mark as Paid & Activate <i class="fa-solid fa-arrow-right ml-1"></i>';
+                return;
+            }
         }
 
-        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Logging Invoice...';
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Processing...';
 
-        const notesArray = internalNote ? [{
-            note: internalNote,
-            timestamp: timestamp,
-            loggedBy: session.id,
-            loggedByName: session.name
-        }] : [];
-
+        const notesArray      = notes ? [{ note: notes, timestamp, loggedBy: session.id, loggedByName: session.name }] : [];
         const nextRenewalDate = calculateRenewalDate(cycleSelect);
+        const approvedLimits  = { studentLimit: studentLim, teacherLimit: teacherLim, adminLimit: adminLim };
 
-        // 1. Log Payment
         await setDoc(doc(db, 'payments', paymentId), {
-            reqId: currentQuote.id,
-            schoolName: currentQuote.schoolName,
-            paymentType: 'Initial Setup',
-            amount: parseFloat(amount),
-            billingCycle: actualCycle,
-            subscriptionPlanId: selectedPlan.id,
-            receiptUrl: receiptUrl, 
-            internalNotes: notesArray,
-            loggedBy: session.id,
-            timestamp: timestamp
+            reqId:              currentQuote.id,
+            schoolName:         currentQuote.schoolName || '',
+            paymentType:        'Initial Setup',
+            amount:             parseFloat(amount),
+            billingCycle:       actualCycle,
+            subscriptionPlanId: 'custom',
+            receiptUrl,
+            internalNotes:      notesArray,
+            loggedBy:           session.id,
+            timestamp
         });
 
-        // 2. Update Quote with Plan Limits (This triggers the Cloud Function email)
         await updateDoc(doc(db, 'quote_requests', currentQuote.id), {
-            paymentCleared: true,
-            clearedAt: timestamp,
-            approvedBillingCycle: actualCycle,
+            paymentCleared:        true,
+            clearedAt:             timestamp,
+            approvedBillingCycle:  actualCycle,
             calculatedRenewalDate: nextRenewalDate,
-            approvedPlanId: selectedPlan.id,
-            approvedPlanName: selectedPlan.name,
-            approvedLimits: {
-                adminLimit: selectedPlan.adminLimit,
-                studentLimit: selectedPlan.studentLimit,
-                teacherLimit: selectedPlan.teacherLimit
-            }
+            approvedPlanId:        'custom',
+            approvedPlanName:      planName,
+            approvedLimits
         });
 
-        closePaymentModal();
-        loadQuotes(); 
-
+        hideModal('manualModal');
+        await loadAll();
     } catch (e) {
-        console.error("Approval Failed:", e);
-        errorMsg.textContent = "An error occurred during approval. Check console for details.";
+        console.error('Approval failed:', e);
+        errorMsg.textContent = 'An error occurred. Check console for details.';
         errorMsg.classList.remove('hidden');
     }
 
-    btn.disabled = false;
+    btn.disabled  = false;
     btn.innerHTML = 'Mark as Paid & Approve <i class="fa-solid fa-arrow-right ml-1"></i>';
 });
 
-// ── LOGIC B: Manage Sent Links ────────────────────────────────────────────
-
+// ── Manage sent link ──────────────────────────────────────────────────────────
 document.getElementById('saveEmailBtn').addEventListener('click', async () => {
     const newEmail = document.getElementById('editEmailInput').value.trim();
-    if(!newEmail) return;
+    if (!newEmail) return;
     const btn = document.getElementById('saveEmailBtn');
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-    
-    // Check before allowing edit
     const conflicts = await checkEmailGlobalUse(newEmail, currentQuote.id);
     if (conflicts) {
-        alert("Cannot update to this email. It is already in use by:\n\n" + conflicts.join("\n"));
-        btn.innerHTML = 'Save';
-        return;
+        alert('Cannot update to this email. Already in use:\n\n' + conflicts.join('\n'));
+        btn.innerHTML = 'Save'; return;
     }
-
     try {
         await updateDoc(doc(db, 'quote_requests', currentQuote.id), { workEmail: newEmail });
-        currentQuote.workEmail = newEmail; 
-        document.getElementById('vEmail').textContent = newEmail;
-        
-        const oldWarning = document.getElementById('duplicateEmailWarning');
-        if (oldWarning) oldWarning.remove();
-
+        currentQuote.workEmail = newEmail;
+        document.getElementById('duplicateEmailWarning')?.remove();
         btn.innerHTML = '<i class="fa-solid fa-check"></i> Saved';
         setTimeout(() => btn.innerHTML = 'Save', 2000);
-    } catch(e) {
+    } catch (e) {
         console.error(e);
         btn.innerHTML = 'Error';
         setTimeout(() => btn.innerHTML = 'Save', 2000);
@@ -394,37 +603,74 @@ document.getElementById('saveEmailBtn').addEventListener('click', async () => {
 });
 
 document.getElementById('resendLinkBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('resendLinkBtn');
-    const originalText = btn.innerHTML;
+    const btn  = document.getElementById('resendLinkBtn');
+    const orig = btn.innerHTML;
     btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Sending...';
     try {
-        // Trigger the Cloud Function to resend the email
         await updateDoc(doc(db, 'quote_requests', currentQuote.id), { resendTrigger: Date.now() });
-        btn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Email Sent!';
-        setTimeout(() => btn.innerHTML = originalText, 3000);
-    } catch(e) {
+        btn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Sent!';
+        setTimeout(() => { btn.innerHTML = orig; }, 3000);
+    } catch (e) {
         console.error(e);
-        alert("Failed to resend the email. Please check console.");
-        btn.innerHTML = originalText;
+        alert('Failed to resend. Check console.');
+        btn.innerHTML = orig;
     }
 });
 
 document.getElementById('revokeLinkBtn').addEventListener('click', async () => {
-    if(!confirm("Are you sure you want to revoke this approval? The onboarding link in their email will no longer work.")) return;
+    if (!confirm('Revoke this approval? The onboarding link will stop working.')) return;
     const btn = document.getElementById('revokeLinkBtn');
     btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Revoking...';
     try {
         await updateDoc(doc(db, 'quote_requests', currentQuote.id), { paymentCleared: false });
-        closePaymentModal();
-        loadQuotes();
-    } catch(e) {
+        hideModal('manualModal');
+        await loadAll();
+    } catch (e) {
         console.error(e);
-        alert("Failed to revoke approval.");
-        btn.innerHTML = '<i class="fa-solid fa-ban mr-2"></i> Revoke Approval (Cancel Link)';
+        alert('Failed to revoke.');
+        btn.innerHTML = '<i class="fa-solid fa-ban mr-2"></i> Revoke Approval';
     }
 });
 
-document.getElementById('refreshQuotesBtn').addEventListener('click', loadQuotes);
+// ── Modal utilities ───────────────────────────────────────────────────────────
+function showModal(id) {
+    const modal = document.getElementById(id);
+    const inner = document.getElementById(id + 'Inner');
+    modal.classList.remove('hidden');
+    setTimeout(() => { modal.classList.remove('opacity-0'); inner?.classList.remove('scale-95'); }, 10);
+}
 
-// Initialize Data
-loadSubscriptionPlans().then(() => loadQuotes());
+function hideModal(id) {
+    const modal = document.getElementById(id);
+    const inner = document.getElementById(id + 'Inner');
+    modal.classList.add('opacity-0');
+    inner?.classList.add('scale-95');
+    setTimeout(() => modal.classList.add('hidden'), 300);
+    currentQuote    = null;
+    contactEditMode = false;
+}
+
+function showSaveMsg(el, text, success) {
+    el.textContent = text;
+    el.className   = `text-xs font-bold mt-3 ${success ? 'text-emerald-400' : 'text-red-400'}`;
+    el.classList.remove('hidden');
+    if (success) setTimeout(() => el.classList.add('hidden'), 3000);
+}
+
+function calculateRenewalDate(cycleType) {
+    const date = new Date();
+    if      (cycleType === 'Monthly')    date.setMonth(date.getMonth() + 1);
+    else if (cycleType === 'Annual')     date.setFullYear(date.getFullYear() + 1);
+    else if (cycleType === 'Multi-Year') {
+        const years = currentQuote?.contractYears ? parseInt(currentQuote.contractYears) : 2;
+        date.setFullYear(date.getFullYear() + years);
+    } else date.setFullYear(date.getFullYear() + 1);
+    return date.toISOString();
+}
+
+// ── Refresh buttons ───────────────────────────────────────────────────────────
+document.getElementById('refreshPaypalBtn').addEventListener('click', loadAll);
+document.getElementById('refreshManualBtn').addEventListener('click', loadAll);
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+loadAll();

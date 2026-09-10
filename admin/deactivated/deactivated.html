@@ -4,166 +4,261 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Account Restricted — ConnectUs Admin</title>
-    
+
     <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
-    
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800;9..40,900&family=DM+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['DM Sans', 'sans-serif'],
-                        mono: ['DM Mono', 'monospace'],
-                    }
-                }
-            }
-        }
-    </script>
 
     <style>
         body { font-family: 'DM Sans', sans-serif; }
-        
         .loader-spin { animation: spin 1s linear infinite; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
-
-        /* Sharp, institutional progress bar animation */
         .bar-fill { transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
+
+        .status-expired  { background: #fef2f2; border-color: #fca5a5; color: #991b1b; }
+        .status-suspended { background: #fff7ed; border-color: #fdba74; color: #9a3412; }
+        .status-cancelled { background: #f8fafc; border-color: #cbd5e1; color: #475569; }
     </style>
 </head>
-<body class="flex flex-col h-screen overflow-hidden bg-slate-50 text-slate-800">
+<body class="flex flex-col min-h-screen bg-slate-50 text-slate-800">
 
-    <div class="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 flex-shrink-0 z-20 shadow-sm">
+    <!-- Top bar -->
+    <div class="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 flex-shrink-0 shadow-sm sticky top-0 z-20">
         <div class="flex items-center gap-3">
             <img src="../../assets/images/logo.png" alt="ConnectUs" class="h-7 object-contain" onerror="this.style.display='none'">
             <span class="font-black text-slate-400 tracking-wider text-sm uppercase hidden sm:block">Admin Portal</span>
         </div>
-        <div id="topbarBadge" class="text-[10px] font-black px-4 py-1.5 rounded-none tracking-widest uppercase border shadow-sm flex items-center gap-2">
-            </div>
+        <div id="topbarBadge" class="text-[10px] font-black px-4 py-1.5 tracking-widest uppercase border flex items-center gap-2 rounded-sm"></div>
     </div>
 
-    <main class="flex-1 overflow-y-auto p-5 md:p-8">
+    <main class="flex-1 overflow-y-auto">
 
-        <div id="superAdminView" class="hidden max-w-6xl mx-auto space-y-8 pb-10">
+        <!-- ═══════════════════════════════════════════════════════════════
+             SUSPENDED SCHOOL VIEW (super_admin with isVerified: false)
+        ════════════════════════════════════════════════════════════════ -->
+        <div id="suspendedView" class="hidden max-w-5xl mx-auto px-4 md:px-8 py-10 space-y-8 pb-16">
 
-            <div class="bg-amber-50 border-l-4 border-amber-500 border-y-0 border-r-0 p-5 rounded-none flex flex-col sm:flex-row items-start sm:items-center justify-between shadow-sm gap-4">
-                <div class="flex items-center gap-4">
-                    <div class="w-12 h-12 bg-amber-100 text-amber-600 rounded-none flex items-center justify-center text-xl flex-shrink-0">
-                        <i class="fa-solid fa-triangle-exclamation"></i>
+            <!-- Status banner -->
+            <div id="statusBanner" class="border rounded-sm p-5 flex flex-col sm:flex-row items-start sm:items-center gap-5">
+                <div id="statusIcon" class="w-12 h-12 rounded-sm flex items-center justify-center text-xl flex-shrink-0">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <div class="flex-1">
+                    <h4 id="statusTitle" class="font-black text-sm uppercase tracking-wider mb-0.5">Subscription Expired</h4>
+                    <p id="statusDesc" class="text-sm font-medium leading-relaxed opacity-80"></p>
+                </div>
+                <a href="../../pricing.html"
+                   class="flex-shrink-0 bg-blue-600 hover:bg-blue-700 text-white font-black text-sm px-6 py-3 rounded-sm transition flex items-center gap-2 shadow-md">
+                    <i class="fa-brands fa-paypal"></i>
+                    Resubscribe Now
+                </a>
+            </div>
+
+            <!-- School info + data safe notice -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+                <!-- School identity -->
+                <div class="md:col-span-2 bg-white border border-slate-200 shadow-sm p-6 rounded-sm">
+                    <div class="flex items-center gap-2 mb-5 pb-3 border-b border-slate-100">
+                        <i class="fa-solid fa-school text-blue-500"></i>
+                        <h3 class="font-black text-slate-700 text-xs uppercase tracking-wider">Your School</h3>
                     </div>
+                    <div class="grid grid-cols-2 gap-x-6 gap-y-4">
+                        <div>
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Institution</p>
+                            <p id="infoSchoolName" class="font-bold text-slate-800 text-sm">—</p>
+                        </div>
+                        <div>
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">School ID</p>
+                            <p id="infoSchoolId" class="font-mono font-bold text-slate-600 text-sm">—</p>
+                        </div>
+                        <div>
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Contact Email</p>
+                            <p id="infoEmail" class="font-bold text-slate-600 text-sm truncate">—</p>
+                        </div>
+                        <div>
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Last Plan</p>
+                            <span id="infoPlan" class="bg-blue-50 border border-blue-100 text-blue-700 font-black text-[10px] px-2 py-1 rounded-sm uppercase tracking-widest">—</span>
+                        </div>
+                        <div>
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Billing Cycle</p>
+                            <p id="infoBilling" class="font-bold text-slate-600 text-sm">—</p>
+                        </div>
+                        <div>
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Access Ended</p>
+                            <p id="infoRenewal" class="font-bold text-slate-600 text-sm">—</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Data safe notice -->
+                <div class="bg-emerald-50 border border-emerald-200 shadow-sm p-6 rounded-sm flex flex-col justify-between">
                     <div>
-                        <h4 class="font-black text-amber-800 text-sm uppercase tracking-wider">Institution Suspended</h4>
-                        <p class="text-xs text-amber-700 font-semibold mt-0.5">
-                            Account paused due to billing or verification. Your data remains fully preserved on our servers.
+                        <div class="w-10 h-10 bg-emerald-100 border border-emerald-200 text-emerald-600 rounded-sm flex items-center justify-center text-lg mb-4">
+                            <i class="fa-solid fa-shield-check"></i>
+                        </div>
+                        <h4 class="font-black text-emerald-900 text-sm uppercase tracking-wider mb-2">Your Data Is Safe</h4>
+                        <p class="text-emerald-800 font-medium text-sm leading-relaxed">
+                            All your school records — teachers, students, grades, and history — are fully preserved and waiting for you.
+                        </p>
+                    </div>
+                    <div class="mt-6 pt-4 border-t border-emerald-200">
+                        <p class="text-emerald-700 text-xs font-bold">
+                            Resubscribe to restore access instantly. No setup required — pick up right where you left off.
                         </p>
                     </div>
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                
-                <div class="bg-white border border-slate-200 p-6 rounded-none shadow-sm md:col-span-2">
-                    <div class="flex items-center gap-3 mb-5 border-b border-slate-100 pb-3">
-                        <i class="fa-solid fa-school text-indigo-500"></i>
-                        <h3 class="font-black text-slate-700 text-sm uppercase tracking-wider">School Identity</h3>
-                    </div>
-                    <div class="grid grid-cols-2 gap-4" id="saIdentityGrid">
-                        </div>
-                </div>
-
-                <div class="bg-white border border-slate-200 p-6 rounded-none shadow-sm flex items-center gap-4">
-                    <div class="w-12 h-12 bg-blue-50 border border-blue-100 text-blue-500 rounded-none flex items-center justify-center text-xl flex-shrink-0">
+            <!-- Counters -->
+            <div class="grid grid-cols-2 gap-4">
+                <div class="bg-white border border-slate-200 shadow-sm p-5 rounded-sm flex items-center gap-4">
+                    <div class="w-11 h-11 bg-blue-50 border border-blue-100 text-blue-500 rounded-sm flex items-center justify-center text-lg flex-shrink-0">
                         <i class="fa-solid fa-chalkboard-user"></i>
                     </div>
-                    <div class="flex-1 min-w-0">
+                    <div>
                         <h3 id="saTeacherCount" class="text-3xl font-black text-slate-800 tracking-tighter leading-none mb-1">
                             <i class="fa-solid fa-circle-notch loader-spin text-slate-300 text-xl"></i>
                         </h3>
-                        <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Active Teachers</p>
+                        <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Teachers on Record</p>
                     </div>
                 </div>
-
-                <div class="bg-white border border-slate-200 p-6 rounded-none shadow-sm flex items-center gap-4">
-                    <div class="w-12 h-12 bg-emerald-50 border border-emerald-100 text-emerald-500 rounded-none flex items-center justify-center text-xl flex-shrink-0">
+                <div class="bg-white border border-slate-200 shadow-sm p-5 rounded-sm flex items-center gap-4">
+                    <div class="w-11 h-11 bg-emerald-50 border border-emerald-100 text-emerald-500 rounded-sm flex items-center justify-center text-lg flex-shrink-0">
                         <i class="fa-solid fa-user-graduate"></i>
                     </div>
-                    <div class="flex-1 min-w-0">
+                    <div>
                         <h3 id="saStudentCount" class="text-3xl font-black text-slate-800 tracking-tighter leading-none mb-1">
                             <i class="fa-solid fa-circle-notch loader-spin text-slate-300 text-xl"></i>
                         </h3>
-                        <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Active Students</p>
+                        <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Students on Record</p>
                     </div>
                 </div>
             </div>
 
-            <div class="bg-white border border-slate-200 shadow-sm p-6 rounded-none">
-                <div class="flex items-center gap-2 mb-6 border-b border-slate-100 pb-3">
-                    <i class="fa-solid fa-chart-pie text-slate-600"></i>
-                    <h3 class="font-black text-slate-700 text-sm uppercase tracking-wider">Preserved Analytics Dashboard</h3>
+            <!-- Resubscribe CTA + plan cards -->
+            <div class="bg-white border border-slate-200 shadow-sm p-6 rounded-sm">
+                <div class="flex items-center gap-2 mb-2 pb-3 border-b border-slate-100">
+                    <i class="fa-brands fa-paypal text-blue-500"></i>
+                    <h3 class="font-black text-slate-700 text-xs uppercase tracking-wider">Restore Access — Choose a Plan</h3>
+                </div>
+                <p class="text-slate-500 text-sm font-medium mb-6">
+                    Subscribe again to restore immediate access. Your School ID and Admin Code remain the same — no re-setup required.
+                </p>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                    <!-- Starter -->
+                    <div class="border border-slate-200 p-5 rounded-sm hover:border-blue-300 hover:shadow-md transition">
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Starter</p>
+                        <p class="text-2xl font-black text-slate-800 mb-1">$49<span class="text-base font-bold text-slate-400">.99/mo</span></p>
+                        <p class="text-xs font-bold text-slate-400 mb-3">or $499.90/yr</p>
+                        <p class="text-xs font-semibold text-slate-500 leading-relaxed">50 students · 10 teachers · 1 admin</p>
+                    </div>
+                    <!-- Growth -->
+                    <div class="border-2 border-blue-500 p-5 rounded-sm shadow-md relative">
+                        <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[9px] font-black px-3 py-1 uppercase tracking-wider rounded-sm">Most Popular</div>
+                        <p class="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Growth</p>
+                        <p class="text-2xl font-black text-slate-800 mb-1">$99<span class="text-base font-bold text-slate-400">.99/mo</span></p>
+                        <p class="text-xs font-bold text-slate-400 mb-3">or $999.90/yr</p>
+                        <p class="text-xs font-semibold text-slate-500 leading-relaxed">150 students · 20 teachers · 3 admins</p>
+                    </div>
+                    <!-- Enterprise -->
+                    <div class="border border-slate-200 p-5 rounded-sm hover:border-blue-300 hover:shadow-md transition">
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Enterprise</p>
+                        <p class="text-2xl font-black text-slate-800 mb-1">$199<span class="text-base font-bold text-slate-400">.99/mo</span></p>
+                        <p class="text-xs font-bold text-slate-400 mb-3">or $1,999.90/yr</p>
+                        <p class="text-xs font-semibold text-slate-500 leading-relaxed">300 students · 30 teachers · 10 admins</p>
+                    </div>
                 </div>
 
+                <a href="../../pricing.html"
+                   class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 px-6 rounded-sm transition flex items-center justify-center gap-3 shadow-md text-sm uppercase tracking-wider">
+                    <i class="fa-brands fa-paypal text-lg"></i>
+                    Subscribe & Restore Access Instantly
+                </a>
+                <p class="text-center text-xs text-slate-400 font-medium mt-3">
+                    Secure checkout via PayPal · Access restores within seconds of payment · No re-setup required
+                </p>
+            </div>
+
+            <!-- Analytics preserved -->
+            <div class="bg-white border border-slate-200 shadow-sm p-6 rounded-sm">
+                <div class="flex items-center gap-2 mb-5 pb-3 border-b border-slate-100">
+                    <i class="fa-solid fa-chart-pie text-slate-500"></i>
+                    <h3 class="font-black text-slate-700 text-xs uppercase tracking-wider">Preserved Analytics</h3>
+                    <span class="ml-auto text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-sm">Data Safe</span>
+                </div>
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     <div>
                         <h4 class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Class Performance</h4>
                         <div id="saClassBars" class="space-y-4">
-                            <div class="text-center py-6 text-slate-400 font-bold text-xs uppercase tracking-widest"><i class="fa-solid fa-circle-notch loader-spin text-indigo-400 text-xl mb-2 block"></i> Aggregating...</div>
+                            <div class="text-center py-6 text-slate-400 font-bold text-xs uppercase tracking-widest">
+                                <i class="fa-solid fa-circle-notch loader-spin text-slate-300 text-xl mb-2 block"></i>
+                                Loading...
+                            </div>
                         </div>
                     </div>
-
                     <div>
                         <h4 class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Subject Mastery</h4>
                         <div id="saSubjectBars" class="space-y-4">
-                            <div class="text-center py-6 text-slate-400 font-bold text-xs uppercase tracking-widest"><i class="fa-solid fa-circle-notch loader-spin text-indigo-400 text-xl mb-2 block"></i> Aggregating...</div>
+                            <div class="text-center py-6 text-slate-400 font-bold text-xs uppercase tracking-widest">
+                                <i class="fa-solid fa-circle-notch loader-spin text-slate-300 text-xl mb-2 block"></i>
+                                Loading...
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="flex flex-col md:flex-row items-center justify-between gap-6 border-t border-slate-200 pt-6 mt-4">
-                <div class="bg-indigo-50 border border-indigo-100 p-4 rounded-none flex items-center gap-4 w-full md:w-auto shadow-sm">
-                    <i class="fa-solid fa-headset text-indigo-500 text-2xl flex-shrink-0 mx-2"></i>
+            <!-- Footer actions -->
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-200">
+                <div class="bg-blue-50 border border-blue-100 p-4 rounded-sm flex items-center gap-4 w-full sm:w-auto">
+                    <i class="fa-solid fa-headset text-blue-500 text-xl flex-shrink-0 mx-1"></i>
                     <div>
-                        <h4 class="font-black text-indigo-900 text-xs uppercase tracking-wider">Need to restore access?</h4>
-                        <a href="mailto:info@connectusonline.org" class="text-indigo-600 font-bold text-sm hover:underline">Contact ConnectUs Support &rarr;</a>
+                        <h4 class="font-black text-blue-900 text-xs uppercase tracking-wider">Need help resubscribing?</h4>
+                        <a href="mailto:info@connectusonline.org" class="text-blue-600 font-bold text-sm hover:underline">info@connectusonline.org &rarr;</a>
                     </div>
                 </div>
-
-                <button onclick="handleLogout()" class="bg-slate-800 hover:bg-slate-900 text-white font-black py-3.5 px-8 rounded-none transition flex items-center gap-3 shadow-md w-full md:w-auto uppercase tracking-wider text-xs">
+                <button onclick="handleLogout()" class="bg-slate-800 hover:bg-slate-900 text-white font-black py-3.5 px-8 rounded-sm transition flex items-center gap-3 shadow-md w-full sm:w-auto uppercase tracking-wider text-xs">
                     <i class="fa-solid fa-arrow-right-from-bracket"></i> Sign Out Securely
                 </button>
             </div>
 
         </div>
 
-        <div id="subAdminView" class="hidden h-full flex flex-col items-center justify-center py-10">
-            <div class="bg-white border border-slate-200 rounded-none p-10 max-w-lg w-full text-center shadow-md">
-                
-                <div class="w-20 h-20 bg-rose-50 border border-rose-100 text-rose-600 rounded-none flex items-center justify-center text-4xl mx-auto mb-6">
+
+        <!-- ═══════════════════════════════════════════════════════════════
+             ARCHIVED SUB-ADMIN VIEW
+        ════════════════════════════════════════════════════════════════ -->
+        <div id="subAdminView" class="hidden flex-1 flex flex-col items-center justify-center py-16 px-4">
+            <div class="bg-white border border-slate-200 rounded-sm p-10 max-w-lg w-full text-center shadow-md">
+
+                <div class="w-20 h-20 bg-rose-50 border border-rose-100 text-rose-500 rounded-sm flex items-center justify-center text-4xl mx-auto mb-6">
                     <i class="fa-solid fa-ban"></i>
                 </div>
 
                 <h2 class="text-2xl font-black text-slate-800 mb-2 tracking-tighter uppercase">Access Revoked</h2>
                 <div id="subAdminMeta" class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-6">Sub-Administrator</div>
 
-                <div class="w-16 h-1 bg-slate-200 mx-auto mb-6"></div>
+                <div class="w-12 h-0.5 bg-slate-200 mx-auto mb-6"></div>
 
                 <p class="text-slate-600 font-medium text-sm leading-relaxed mb-8">
-                    Your administrative privileges for this school have been removed by the principal or super administrator. 
+                    Your administrative privileges for this school have been removed by the principal or super administrator.
+                    If you believe this is an error, please contact your school's principal directly.
                 </p>
 
-                <div class="bg-slate-50 border border-slate-200 p-4 text-xs font-bold text-slate-500 mb-8 rounded-none text-left">
-                    <i class="fa-solid fa-circle-info text-slate-400 mr-2"></i> If you believe this is an error, please contact your school's principal directly.
+                <div class="bg-slate-50 border border-slate-200 p-4 text-xs font-semibold text-slate-500 mb-8 rounded-sm text-left">
+                    <i class="fa-solid fa-circle-info text-slate-400 mr-2"></i>
+                    Your access to the school portal has been deactivated. Your account history is preserved on our system.
                 </div>
 
-                <button onclick="handleLogout()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-black py-4 px-6 rounded-none transition flex items-center justify-center gap-3 shadow-md uppercase tracking-wider text-xs">
+                <button onclick="handleLogout()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-black py-4 px-6 rounded-sm transition flex items-center justify-center gap-3 shadow-md uppercase tracking-wider text-xs">
                     <i class="fa-solid fa-power-off"></i> Clear Session & Sign Out
                 </button>
-
             </div>
         </div>
 
@@ -172,7 +267,7 @@
 <script type="module">
 import { db } from '../../assets/js/firebase-init.js';
 import {
-    collection, query, where, getDocs, getDoc, doc
+    collection, query, where, getDocs
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getSessionData, logout } from '../../assets/js/auth.js';
 import { calculateWeightedAverage } from '../../assets/js/utils.js';
@@ -184,26 +279,9 @@ function escHtml(str) {
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function infoItem(label, value, isPlan = false) {
-    if (isPlan) {
-        return `
-        <div class="mb-2">
-            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">${label}</p>
-            <span class="bg-amber-100 border border-amber-200 text-amber-800 font-black text-[10px] px-2 py-1 rounded-none uppercase tracking-widest">${value || '—'}</span>
-        </div>`;
-    }
-    return `
-    <div class="mb-2">
-        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">${label}</p>
-        <p class="font-bold text-slate-800 text-sm truncate">${value || '—'}</p>
-    </div>`;
-}
-
 function barHtml(label, avg, subLabel = '') {
-    // Sharp institutional colors
     const colorClass = avg >= 80 ? 'bg-emerald-500' : avg >= 70 ? 'bg-blue-500' : avg >= 65 ? 'bg-amber-500' : 'bg-rose-500';
-    const textClass = avg >= 80 ? 'text-emerald-700' : avg >= 70 ? 'text-blue-700' : avg >= 65 ? 'text-amber-700' : 'text-rose-700';
-
+    const textClass  = avg >= 80 ? 'text-emerald-700' : avg >= 70 ? 'text-blue-700' : avg >= 65 ? 'text-amber-700' : 'text-rose-700';
     return `
     <div class="mb-3">
         <div class="flex justify-between items-end mb-1.5">
@@ -221,19 +299,63 @@ function barHtml(label, avg, subLabel = '') {
 
 // ── Route based on session ────────────────────────────────────────────────
 const session = getSessionData('admin');
-const badge = document.getElementById('topbarBadge');
+const badge   = document.getElementById('topbarBadge');
+
+if (!session) {
+    window.location.replace('../login.html');
+}
 
 if (session && session.isSuperAdmin) {
-    // Super Admin View
+    // ── Suspended school view ─────────────────────────────────────────────
     badge.className += ' bg-amber-50 text-amber-700 border-amber-200';
-    badge.innerHTML = '<i class="fa-solid fa-lock"></i> Account Suspended';
-    document.getElementById('superAdminView').classList.remove('hidden');
-    loadSuperAdminView(session);
+    badge.innerHTML  = '<i class="fa-solid fa-lock mr-1"></i> Account Suspended';
+    document.getElementById('suspendedView').classList.remove('hidden');
+
+    // Populate school info
+    document.getElementById('infoSchoolName').textContent = session.schoolName || '—';
+    document.getElementById('infoSchoolId').textContent   = session.schoolId   || '—';
+    document.getElementById('infoEmail').textContent      = session.contactEmail || '—';
+    document.getElementById('infoPlan').textContent       = session.planName   || 'Unknown';
+    document.getElementById('infoBilling').textContent    = session.billingCycle || '—';
+    document.getElementById('infoRenewal').textContent    = session.nextRenewalDate
+        ? new Date(session.nextRenewalDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+        : '—';
+
+    // Status banner styling
+    const status = session.subscriptionStatus || 'Expired';
+    const banner = document.getElementById('statusBanner');
+    const icon   = document.getElementById('statusIcon');
+    const title  = document.getElementById('statusTitle');
+    const desc   = document.getElementById('statusDesc');
+
+    if (status === 'Suspended') {
+        banner.className += ' status-suspended';
+        icon.className   += ' bg-amber-100 text-amber-600';
+        title.textContent = 'Subscription Suspended';
+        desc.textContent  = session.statusReason
+            ? `Reason: ${session.statusReason}. To restore access, update your payment method in PayPal or contact support.`
+            : 'Your subscription has been suspended. Update your payment method in PayPal or resubscribe below to restore access.';
+    } else if (status === 'Cancelled') {
+        banner.className += ' status-cancelled';
+        icon.className   += ' bg-slate-100 text-slate-500';
+        icon.querySelector('i').className = 'fa-solid fa-circle-xmark';
+        title.textContent = 'Subscription Cancelled';
+        desc.textContent  = 'Your subscription was cancelled. You can resubscribe at any time — your data and credentials are preserved.';
+    } else {
+        // Expired (default)
+        banner.className += ' status-expired';
+        icon.className   += ' bg-red-100 text-red-600';
+        title.textContent = 'Subscription Expired';
+        desc.textContent  = 'Your subscription has expired and portal access has been paused. Resubscribe to restore access instantly — all your data is safe.';
+    }
+
+    // Load counts and analytics
+    loadSchoolData(session);
 
 } else {
-    // Sub-Admin View
+    // ── Archived sub-admin view ───────────────────────────────────────────
     badge.className += ' bg-rose-50 text-rose-700 border-rose-200';
-    badge.innerHTML = '<i class="fa-solid fa-ban"></i> Access Revoked';
+    badge.innerHTML  = '<i class="fa-solid fa-ban mr-1"></i> Access Revoked';
     document.getElementById('subAdminView').classList.remove('hidden');
 
     if (session) {
@@ -242,15 +364,7 @@ if (session && session.isSuperAdmin) {
     }
 }
 
-async function loadSuperAdminView(session) {
-    // Identity Grid
-    document.getElementById('saIdentityGrid').innerHTML = [
-        infoItem('Institution Name', escHtml(session.schoolName)),
-        infoItem('ConnectUs ID',     `<span class="font-mono text-slate-500">${escHtml(session.schoolId)}</span>`),
-        infoItem('Admin Email',      escHtml(session.contactEmail)),
-        infoItem('Subscription',     escHtml(session.planName), true),
-    ].join('');
-
+async function loadSchoolData(session) {
     try {
         const [tSnap, sSnap] = await Promise.all([
             getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId))),
@@ -262,14 +376,13 @@ async function loadSuperAdminView(session) {
 
         const teachersList = tSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         const studentsList = sSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-
         const teacherRubrics = {};
         teachersList.forEach(t => { teacherRubrics[t.id] = t.gradeTypes || t.customGradeTypes || []; });
 
         const activeSemId = session.activeSemesterId;
         if (!activeSemId || !studentsList.length) {
-            const emptyMsg = '<div class="text-left py-4 text-slate-400 font-bold text-xs uppercase tracking-widest italic">No active grading period data.</div>';
-            document.getElementById('saClassBars').innerHTML = emptyMsg;
+            const emptyMsg = '<div class="py-4 text-slate-400 font-bold text-xs uppercase tracking-widest italic">No grading period data.</div>';
+            document.getElementById('saClassBars').innerHTML  = emptyMsg;
             document.getElementById('saSubjectBars').innerHTML = emptyMsg;
             return;
         }
@@ -281,10 +394,9 @@ async function loadSuperAdminView(session) {
             try {
                 const gSnap = await getDocs(query(
                     collection(db, 'students', student.id, 'grades'),
-                    where('schoolId', '==', session.schoolId),
+                    where('schoolId',   '==', session.schoolId),
                     where('semesterId', '==', activeSemId)
                 ));
-
                 const grades = gSnap.docs.map(d => d.data());
                 if (!grades.length) return;
 
@@ -296,16 +408,14 @@ async function loadSuperAdminView(session) {
                 });
 
                 let sumSubjAvgs = 0, subjCount = 0;
-
                 for (const sub in bySub) {
                     const rubric = teacherRubrics[student.teacherId] || [];
-                    const avg = calculateWeightedAverage(bySub[sub], rubric);
+                    const avg    = calculateWeightedAverage(bySub[sub], rubric);
                     if (avg !== null) {
                         sumSubjAvgs += avg;
                         subjCount++;
-
                         if (!subjectTotals[sub]) subjectTotals[sub] = { sum: 0, count: 0 };
-                        subjectTotals[sub].sum += avg;
+                        subjectTotals[sub].sum   += avg;
                         subjectTotals[sub].count += 1;
                     }
                 }
@@ -314,32 +424,31 @@ async function loadSuperAdminView(session) {
                     const studentAvg = Math.round(sumSubjAvgs / subjCount);
                     const cls = student.className || 'Unassigned';
                     if (!classAverages[cls]) classAverages[cls] = { sum: 0, count: 0 };
-                    classAverages[cls].sum += studentAvg;
+                    classAverages[cls].sum   += studentAvg;
                     classAverages[cls].count += 1;
                 }
             } catch (_) {}
         }));
 
-        // Render Bars
-        const classEl = document.getElementById('saClassBars');
+        // Render class bars
+        const classEl   = document.getElementById('saClassBars');
         const classData = Object.entries(classAverages)
             .map(([cls, d]) => ({ name: cls, avg: Math.round(d.sum / d.count), count: d.count }))
             .sort((a, b) => b.avg - a.avg);
-
         classEl.innerHTML = classData.length
             ? classData.map(c => barHtml(c.name, c.avg, `${c.count} EVALUATED`)).join('')
-            : '<div class="text-left py-4 text-slate-400 font-bold text-xs uppercase tracking-widest italic">No grade data recorded yet.</div>';
+            : '<div class="py-4 text-slate-400 font-bold text-xs uppercase tracking-widest italic">No grade data recorded.</div>';
 
-        const subjEl = document.getElementById('saSubjectBars');
+        // Render subject bars
+        const subjEl   = document.getElementById('saSubjectBars');
         const subjData = Object.entries(subjectTotals)
             .map(([subj, d]) => ({ name: subj, avg: Math.round(d.sum / d.count) }))
             .sort((a, b) => b.avg - a.avg);
-
         subjEl.innerHTML = subjData.length
             ? subjData.map(s => barHtml(s.name, s.avg)).join('')
-            : '<div class="text-left py-4 text-slate-400 font-bold text-xs uppercase tracking-widest italic">No grade data recorded yet.</div>';
+            : '<div class="py-4 text-slate-400 font-bold text-xs uppercase tracking-widest italic">No grade data recorded.</div>';
 
-        // Animate progress bars
+        // Animate bars
         setTimeout(() => {
             document.querySelectorAll('.bar-fill').forEach(bar => {
                 bar.style.width = bar.getAttribute('data-target');
@@ -349,8 +458,8 @@ async function loadSuperAdminView(session) {
     } catch (e) {
         document.getElementById('saTeacherCount').textContent = '—';
         document.getElementById('saStudentCount').textContent = '—';
-        const errMsg = '<div class="text-left py-4 text-rose-500 font-bold text-xs uppercase tracking-widest">Failed to load analytics.</div>';
-        document.getElementById('saClassBars').innerHTML = errMsg;
+        const errMsg = '<div class="py-4 text-rose-400 font-bold text-xs uppercase tracking-widest">Failed to load analytics.</div>';
+        document.getElementById('saClassBars').innerHTML   = errMsg;
         document.getElementById('saSubjectBars').innerHTML = errMsg;
     }
 }

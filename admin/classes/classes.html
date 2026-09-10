@@ -3,22 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Classes Overview | ConnectUs Admin</title>
-    
+    <title>Classes | ConnectUs Admin</title>
+
     <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
-    
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="../../assets/css/global.css">
     <link rel="stylesheet" href="../../assets/css/admin.css">
-    
+
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 
     <style>
+        /* ── Side panel tabs ───────────────────────────────────── */
         .panel-tab {
-            padding: 14px 20px;
+            padding: 16px 22px;
             font-size: 11px;
             font-weight: 700;
             text-transform: uppercase;
@@ -27,12 +28,132 @@
             border-bottom: 3px solid transparent;
             cursor: pointer;
             transition: all 0.15s;
+            white-space: nowrap;
         }
         .panel-tab:hover { color: #4f46e5; }
         .panel-tab.active { color: #4f46e5; border-bottom-color: #4f46e5; background: #f8fafb; }
-        
+
         .subject-body { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; }
         .subject-body.open { max-height: 2000px; }
+
+        /* ── Class manager cards ───────────────────────────────── */
+        .class-card {
+            background: #fff;
+            border: 1px solid #e3e9f2;
+            border-radius: 16px;
+            padding: 18px 18px 16px;
+            transition: all 0.18s ease;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        .class-card:hover {
+            border-color: #c7d2fe;
+            box-shadow: 0 10px 30px -12px rgba(79, 70, 229, 0.35);
+            transform: translateY(-2px);
+        }
+        .class-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #6366f1, #3b82f6, #06b6d4);
+            opacity: 0;
+            transition: opacity 0.18s;
+        }
+        .class-card:hover::before { opacity: 1; }
+
+        /* ── Tooltip system (educational hints) ────────────────── */
+        .ttip { position: relative; display: inline-flex; }
+        .ttip .ttip-box {
+            visibility: hidden;
+            opacity: 0;
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%) translateY(4px);
+            background: #0d1f35;
+            color: #fff;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.45;
+            padding: 8px 11px;
+            border-radius: 8px;
+            width: max-content;
+            max-width: 230px;
+            white-space: normal;
+            text-align: center;
+            z-index: 60;
+            box-shadow: 0 8px 24px -6px rgba(13, 31, 53, 0.5);
+            transition: all 0.16s ease;
+            pointer-events: none;
+        }
+        .ttip .ttip-box::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: #0d1f35;
+        }
+        .ttip:hover .ttip-box {
+            visibility: visible;
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+        .ttip-box.wide { max-width: 280px; }
+
+        /* ── Mini action buttons on cards ──────────────────────── */
+        .card-act {
+            height: 30px; width: 30px;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 8px;
+            font-size: 12px;
+            transition: all 0.14s;
+            border: 1px solid transparent;
+        }
+        .card-act-edit { color: #2563eb; background: #eff4ff; border-color: #d9e4ff; }
+        .card-act-edit:hover { background: #2563eb; color: #fff; }
+        .card-act-del { color: #dc2626; background: #fef2f2; border-color: #fde0e0; }
+        .card-act-del:hover { background: #dc2626; color: #fff; }
+        .card-act-del:disabled,
+        .card-act-del.locked {
+            color: #c0c8d4; background: #f4f6f9; border-color: #e8edf2;
+            cursor: not-allowed;
+        }
+        .card-act-del.locked:hover { background: #f4f6f9; color: #c0c8d4; }
+
+        /* ── Count chips ───────────────────────────────────────── */
+        .count-chip {
+            display: inline-flex; align-items: center; gap: 5px;
+            font-size: 11.5px; font-weight: 700;
+            padding: 4px 10px; border-radius: 8px;
+        }
+        .chip-teacher { background: #eef4ff; color: #2563eb; border: 1px solid #d6e3ff; }
+        .chip-student { background: #ecfdf5; color: #059669; border: 1px solid #c8f0dd; }
+        .chip-empty   { background: #f4f6f9; color: #94a3b8; border: 1px solid #e8edf2; }
+
+        /* ── Add-class input ───────────────────────────────────── */
+        .add-input:focus { border-color: #4f46e5 !important; box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
+
+        /* ── Stat tiles in panel header ────────────────────────── */
+        .stat-tile {
+            background: #fff; border: 1px solid #e3e9f2;
+            border-radius: 14px; padding: 16px 18px;
+        }
+
+        /* ── Section heading helper ────────────────────────────── */
+        .sec-label {
+            font-size: 10px; font-weight: 800; letter-spacing: 0.12em;
+            text-transform: uppercase; color: #94a3b8;
+        }
+
+        @keyframes cardIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .card-anim { animation: cardIn 0.28s ease backwards; }
     </style>
 </head>
 <body class="flex w-full h-screen overflow-hidden">
@@ -40,22 +161,88 @@
     <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
 
     <main class="flex-1 flex flex-col h-full overflow-hidden">
-        
+
         <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
 
-        <div class="flex-1 overflow-y-auto p-7">
-            
+        <div class="flex-1 overflow-y-auto p-7 space-y-7">
+
+            <!-- ════════════════════════════════════════════════════
+                 ZONE 1 — CLASS MANAGER
+            ═════════════════════════════════════════════════════ -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+
+                <!-- Header -->
+                <div class="p-6 border-b border-slate-100 flex flex-wrap gap-4 justify-between items-center bg-gradient-to-r from-white to-indigo-50/40">
+                    <div class="flex items-center gap-3">
+                        <div class="w-11 h-11 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-layer-group"></i></div>
+                        <div>
+                            <h3 class="font-black text-xl text-slate-800 flex items-center gap-2">
+                                Class Manager
+                                <span class="ttip">
+                                    <i class="fa-solid fa-circle-info text-slate-300 text-sm hover:text-indigo-400 cursor-help"></i>
+                                    <span class="ttip-box wide">These are the classes your school uses (e.g. Grade 1, Form 4, Year 2). Create them here, then assign teachers and enroll students into them. You can assign more than one teacher to the same class.</span>
+                                </span>
+                            </h3>
+                            <p class="text-sm text-slate-400 font-semibold">Create and manage the classes for your school</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="count-chip chip-teacher"><i class="fa-solid fa-layer-group text-[10px]"></i> <span id="totalClassCount">0</span> classes</span>
+                    </div>
+                </div>
+
+                <!-- Add class bar -->
+                <div class="px-6 py-5 border-b border-slate-100 bg-slate-50/60">
+                    <label class="sec-label flex items-center gap-1.5 mb-2">
+                        Add a New Class
+                        <span class="ttip">
+                            <i class="fa-solid fa-circle-question text-slate-300 cursor-help"></i>
+                            <span class="ttip-box">Type any name your school uses for a class or grade level. Works for primary, secondary, and junior college alike.</span>
+                        </span>
+                    </label>
+                    <div class="flex flex-wrap items-center gap-3 max-w-2xl">
+                        <input id="newClassInput" type="text" maxlength="40" autocomplete="off"
+                            placeholder="e.g. Grade 6, Form 4, Year 2 — Semester 1"
+                            class="add-input flex-1 min-w-[240px] px-4 py-3 text-[13px] font-semibold text-slate-800 bg-white border border-slate-200 rounded-xl outline-none transition">
+                        <button id="addClassBtn"
+                            class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-3 rounded-xl text-[13px] transition shadow-sm shadow-indigo-200 whitespace-nowrap">
+                            <i class="fa-solid fa-plus"></i> Add Class
+                        </button>
+                    </div>
+                    <p id="addClassMsg" class="text-[12px] font-bold mt-2 hidden"></p>
+                </div>
+
+                <!-- Class cards grid -->
+                <div class="p-6">
+                    <div id="classManagerLoader" class="py-14 text-center text-slate-400 font-semibold">
+                        <i class="fa-solid fa-spinner fa-spin text-indigo-400 text-2xl mb-3 block"></i>Loading your classes...
+                    </div>
+                    <div id="classCardsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 hidden"></div>
+                    <div id="classEmptyState" class="hidden py-16 text-center">
+                        <div class="w-16 h-16 bg-indigo-50 text-indigo-300 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4">
+                            <i class="fa-solid fa-layer-group"></i>
+                        </div>
+                        <p class="font-black text-slate-700 text-lg mb-1">No classes yet</p>
+                        <p class="text-slate-400 font-semibold text-sm max-w-sm mx-auto">Add your first class above to get started. Once a class exists, you can assign teachers and enroll students into it.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ════════════════════════════════════════════════════
+                 ZONE 2 — CLASS PERFORMANCE TABLE  (existing)
+            ═════════════════════════════════════════════════════ -->
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div class="p-6 border-b border-slate-100 flex flex-wrap gap-4 justify-between items-center bg-gradient-to-r from-white to-indigo-50/40">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-school"></i></div>
+                        <div class="w-11 h-11 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-chart-line"></i></div>
                         <div>
-                            <h3 class="font-black text-xl text-slate-800">Classes</h3>
-                            <p class="text-sm text-slate-400 font-semibold">Performance overview for each class</p>
+                            <h3 class="font-black text-xl text-slate-800">Class Performance</h3>
+                            <p class="text-sm text-slate-400 font-semibold">Live academic overview for each class</p>
                         </div>
                     </div>
                     <div class="flex items-center gap-3">
                         <div id="classesLoadingMsg" class="text-sm text-slate-400 font-semibold hidden"><i class="fa-solid fa-spinner fa-spin mr-2 text-indigo-400"></i>Loading data...</div>
+                        <select id="globalPeriodSelect" class="p-2.5 text-[12px] bg-white rounded-lg border border-[#dce3ed] outline-none text-[#374f6b] font-semibold"></select>
                     </div>
                 </div>
 
@@ -68,13 +255,13 @@
                         <option value="">All Teachers</option>
                     </select>
                 </div>
-                
+
                 <div class="overflow-x-auto">
                     <table class="w-full text-left text-sm">
                         <thead class="bg-slate-800 text-slate-200 text-xs uppercase tracking-wider">
                             <tr>
                                 <th class="px-6 py-4 font-black">Class</th>
-                                <th class="px-6 py-4 font-black">Teacher</th>
+                                <th class="px-6 py-4 font-black">Teacher(s)</th>
                                 <th class="px-6 py-4 font-black text-center">Students</th>
                                 <th class="px-6 py-4 font-black text-center">Subjects</th>
                                 <th class="px-6 py-4 font-black text-center">Class Avg</th>
@@ -94,31 +281,94 @@
         </div>
     </main>
 
+    <!-- ════════════════════════════════════════════════════════════
+         WIDER, REDESIGNED CLASS SIDE PANEL
+    ═════════════════════════════════════════════════════════════ -->
     <div id="classPanel" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-end hidden opacity-0 transition-opacity">
-        <div id="classPanelInner" class="side-panel bg-[#f0f4ff] w-full max-w-5xl h-full shadow-2xl flex flex-col translate-x-full transition-transform">
-            <div class="h-1 bg-gradient-to-r from-indigo-500 via-blue-400 to-cyan-500 flex-shrink-0"></div>
-            
-            <div class="px-7 py-5 border-b border-slate-200 bg-white flex justify-between items-center flex-shrink-0">
-                <div>
-                    <h3 id="cpPanelTitle" class="font-black text-2xl text-slate-800">Class</h3>
-                    <p id="cpPanelMeta" class="text-sm text-indigo-600 font-bold mt-0.5">—</p>
+        <div id="classPanelInner" class="side-panel bg-[#f4f6fb] w-full max-w-6xl h-full shadow-2xl flex flex-col translate-x-full transition-transform">
+            <div class="h-1.5 bg-gradient-to-r from-indigo-500 via-blue-400 to-cyan-500 flex-shrink-0"></div>
+
+            <!-- Panel header -->
+            <div class="px-8 py-6 border-b border-slate-200 bg-white flex justify-between items-start flex-shrink-0">
+                <div class="flex items-center gap-4">
+                    <div id="cpPanelAvatar" class="h-14 w-14 bg-gradient-to-br from-indigo-500 to-blue-600 text-white rounded-2xl flex items-center justify-center font-black text-2xl shadow-md shadow-indigo-200 flex-shrink-0">C</div>
+                    <div>
+                        <h3 id="cpPanelTitle" class="font-black text-2xl text-slate-800 leading-tight">Class</h3>
+                        <p id="cpPanelMeta" class="text-sm text-indigo-600 font-bold mt-0.5">—</p>
+                    </div>
                 </div>
                 <div class="flex items-center gap-3">
-                    <button onclick="window.executeClassPrint()" class="flex items-center gap-2 bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 font-bold px-4 py-2 rounded-lg text-[12px] border border-indigo-200 transition">
-                        <i class="fa-solid fa-print"></i> Print Class Report
+                    <button onclick="window.executeClassPrint()" class="flex items-center gap-2 bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 font-bold px-4 py-2.5 rounded-xl text-[12px] border border-indigo-200 transition">
+                        <i class="fa-solid fa-print"></i> Print Report
                     </button>
-                    <button onclick="window.closeClassPanel()" class="text-slate-400 hover:text-red-500 h-9 w-9 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+                    <button onclick="window.closeClassPanel()" class="text-slate-400 hover:text-red-500 h-10 w-10 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-2xl"></i></button>
                 </div>
             </div>
 
-            <div class="flex bg-white border-b border-slate-200 px-7 flex-shrink-0">
+            <!-- Panel tabs -->
+            <div class="flex bg-white border-b border-slate-200 px-8 flex-shrink-0 overflow-x-auto">
                 <div class="panel-tab active" data-tab="overview" onclick="window.switchClassTab('overview')">Overview</div>
+                <div class="panel-tab" data-tab="teachers" onclick="window.switchClassTab('teachers')">Teachers</div>
                 <div class="panel-tab" data-tab="subjects" onclick="window.switchClassTab('subjects')">Subjects</div>
                 <div class="panel-tab" data-tab="students" onclick="window.switchClassTab('students')">Student Roster</div>
             </div>
 
-            <div class="flex-1 overflow-y-auto p-7 space-y-6" id="classPanelBody">
+            <div class="flex-1 overflow-y-auto p-8 space-y-6" id="classPanelBody"></div>
+        </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════
+         RENAME CLASS MODAL
+    ═════════════════════════════════════════════════════════════ -->
+    <div id="renameModal" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] hidden opacity-0 transition-opacity flex items-center justify-center p-4">
+        <div id="renameModalInner" class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden scale-95 transition-transform">
+            <div class="h-1.5 bg-gradient-to-r from-indigo-500 to-blue-500"></div>
+            <div class="p-6">
+                <div class="flex items-start gap-3 mb-5">
+                    <div class="w-11 h-11 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center text-lg flex-shrink-0"><i class="fa-solid fa-pen-to-square"></i></div>
+                    <div>
+                        <h3 class="font-black text-lg text-slate-800">Rename Class</h3>
+                        <p class="text-[12.5px] text-slate-400 font-semibold leading-snug mt-0.5">The new name updates everywhere automatically — for every teacher assigned and every student enrolled.</p>
+                    </div>
                 </div>
+
+                <label class="sec-label block mb-1.5">New Class Name</label>
+                <input id="renameInput" type="text" maxlength="40"
+                    class="add-input w-full px-4 py-3 text-[13px] font-semibold text-slate-800 bg-slate-50 border border-slate-200 rounded-xl outline-none transition mb-2">
+
+                <div id="renameImpact" class="hidden bg-amber-50 border border-amber-200 rounded-xl p-3 text-[12px] font-semibold text-amber-800 leading-relaxed mb-2"></div>
+                <p id="renameMsg" class="text-[12px] font-bold hidden mb-2"></p>
+
+                <div class="flex gap-3 mt-5">
+                    <button onclick="window.closeRenameModal()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3 rounded-xl text-[13px] transition">Cancel</button>
+                    <button id="confirmRenameBtn" onclick="window.confirmRename()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-[13px] transition shadow-sm shadow-indigo-200">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════
+         DELETE CLASS MODAL
+    ═════════════════════════════════════════════════════════════ -->
+    <div id="deleteModal" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] hidden opacity-0 transition-opacity flex items-center justify-center p-4">
+        <div id="deleteModalInner" class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden scale-95 transition-transform">
+            <div class="h-1.5 bg-gradient-to-r from-red-500 to-rose-500"></div>
+            <div class="p-6">
+                <div class="flex items-start gap-3 mb-5">
+                    <div class="w-11 h-11 bg-red-100 text-red-600 rounded-xl flex items-center justify-center text-lg flex-shrink-0"><i class="fa-solid fa-trash-can"></i></div>
+                    <div>
+                        <h3 class="font-black text-lg text-slate-800">Delete Class</h3>
+                        <p class="text-[12.5px] text-slate-400 font-semibold leading-snug mt-0.5">This permanently removes the class from your school's list.</p>
+                    </div>
+                </div>
+
+                <div id="deleteBody"></div>
+
+                <div class="flex gap-3 mt-5">
+                    <button onclick="window.closeDeleteModal()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3 rounded-xl text-[13px] transition">Cancel</button>
+                    <button id="confirmDeleteBtn" onclick="window.confirmDelete()" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl text-[13px] transition shadow-sm shadow-red-200">Delete Class</button>
+                </div>
+            </div>
         </div>
     </div>
 
