@@ -1,0 +1,10 @@
+{
+  "name": "connectus-rules-tests",
+  "private": true,
+  "scripts": {
+    "test": "node test-rules.js"
+  },
+  "dependencies": {
+    "@firebase/rules-unit-testing": "^3.0.0"
+  }
+}
