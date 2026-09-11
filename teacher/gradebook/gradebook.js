@@ -2,7 +2,7 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, query, where, getDocs, getDoc, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
-import { openOverlay, closeOverlay, showMsg, gradeColorClass, gradeFill, letterGrade, downloadCSV, calculateWeightedAverage } from '../../assets/js/utils.js';
+import { openOverlay, closeOverlay, showMsg, gradeColorClass, gradeFill, letterGrade, downloadCSV, calculateWeightedAverage, resolveGradeWeights, saveTeacherWeightingEverywhere } from '../../assets/js/utils.js';
 
 // ── 1. AUTH & LAYOUT ─────────────────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
@@ -34,10 +34,27 @@ const DEFAULT_GRADE_TYPES = [
     { name: 'Homework', weight: 10 }
 ];
 
-function getGradeTypes() { 
-    const types = session.teacherData.gradeTypes || session.teacherData.customGradeTypes;
+// PHASE 0: resolvedWeighting is populated once, in init(), from
+// teaching_assignments (falling back to the legacy teacher-doc fields
+// internally) via resolveGradeWeights() in utils.js. getGradeTypes() still
+// falls back to the legacy fields directly below it, so if that initial
+// resolution ever fails for any reason, behavior is identical to before
+// this existed — nobody's numbers change as a side effect of this fix.
+let resolvedWeighting = null;
+
+async function loadResolvedWeighting() {
+    try {
+        resolvedWeighting = await resolveGradeWeights(session.schoolId, session.teacherId, { legacyTeacherData: session.teacherData });
+    } catch (e) {
+        console.error('[Gradebook] loadResolvedWeighting:', e);
+        resolvedWeighting = null;
+    }
+}
+
+function getGradeTypes() {
+    const types = resolvedWeighting || session.teacherData.gradeTypes || session.teacherData.customGradeTypes;
     if (!types || types.length === 0) return DEFAULT_GRADE_TYPES;
-    
+
     // Convert legacy flat strings into editable objects with 0 weight
     return types.map(t => typeof t === 'string' ? { name: t, weight: 0 } : t);
 }
@@ -110,7 +127,9 @@ async function init() {
     const classes = session.teacherData.classes || [session.teacherData.className || ''];
     document.getElementById('displayTeacherClasses').innerHTML = classes.filter(Boolean).map(c => `<span class="class-pill">${c}</span>`).join('');
 
-    sfType = buildSearchableFilter('type', getGradeTypes().filter(t => t).map(t => { 
+    await loadResolvedWeighting();
+
+    sfType = buildSearchableFilter('type', getGradeTypes().filter(t => t).map(t => {
         const name = t.name || (typeof t === 'string' ? t : 'Uncategorized'); 
         return { id: name, label: name }; 
     }), (val) => { sfTypeValue = val; applyGradebookFilters(); });
@@ -845,13 +864,11 @@ document.getElementById('saveGwBtn')?.addEventListener('click', async () => {
     btn.disabled = true;
 
     try {
-        await updateDoc(doc(db, 'teachers', session.teacherId), { 
-            gradeTypes: modalGradeTypes,
-            customGradeTypes: modalGradeTypes
-        });
+        await saveTeacherWeightingEverywhere(session.schoolId, session.teacherId, modalGradeTypes);
 
+        resolvedWeighting = modalGradeTypes;
         session.teacherData.gradeTypes = modalGradeTypes;
-        session.teacherData.customGradeTypes = modalGradeTypes; 
+        session.teacherData.customGradeTypes = modalGradeTypes;
         setSessionData('teacher', session);
         
         if (sfType) {

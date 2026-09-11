@@ -6,7 +6,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
-import { openOverlay, closeOverlay, letterGrade, gradeColorClass, calculateWeightedAverage } from '../../assets/js/utils.js';
+import { openOverlay, closeOverlay, letterGrade, gradeColorClass, calculateWeightedAverage, loadSchoolWeightingIndex, getWeightingFromIndex, loadSchoolSubjectsIndex, mergeTeacherSubjectsFromIndex } from '../../assets/js/utils.js';
 
 const session = requireAuth('admin', '../login.html');
 injectAdminLayout('classes', 'Classes', 'Create classes and view performance', false, true);
@@ -41,6 +41,13 @@ let teachersByClass     = {};       // { "Grade 6": [teacherObj, ...] }
 // Raw caches so the manager + performance share one fetch
 let rawTeachers = [];
 let rawStudents = [];
+
+// PHASE 0: batch weighting index, fetched once in fetchAndProcessClassData()
+// alongside rawTeachers, so this multi-teacher dashboard never issues one
+// query per teacher (see utils.js). Subjects are merged directly onto each
+// rawTeachers entry as t.mergedSubjects instead of a separate index, since
+// every classData.teachers[] entry is the same object reference.
+let weightingIndex = new Map();
 
 // Rename / delete targets
 let renameTargetId   = null;
@@ -77,7 +84,7 @@ function getTeacherClasses(t) {
 
 function getTeacherGradeTypes(teacherObj) {
     if (!teacherObj) return DEFAULT_GRADE_TYPES;
-    return teacherObj.gradeTypes || teacherObj.customGradeTypes || DEFAULT_GRADE_TYPES;
+    return getWeightingFromIndex(weightingIndex, teacherObj.id, teacherObj) || DEFAULT_GRADE_TYPES;
 }
 
 function showAddMsg(text, isError = true) {
@@ -217,10 +224,11 @@ async function handleAddClass() {
         await setDoc(doc(db, 'schools', session.schoolId, 'classes', id), {
             name,
             order,
+            teacherIds: [],   // PASS B: real teacher-doc-ID roster for this class, kept in sync by admin/teachers.js
             createdAt: new Date().toISOString()
         });
 
-        managedClasses.push({ id, name, order, createdAt: new Date().toISOString() });
+        managedClasses.push({ id, name, order, teacherIds: [], createdAt: new Date().toISOString() });
         managedClasses.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.name || '').localeCompare(b.name || ''));
 
         newClassInput.value = '';
@@ -421,15 +429,24 @@ async function fetchAndProcessClassData() {
     const semId = globalPeriodSelect.value || session.activeSemesterId || '';
 
     try {
-        const [tSnap, sSnap] = await Promise.all([
+        const [tSnap, sSnap, weightingIdx, subjectsIdx] = await Promise.all([
             getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId))),
             getDocs(query(collection(db, 'students'),
                 where('currentSchoolId', '==', session.schoolId),
-                where('enrollmentStatus', '==', 'Active')))
+                where('enrollmentStatus', '==', 'Active'))),
+            loadSchoolWeightingIndex(session.schoolId),
+            loadSchoolSubjectsIndex(session.schoolId)
         ]);
 
         rawTeachers = tSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         rawStudents = sSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // ── PHASE 0: one batch fetch each for weighting + subjects, then a
+        // pure in-memory merge per teacher — no per-teacher queries.
+        weightingIndex = weightingIdx;
+        rawTeachers.forEach(t => {
+            t.mergedSubjects = mergeTeacherSubjectsFromIndex(t, subjectsIdx).subjectsCache;
+        });
 
         // Populate teacher filter once
         if (filterTeacher && filterTeacher.options.length <= 1) {
@@ -712,7 +729,7 @@ function renderPanelContent(tab) {
             <p class="text-[12px] font-bold text-slate-500 mb-4">${teachers.length} teacher${teachers.length !== 1 ? 's' : ''} assigned to ${escHtml(currentClassName)}</p>
             <div class="space-y-3">
                 ${teachers.map(t => {
-                    const subjects = (t.subjects || []).filter(s => typeof s === 'string' || !s.archived).map(s => s.name || s);
+                    const subjects = (t.mergedSubjects || t.subjects || []).filter(s => typeof s === 'string' || !s.archived).map(s => s.name || s);
                     return `
                     <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
                         <div class="flex items-center gap-4">

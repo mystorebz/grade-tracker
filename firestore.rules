@@ -9,6 +9,18 @@ service cloud.firestore {
              get(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true;
     }
 
+    // ── PASS A: TENANT IDENTITY CHECK ───────────────────────────────────────
+    // isSchoolActive() only ever checks the TARGET school's own doc — it never
+    // looks at who is calling. That is the root cause of the cross-tenant gap
+    // Pass A closes: any authenticated user at ANY active school (or, before
+    // this pass, even an unauthenticated caller) could read/write another
+    // active school's data, because isSchoolActive(schoolId) was the ONLY
+    // gate. isCallerInSchool(schoolId) adds the missing identity check —
+    // the caller's own token must carry the schoolId being accessed.
+    function isCallerInSchool(schoolId) {
+      return request.auth != null && request.auth.token.schoolId == schoolId;
+    }
+
     // ── 1. National Teacher Registry ──────────────────────────────────────
     match /teachers/{teacherId} {
       // GET: teacher is active at a verified school, OR currentSchoolId is
@@ -227,18 +239,171 @@ service cloud.firestore {
       allow delete: if false;
 
       match /admins/{adminId} {
-        allow read, update: if isSchoolActive(schoolId);
-        allow create: if isSchoolActive(schoolId) ||
-                         (existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
+        // READ/UPDATE: the caller must belong to THIS school (identity check)
+        //              AND the school must be active. Previously isSchoolActive
+        //              alone meant any active-school caller — or, per the
+        //              subcollection wildcard nested below, potentially an
+        //              unauthenticated one — could read/edit another school's
+        //              admin records.
+        allow read, update: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
+
+        // CREATE: normal path requires caller identity + active school.
+        //         Bootstrap path (onboarding.js's atomic writeBatch creating
+        //         the school doc and its first records together) is scoped
+        //         with !exists(...) so it only ever fires the FIRST time a
+        //         school is created — existsAfter()/getAfter() alone describe
+        //         only the state AFTER this write, which is equally true for
+        //         a replay against an already-existing verified school. Pass
+        //         A patches that replay hole.
+        allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
+                         (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
+                          existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
                           getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
+
+        // DELETE: unchanged — already denied to everyone (soft-delete only
+        //         model, same as teachers/students/schools). Nothing to
+        //         tighten: `false` cannot be made more restrictive.
         allow delete: if false;
 
         match /{subcollection=**} {
-          allow read, update: if isSchoolActive(schoolId);
-          allow create: if isSchoolActive(schoolId) ||
-                           (existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
+          allow read, update: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
+          allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
+                           (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
+                            existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
                             getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
           allow delete: if false;
+        }
+      }
+
+      // ── 3a. Classes: Per-Class Isolation (PASS B, PART 2) ─────────────────
+      // schools/{schoolId}/classes/{classId} — the class document itself —
+      // is carved out of the generic wildcard below and given a stricter GET
+      // grant. Pass A's isCallerInSchool(schoolId) proves the caller belongs
+      // to THIS SCHOOL, but says nothing about which CLASS they belong to:
+      // under Pass A alone, any teacher or student at an active school could
+      // still read every OTHER class's document at that same school, even
+      // one they have no relationship to. Per-class isolation adds that
+      // missing check via a get() lookup on the resource the caller is
+      // claiming membership in (teacherIds, for a teacher) or on the
+      // caller's OWN doc (a student's classId lives on their student doc,
+      // not on their auth token).
+      //
+      // NOTE on two earlier, broken attempts at this block, kept here so the
+      // reasoning isn't re-litigated later:
+      //   1. Guarding the sibling wildcard below with a
+      //      `subcollection.size() == 2` check, to distinguish the bare
+      //      class doc from paths nested under it. The real emulator
+      //      rejected this at runtime — "Function not found error: Name:
+      //      [size]" — a recursive wildcard's bound value supports index
+      //      access (path[0]) but not a .size()/.length method here.
+      //   2. Replacing that with a nested `match /{deeperPath=**}` directly
+      //      under /classes/{classId}, on the theory that a nested match
+      //      can only ever compose onto something STRICTLY DEEPER than its
+      //      parent. That's wrong: a recursive wildcard matches ZERO OR MORE
+      //      segments, so {deeperPath=**} ALSO matched the bare class doc
+      //      itself (deeperPath == []) — its broad read grant then OR'd
+      //      with the stricter GET rule below and silently defeated the
+      //      isolation (confirmed by Justine's test run: a teacher could
+      //      still read another teacher's class).
+      // Fixed by dropping recursive wildcards entirely for this subtree and
+      // explicitly matching each known nested collection by name instead
+      // (subjects, attendance, and subjects' own assignments/posts/
+      // submissions — the complete set actually used anywhere in this
+      // codebase, confirmed by grep). A named single-segment match like
+      // `match /subjects/{subjectId}` has no zero-segment case — it requires
+      // that literal segment to be present — so there is no ambiguity left.
+      match /classes/{classId} {
+        // GET: three ways in —
+        //   (a) an admin (super_admin/sub_admin) at this school — unrestricted,
+        //       same as every other admin read in this file.
+        //   (b) a teacher whose own teacherId appears in THIS class's
+        //       teacherIds array (resource.data — the class doc being read).
+        //   (c) a student whose OWN classId (fetched via get() on their
+        //       student doc, since the token only carries studentId) matches
+        //       THIS classId.
+        // A teacher assigned to a different class, or a student enrolled in
+        // a different class, satisfies isCallerInSchool(schoolId) but fails
+        // all three checks above and is correctly denied — this is the
+        // isolation Pass A's school-level check didn't provide.
+        allow get: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) && (
+          request.auth.token.role in ['super_admin', 'sub_admin'] ||
+          (request.auth.token.role == 'teacher' &&
+           request.auth.token.teacherId in resource.data.teacherIds) ||
+          (request.auth.token.role == 'student' &&
+           get(/databases/$(database)/documents/students/$(request.auth.token.studentId)).data.classId == classId)
+        );
+
+        // LIST/CREATE/UPDATE/DELETE on the class doc itself: intentionally
+        //       left at the same isCallerInSchool(schoolId) &&
+        //       isSchoolActive(schoolId) grant as before (identical to the
+        //       generic wildcard this block is carved out of). admin/
+        //       classes.js, admin/teachers.js, admin/students.js, admin/
+        //       reports.js, teacher/roster.js, and assets/js/utils.js all
+        //       fetch the FULL unfiltered classes collection today and
+        //       filter client-side; narrowing LIST to a per-caller query
+        //       would require rewriting every one of those call sites to a
+        //       server-verifiable where() clause, which is a frontend change
+        //       outside this pass's ask (per-class GET isolation). Nothing
+        //       in the current codebase has a teacher or student directly
+        //       create/update/delete a class document, so leaving those at
+        //       the broader same-school grant carries no practical risk
+        //       today — tightening them to admin-only is a reasonable
+        //       future hardening step, flagged here rather than done
+        //       silently since it wasn't asked for in this pass.
+        allow list: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
+        allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
+                         (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
+                          existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
+                          getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
+        allow update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
+
+        // Everything NESTED under a class document — attendance, subjects,
+        // and subjects' own assignments/posts/submissions — is UNCHANGED:
+        // the exact same broad same-school grant it always had under the
+        // old single wildcard. Scoping these to per-class isolation too
+        // would be a much larger frontend+rules change (every one of these
+        // collections would need the same teacherIds/classId membership
+        // check) and was not asked for in this pass. Each is matched by its
+        // literal name rather than a recursive wildcard — see the NOTE
+        // above for why a recursive wildcard doesn't work here.
+        match /attendance/{attendanceId} {
+          allow read, update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
+          allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
+                           (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
+                            existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
+                            getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
+        }
+
+        match /subjects/{subjectId} {
+          allow read, update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
+          allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
+                           (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
+                            existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
+                            getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
+
+          match /assignments/{assignmentId} {
+            allow read, update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
+            allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
+                             (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
+                              existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
+                              getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
+
+            match /submissions/{studentId} {
+              allow read, update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
+              allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
+                               (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
+                                existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
+                                getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
+            }
+          }
+
+          match /posts/{postId} {
+            allow read, update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
+            allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
+                             (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
+                              existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
+                              getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
+          }
         }
       }
 
@@ -255,10 +420,35 @@ service cloud.firestore {
       // section 2a/2b above) or their own denied-by-default top-level
       // collection (see exam_answer_keys, section 11) instead.
       match /{subcollection=**} {
-        allow read, update, delete: if isSchoolActive(schoolId);
-        allow create: if isSchoolActive(schoolId) ||
-                         (existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
-                          getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
+        // The entire 'classes' subtree (the class doc itself, and everything
+        // nested under it) is handled by section 3a above instead — checking
+        // subcollection[0] (index access, supported) rather than
+        // subcollection.size() (NOT a supported method on this bound value —
+        // see the note in section 3a) is enough to exclude all of it here,
+        // since section 3a now explicitly matches every known nested
+        // collection under classes/{classId} by name (attendance, subjects,
+        // and subjects' own assignments/posts/submissions).
+        //
+        // READ/UPDATE/DELETE: caller identity + active school (Pass A).
+        //                     isSchoolActive(schoolId) alone previously let
+        //                     ANY caller — including an unauthenticated one,
+        //                     since isSchoolActive never inspects request.auth
+        //                     — read, edit, or delete subjects/
+        //                     teaching_assignments/attendance/
+        //                     behavior_points/semesters etc. belonging to ANY
+        //                     active school, not just the caller's own.
+        allow read, update, delete: if subcollection[0] != 'classes' &&
+                                        isCallerInSchool(schoolId) && isSchoolActive(schoolId);
+
+        // CREATE: same normal-path + scoped-bootstrap-path shape as the
+        //         admins block above — see that block's comment for why
+        //         !exists(...) is required to close the replay hole.
+        allow create: if subcollection[0] != 'classes' && (
+                          (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
+                          (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
+                           existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
+                           getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true)
+                        );
       }
     }
 

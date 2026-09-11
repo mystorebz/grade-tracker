@@ -21,13 +21,6 @@
       "collectionGroup": "teachers",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "currentSchoolId", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "teachers",
-      "queryScope": "COLLECTION",
-      "fields": [
         { "fieldPath": "currentSchoolId", "order": "ASCENDING" },
         { "fieldPath": "pin", "order": "ASCENDING" }
       ]
@@ -73,6 +66,15 @@
       ]
     },
     {
+      "collectionGroup": "teaching_assignments",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "teacherId", "order": "ASCENDING" },
+        { "fieldPath": "classId", "order": "ASCENDING" },
+        { "fieldPath": "subjectId", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "attendance",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
@@ -97,5 +99,13 @@
       ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "grades",
+      "fieldPath": "assignmentId",
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
+      ]
+    }
+  ]
 }

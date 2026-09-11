@@ -2,7 +2,8 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, query, where, getDocs, getDoc, doc, updateDoc, addDoc, setDoc, arrayUnion, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
-import { openOverlay, closeOverlay, showMsg, gradeColorClass, standingBadge, standingText, gradeFill, letterGrade, downloadCSV, calculateWeightedAverage } from '../../assets/js/utils.js';
+import { openOverlay, closeOverlay, showMsg, gradeColorClass, standingBadge, standingText, gradeFill, letterGrade, downloadCSV, calculateWeightedAverage, resolveGradeWeights } from '../../assets/js/utils.js';
+import { sha256Trim } from '../../assets/js/crypto-utils.js';
 
 // ── 1. AUTH & LAYOUT ─────────────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
@@ -22,6 +23,18 @@ let gradeDetailCache          = {};
 let schoolLimit               = 50;
 let cachedEvaluations         = [];
 let schoolClasses             = []; // ← Live master list from schools/{id}/classes
+let schoolClassDocs           = []; // PASS B: [{id, name}] — same fetch, keeps the real class-doc ID
+
+// PHASE 0: grade-weighting, resolved once at load via resolveGradeWeights()
+// (schools/{schoolId}/teaching_assignments, falling back to the legacy
+// teacherData.gradeTypes/customGradeTypes fields) and cached here for every
+// display-only average on this page. The two places that permanently write
+// a computed average into a student's history — the archive/release
+// snapshot and the promotion snapshot — deliberately do NOT use this cache;
+// they call resolveGradeWeights() fresh at the moment of commit instead, so
+// a stale in-memory value from earlier in the page visit can never end up
+// baked into a permanent record.
+let resolvedGradeWeights       = null;
 
 // ── Report card type state ────────────────────────────────────────────────
 let selectedRcType      = 'term';   // 'term' | 'midterm'
@@ -68,15 +81,23 @@ window.rcRatings = {
 async function loadSchoolClasses() {
     try {
         const snap = await getDocs(collection(db, 'schools', session.schoolId, 'classes'));
-        schoolClasses = snap.docs
+        const sorted = snap.docs
             .map(d => ({ id: d.id, ...d.data() }))
-            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.name || '').localeCompare(b.name || ''))
-            .map(c => c.name)
-            .filter(Boolean);
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.name || '').localeCompare(b.name || ''));
+        schoolClassDocs = sorted.filter(c => c.name);
+        schoolClasses   = sorted.map(c => c.name).filter(Boolean);
     } catch (e) {
         console.error('[Roster] loadSchoolClasses:', e);
-        schoolClasses = [];
+        schoolClasses   = [];
+        schoolClassDocs = [];
     }
+}
+
+// PASS B: resolve a class NAME (what the UI works in) to its real class-doc
+// ID. Returns '' if there's no matching class doc, rather than guessing.
+function classIdForName(name) {
+    if (!name) return '';
+    return schoolClassDocs.find(c => c.name === name)?.id || '';
 }
 
 // ── FIX: Intersect assigned classes with the live master list ─────────────
@@ -88,6 +109,16 @@ function getClasses(extra = []) {
 }
 
 function getGradeTypes() { return session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
+
+// PHASE 0: refreshes the resolvedGradeWeights cache above. Called once from
+// init() for all the display-only averages on this page; called again,
+// fresh, immediately before building either permanent snapshot (archive/
+// release, promotion) so those never rely on a value that might have gone
+// stale since the page loaded.
+async function refreshResolvedGradeWeights() {
+    resolvedGradeWeights = (await resolveGradeWeights(session.schoolId, session.teacherId, { legacyTeacherData: session.teacherData })) || DEFAULT_GRADE_TYPES;
+    return resolvedGradeWeights;
+}
 
 function generateStudentId() {
     const year  = new Date().getFullYear().toString().slice(-2);
@@ -134,7 +165,7 @@ async function init() {
         }
     });
 
-    await Promise.all([fetchSchoolLimit(), loadSemesters()]);
+    await Promise.all([fetchSchoolLimit(), loadSemesters(), refreshResolvedGradeWeights()]);
     await loadStudents();
     window.buildStarGroups();
     openRequestedStudent();
@@ -332,7 +363,7 @@ async function loadStudents() {
         tbody.innerHTML = allStudentsCache.map((s, i) => {
             const sG           = allGrades.filter(g => g.studentId === s.id);
             const subjectCount = new Set(sG.map(g => g.subject)).size;
-            const avg          = sG.length ? calculateWeightedAverage(sG, session.teacherData.gradeTypes || getGradeTypes()) : null;
+            const avg          = sG.length ? calculateWeightedAverage(sG, resolvedGradeWeights || getGradeTypes()) : null;
             if (avg !== null && avg < 65) riskCount++;
             const avgDisplay = avg !== null
                 ? `<span class="grade-num ${gradeNumClass(avg)}">${avg}%</span>`
@@ -435,11 +466,6 @@ window.quickGradeStudent = function(studentId) {
 
 // ── 9. ENROLL / CLAIM STUDENT ─────────────────────────────────────────────
 window.openAddStudentModal = function() {
-    const searchQ = document.getElementById('sSearchQuery');
-    const searchR = document.getElementById('sSearchResults');
-    if (searchQ) searchQ.value = '';
-    if (searchR) { searchR.innerHTML = ''; searchR.classList.add('hidden'); }
-
     ['sName','sEmail','sParentPhone','sParentName','sDob'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
     });
@@ -451,14 +477,12 @@ window.openAddStudentModal = function() {
     if (classes.length === 0) {
         sel.innerHTML = '<option value="">— No active classes available —</option>';
         sel.disabled = true;
-        document.getElementById('sSearchBtn').disabled = true;
         document.getElementById('saveStudentBtn').disabled = true;
         showMsg('addStudentMsg', 'You currently have no active classes assigned. Please contact your administrator to assign classes to your account before enrolling students.', true);
     } else {
         sel.innerHTML = '<option value="">— Select a Class —</option>' +
             classes.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
         sel.disabled = false;
-        document.getElementById('sSearchBtn').disabled = false;
         document.getElementById('saveStudentBtn').disabled = false;
     }
 
@@ -466,101 +490,6 @@ window.openAddStudentModal = function() {
 };
 
 window.closeAddStudentModal = function() { closeOverlay('addStudentModal', 'addStudentModalInner'); };
-
-window.searchStudentRegistry = async function() {
-    const rawId      = (document.getElementById('sSearchQuery')?.value || '').trim().toUpperCase();
-    const resultsDiv = document.getElementById('sSearchResults');
-
-    if (!rawId) { alert('Enter a Student Global ID to search.'); return; }
-
-    if (!/^S\d{2}-[A-Z0-9]{5}$/.test(rawId)) {
-        resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">Invalid format. Student ID should look like S26-XXXXX.</div>`;
-        resultsDiv.classList.remove('hidden'); return;
-    }
-
-    resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#9ab0c6;font-size:12px;"><i class="fa-solid fa-spinner fa-spin" style="margin-right:6px;"></i>Searching National Registry…</div>`;
-    resultsDiv.classList.remove('hidden');
-
-    const btn = document.getElementById('sSearchBtn');
-    btn.textContent = '…'; btn.disabled = true;
-
-    try {
-        const snap = await getDoc(doc(db, 'students', rawId));
-
-        if (!snap.exists()) {
-            resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#9ab0c6;font-size:12px;font-weight:600;">No student found with that ID. Fill in the form below to create a new identity.</div>`;
-            btn.textContent = 'Search'; btn.disabled = false; return;
-        }
-
-        const s = { id: snap.id, ...snap.data() };
-
-        if (s.currentSchoolId && s.currentSchoolId !== '') {
-            if (s.currentSchoolId !== session.schoolId) {
-                resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">This student is currently enrolled at another school. Their current school must close enrollment first.</div>`;
-                btn.textContent = 'Search'; btn.disabled = false; return;
-            } else {
-                if (s.teacherId && s.teacherId !== '') {
-                    resultsDiv.innerHTML = s.teacherId === session.teacherId
-                        ? `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">This student is already in your active roster!</div>`
-                        : `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;font-weight:700;">This student is already assigned to another teacher's roster at this school.</div>`;
-                    btn.textContent = 'Search'; btn.disabled = false; return;
-                }
-            }
-        }
-
-        const lastSchool  = s.academicHistory?.length
-            ? `Last school: ${s.academicHistory[s.academicHistory.length-1].schoolName || s.academicHistory[s.academicHistory.length-1].schoolId}`
-            : 'No prior enrollment';
-        const emailStatus = !s.email
-            ? `<span style="color:#d97706;font-weight:700;">⚠ No email on file</span>`
-            : `<span style="color:#059669;font-weight:600;">✓ Email on file</span>`;
-
-        resultsDiv.innerHTML = `
-        <div style="padding:14px 16px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
-            <div style="flex:1;min-width:0;">
-                <p style="font-weight:800;color:#0d1f35;font-size:14px;margin:0 0 3px;">${escHtml(s.name)}</p>
-                <p style="font-size:10.5px;font-family:'DM Mono',monospace;color:#9ab0c6;margin:0 0 3px;">${s.id}</p>
-                <p style="font-size:11px;font-weight:600;color:#374f6b;margin:0 0 2px;">${s.dob ? 'DOB: ' + s.dob + ' · ' : ''}${lastSchool}</p>
-                <p style="font-size:11px;margin:0;">${emailStatus}</p>
-            </div>
-            <button onclick="window.claimSearchedStudent('${s.id}')"
-                    style="padding:7px 16px;background:#0ea871;border:none;border-radius:4px;color:#fff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap;flex-shrink:0;">
-                Claim Student
-            </button>
-        </div>`;
-
-    } catch (e) {
-        if (e.code === 'permission-denied') {
-            resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#9ab0c6;font-size:12px;font-weight:600;">No student found with that ID. Fill in the form below to create a new identity.</div>`;
-        } else {
-            console.error('[Roster] searchStudentRegistry:', e);
-            resultsDiv.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-size:12px;">Search failed. Try again.</div>`;
-        }
-    }
-
-    btn.textContent = 'Search'; btn.disabled = false;
-};
-
-window.claimSearchedStudent = async function(studentId) {
-    const classVal = document.getElementById('sClass').value;
-    if (!classVal) { alert('Please select a class from the "Assign to Class" dropdown first, then claim.'); return; }
-
-    const btn = document.querySelector(`button[onclick="window.claimSearchedStudent('${studentId}')"]`);
-    if (btn) { btn.textContent = '…'; btn.disabled = true; }
-
-    try {
-        await updateDoc(doc(db, 'students', studentId), {
-            currentSchoolId: session.schoolId, teacherId: session.teacherId,
-            className: classVal, enrollmentStatus: 'Active'
-        });
-        window.closeAddStudentModal();
-        await loadStudents();
-    } catch (e) {
-        console.error('[Roster] claimSearchedStudent:', e);
-        alert('Error claiming student. Please try again.');
-        if (btn) { btn.textContent = 'Claim Student'; btn.disabled = false; }
-    }
-};
 
 document.getElementById('saveStudentBtn').addEventListener('click', async () => {
     const assignedClass = document.getElementById('sClass').value;
@@ -597,15 +526,25 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
         const newId  = generateStudentId();
         const batch  = writeBatch(db);
 
+        // Generate the real PIN once, hash it for storage/login comparison,
+        // and keep the raw value only in a short-lived `_tempPlaintextPin`
+        // field — onStudentCreated (functions/index.js) reads that for the
+        // welcome email and deletes it immediately after sending. The `pin`
+        // field itself is never written in plain text.
+        const rawPin    = Math.floor(1000 + Math.random() * 9000).toString();
+        const hashedPin = await sha256Trim(rawPin);
+
         const studentRef = doc(db, 'students', newId);
         batch.set(studentRef, {
             studentIdNum: newId, name, email,
             dob:          document.getElementById('sDob').value,
             parentName:   document.getElementById('sParentName').value.trim(),
             parentPhone:  document.getElementById('sParentPhone').value.trim(),
-            pin:          Math.floor(1000 + Math.random() * 9000).toString(),
+            pin:          hashedPin,
+            _tempPlaintextPin: rawPin,
             teacherId:    session.teacherId,
             className:    assignedClass || '',
+            classId:      classIdForName(assignedClass),   // PASS B
             currentSchoolId: session.schoolId,
             enrollmentStatus: 'Active',
             securityQuestionsSet: false,
@@ -686,18 +625,18 @@ window.openStudentPanel = async function(studentId) {
     document.getElementById('editClassMsg').classList.add('hidden');
 
     document.getElementById('sInfoGrid').innerHTML = [
-        ['Name',         student?.name         || '—'],
-        ['Global ID',    student?.id           || '—'],
-        ['Email',        student?.email        || '<span style="color:#d97706;font-weight:700;">Not set</span>'],
-        ['DOB',          student?.dob          || '—'],
-        ['Parent Name',  student?.parentName   || '—'],
-        ['Parent Phone', student?.parentPhone  || '—'],
-        ['Enrolled',     student?.createdAt
-            ? new Date(student.createdAt).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' }) : '—']
+        ['Name',         escHtml(student?.name         || '—')],
+        ['Global ID',    escHtml(student?.id           || '—')],
+        ['Email',        student?.email ? escHtml(student.email) : '<span style="color:#d97706;font-weight:700;">Not set</span>'],
+        ['DOB',          escHtml(student?.dob          || '—')],
+        ['Parent Name',  escHtml(student?.parentName   || '—')],
+        ['Parent Phone', escHtml(student?.parentPhone  || '—')],
+        ['Enrolled',     escHtml(student?.createdAt
+            ? new Date(student.createdAt).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' }) : '—')]
     ].map(([label, value]) => `
         <div class="info-row">
             <span class="info-row-label">${label}</span>
-            <span class="info-row-value" style="${label === 'Global ID' ? "font-family:'DM Mono',monospace;font-size:11.5px;" : ''}">${escHtml(value)}</span>
+            <span class="info-row-value" style="${label === 'Global ID' ? "font-family:'DM Mono',monospace;font-size:11.5px;" : ''}">${value}</span>
         </div>`).join('');
 
     const semId   = document.getElementById('activeSemester')?.value || '';
@@ -818,7 +757,7 @@ window.renderStudentGrades = function() {
     noG.classList.add('hidden');
 
     container.innerHTML = Object.entries(by).map(([subject, grades]) => {
-        const avg = calculateWeightedAverage(grades, session.teacherData.gradeTypes || getGradeTypes());
+        const avg = calculateWeightedAverage(grades, resolvedGradeWeights || getGradeTypes());
         const rows = grades.sort((a,b) => (b.date||'').localeCompare(a.date||'')).map(g => {
             gradeDetailCache[g.id] = g;
             const pct   = g.max ? Math.round(g.score/g.max*100) : null;
@@ -875,7 +814,10 @@ window.saveStudentClass = async function() {
     btn.textContent = 'Saving…'; btn.disabled = true;
 
     try {
-        const u = { className: newClass };
+        // PASS B: classId is the real reference Firestore rules will trust;
+        // className stays for display. '' when unassigned or the name has
+        // no matching class doc.
+        const u = { className: newClass, classId: classIdForName(newClass) };
 
         if (newClass !== origClass && origClass !== '') {
             u.lastClassChangeReason = reason;
@@ -1293,12 +1235,12 @@ async function generateFormalReportCardPDF(ev, semName, reportType = 'term', mid
     const reportSubtitle = reportType === 'midterm' && midtermData ? `${midtermData.name || 'Midterm'} · ${semName} · ${midtermData.startDate} – ${midtermData.endDate}` : semName;
     const bySub = {};
     gradesToUse.forEach(g => { const sub = g.subject || 'Uncategorized'; if (!bySub[sub]) bySub[sub] = []; bySub[sub].push(g); });
-    const cumulativeAvg = gradesToUse.length ? calculateWeightedAverage(gradesToUse, session.teacherData.gradeTypes || getGradeTypes()) : 0;
+    const cumulativeAvg = gradesToUse.length ? calculateWeightedAverage(gradesToUse, resolvedGradeWeights || getGradeTypes()) : 0;
     const gpaLetter = cumulativeAvg > 0 ? letterGrade(cumulativeAvg) : 'N/A';
     const ratingLabel = v => v >= 5 ? 'Exceptional' : v === 4 ? 'Developing Well' : v === 3 ? 'Developing' : v === 2 ? 'Needs Improvement' : v >= 1 ? 'Unsatisfactory' : '—';
     const starDisplay = v => [1,2,3,4,5].map(n => `<span style="color:${n <= v ? '#f59e0b' : '#dce3ed'};font-size:14px;">★</span>`).join('');
     const ratingLegendHtml = `<div style="font-size:9px;color:#374f6b;background:#f8fafc;padding:7px 12px;border-radius:4px;margin-bottom:12px;border:1px solid #e2e8f0;line-height:2;"><span style="color:#f59e0b;font-size:11px;">★★★★★</span> <strong>5 — Exceptional</strong> &nbsp;&nbsp;<span style="color:#f59e0b;font-size:11px;">★★★★</span><span style="color:#dce3ed;font-size:11px;">★</span> <strong>4 — Developing Well</strong> &nbsp;&nbsp;<span style="color:#f59e0b;font-size:11px;">★★★</span><span style="color:#dce3ed;font-size:11px;">★★</span> <strong>3 — Developing</strong> &nbsp;&nbsp;<span style="color:#f59e0b;font-size:11px;">★★</span><span style="color:#dce3ed;font-size:11px;">★★★</span> <strong>2 — Needs Improvement</strong> &nbsp;&nbsp;<span style="color:#f59e0b;font-size:11px;">★</span><span style="color:#dce3ed;font-size:11px;">★★★★</span> <strong>1 — Unsatisfactory</strong></div>`;
-    const gradesHtml = Object.keys(bySub).length === 0 ? `<tr><td colspan="3" style="text-align:center;padding:30px;color:#64748b;font-style:italic;">No grades recorded for this period.</td></tr>` : Object.entries(bySub).sort((a,b) => a[0].localeCompare(b[0])).map(([sub, gList]) => { const subAvg = calculateWeightedAverage(gList, session.teacherData.gradeTypes || getGradeTypes()); return `<tr style="border-bottom:1px solid #e2e8f0;"><td style="padding:10px 15px;font-weight:700;color:#1e293b;">${escHtml(sub)}</td><td style="padding:10px 15px;text-align:center;font-weight:700;">${subAvg}%</td><td style="padding:10px 15px;text-align:center;font-weight:800;font-family:monospace;">${letterGrade(subAvg)}</td></tr>`; }).join('');
+    const gradesHtml = Object.keys(bySub).length === 0 ? `<tr><td colspan="3" style="text-align:center;padding:30px;color:#64748b;font-style:italic;">No grades recorded for this period.</td></tr>` : Object.entries(bySub).sort((a,b) => a[0].localeCompare(b[0])).map(([sub, gList]) => { const subAvg = calculateWeightedAverage(gList, resolvedGradeWeights || getGradeTypes()); return `<tr style="border-bottom:1px solid #e2e8f0;"><td style="padding:10px 15px;font-weight:700;color:#1e293b;">${escHtml(sub)}</td><td style="padding:10px 15px;text-align:center;font-weight:700;">${subAvg}%</td><td style="padding:10px 15px;text-align:center;font-weight:800;font-family:monospace;">${letterGrade(subAvg)}</td></tr>`; }).join('');
     const enrichmentRows = [['Character & Values','Honesty, integrity, and ethical behaviour in daily interactions',ev.ratings.characterValues],['Respect & Courtesy','Respectful treatment of peers, teachers, and the school environment',ev.ratings.respectCourtesy],['Responsibility & Reliability','Taking ownership of tasks, duties, and personal belongings',ev.ratings.responsibilityReliability],['Cooperation & Teamwork','Working constructively with others in group and classroom settings',ev.ratings.cooperationTeamwork],['Leadership & Initiative','Volunteering, taking the lead, and showing self-driven motivation',ev.ratings.leadershipInitiative],['Cultural Awareness & Pride','Appreciation of Belizean and Caribbean culture, history, and heritage',ev.ratings.culturalAwareness]].map(([label, desc, val]) => `<tr style="border-bottom:1px solid #e2e8f0;"><td style="padding:9px 15px;"><p style="font-weight:700;color:#1e293b;margin:0 0 2px;font-size:12px;">${label}</p><p style="font-size:10px;color:#64748b;margin:0;font-style:italic;">${desc}</p></td><td style="padding:9px 15px;text-align:center;">${starDisplay(val||0)}</td><td style="padding:9px 15px;text-align:center;font-size:11px;font-weight:700;color:#1e1b4b;">${ratingLabel(val||0)}</td></tr>`).join('');
     const learningRows = [['Behavior',ev.ratings.behavior],['Organization',ev.ratings.organization],['Respectfulness',ev.ratings.respectfulness],['Kindness',ev.ratings.kindness],['Attitude Towards Work',ev.ratings.attitudeWork],['Attitude Towards Peers',ev.ratings.attitudePeers],['Academic Comprehension',ev.ratings.academicComprehension],['Effort & Resilience',ev.ratings.effortResilience],['Participation & Engagement',ev.ratings.participation],['Attendance & Punctuality',ev.ratings.punctualityRating]].map(([label, val]) => `<tr style="border-bottom:1px solid #e2e8f0;"><td style="padding:9px 15px;font-weight:600;color:#334155;">${label}</td><td style="padding:9px 15px;text-align:center;">${starDisplay(val||0)}</td><td style="padding:9px 15px;text-align:center;font-size:11px;font-weight:700;color:#1e1b4b;">${ratingLabel(val||0)}</td></tr>`).join('');
     const html = `<!DOCTYPE html><html><head><title>${reportTitle} — ${escHtml(student.name)}</title><style>@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');*{box-sizing:border-box;}body{font-family:'Nunito',sans-serif;padding:36px 44px;color:#0f172a;line-height:1.5;margin:0 auto;max-width:8.5in;font-size:13px;}.hf{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #1e1b4b;padding-bottom:16px;margin-bottom:18px;}.logo{max-height:72px;max-width:220px;object-fit:contain;}.ht{text-align:right;}.ht h1{margin:0 0 4px;font-size:22px;font-weight:900;text-transform:uppercase;color:#1e1b4b;}.ht h2{margin:0;font-size:12px;color:#64748b;font-weight:700;letter-spacing:2px;}.ht h3{margin:4px 0 0;font-size:11px;color:#94a3b8;font-weight:600;}.si{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:14px 18px;margin-bottom:20px;}.si-item{display:flex;flex-direction:column;gap:3px;}.il{font-size:9px;text-transform:uppercase;color:#64748b;font-weight:800;letter-spacing:1px;}.iv{font-size:14px;font-weight:800;color:#0f172a;}h3{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:#fff;background:#1e1b4b;padding:8px 12px;border-radius:4px;margin:0 0 10px;}table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:0;}th{background:#f1f5f9;color:#475569;padding:8px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;border-bottom:2px solid #cbd5e1;}th.c{text-align:center;}td{border-bottom:1px solid #e2e8f0;padding:8px 12px;color:#334155;}.att{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;}.ac{background:#f8fafc;border:1px solid #cbd5e1;padding:9px;text-align:center;border-radius:6px;}.al{display:block;font-size:9px;font-weight:800;color:#64748b;text-transform:uppercase;}.av{font-size:18px;font-weight:900;color:#1e1b4b;}.cb{border:1px solid #cbd5e1;border-radius:6px;padding:14px;background:#fff;min-height:70px;margin-bottom:20px;}.cl{font-size:10px;font-weight:800;color:#1e1b4b;text-transform:uppercase;margin-bottom:6px;display:block;}.fs{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:36px;}.sl{border-top:1px solid #000;padding-top:7px;font-size:11px;font-weight:700;text-align:center;color:#1e1b4b;}.sec{margin-bottom:22px;}</style></head><body><div class="hf"><img src="${session.logo||''}" alt="${escHtml(schoolName)}" class="logo" onerror="this.style.display='none'"><div class="ht"><h1>${escHtml(schoolName)}</h1><h2>${reportTitle}</h2><h3>${escHtml(reportSubtitle)}</h3></div></div><div class="si"><div class="si-item"><span class="il">Student Name</span><span class="iv">${escHtml(student.name)}</span></div><div class="si-item"><span class="il">Class</span><span class="iv">${escHtml(student.className||'Unassigned')}</span></div><div class="si-item"><span class="il">Teacher</span><span class="iv">${escHtml(ev.teacherName)}</span></div><div class="si-item"><span class="il">Grading Period</span><span class="iv">${escHtml(semName)}</span></div><div class="si-item"><span class="il">Date Issued</span><span class="iv">${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</span></div><div class="si-item"><span class="il">Period Average</span><span class="iv">${cumulativeAvg}% (${gpaLetter})</span></div></div><div class="sec"><h3>Academic Performance</h3><table><thead><tr><th>Subject</th><th class="c">Average</th><th class="c">Grade</th></tr></thead><tbody>${gradesHtml}</tbody></table></div><div class="sec"><h3>Enrichment &amp; Character Development</h3>${ratingLegendHtml}<table><thead><tr><th>Metric</th><th class="c">Rating</th><th class="c">Assessment</th></tr></thead><tbody>${enrichmentRows}</tbody></table></div><div class="sec"><h3>Learning Behaviours &amp; Social Growth</h3>${ratingLegendHtml}<table><thead><tr><th>Metric</th><th class="c">Rating</th><th class="c">Assessment</th></tr></thead><tbody>${learningRows}</tbody></table></div><div class="att"><div class="ac"><span class="al">Total Sessions</span><span class="av">${ev.attendance.totalSessions}</span></div><div class="ac"><span class="al">Days Absent</span><span class="av">${ev.attendance.daysAbsent}</span></div><div class="ac"><span class="al">Days Late</span><span class="av">${ev.attendance.daysLate}</span></div></div><div class="cb"><span class="cl">Teacher's Comments</span><p style="margin:0;font-size:12px;color:#334155;white-space:pre-wrap;line-height:1.6;">${escHtml(ev.comment||'No comments recorded.')}</p></div><div class="fs"><div class="sl">Teacher's Signature &amp; Date</div><div class="sl">Principal's Signature &amp; Date</div></div></body></html>`;
@@ -1357,13 +1299,24 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
         let finalStatus = 'Archived', leaveSchool = false, historyReason = 'Internally Archived';
         if (isRelease) {
             leaveSchool = true; historyReason = releaseReason;
+            // ── FIX: dual-archive unification — this used to collapse
+            // 'Expelled' and 'Dropped Out' into the generic 'Archived'
+            // status, even though admin/students.js's reason picker and
+            // teacher/archives.js's own enrollmentStatus query both already
+            // treat these as distinct values. Preserve the full distinction.
             if (releaseReason === 'Transferred') finalStatus = 'Transferred';
             else if (releaseReason === 'Graduated') finalStatus = 'Graduated';
+            else if (releaseReason === 'Expelled') finalStatus = 'Expelled';
+            else if (releaseReason === 'Dropped Out') finalStatus = 'Dropped Out';
             else finalStatus = 'Archived';
         }
         let academicSnapshot = {};
         try {
-            const gradeTypes = session.teacherData.gradeTypes || session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES;
+            // PHASE 0: resolved fresh, not from the page-load cache — this
+            // builds a PERMANENT academic snapshot, so it must reflect the
+            // teacher's current weighting even if it changed since the page
+            // was opened.
+            const gradeTypes = (await resolveGradeWeights(session.schoolId, session.teacherId, { legacyTeacherData: session.teacherData })) || DEFAULT_GRADE_TYPES;
             const gradesSnap = await getDocs(query(collection(db, 'students', currentStudentId, 'grades'), where('schoolId', '==', session.schoolId)));
             const classGrades = [];
             gradesSnap.forEach(d => { const g = { id: d.id, ...d.data() }; if (g.className === (s?.className || '')) classGrades.push(g); });
@@ -1390,7 +1343,12 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
             academicSnapshot = { className: s?.className || '', semesters, evaluations, snapshotDate: new Date().toISOString() };
         } catch (snapErr) { console.warn('[Roster] academicSnapshot warning:', snapErr.message); }
         const snapshot = { schoolId: session.schoolId, schoolName: session.schoolName || session.schoolId, teacherId: s?.teacherId || '', className: s?.className || '', leftAt: new Date().toISOString(), reason: historyReason, ...(notes ? { notes } : {}) };
-        batch.update(doc(db, 'students', currentStudentId), { enrollmentStatus: finalStatus, currentSchoolId: leaveSchool ? '' : session.schoolId, teacherId: '', className: '', academicHistory: arrayUnion(snapshot), lastClassName: s?.className || '', academicSnapshot, ...(leaveSchool ? { archivedSchoolIds: arrayUnion(session.schoolId) } : {}) });
+        // ── FIX: dual-archive unification — always set the boolean `archived`
+        // flag alongside `enrollmentStatus` so admin/students.js's directory
+        // filter (which previously only checked `archived`) correctly hides
+        // students archived from this portal too, whether they left the
+        // school or were archived internally.
+        batch.update(doc(db, 'students', currentStudentId), { enrollmentStatus: finalStatus, archived: true, currentSchoolId: leaveSchool ? '' : session.schoolId, teacherId: '', className: '', classId: '', academicHistory: arrayUnion(snapshot), lastClassName: s?.className || '', academicSnapshot, ...(leaveSchool ? { archivedSchoolIds: arrayUnion(session.schoolId) } : {}) });
         if (leaveSchool) { batch.set(doc(collection(db, 'schools', session.schoolId, 'notifications')), { type: 'student_enrollment_closed', studentId: currentStudentId, studentName: s?.name || '', reason: historyReason, closedBy: session.teacherData?.name || 'Teacher', closedAt: new Date().toISOString() }); }
         await batch.commit();
         window.closeArchiveModal(); window.closeStudentPanel(); await loadStudents();
@@ -1572,7 +1530,11 @@ window.confirmPromotion = async function() {
     btn.disabled  = true;
 
     const promoteNote = (document.getElementById('promoteNote')?.value || '').trim();
-    const gradeTypes  = session.teacherData.gradeTypes || session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES;
+    // PHASE 0: resolved fresh, not from the page-load cache — this feeds
+    // buildPromotionSnapshot(), a PERMANENT record used for promotion/GPA
+    // history, so it must reflect the teacher's current weighting even if
+    // it changed since the roster page was opened.
+    const gradeTypes  = (await resolveGradeWeights(session.schoolId, session.teacherId, { legacyTeacherData: session.teacherData })) || DEFAULT_GRADE_TYPES;
     const changedAt   = new Date().toISOString();
     let   batch       = writeBatch(db);
     let   opCount     = 0;
@@ -1610,6 +1572,7 @@ window.confirmPromotion = async function() {
                 const owners = promoteClassTeacherMap[dest] || [];
                 const update = {
                     className:      dest,
+                    classId:        classIdForName(dest),   // PASS B
                     classHistory:   arrayUnion(historyEntry),
                     classSnapshots: arrayUnion(snapshot)
                 };

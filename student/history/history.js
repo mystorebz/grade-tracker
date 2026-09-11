@@ -2,7 +2,7 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectStudentLayout } from '../../assets/js/layout-student.js';
-import { calculateWeightedAverage } from '../../assets/js/utils.js';
+import { calculateWeightedAverage, resolveGradeWeights } from '../../assets/js/utils.js';
 
 // ── 1. INIT & AUTH ────────────────────────────────────────────────────────
 const session = requireAuth('student', '../login.html');
@@ -221,12 +221,13 @@ async function loadHistoricalGrades() {
         for (const tId of uniqueTeacherIds) {
             if (!teacherRubricsCache[tId]) {
                 try {
+                    // ── PHASE 0: prefer the new teaching_assignments
+                    // weighting over the legacy gradeTypes/customGradeTypes
+                    // fields. This is passive display, so resolved once per
+                    // teacher and cached here for the rest of the live view.
                     const tSnap = await getDoc(doc(db, 'teachers', tId));
-                    if (tSnap.exists()) {
-                        teacherRubricsCache[tId] = tSnap.data().gradeTypes || tSnap.data().customGradeTypes || [];
-                    } else {
-                        teacherRubricsCache[tId] = []; // fallback if teacher was deleted
-                    }
+                    const legacyData = tSnap.exists() ? tSnap.data() : null;
+                    teacherRubricsCache[tId] = await resolveGradeWeights(session.schoolId, tId, { legacyTeacherData: legacyData }) || [];
                 } catch (e) {
                     teacherRubricsCache[tId] = [];
                 }
@@ -573,17 +574,21 @@ window.printStudentRecord = async (studentId) => {
     ));
     
     const allGrades = gradesSnap.docs.map(d => d.data());
-    
-    // Ensure all required rubrics are cached before processing print math
+
+    // ── PHASE 0: this is an official print/transcript action, so every
+    // teacher's weighting is resolved FRESH at the moment of printing, into
+    // its own local cache — never reused from teacherRubricsCache, which
+    // may hold whatever the live view resolved earlier in the session and
+    // could now be stale relative to a weighting change made since.
     const printTeacherIds = [...new Set(allGrades.map(g => g.teacherId).filter(Boolean))];
+    const printRubricsCache = {};
     for (const tId of printTeacherIds) {
-        if (!teacherRubricsCache[tId]) {
-            try {
-                const tSnap = await getDoc(doc(db, 'teachers', tId));
-                teacherRubricsCache[tId] = tSnap.exists() ? (tSnap.data().gradeTypes || tSnap.data().customGradeTypes || []) : [];
-            } catch (e) {
-                teacherRubricsCache[tId] = [];
-            }
+        try {
+            const tSnap = await getDoc(doc(db, 'teachers', tId));
+            const legacyData = tSnap.exists() ? tSnap.data() : null;
+            printRubricsCache[tId] = await resolveGradeWeights(session.schoolId, tId, { legacyTeacherData: legacyData }) || [];
+        } catch (e) {
+            printRubricsCache[tId] = [];
         }
     }
     
@@ -614,7 +619,7 @@ window.printStudentRecord = async (studentId) => {
             for (const sub in subjects) {
                 // Apply specific rubric for this printed subject
                 const tId = subjects[sub][0]?.teacherId;
-                const rubric = tId ? (teacherRubricsCache[tId] || []) : [];
+                const rubric = tId ? (printRubricsCache[tId] || []) : [];
                 const avgRaw = calculateWeightedAverage(subjects[sub], rubric);
                 const avg = Math.round(avgRaw !== null ? avgRaw : 0);
                 

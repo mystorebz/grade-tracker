@@ -223,26 +223,20 @@ exports.mintStudentToken = onCall({ region: 'us-central1' }, async (request) => 
 
     const studentData = studentSnap.data();
 
-    // Hash the incoming pin exactly as entered (trim whitespace only, preserve case)
+    // Hash the incoming pin exactly as entered (trim whitespace only, preserve
+    // case) — same hash function used at student creation time (students.js /
+    // roster.js, via assets/js/crypto-utils.js) and by the one-time
+    // migrate-student-pins.mjs backfill script.
+    //
+    // Hash-only, no plain-text fallback — matches mintTeacherToken/mintAdminToken.
+    // IMPORTANT DEPLOY ORDER: this only works once every existing student.pin
+    // value in Firestore has actually been hashed. Run migrate-student-pins.mjs
+    // against production BEFORE deploying this function, or every student who
+    // hasn't logged in since their PIN was created will be locked out.
     const pinTrimmed = String(pin).trim();
     const pinHashed  = sha256Trim(pinTrimmed);
 
-    // Step 1: Try hashed comparison first (new secure path)
-    let pinMatched = studentData.pin === pinHashed;
-
-    // Step 2: Fall back to plain text comparison (migration path for existing pins)
-    if (!pinMatched && studentData.pin === pinTrimmed) {
-        pinMatched = true;
-
-        // Silently upgrade the stored pin to a hash
-        try {
-            await db.collection('students').doc(rawId).update({ pin: pinHashed });
-        } catch (upgradeErr) {
-            console.warn('[mintStudentToken] Pin upgrade failed silently:', upgradeErr.message);
-        }
-    }
-
-    if (!pinMatched) {
+    if (studentData.pin !== pinHashed) {
         throw new HttpsError('unauthenticated', 'Incorrect PIN.');
     }
 
@@ -696,9 +690,13 @@ exports.onTeacherCreated = onDocumentCreated("teachers/{teacherId}", async (even
     } catch (_) {}
  
     const firstName = data.firstName || data.name?.split(' ')[0] || 'there';
-    const pin       = data.pin       || 'See your administrator';
+    // The real PIN is never stored in plain text in `pin` (see
+    // admin/teachers/teachers.js) — it lives only in this short-lived
+    // side-channel field, which is deleted below immediately after the
+    // email is queued.
+    const pin       = data._tempPlaintextPin || 'See your administrator';
     const loginLink = 'https://connectusonline.org/teacher/login.html';
- 
+
     const body = `
       <h2 style="margin:0 0 8px;font-size:26px;font-weight:900;color:#0f172a;text-align:center;">You're on ConnectUs!</h2>
       <p style="margin:0 0 28px;font-size:15px;color:#64748b;text-align:center;line-height:1.6;">You have been successfully onboarded as an educator on the ConnectUs platform.</p>
@@ -743,86 +741,38 @@ exports.onTeacherCreated = onDocumentCreated("teachers/{teacherId}", async (even
     } catch (error) {
         console.error(`Failed to send teacher welcome email for ${teacherId}:`, error);
     }
- 
+
+    // Scrub the short-lived plain-text PIN from Firestore now that it's been
+    // queued in the email — whether or not the email send itself succeeded,
+    // this field must not linger in the database.
+    if (data._tempPlaintextPin !== undefined) {
+        try {
+            await event.data.ref.update({ _tempPlaintextPin: admin.firestore.FieldValue.delete() });
+        } catch (cleanupError) {
+            console.error(`Failed to scrub _tempPlaintextPin for teacher ${teacherId}:`, cleanupError);
+        }
+    }
+
     return null;
 });
 // --- END: onTeacherCreated ---
 
 
-// --- START: onTeacherUpdated (Claim) ---
-// Fires when a teacher's currentSchoolId changes from empty to a new school.
-// Sends an enrollment notification email.
-exports.onTeacherUpdated = onDocumentUpdated("teachers/{teacherId}", async (event) => {
-    const before    = event.data.before.data();
-    const after     = event.data.after.data();
-    const teacherId = event.params.teacherId;
-
-    // Detect claim: currentSchoolId went from empty to a value, and pin changed
-    const wasClaimed = (!before.currentSchoolId || before.currentSchoolId === '') &&
-                       after.currentSchoolId && after.currentSchoolId !== '' &&
-                       before.pin !== after.pin;
-
-    if (!wasClaimed) return null;
-    if (!after.email) return null;
-
-    let schoolName = after.currentSchoolId;
-    try {
-        const schoolSnap = await db.collection('schools').doc(after.currentSchoolId).get();
-        if (schoolSnap.exists) schoolName = schoolSnap.data().schoolName || after.currentSchoolId;
-    } catch (_) {}
-
-    const firstName = after.firstName || after.name?.split(' ')[0] || 'there';
-    const pin       = after.pin       || 'See your administrator';
-    const loginLink = 'https://connectusonline.org/teacher/login.html';
-
-    const body = `
-      <h2 style="margin:0 0 8px;font-size:26px;font-weight:900;color:#0f172a;text-align:center;">New School Enrollment</h2>
-      <p style="margin:0 0 28px;font-size:15px;color:#64748b;text-align:center;line-height:1.6;">You have been successfully enrolled at a new school on ConnectUs.</p>
-
-      <p style="margin:0 0 20px;font-size:15px;color:#334155;line-height:1.7;">Hello <strong>${firstName}</strong>,<br><br>
-      Your national teacher profile has been claimed by <strong>${schoolName}</strong>. A new temporary PIN has been generated for your login. Please log in to complete your setup at the new school.</p>
-
-      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:28px;">
-        <tr><td colspan="2" style="padding:14px 16px;background-color:#0f172a;">
-          <p style="margin:0;font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.15em;">Your Updated Credentials</p>
-        </td></tr>
-        ${credentialRow('Full Name', after.name || `${after.firstName} ${after.lastName}`)}
-        ${credentialRow('Teacher ID', teacherId, true)}
-        ${credentialRow('New School ID', after.currentSchoolId, true)}
-        ${credentialRow('School Name', schoolName)}
-        ${credentialRow('New Temporary PIN', pin, true)}
-      </table>
-
-      <div style="text-align:center;margin-bottom:28px;">
-        <a href="${loginLink}" style="display:inline-block;background:linear-gradient(135deg,#2563eb,#7c3aed);color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;padding:16px 36px;border-radius:12px;letter-spacing:0.04em;box-shadow:0 4px 14px rgba(37,99,235,0.35);">
-          Log In to Teacher Portal &rarr;
-        </a>
-      </div>
-
-      <div style="background-color:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:16px 20px;margin-bottom:20px;">
-        <p style="margin:0;font-size:13px;font-weight:700;color:#92400e;line-height:1.6;">
-          <strong>Important:</strong> Your temporary PIN must be reset on first login at the new school. If you did not authorize this enrollment, contact us immediately at <a href="mailto:info@connectusonline.org" style="color:#92400e;">info@connectusonline.org</a>.
-        </p>
-      </div>
-
-      <p style="margin:0;font-size:14px;color:#64748b;line-height:1.7;">For support, contact us at <a href="mailto:info@connectusonline.org" style="color:#2563eb;font-weight:700;">info@connectusonline.org</a>.</p>
-      <p style="margin:20px 0 0;font-size:15px;color:#0f172a;">Warm regards,<br><strong style="color:#2563eb;">The ConnectUs Team</strong></p>`;
-
-    const html = buildEmailWrapper('#2563eb,#7c3aed,#0ea5e9', LOGO_URL, body);
-
-    try {
-        await db.collection('mail').add({
-            to: after.email,
-            message: { subject: `ConnectUs — You've Been Enrolled at ${schoolName}`, html }
-        });
-        console.log(`Teacher claim email sent for: ${teacherId}`);
-    } catch (error) {
-        console.error(`Failed to send teacher claim email for ${teacherId}:`, error);
-    }
-
-    return null;
-});
-// --- END: onTeacherUpdated ---
+// --- REMOVED: onTeacherUpdated (Claim) ---
+// Deleted during Security Hardening (Student PIN Migration follow-up).
+// This trigger existed solely to detect a "national registry teacher gets
+// claimed by a new school" event (currentSchoolId flips from empty to a
+// value, AND pin changes) and send a "New School Enrollment" email.
+// Audited on 2026-09-11: no frontend code path was found anywhere in the
+// app that produces that transition — every currentSchoolId write goes
+// through admin/teachers/teachers.js (brand-new hire) or
+// admin/archives/archives.js's restoreTeacher (which restores a teacher to
+// the SAME school and never changes their pin, so wasClaimed was always
+// false there too). Confirmed dead code, not a live feature — removed
+// rather than left in place to avoid confusing a future reader into
+// thinking a "claim" flow still exists. If a real claim/transfer feature
+// is built later, re-add a trigger like this one against the real
+// transition it actually needs to detect.
 
 
 // --- START: onStudentCreated ---
@@ -841,7 +791,11 @@ exports.onStudentCreated = onDocumentCreated("students/{studentId}", async (even
     } catch (_) {}
 
     const firstName = data.firstName || data.name?.split(' ')[0] || 'there';
-    const pin       = data.pin       || 'See your administrator';
+    // The real PIN is never stored in plain text in `pin` (see
+    // admin/students/students.js and teacher/roster/roster.js) — it lives
+    // only in this short-lived side-channel field, which is deleted below
+    // immediately after the email is queued.
+    const pin       = data._tempPlaintextPin || 'See your administrator';
     const loginLink = 'https://connectusonline.org/student/login.html';
 
     const body = `
@@ -889,84 +843,37 @@ exports.onStudentCreated = onDocumentCreated("students/{studentId}", async (even
         console.error(`Failed to send student welcome email for ${studentId}:`, error);
     }
 
+    // Scrub the short-lived plain-text PIN from Firestore now that it's been
+    // queued in the email — whether or not the email send itself succeeded,
+    // this field must not linger in the database.
+    if (data._tempPlaintextPin !== undefined) {
+        try {
+            await event.data.ref.update({ _tempPlaintextPin: admin.firestore.FieldValue.delete() });
+        } catch (cleanupError) {
+            console.error(`Failed to scrub _tempPlaintextPin for student ${studentId}:`, cleanupError);
+        }
+    }
+
     return null;
 });
 // --- END: onStudentCreated ---
 
 
-// --- START: onStudentUpdated (Claim) ---
-// Fires when a student's currentSchoolId changes from empty to a new school.
-// Sends an enrollment notification email.
-exports.onStudentUpdated = onDocumentUpdated("students/{studentId}", async (event) => {
-    const before    = event.data.before.data();
-    const after     = event.data.after.data();
-    const studentId = event.params.studentId;
-
-    // Detect claim: currentSchoolId went from empty to a value
-    const wasClaimed = (!before.currentSchoolId || before.currentSchoolId === '') &&
-                       after.currentSchoolId && after.currentSchoolId !== '';
-
-    if (!wasClaimed) return null;
-    if (!after.email) return null;
-
-    let schoolName = after.currentSchoolId;
-    try {
-        const schoolSnap = await db.collection('schools').doc(after.currentSchoolId).get();
-        if (schoolSnap.exists) schoolName = schoolSnap.data().schoolName || after.currentSchoolId;
-    } catch (_) {}
-
-    const firstName = after.firstName || after.name?.split(' ')[0] || 'there';
-    const pin       = after.pin       || 'See your administrator';
-    const loginLink = 'https://connectusonline.org/student/login.html';
-
-    const body = `
-      <h2 style="margin:0 0 8px;font-size:26px;font-weight:900;color:#0f172a;text-align:center;">New School Enrollment</h2>
-      <p style="margin:0 0 28px;font-size:15px;color:#64748b;text-align:center;line-height:1.6;">You have been successfully enrolled at a new school on ConnectUs.</p>
-
-      <p style="margin:0 0 20px;font-size:15px;color:#334155;line-height:1.7;">Hello <strong>${firstName}</strong>,<br><br>
-      Your ConnectUs Academic Passport has been linked to <strong>${schoolName}</strong>. You can now log in to view your grades, academic records, and progress.</p>
-
-      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:28px;">
-        <tr><td colspan="2" style="padding:14px 16px;background-color:#0f172a;">
-          <p style="margin:0;font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.15em;">Your Updated Credentials</p>
-        </td></tr>
-        ${credentialRow('Full Name', after.name || `${after.firstName} ${after.lastName}`)}
-        ${credentialRow('Student ID', studentId, true)}
-        ${credentialRow('New School ID', after.currentSchoolId, true)}
-        ${credentialRow('School Name', schoolName)}
-        ${credentialRow('Temporary PIN', pin, true)}
-      </table>
-
-      <div style="text-align:center;margin-bottom:28px;">
-        <a href="${loginLink}" style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#db2777);color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;padding:16px 36px;border-radius:12px;letter-spacing:0.04em;box-shadow:0 4px 14px rgba(124,58,237,0.35);">
-          Log In to Student Portal &rarr;
-        </a>
-      </div>
-
-      <div style="background-color:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:16px 20px;margin-bottom:20px;">
-        <p style="margin:0;font-size:13px;font-weight:700;color:#92400e;line-height:1.6;">
-          <strong>Important:</strong> If you did not authorize this enrollment, please contact us immediately at <a href="mailto:info@connectusonline.org" style="color:#92400e;">info@connectusonline.org</a>.
-        </p>
-      </div>
-
-      <p style="margin:0;font-size:14px;color:#64748b;line-height:1.7;">For support, contact us at <a href="mailto:info@connectusonline.org" style="color:#7c3aed;font-weight:700;">info@connectusonline.org</a>.</p>
-      <p style="margin:20px 0 0;font-size:15px;color:#0f172a;">Warm regards,<br><strong style="color:#7c3aed;">The ConnectUs Team</strong></p>`;
-
-    const html = buildEmailWrapper('#7c3aed,#db2777,#0ea5e9', LOGO_URL, body);
-
-    try {
-        await db.collection('mail').add({
-            to: after.email,
-            message: { subject: `ConnectUs — You've Been Enrolled at ${schoolName}`, html }
-        });
-        console.log(`Student claim email sent for: ${studentId}`);
-    } catch (error) {
-        console.error(`Failed to send student claim email for ${studentId}:`, error);
-    }
-
-    return null;
-});
-// --- END: onStudentUpdated ---
+// --- REMOVED: onStudentUpdated (Claim) ---
+// Deleted during Security Hardening (Student PIN Migration follow-up).
+// Same dead-code class as onTeacherUpdated above: existed to detect a
+// "national registry student gets claimed by a new school" event
+// (currentSchoolId flips from empty to a value) and send a "New School
+// Enrollment" email. Audited on 2026-09-11: every currentSchoolId write
+// found in the app goes through admin/students/students.js or
+// teacher/roster/roster.js (brand-new enrollment — handled by
+// onStudentCreated, not this) or admin/archives/archives.js's
+// restoreStudent (restores to the SAME school; a student's currentSchoolId
+// is explicitly documented as never cleared on archive in the first place,
+// so this trigger's own "before was empty" condition could never be true
+// there either). Confirmed dead code — removed rather than left in place.
+// If a real claim/transfer feature is built later, re-add a trigger like
+// this one against the real transition it actually needs to detect.
 
 
 // --- START: onQuoteRequestCreated ---

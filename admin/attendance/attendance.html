@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance | ConnectUs Admin</title>
+
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/admin.css">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body class="flex w-full h-screen overflow-hidden bg-[#f8fafb]">
+
+    <div id="layout-sidebar-container" class="flex-shrink-0 h-full z-20"></div>
+
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
+
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <div class="flex-1 overflow-y-auto p-7">
+
+            <div class="flex flex-wrap gap-4 justify-between items-center mb-6">
+                <div class="flex items-center gap-3">
+                    <div class="w-11 h-11 bg-gradient-to-br from-indigo-500 to-blue-600 text-white rounded-2xl flex items-center justify-center text-lg shadow-md"><i class="fa-solid fa-calendar-check"></i></div>
+                    <div>
+                        <h2 class="font-black text-2xl text-slate-800 leading-tight">Attendance</h2>
+                        <p class="text-sm text-slate-400 font-semibold">View daily attendance across every class</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm mb-5">
+                <div class="flex flex-wrap items-end gap-3 justify-between">
+                    <div class="flex flex-wrap items-end gap-3">
+                        <div>
+                            <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Class</label>
+                            <select id="classPicker" class="form-input p-2.5 bg-white border border-slate-200 rounded-xl text-sm cursor-pointer min-w-[180px]">
+                                <option value="">Loading…</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Date</label>
+                            <input type="date" id="attDate" class="form-input p-2.5 bg-white border border-slate-200 rounded-xl text-sm cursor-pointer">
+                        </div>
+                    </div>
+                    <p id="attDayMeta" class="text-xs text-slate-400 font-bold">—</p>
+                </div>
+                <div id="attSummary" class="flex flex-wrap items-center gap-4 mt-4"></div>
+            </div>
+
+            <div id="attLoader" class="flex justify-center py-16"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-indigo-500"></i></div>
+
+            <p id="attEmpty" class="hidden text-sm font-bold text-slate-400 text-center bg-white border-2 border-dashed border-slate-200 rounded-2xl py-14 px-6"></p>
+
+            <div id="attBody" class="hidden bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden"></div>
+
+        </div>
+    </main>
+
+    <script type="module" src="attendance.js"></script>
+</body>
+</html>

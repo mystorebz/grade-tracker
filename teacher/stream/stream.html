@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Class Stream | Teacher Portal | ConnectUs</title>
+
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/teachers.css">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body class="flex w-full h-screen overflow-hidden bg-[#f4f7fb] font-['DM_Sans']">
+
+    <div id="layout-sidebar-container" class="flex-shrink-0 h-full z-20"></div>
+
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden min-w-0">
+
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <div class="flex-1 overflow-y-auto p-8 view-section">
+
+            <div class="max-w-4xl mx-auto space-y-6">
+
+                <div class="flex items-end justify-between border-b-2 border-[#0d1f35] pb-4 mb-2">
+                    <div>
+                        <h1 class="text-xl font-bold text-[#0d1f35] tracking-tight mb-1">Class Stream</h1>
+                        <p class="text-xs text-[#6b84a0] m-0">Announcements and lesson plans for your subjects</p>
+                    </div>
+                </div>
+
+                <!-- Subject picker + view toggle -->
+                <div class="bg-white rounded-xl shadow-sm border border-[#dce3ed] p-4 flex flex-wrap items-center gap-3 justify-between">
+                    <div class="flex items-center gap-2">
+                        <label class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Subject</label>
+                        <select id="subjectSelect" class="form-input p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb] min-w-[200px]">
+                        </select>
+                    </div>
+
+                    <div class="flex items-center gap-1 bg-[#f4f7fb] border border-[#dce3ed] rounded-lg p-1">
+                        <button id="viewStreamBtn" data-toggle-group="view" class="px-3 py-1.5 rounded text-[12px] font-bold transition">
+                            <i class="fa-solid fa-rss text-[11px] mr-1"></i>Stream
+                        </button>
+                        <button id="viewLessonPlansBtn" data-toggle-group="view" class="px-3 py-1.5 rounded text-[12px] font-bold transition">
+                            <i class="fa-solid fa-calendar-days text-[11px] mr-1"></i>Lesson Plans
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Composer -->
+                <div class="bg-white rounded-xl shadow-sm border border-[#dce3ed] overflow-hidden">
+                    <div class="p-4 border-b border-[#f0f4f8] bg-[#f8fafb] flex items-center gap-3">
+                        <div class="w-8 h-8 rounded bg-[#eef4ff] text-[#2563eb] border border-[#c7d9fd] flex items-center justify-center">
+                            <i class="fa-solid fa-pen-to-square text-sm"></i>
+                        </div>
+                        <div>
+                            <h3 id="composerTitle" class="text-[13px] font-bold text-[#0d1f35] m-0 leading-tight">New Post</h3>
+                            <p class="text-[10.5px] text-[#6b84a0] m-0">Visible to this subject's class</p>
+                        </div>
+                    </div>
+
+                    <div class="p-5 space-y-4">
+                        <div id="composerMsg" class="hidden"></div>
+
+                        <div class="flex items-center gap-2 bg-[#f4f7fb] border border-[#dce3ed] rounded-lg p-1 w-fit">
+                            <button type="button" id="typeAnnouncementBtn" data-toggle-group="type" class="px-3 py-1.5 rounded text-[12px] font-bold transition">
+                                <i class="fa-solid fa-bullhorn text-[11px] mr-1"></i>Announcement
+                            </button>
+                            <button type="button" id="typeLessonPlanBtn" data-toggle-group="type" class="px-3 py-1.5 rounded text-[12px] font-bold transition">
+                                <i class="fa-solid fa-calendar-days text-[11px] mr-1"></i>Lesson Plan
+                            </button>
+                        </div>
+
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Title <span id="titleRequiredMark" class="hidden text-[#e31b4a]">*</span></label>
+                            <input type="text" id="postTitle" placeholder="e.g. Reminder about Friday's quiz" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">
+                        </div>
+
+                        <div id="lessonDateField" class="hidden">
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Lesson Date</label>
+                            <input type="date" id="postLessonDate" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">
+                        </div>
+
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Details</label>
+                            <textarea id="postBody" rows="4" placeholder="Write your announcement or lesson plan details..." class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb] resize-none"></textarea>
+                        </div>
+
+                        <div id="objectivesField" class="hidden">
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Objectives</label>
+                            <textarea id="postObjectives" rows="2" placeholder="What should students be able to do after this lesson?" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb] resize-none"></textarea>
+                        </div>
+
+                        <div id="pinnedField" class="flex items-center gap-2">
+                            <input type="checkbox" id="postPinned" class="w-4 h-4">
+                            <label for="postPinned" class="text-[12px] font-semibold text-[#374f6b]">Pin to top of stream</label>
+                        </div>
+
+                        <div class="flex items-center gap-2 pt-1">
+                            <button id="savePostBtn" class="bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-2.5 px-5 rounded transition text-[13px] flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-paper-plane"></i> <span id="savePostBtnLabel">Post</span>
+                            </button>
+                            <button id="cancelEditBtn" class="hidden text-[#6b84a0] hover:text-[#0d1f35] font-bold py-2.5 px-4 rounded text-[13px] transition">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Post list -->
+                <div id="postListCount" class="text-[11px] font-bold text-[#6b84a0] uppercase tracking-widest px-1"></div>
+                <div id="postList" class="space-y-3 pb-8"></div>
+
+            </div>
+        </div>
+    </main>
+
+    <script type="module" src="stream.js"></script>
+</body>
+</html>

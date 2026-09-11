@@ -2,7 +2,7 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, getDocs, doc, getDoc, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectStudentLayout } from '../../assets/js/layout-student.js';
-import { calculateWeightedAverage } from '../../assets/js/utils.js';
+import { calculateWeightedAverage, resolveGradeWeights } from '../../assets/js/utils.js';
 
 // ── 1. AUTH & LAYOUT ──────────────────────────────────────────────────────
 const session = requireAuth('student', '../login.html');
@@ -91,9 +91,11 @@ async function loadDashboardData() {
         const uniqueTeacherIds = [...new Set(currentGrades.map(g => g.teacherId).filter(Boolean))];
         for (const tId of uniqueTeacherIds) {
             if (!teacherRubricsCache[tId]) {
+                // ── PHASE 0: prefer the new teaching_assignments weighting
+                // over the legacy gradeTypes/customGradeTypes fields.
                 const tDoc = await getDoc(doc(db, 'teachers', tId));
-                teacherRubricsCache[tId] = tDoc.exists()
-                    ? (tDoc.data().gradeTypes || tDoc.data().customGradeTypes || []) : [];
+                const legacyData = tDoc.exists() ? tDoc.data() : null;
+                teacherRubricsCache[tId] = await resolveGradeWeights(session.schoolId, tId, { legacyTeacherData: legacyData }) || [];
             }
         }
 

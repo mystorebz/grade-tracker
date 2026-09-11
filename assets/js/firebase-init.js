@@ -1,11 +1,13 @@
 import { initializeApp }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager }
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getStorage }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
-import { getAuth }
+import { getAuth, connectAuthEmulator }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getFunctions, connectFunctionsEmulator }
+    from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
 
 const firebaseConfig = {
     apiKey:            "AIzaSyDTIREBdTGkVc1cWJRrG9q7YN_fv0XMr5w",
@@ -24,8 +26,22 @@ export const db = initializeFirestore(app, {
     })
 });
 
-export const storage = getStorage(app);
-export const auth    = getAuth(app);
+export const storage   = getStorage(app);
+export const auth      = getAuth(app);
+export const functions = getFunctions(app);
+
+// ── LOCAL EMULATOR SWITCH ────────────────────────────────────────
+// Only takes effect when this page is actually being viewed from
+// localhost/127.0.0.1 (e.g. running `npx serve` in this folder).
+// connectusonline.org, and every other real host, is never
+// "localhost" — so this block is 100% inert in production and
+// cannot affect real users or real data.
+if (typeof location !== 'undefined' && ['localhost', '127.0.0.1'].includes(location.hostname)) {
+    connectFirestoreEmulator(db, '127.0.0.1', 8080);
+    connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+    connectFunctionsEmulator(functions, '127.0.0.1', 5001);
+    console.log('[firebase-init] Localhost detected — using local emulators (Firestore 8080, Auth 9099, Functions 5001), not production.');
+}
 
 // App Check disabled during local development.
 // Re-enable on production by uncommenting below.

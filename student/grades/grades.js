@@ -2,7 +2,7 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectStudentLayout } from '../../assets/js/layout-student.js';
-import { calculateWeightedAverage } from '../../assets/js/utils.js';
+import { calculateWeightedAverage, resolveGradeWeights } from '../../assets/js/utils.js';
 
 // ── 1. AUTH & LAYOUT ──────────────────────────────────────────────────────
 const session = requireAuth('student', '../login.html');
@@ -87,8 +87,10 @@ async function loadGrades() {
         document.getElementById('gbTerm').textContent = semName;
 
         if (tSnap && tSnap.exists()) {
-            const td         = tSnap.data();
-            teacherRubric    = td.gradeTypes || td.customGradeTypes || [];
+            const td = tSnap.data();
+            // ── PHASE 0: prefer the new schools/{schoolId}/teaching_assignments
+            // weighting over the legacy gradeTypes/customGradeTypes fields.
+            teacherRubric    = await resolveGradeWeights(session.schoolId, tId, { legacyTeacherData: td }) || [];
             teachersMap[tId] = td.name || 'Teacher';
         }
 

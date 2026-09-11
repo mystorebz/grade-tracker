@@ -553,7 +553,7 @@ window.endOfYearReset = async function() {
             chunk.forEach(d => {
                 const data         = d.data();
                 const leavingClass = data.className || '';
-                const update       = { teacherId: '', className: '' };
+                const update       = { teacherId: '', className: '', classId: '' };   // PASS B
 
                 if (leavingClass) {
                     update.classHistory = arrayUnion({

@@ -1,8 +1,8 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { collection, query, where, getDocs, getDoc, doc, updateDoc, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, query, where, getDocs, getDoc, doc, updateDoc, deleteDoc, writeBatch, arrayRemove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
-import { openOverlay, closeOverlay, letterGrade, calculateWeightedAverage } from '../../assets/js/utils.js';
+import { openOverlay, closeOverlay, letterGrade, calculateWeightedAverage, loadTeacherSubjectsCache, getTeacherDocRef, resolveGradeWeights } from '../../assets/js/utils.js';
 
 // ── 1. AUTHENTICATION & LAYOUT ──────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
@@ -13,6 +13,11 @@ if (session) {
 // ── 2. STATE VARIABLES ──────────────────────────────────────────────────────
 let currentStudentId = null;
 let rawSemesters = [];
+
+// PHASE 0: same merged legacy/new-model subjects list as subjects.js and
+// grade_form.js, built by the shared loadTeacherSubjectsCache() helper in
+// utils.js — populated once in init() below.
+let subjectsCache = [];
 
 // UPDATED: Added helper to fetch the teacher's custom grade types
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
@@ -29,26 +34,25 @@ function escHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
-// ── HELPER: resolve correct teacher document path (global vs legacy) ──────────
-function getTeacherRef() {
-    return /^T\d{2}-[A-Z0-9]{5}$/i.test(session.teacherId)
-        ? doc(db, 'teachers', session.teacherId)
-        : doc(db, 'schools', session.schoolId, 'teachers', session.teacherId);
-}
-
 // ── 3. INITIALIZATION ───────────────────────────────────────────────────────
 async function init() {
     if (!session) return;
 
     const searchInput = document.getElementById('archiveStudentSearch');
     if (searchInput) searchInput.addEventListener('input', filterArchivedStudents);
-    
+
     document.getElementById('closePrintBtn').addEventListener('click', () => {
         closeOverlay('printStudentModal', 'printStudentModalInner');
     });
     document.getElementById('executePrintBtn').addEventListener('click', executeStudentPrint);
 
-    await loadSemesters(); 
+    await loadSemesters();
+    try {
+        const result = await loadTeacherSubjectsCache(session.schoolId, session.teacherId, session.teacherData);
+        subjectsCache = result.subjectsCache;
+    } catch (e) {
+        console.error('[Archives] Failed to load subjects cache:', e);
+    }
     await loadArchivesTab();
 }
 
@@ -102,7 +106,7 @@ async function loadSemesters() {
 }
 
 function getArchivedSubjects() {
-    return (session.teacherData.subjects || []).filter(s => s.archived);
+    return subjectsCache.filter(s => s.archived);
 }
 
 // ── 4. LOAD DATA ────────────────────────────────────────────────────────────
@@ -206,12 +210,21 @@ window.filterArchivedStudents = function() {
 window.restoreStudent = async function(id) {
     try {
         // CHANGED: update global student doc
+        // ── FIX: dual-archive unification — archiving now sets the boolean
+        // `archived` flag from BOTH portals (teacher/roster.js and
+        // admin/students.js), so restoring must clear it symmetrically —
+        // otherwise admin/students.js's directory filter (which checks
+        // `archived`) would keep hiding a student a teacher just restored.
+        // Also drop this school from archivedSchoolIds so stale entries
+        // don't linger once the student is active here again.
         await updateDoc(doc(db, 'students', id), {
-            enrollmentStatus: 'Active',
-            currentSchoolId:  session.schoolId,
-            teacherId:        session.teacherId
+            enrollmentStatus:  'Active',
+            archived:          false,
+            currentSchoolId:   session.schoolId,
+            teacherId:         session.teacherId,
+            archivedSchoolIds: arrayRemove(session.schoolId)
         });
-        loadArchivesTab(); 
+        loadArchivesTab();
     } catch (e) {
         console.error('[Archives] Error restoring student:', e);
         alert("Error restoring student.");
@@ -238,15 +251,23 @@ window.permanentDeleteStudent = async function(id, studentName) {
 
 // ── 6. SUBJECT ACTIONS ──────────────────────────────────────────────────────
 window.restoreSubject = async function(subjectId) {
-    const newSubs = session.teacherData.subjects.map(s => 
-        s.id === subjectId ? { ...s, archived: false, archivedAt: null } : s
-    );
-    
+    const sub = subjectsCache.find(s => s.id === subjectId);
+    if (!sub) return;
+
     try {
-        // CHANGED: use getTeacherRef() for global/legacy compatibility
-        await updateDoc(getTeacherRef(), { subjects: newSubs });
-        session.teacherData.subjects = newSubs;
-        setSessionData('teacher', session);
+        if (sub._source === 'new') {
+            // PHASE 0: new-model subject is its own document — update it directly
+            await updateDoc(doc(db, 'schools', session.schoolId, 'classes', sub.classId, 'subjects', sub.id), { archived: false, archivedAt: null });
+        } else {
+            const newSubs = session.teacherData.subjects.map(s =>
+                s.id === subjectId ? { ...s, archived: false, archivedAt: null } : s
+            );
+            await updateDoc(getTeacherDocRef(session.schoolId, session.teacherId), { subjects: newSubs });
+            session.teacherData.subjects = newSubs;
+            setSessionData('teacher', session);
+        }
+        sub.archived = false;
+        sub.archivedAt = null;
         loadArchivesTab();
     } catch (e) {
         console.error('[Archives] Error restoring subject:', e);
@@ -255,16 +276,30 @@ window.restoreSubject = async function(subjectId) {
 };
 
 window.permanentDeleteSubject = async function(subjectId, subjectName) {
-    const sub = (session.teacherData.subjects || []).find(s => s.id === subjectId);
+    const sub = subjectsCache.find(s => s.id === subjectId);
     if (!sub) return;
-    
+
     if (!confirm(`Permanently delete "${subjectName}"?\n\nWARNING: Existing student grades will still reference this subject name text, but the subject will be removed from your curriculum lists entirely.`)) return;
-    
-    const newSubs = session.teacherData.subjects.filter(s => s.id !== subjectId);
+
     try {
-        await updateDoc(getTeacherRef(), { subjects: newSubs });
-        session.teacherData.subjects = newSubs;
-        setSessionData('teacher', session);
+        if (sub._source === 'new') {
+            // PHASE 0: a new-model subject's assignments are their own
+            // documents in a subcollection — Firestore never cascade-deletes
+            // those on its own, so clear them out first, in the same batch,
+            // to match the legacy behavior this confirm() dialog promises
+            // (the subject and everything under it disappears entirely).
+            const asgSnap = await getDocs(collection(db, 'schools', session.schoolId, 'classes', sub.classId, 'subjects', sub.id, 'assignments'));
+            const batch = writeBatch(db);
+            asgSnap.forEach(d => batch.delete(d.ref));
+            batch.delete(doc(db, 'schools', session.schoolId, 'classes', sub.classId, 'subjects', sub.id));
+            await batch.commit();
+        } else {
+            const newSubs = session.teacherData.subjects.filter(s => s.id !== subjectId);
+            await updateDoc(getTeacherDocRef(session.schoolId, session.teacherId), { subjects: newSubs });
+            session.teacherData.subjects = newSubs;
+            setSessionData('teacher', session);
+        }
+        subjectsCache = subjectsCache.filter(s => s.id !== subjectId);
         loadArchivesTab();
     } catch (e) {
         console.error('[Archives] Error deleting subject:', e);
@@ -277,8 +312,7 @@ window.printStudentRecord = function(studentId) {
     currentStudentId = studentId;
     
     const psSubj = document.getElementById('psSubject');
-    const allSubjects = session.teacherData.subjects || [];
-    psSubj.innerHTML = '<option value="all">All Subjects</option>' + allSubjects.map(s => `<option value="${escHtml(s.name)}">${escHtml(s.name)}</option>`).join('');
+    psSubj.innerHTML = '<option value="all">All Subjects</option>' + subjectsCache.map(s => `<option value="${escHtml(s.name)}">${escHtml(s.name)}</option>`).join('');
     
     openOverlay('printStudentModal', 'printStudentModalInner');
 };
@@ -429,6 +463,12 @@ window.executeStudentPrint = async function() {
 
         } else {
             // ── Fallback: fetch grades live (for records archived before snapshot was introduced)
+            // ── PHASE 0: this is an official print action, so resolve grade
+            // weights fresh at the moment of printing rather than trusting
+            // whatever getGradeTypes()'s legacy-only read would return.
+            const resolvedWeights = await resolveGradeWeights(session.schoolId, session.teacherId, { legacyTeacherData: session.teacherData });
+            const freshGradeTypes = resolvedWeights || getGradeTypes();
+
             const gradesSnap = await getDocs(collection(db, 'students', studentId, 'grades'));
             let grades = [];
             gradesSnap.forEach(d => grades.push(d.data()));
@@ -453,7 +493,7 @@ window.executeStudentPrint = async function() {
                         let semTotalPct = 0; let semSubjCount = 0;
                         for (let sub in bySem[sem]) {
                             const sGrades = bySem[sem][sub];
-                            const avg = calculateWeightedAverage(sGrades, getGradeTypes());
+                            const avg = calculateWeightedAverage(sGrades, freshGradeTypes);
                             if (avg !== null) {
                                 semTotalPct += avg; semSubjCount++;
                                 bodyHtml += `<tr><td>${escHtml(sub)}</td><td class="tc">${sGrades.length}</td><td class="tc" style="font-family:monospace;font-weight:700;">${avg}%</td><td class="tc" style="font-weight:800;">${letterGrade(avg)}</td></tr>`;

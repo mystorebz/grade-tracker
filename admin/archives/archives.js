@@ -174,6 +174,7 @@ window.restoreStudent = async function(id) {
             archiveReason:     '',
             teacherId:         '',
             className:         '',
+            classId:           '',   // PASS B: clean-slate on restore, same as className/teacherId
             archivedSchoolIds: arrayRemove(session.schoolId)
         });
         delete cachedStudents[id];

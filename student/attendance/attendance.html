@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance | ConnectUs</title>
+
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/student.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'DM Sans', sans-serif; background: #f0f2f8; }
+        .hidden { display: none !important; }
+
+        .cs-topbar {
+            background: linear-gradient(120deg, #1e1b4b 0%, #3730a3 55%, #4f46e5 100%);
+            padding: 28px 40px;
+        }
+        .cs-topbar h1 { font-size: 22px; font-weight: 800; color: #fff; margin: 0 0 4px; letter-spacing: -0.4px; }
+        .cs-topbar p  { font-size: 13px; color: rgba(255,255,255,0.6); margin: 0; font-weight: 500; }
+
+        .page-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 20px; gap: 14px; }
+        .page-loader i { font-size: 32px; color: #6366f1; }
+        .page-loader p { font-size: 13.5px; color: #94a3b8; font-weight: 600; margin: 0; }
+
+        @media (max-width: 767px) {
+            .cs-topbar { padding: 20px; }
+        }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden">
+
+    <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
+
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <div class="flex-1 overflow-y-auto">
+
+            <div class="cs-topbar">
+                <h1>Attendance</h1>
+                <p>Your attendance history, month by month</p>
+            </div>
+
+            <div class="max-w-3xl mx-auto p-6 md:p-8 space-y-5">
+
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex items-center justify-between gap-3">
+                    <button id="prevMonthBtn" class="w-9 h-9 rounded-lg bg-slate-100 hover:bg-indigo-100 text-slate-600 hover:text-indigo-600 transition flex items-center justify-center">
+                        <i class="fa-solid fa-chevron-left text-xs"></i>
+                    </button>
+                    <p id="monthLabel" class="font-black text-slate-800 text-base">—</p>
+                    <button id="nextMonthBtn" class="w-9 h-9 rounded-lg bg-slate-100 hover:bg-indigo-100 text-slate-600 hover:text-indigo-600 transition flex items-center justify-center">
+                        <i class="fa-solid fa-chevron-right text-xs"></i>
+                    </button>
+                </div>
+
+                <div id="monthSummary" class="flex flex-wrap gap-3"></div>
+
+                <div id="attLoader" class="page-loader">
+                    <i class="fa-solid fa-circle-notch fa-spin"></i>
+                    <p>Loading your attendance…</p>
+                </div>
+
+                <p id="attEmpty" class="hidden text-center py-10 text-slate-400 text-[13px] font-bold bg-white rounded-xl border border-slate-200"></p>
+
+                <div id="attList" class="space-y-2 pb-8"></div>
+
+            </div>
+        </div>
+    </main>
+
+    <script type="module" src="attendance.js"></script>
+</body>
+</html>

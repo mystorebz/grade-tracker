@@ -2,7 +2,8 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where, arrayUnion, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"; // ── FIX: added writeBatch
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
-import { openOverlay, closeOverlay, letterGrade, calculateWeightedAverage } from '../../assets/js/utils.js';
+import { openOverlay, closeOverlay, letterGrade, calculateWeightedAverage, resolveGradeWeights, loadSchoolWeightingIndex, getWeightingFromIndex } from '../../assets/js/utils.js';
+import { sha256Trim } from '../../assets/js/crypto-utils.js';
 
 // ── 1. INIT & AUTH ────────────────────────────────────────────────────────
 const session = requireAuth('admin', '../login.html');
@@ -15,6 +16,7 @@ let rawSemesters           = [];
 let activeSemesterId       = '';   // resolved once at load for the end-of-term gate + missing-grade flag
 let activeSemesterObj      = null; // the active semester record (for startDate/endDate)
 let schoolClasses          = [];
+let schoolClassDocs        = [];   // PASS B: [{id, name}] — same fetch as schoolClasses, keeps the real class-doc ID
 let currentStudentId       = null;
 let currentStudentClass    = '';   // the open student's CURRENT class — Academic tab is scoped to this
 let currentStudentGradesCache = [];
@@ -55,15 +57,24 @@ function standingStyle(avg) {
 async function loadSchoolClasses() {
     try {
         const snap = await getDocs(collection(db, 'schools', session.schoolId, 'classes'));
-        schoolClasses = snap.docs
+        const sorted = snap.docs
             .map(d => ({ id: d.id, ...d.data() }))
-            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.name || '').localeCompare(b.name || ''))
-            .map(c => c.name)
-            .filter(Boolean);
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.name || '').localeCompare(b.name || ''));
+        schoolClassDocs = sorted.filter(c => c.name);
+        schoolClasses   = sorted.map(c => c.name).filter(Boolean);
     } catch (e) {
         console.error('[Students] loadSchoolClasses:', e);
-        schoolClasses = [];
+        schoolClasses   = [];
+        schoolClassDocs = [];
     }
+}
+
+// PASS B: resolve a class NAME (what the UI works in) to its real class-doc
+// ID (what teacherIds/classId live on). Returns '' if there's no matching
+// class doc, rather than guessing.
+function classIdForName(name) {
+    if (!name) return '';
+    return schoolClassDocs.find(c => c.name === name)?.id || '';
 }
 
 function getClassList(extra = []) {
@@ -92,9 +103,10 @@ async function loadData() {
     tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-16 text-center text-slate-400 font-semibold"><i class="fa-solid fa-spinner fa-spin text-blue-500 text-2xl mb-3 block"></i>Loading directory...</td></tr>`;
 
     try {
-        const [sSnap, tSnap] = await Promise.all([
+        const [sSnap, tSnap, weightingIndex] = await Promise.all([
             getDocs(query(collection(db, 'students'), where('currentSchoolId', '==', session.schoolId))),
-            getDocs(query(collection(db, 'teachers'),  where('currentSchoolId', '==', session.schoolId)))
+            getDocs(query(collection(db, 'teachers'),  where('currentSchoolId', '==', session.schoolId))),
+            loadSchoolWeightingIndex(session.schoolId)
         ]);
 
         const tm = {};
@@ -104,13 +116,26 @@ async function loadData() {
             if (!d.data().archived) allTeachersCache.push({ id: d.id, ...d.data() });
         });
 
+        // ── FIX: dual-archive unification — a student can be archived via
+        // either this portal (`archived: true`) or the teacher roster portal
+        // (`enrollmentStatus` set to a non-Active value, e.g. 'Archived',
+        // 'Transferred', 'Graduated', 'Expelled', 'Dropped Out'). Recognize
+        // both signals so the directory stays consistent regardless of which
+        // portal archived the student.
         allStudentsCache = sSnap.docs
-            .filter(d => !d.data().archived)
+            .filter(d => {
+                const data = d.data();
+                if (data.archived) return false;
+                if (data.enrollmentStatus && data.enrollmentStatus !== 'Active') return false;
+                return true;
+            })
             .map(d => ({ id: d.id, ...d.data(), teacherName: tm[d.data().teacherId] || '—' }));
 
+        // ── PHASE 0: resolved once per page load (passive display) from the
+        // batch weighting index, never a per-teacher query — see utils.js.
         const teacherWeightsById = {};
         allTeachersCache.forEach(t => {
-            teacherWeightsById[t.id] = t.gradeTypes || t.customGradeTypes || currentTeacherWeights;
+            teacherWeightsById[t.id] = getWeightingFromIndex(weightingIndex, t.id, t) || currentTeacherWeights;
         });
         await Promise.all(allStudentsCache.map(async s => {
             s.cumulativeAvg = null;
@@ -321,6 +346,14 @@ document.getElementById('saveAddStudentBtn')?.addEventListener('click', async ()
 
         const batch = writeBatch(db);
 
+        // Generate the real PIN once, hash it for storage/login comparison,
+        // and keep the raw value only in a short-lived `_tempPlaintextPin`
+        // field — onStudentCreated (functions/index.js) reads that for the
+        // welcome email and deletes it immediately after sending. The `pin`
+        // field itself is never written in plain text.
+        const rawPin    = generatePin();
+        const hashedPin = await sha256Trim(rawPin);
+
         const studentRef = doc(db, 'students', studentId);
         batch.set(studentRef, {
             firstName,
@@ -331,10 +364,12 @@ document.getElementById('saveAddStudentBtn')?.addEventListener('click', async ()
             parentName:           parentName  || '',
             parentPhone:          parentPhone || '',
             className:            '',
+            classId:              '',   // PASS B: real classes/{classId} doc reference, resolved on assignment
             teacherId:            '',
             currentSchoolId:      session.schoolId,
             enrollmentStatus:     'Active',
-            pin:                  generatePin(),
+            pin:                  hashedPin,
+            _tempPlaintextPin:    rawPin,
             archived:             false,
             archivedAt:           null,
             archiveReason:        null,
@@ -419,8 +454,15 @@ window.openStudentPanel = async function (studentId) {
 
     try {
         if (student?.teacherId) {
-            const tDoc = await getDoc(doc(db, 'teachers', student.teacherId));
-            if (tDoc.exists() && tDoc.data().gradeTypes) currentTeacherWeights = tDoc.data().gradeTypes;
+            // ── PHASE 0: resolve fresh so a just-changed weighting shows up the
+            // moment the panel is opened, not whatever was cached at directory load.
+            let legacyData = allTeachersCache.find(t => t.id === student.teacherId);
+            if (!legacyData) {
+                const tDoc = await getDoc(doc(db, 'teachers', student.teacherId));
+                legacyData = tDoc.exists() ? tDoc.data() : null;
+            }
+            const resolvedWeights = await resolveGradeWeights(session.schoolId, student.teacherId, { legacyTeacherData: legacyData });
+            if (resolvedWeights) currentTeacherWeights = resolvedWeights;
         }
 
         const gradesSnap = await getDocs(collection(db, 'students', studentId, 'grades'));
@@ -733,7 +775,11 @@ document.getElementById('saveReassignBtn')?.addEventListener('click', async () =
     try {
         const className = document.getElementById('rsClass')?.value   || '';
         const teacherId = document.getElementById('rsTeacher')?.value || '';
-        await updateDoc(doc(db, 'students', currentStudentId), { className, teacherId });
+        // PASS B: classId is the real reference Firestore rules will trust;
+        // className stays for display. '' when unassigned or the name has
+        // no matching class doc.
+        const classId = classIdForName(className);
+        await updateDoc(doc(db, 'students', currentStudentId), { className, classId, teacherId });
         closeReassignModal();
         await loadData();
     } catch (e) {
@@ -766,6 +812,18 @@ document.getElementById('confirmArchiveBtn')?.addEventListener('click', async ()
 
     if (sel === 'Other' && !reason) { alert("Please specify the reason."); return; }
 
+    // ── FIX: dual-archive unification — map this portal's reason picker to
+    // the same enrollmentStatus values teacher/roster.js's release flow uses,
+    // so teacher/archives.js's status query recognizes admin-originated
+    // archives too.
+    const enrollmentStatusMap = {
+        'Transferred to another school': 'Transferred',
+        'Graduated': 'Graduated',
+        'Expelled': 'Expelled',
+        'Dropped Out': 'Dropped Out'
+    };
+    const finalStatus = enrollmentStatusMap[sel] || 'Archived';
+
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Archiving...';
     btn.disabled  = true;
 
@@ -775,11 +833,16 @@ document.getElementById('confirmArchiveBtn')?.addEventListener('click', async ()
         let academicSnapshot = {};
         try {
             let gradeTypes = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
+            // ── PHASE 0: this is a permanent-record snapshot, so resolve fresh
+            // at the moment of archiving — never from a page-load cache.
             if (studentToArchive?.teacherId) {
-                const tDoc = await getDoc(doc(db, 'teachers', studentToArchive.teacherId));
-                if (tDoc.exists()) {
-                    gradeTypes = tDoc.data().gradeTypes || tDoc.data().customGradeTypes || gradeTypes;
+                let legacyData = allTeachersCache.find(t => t.id === studentToArchive.teacherId);
+                if (!legacyData) {
+                    const tDoc = await getDoc(doc(db, 'teachers', studentToArchive.teacherId));
+                    legacyData = tDoc.exists() ? tDoc.data() : null;
                 }
+                const resolvedWeights = await resolveGradeWeights(session.schoolId, studentToArchive.teacherId, { legacyTeacherData: legacyData });
+                gradeTypes = resolvedWeights || gradeTypes;
             }
 
             const gradesSnap = await getDocs(collection(db, 'students', currentStudentId, 'grades'));
@@ -795,7 +858,12 @@ document.getElementById('confirmArchiveBtn')?.addEventListener('click', async ()
             ));
             const evaluations = [];
             evalSnap.forEach(d => evaluations.push({ id: d.id, ...d.data() }));
-            evalSnap.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
+            // ── FIX: evalSnap is a Firestore QuerySnapshot (no .sort()) — this
+            // was crashing on every archive before it ever reached the
+            // semesters/weighting calculation below, silently leaving
+            // academicSnapshot as {} regardless of grade data. Sort the
+            // plain evaluations array instead.
+            evaluations.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
 
             const bySemester = {};
             classGrades.forEach(g => {
@@ -834,12 +902,22 @@ document.getElementById('confirmArchiveBtn')?.addEventListener('click', async ()
         // ── FIX: use writeBatch so email cleanup is atomic with the archive write ──
         const batch = writeBatch(db);
 
+        // ── FIX: dual-archive unification — this portal never used to set
+        // enrollmentStatus or clear currentSchoolId, so an admin-originated
+        // archive was invisible to teacher/archives.js's status query (whose
+        // "still Active at this school" exclusion check actively hid it from
+        // that list). Every reason this portal offers implies the student is
+        // leaving the school, so mirror roster.js's "release" archive
+        // semantics here.
         batch.update(doc(db, 'students', currentStudentId), {
             archived:          true,
+            enrollmentStatus:  finalStatus,
+            currentSchoolId:   '',
             archivedAt:        new Date().toISOString(),
             archiveReason:     reason || 'Not specified',
             teacherId:         '',
             className:         '',
+            classId:           '',   // PASS B: clear alongside className — clean slate, same as restore
             lastClassName:     studentToArchive?.className || '',
             archivedSchoolIds: arrayUnion(session.schoolId),
             academicSnapshot

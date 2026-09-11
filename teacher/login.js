@@ -1,17 +1,18 @@
-import { db, auth } from '../assets/js/firebase-init.js';
+import { db, auth, functions } from '../assets/js/firebase-init.js';
 import { doc, getDoc, updateDoc }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { signInWithCustomToken, signOut }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getFunctions, httpsCallable }
+import { httpsCallable }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
 import { setSessionData } from '../assets/js/auth.js';
+import { loadTeacherSubjectsCache } from '../assets/js/utils.js';
 
 // ── WIPE ANY STALE SESSION THE MOMENT THE LOGIN PAGE LOADS ───────────────────
 signOut(auth).catch(() => {});
 
-// ── Functions instance ────────────────────────────────────────────────────────
-const functions        = getFunctions();
+// ── Functions instance (shared from firebase-init.js so it's the same one
+// that gets pointed at the local emulator when running from localhost) ──────
 const mintTeacherToken = httpsCallable(functions, 'mintTeacherToken');
 
 // ── State & Constants ─────────────────────────────────────────────────────────
@@ -151,11 +152,27 @@ async function finalizeLogin() {
         }
 
         if (!tempSession.teacherData.subjects || !tempSession.teacherData.subjects.length) {
-            const updateRef = isGlobalTeacher
-                ? doc(db, 'teachers', tempSession.teacherId)
-                : doc(db, 'schools', tempSession.schoolId, 'teachers', tempSession.teacherId);
-            await updateDoc(updateRef, { subjects: DEFAULT_SUBJECTS });
-            tempSession.teacherData.subjects = DEFAULT_SUBJECTS;
+            // ── PHASE 0: an empty legacy `subjects` array no longer means "never
+            // set up" — a fully-migrated teacher's real subjects live in the new
+            // per-class model instead, and force-writing DEFAULT_SUBJECTS onto
+            // their legacy field here would silently resurrect a stale subject
+            // list on every login. Only fall back to defaults if the new model
+            // genuinely has nothing for this teacher either.
+            let hasNewModelSubjects = false;
+            try {
+                const { subjectsCache } = await loadTeacherSubjectsCache(tempSession.schoolId, tempSession.teacherId, tempSession.teacherData);
+                hasNewModelSubjects = subjectsCache.some(s => s._source === 'new');
+            } catch (e) {
+                console.warn('[Teacher Login] finalizeLogin new-model subjects check warning:', e.message);
+            }
+
+            if (!hasNewModelSubjects) {
+                const updateRef = isGlobalTeacher
+                    ? doc(db, 'teachers', tempSession.teacherId)
+                    : doc(db, 'schools', tempSession.schoolId, 'teachers', tempSession.teacherId);
+                await updateDoc(updateRef, { subjects: DEFAULT_SUBJECTS });
+                tempSession.teacherData.subjects = DEFAULT_SUBJECTS;
+            }
         }
     } catch (e) {
         console.warn('[Teacher Login] finalizeLogin migration warning:', e.message);
