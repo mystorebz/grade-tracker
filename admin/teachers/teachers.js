@@ -901,9 +901,15 @@ async function renderSubjectsTab() {
 
         let allGrades = [];
         if (studentIds.length > 0) {
-            const gradePromises    = studentIds.map(sid => getDocs(collection(db, 'students', sid, 'grades')));
-            const fallbackPromises = studentIds.map(sid => getDocs(collection(db, 'schools', session.schoolId, 'students', sid, 'grades')));
-            const results = await Promise.all([...gradePromises, ...fallbackPromises]);
+            // Dead legacy fallback (schools/{schoolId}/students/{id}/grades) removed
+            // 2026-09-11: nothing anywhere ever writes to that path — real grades
+            // live only at students/{id}/grades (queried below) — and that path
+            // isn't covered by a named Firestore rule (only the recursive
+            // schools/{schoolId} wildcard, which never grants `list`), so the
+            // fallback query always 403'd and broke this whole Promise.all,
+            // showing "Error loading subjects." instead of the stats.
+            const gradePromises = studentIds.map(sid => getDocs(collection(db, 'students', sid, 'grades')));
+            const results = await Promise.all(gradePromises);
             results.forEach(snap => snap.forEach(d => allGrades.push(d.data())));
         }
 

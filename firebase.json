@@ -17,9 +17,6 @@
       "source": "functions"
     }
   ],
-  "extensions": {
-    "firestore-send-email-7pcl": "firebase/firestore-send-email@0.2.8"
-  },
   "emulators": {
     "auth": {
       "port": 9099

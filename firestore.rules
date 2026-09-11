@@ -275,6 +275,45 @@ service cloud.firestore {
         }
       }
 
+      // ── Semesters / teaching_assignments: carved out of the generic
+      // wildcard below (Discovered during 2026-09-11 post-deploy testing —
+      // NOT part of the original Pass A/B design, a real gap found live).
+      //
+      // Cloud Firestore does not grant `list` through a rule written on a
+      // recursive wildcard (`{subcollection=**}` below) — only `get` on a
+      // specific document ID. A `list`/unfiltered `getDocs(collection(...))`
+      // query against a path ONLY covered by that wildcard is silently
+      // denied ("Missing or insufficient permissions"), even though the
+      // exact same boolean condition (isCallerInSchool && isSchoolActive)
+      // evaluates true for a `get` on one of its documents. Confirmed live:
+      // schools/{schoolId}/admins (has its own named match block, like this
+      // one) lists fine; schools/{schoolId}/semesters and
+      // .../teaching_assignments (previously relying solely on the generic
+      // wildcard) both 403'd on every list call — admin dashboard,
+      // gradebook, report cards, grade weighting, roster, grading period
+      // management, student/teacher portals — while a direct getDoc() on
+      // the same path succeeded. Named match blocks (see /admins and
+      // /classes above) were never affected; only paths left to the
+      // recursive wildcard were. Fixed the same way Pass B fixed /classes:
+      // named single-segment matches instead of relying on the wildcard.
+      match /semesters/{semesterId} {
+        allow read, update: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
+        allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
+                         (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
+                          existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
+                          getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
+        allow delete: if false;
+      }
+
+      match /teaching_assignments/{teachingAssignmentId} {
+        allow read, update: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
+        allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
+                         (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
+                          existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
+                          getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
+        allow delete: if false;
+      }
+
       // ── 3a. Classes: Per-Class Isolation (PASS B, PART 2) ─────────────────
       // schools/{schoolId}/classes/{classId} — the class document itself —
       // is carved out of the generic wildcard below and given a stricter GET
@@ -407,18 +446,24 @@ service cloud.firestore {
         }
       }
 
-      // ConnectUs classroom data (classes, subjects, assignments — metadata
-      // only, teaching_assignments, class-stream posts, exam metadata and
-      // question prompts, class_sessions, attendance, behavior_points) is
-      // intentionally covered by this wildcard: none of it is sensitive on
-      // its own, and it inherits the same "school is active" gate everything
-      // else here does. Nothing that must be hidden from a specific student
-      // (a submission, an exam answer key) may ever be added anywhere under
+      // ConnectUs classroom data (subjects, assignments — metadata only,
+      // class-stream posts, exam metadata and question prompts,
+      // class_sessions, attendance, behavior_points) is intentionally
+      // covered by this wildcard: none of it is sensitive on its own, and it
+      // inherits the same "school is active" gate everything else here
+      // does. Nothing that must be hidden from a specific student (a
+      // submission, an exam answer key) may ever be added anywhere under
       // schools/{schoolId} — this wildcard's grant is OR'd with any rule
       // written for a nested path, so a stricter rule placed here could never
       // actually restrict it. Those live under students/{studentId} (see
       // section 2a/2b above) or their own denied-by-default top-level
       // collection (see exam_answer_keys, section 11) instead.
+      //
+      // semesters and teaching_assignments are named above instead of left
+      // to this wildcard — see the comment on those blocks: `list` is not
+      // granted through a recursive-wildcard rule, only `get`, so anything
+      // queried via getDocs(collection(...)) (not just fetched by a known
+      // document ID) needs its own named match here to actually work.
       match /{subcollection=**} {
         // The entire 'classes' subtree (the class doc itself, and everything
         // nested under it) is handled by section 3a above instead — checking

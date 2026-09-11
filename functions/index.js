@@ -2,6 +2,7 @@ const { onCall, HttpsError, onRequest } = require('firebase-functions/v2/https')
 const admin                  = require('firebase-admin');
 const crypto                 = require('crypto');
 const { onSchedule }         = require('firebase-functions/v2/scheduler');
+const { sendMail, GMAIL_APP_PASSWORD } = require('./mailer');
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -340,7 +341,7 @@ exports.mintHQToken = onCall({ region: 'us-central1' }, async (request) => {
 //   5. Sends cancellation email to school contact
 //   6. Sends internal notification email to HQ
 // ═══════════════════════════════════════════════════════════════════════════════
-exports.cancelPayPalSubscription = onCall({ region: 'us-central1' }, async (request) => {
+exports.cancelPayPalSubscription = onCall({ region: 'us-central1', secrets: [GMAIL_APP_PASSWORD] }, async (request) => {
 
     // ── 1. Auth check ─────────────────────────────────────────────────────────
     if (!request.auth) {
@@ -484,12 +485,10 @@ exports.cancelPayPalSubscription = onCall({ region: 'us-central1' }, async (requ
 
             const html = buildEmailWrapper('#ef4444,#f97316', LOGO_URL, body);
 
-            await db.collection('mail').add({
+            await sendMail({
                 to:      contactEmail,
-                message: {
-                    subject: `Your ConnectUs Subscription Has Been Cancelled — ${schoolName}`,
-                    html
-                }
+                subject: `Your ConnectUs Subscription Has Been Cancelled — ${schoolName}`,
+                html
             });
 
             console.log(`[cancelPayPalSubscription] Cancellation email sent to ${contactEmail}`);
@@ -500,20 +499,18 @@ exports.cancelPayPalSubscription = onCall({ region: 'us-central1' }, async (requ
 
     // ── 6. Internal HQ notification ───────────────────────────────────────────
     try {
-        await db.collection('mail').add({
+        await sendMail({
             to: HQ_EMAIL_ADDRESS,
-            message: {
-                subject: `🚫 HQ Cancellation: ${schoolName} (${schoolId})`,
-                html: `<p style="font-family:sans-serif;font-size:14px;color:#334155;line-height:1.8;">
-                    <strong>School:</strong> ${schoolName}<br>
-                    <strong>School ID:</strong> <span style="font-family:monospace;">${schoolId}</span><br>
-                    <strong>PayPal Subscription ID:</strong> <span style="font-family:monospace;">${subscriptionId}</span><br>
-                    <strong>Cancelled by:</strong> ${cancelledByName} (${cancelledById})<br>
-                    <strong>Timestamp:</strong> ${new Date(now).toLocaleString('en-US', { timeZone: 'UTC' })} UTC<br><br>
-                    The PayPal subscription has been cancelled and the school's access has been suspended.
-                    All school data is preserved.
-                </p>`
-            }
+            subject: `🚫 HQ Cancellation: ${schoolName} (${schoolId})`,
+            html: `<p style="font-family:sans-serif;font-size:14px;color:#334155;line-height:1.8;">
+                <strong>School:</strong> ${schoolName}<br>
+                <strong>School ID:</strong> <span style="font-family:monospace;">${schoolId}</span><br>
+                <strong>PayPal Subscription ID:</strong> <span style="font-family:monospace;">${subscriptionId}</span><br>
+                <strong>Cancelled by:</strong> ${cancelledByName} (${cancelledById})<br>
+                <strong>Timestamp:</strong> ${new Date(now).toLocaleString('en-US', { timeZone: 'UTC' })} UTC<br><br>
+                The PayPal subscription has been cancelled and the school's access has been suspended.
+                All school data is preserved.
+            </p>`
         });
 
         console.log(`[cancelPayPalSubscription] HQ notification sent.`);
@@ -592,7 +589,7 @@ const LOGO_URL = 'https://connectusonline.org/assets/images/logo.png';
 // --- START: onSchoolCreated ---
 // Fires when a school is fully onboarded and its doc is created.
 // Sends a welcome email to the school admin.
-exports.onSchoolCreated = onDocumentCreated("schools/{schoolId}", async (event) => {
+exports.onSchoolCreated = onDocumentCreated({ document: "schools/{schoolId}", secrets: [GMAIL_APP_PASSWORD] }, async (event) => {
     const data     = event.data.data();
     const schoolId = event.params.schoolId;
 
@@ -641,9 +638,10 @@ exports.onSchoolCreated = onDocumentCreated("schools/{schoolId}", async (event) 
     const html = buildEmailWrapper('#10b981,#0ea5e9,#3b82f6', LOGO_URL, body);
 
     try {
-        await db.collection('mail').add({
+        await sendMail({
             to: data.contactEmail,
-            message: { subject: `Welcome to ConnectUs — ${schoolName} is Live!`, html }
+            subject: `Welcome to ConnectUs — ${schoolName} is Live!`,
+            html
         });
         console.log(`Admin welcome email sent for school: ${schoolId}`);
     } catch (error) {
@@ -666,7 +664,7 @@ exports.onSchoolCreated = onDocumentCreated("schools/{schoolId}", async (event) 
 // Unchanged from previous version:
 //   - Trigger path, guard conditions, school name lookup
 //   - Email wrapper, colors, CTA button, support footer
-//   - db.collection('mail').add() write
+//   - sendMail() call (direct Cloud Functions send, no more mail-collection extension)
 //
 // Changed from previous version:
 //   - Credentials table: Teacher ID is now FIRST (it's the login identifier)
@@ -675,7 +673,7 @@ exports.onSchoolCreated = onDocumentCreated("schools/{schoolId}", async (event) 
 //   - Important note: clarifies Teacher ID is the login credential, not School ID
 // ═══════════════════════════════════════════════════════════════════════════════
 // --- START: onTeacherCreated ---
-exports.onTeacherCreated = onDocumentCreated("teachers/{teacherId}", async (event) => {
+exports.onTeacherCreated = onDocumentCreated({ document: "teachers/{teacherId}", secrets: [GMAIL_APP_PASSWORD] }, async (event) => {
     const data      = event.data.data();
     const teacherId = event.params.teacherId;
  
@@ -733,9 +731,10 @@ exports.onTeacherCreated = onDocumentCreated("teachers/{teacherId}", async (even
     const html = buildEmailWrapper('#2563eb,#7c3aed,#0ea5e9', LOGO_URL, body);
  
     try {
-        await db.collection('mail').add({
+        await sendMail({
             to: data.email,
-            message: { subject: `Welcome to ConnectUs — Your Teacher Account is Ready`, html }
+            subject: `Welcome to ConnectUs — Your Teacher Account is Ready`,
+            html
         });
         console.log(`Teacher welcome email sent for: ${teacherId}`);
     } catch (error) {
@@ -778,7 +777,7 @@ exports.onTeacherCreated = onDocumentCreated("teachers/{teacherId}", async (even
 // --- START: onStudentCreated ---
 // Fires when a new student doc is created in the national registry.
 // Sends a welcome & credential email to the student/parent.
-exports.onStudentCreated = onDocumentCreated("students/{studentId}", async (event) => {
+exports.onStudentCreated = onDocumentCreated({ document: "students/{studentId}", secrets: [GMAIL_APP_PASSWORD] }, async (event) => {
     const data      = event.data.data();
     const studentId = event.params.studentId;
 
@@ -834,9 +833,10 @@ exports.onStudentCreated = onDocumentCreated("students/{studentId}", async (even
     const html = buildEmailWrapper('#7c3aed,#db2777,#0ea5e9', LOGO_URL, body);
 
     try {
-        await db.collection('mail').add({
+        await sendMail({
             to: data.email,
-            message: { subject: `Welcome to ConnectUs — Your Student Account is Ready`, html }
+            subject: `Welcome to ConnectUs — Your Student Account is Ready`,
+            html
         });
         console.log(`Student welcome email sent for: ${studentId}`);
     } catch (error) {
@@ -880,7 +880,7 @@ exports.onStudentCreated = onDocumentCreated("students/{studentId}", async (even
 // Fires when a new quote_requests doc is created.
 // PayPal-sourced requests (source: 'paypal') skip this — onQuoteApproved handles their email.
 // Manual quote form submissions get the 24-48hr follow-up email + HQ alert.
-exports.onQuoteRequestCreated = onDocumentCreated("quote_requests/{reqId}", async (event) => {
+exports.onQuoteRequestCreated = onDocumentCreated({ document: "quote_requests/{reqId}", secrets: [GMAIL_APP_PASSWORD] }, async (event) => {
     const data  = event.data.data();
     const reqId = event.params.reqId;
 
@@ -977,16 +977,10 @@ exports.onQuoteRequestCreated = onDocumentCreated("quote_requests/{reqId}", asyn
     `;
 
     try {
-        const batch = db.batch();
-        batch.set(db.collection('mail').doc(), {
-            to: data.workEmail,
-            message: { subject: "We received your ConnectUs quote request", html: customerHtml }
-        });
-        batch.set(db.collection('mail').doc(), {
-            to: HQ_EMAIL_ADDRESS,
-            message: { subject: `New Quote Request: ${data.schoolName || 'Unknown School'}`, html: hqHtml }
-        });
-        await batch.commit();
+        await Promise.all([
+            sendMail({ to: data.workEmail, subject: "We received your ConnectUs quote request", html: customerHtml }),
+            sendMail({ to: HQ_EMAIL_ADDRESS, subject: `New Quote Request: ${data.schoolName || 'Unknown School'}`, html: hqHtml })
+        ]);
         console.log(`Quote emails sent for Request ID: ${reqId}`);
     } catch (error) {
         console.error(`Failed to send quote emails for ${reqId}:`, error);
@@ -998,7 +992,7 @@ exports.onQuoteRequestCreated = onDocumentCreated("quote_requests/{reqId}", asyn
 
 
 // --- START: onQuoteApproved ---
-exports.onQuoteApproved = onDocumentUpdated("quote_requests/{reqId}", async (event) => {
+exports.onQuoteApproved = onDocumentUpdated({ document: "quote_requests/{reqId}", secrets: [GMAIL_APP_PASSWORD] }, async (event) => {
     const before = event.data.before.data();
     const after  = event.data.after.data();
     const reqId  = event.params.reqId;
@@ -1052,9 +1046,10 @@ exports.onQuoteApproved = onDocumentUpdated("quote_requests/{reqId}", async (eve
     `;
 
     try {
-        await db.collection('mail').add({
+        await sendMail({
             to: after.workEmail,
-            message: { subject: "Your ConnectUs Account is Approved & Ready", html: approvedHtml }
+            subject: "Your ConnectUs Account is Approved & Ready",
+            html: approvedHtml
         });
         console.log(`Onboarding email sent successfully for Request ID: ${reqId}`);
     } catch (error) {
@@ -1067,7 +1062,7 @@ exports.onQuoteApproved = onDocumentUpdated("quote_requests/{reqId}", async (eve
 
 
 // --- START: onPinResetRequested ---
-exports.onPinResetRequested = onDocumentCreated("reset_vault/{tokenId}", async (event) => {
+exports.onPinResetRequested = onDocumentCreated({ document: "reset_vault/{tokenId}", secrets: [GMAIL_APP_PASSWORD] }, async (event) => {
     const data    = event.data.data();
     const tokenId = event.params.tokenId;
 
@@ -1117,9 +1112,10 @@ exports.onPinResetRequested = onDocumentCreated("reset_vault/{tokenId}", async (
     `;
 
     try {
-        await db.collection('mail').add({
+        await sendMail({
             to: data.email,
-            message: { subject: "ConnectUs: Reset Your PIN", html: resetHtml }
+            subject: "ConnectUs: Reset Your PIN",
+            html: resetHtml
         });
         console.log(`PIN Reset email sent successfully for Vault ID: ${tokenId}`);
     } catch (error) {
@@ -1242,7 +1238,7 @@ function generateReqId() {
 }
 
 // ── Main webhook handler ──────────────────────────────────────────────────────
-exports.onPayPalWebhook = onRequest({ region: 'us-central1', minInstances: 1 }, async (req, res) => {
+exports.onPayPalWebhook = onRequest({ region: 'us-central1', minInstances: 1, secrets: [GMAIL_APP_PASSWORD] }, async (req, res) => {
 
     if (req.method !== 'POST') {
         res.status(405).send('Method Not Allowed');
@@ -1389,28 +1385,24 @@ exports.onPayPalWebhook = onRequest({ region: 'us-central1', minInstances: 1 }, 
                 </table>
                 </body></html>`;
 
-                await db.collection('mail').add({
+                await sendMail({
                     to: contactEmail,
-                    message: {
-                        subject: `Welcome Back — ${schoolName} Access Restored on ConnectUs`,
-                        html:    restoredHtml
-                    }
+                    subject: `Welcome Back — ${schoolName} Access Restored on ConnectUs`,
+                    html:    restoredHtml
                 });
 
                 // ── HQ notification for reactivation ─────────────────────────
-                await db.collection('mail').add({
+                await sendMail({
                     to: HQ_EMAIL_ADDRESS,
-                    message: {
-                        subject: `🔄 Reactivation: ${schoolName} (${schoolId}) — ConnectUs ${plan.name} ${plan.billing}`,
-                        html: `<p style="font-family:sans-serif;font-size:14px;color:#334155;">
-                            <strong>${schoolName}</strong> (${schoolId}) has reactivated their ConnectUs subscription.<br><br>
-                            <strong>Plan:</strong> ConnectUs ${plan.name} — ${plan.billing}<br>
-                            <strong>Limits:</strong> ${plan.studentLimit} students · ${plan.teacherLimit} teachers · ${plan.adminLimit} admins<br>
-                            <strong>Renewal:</strong> ${new Date(expiresAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}<br>
-                            <strong>Subscriber Email:</strong> ${subscriberEmail}<br>
-                            <strong>PayPal Subscription ID:</strong> ${subscriptionId}
-                        </p>`
-                    }
+                    subject: `🔄 Reactivation: ${schoolName} (${schoolId}) — ConnectUs ${plan.name} ${plan.billing}`,
+                    html: `<p style="font-family:sans-serif;font-size:14px;color:#334155;">
+                        <strong>${schoolName}</strong> (${schoolId}) has reactivated their ConnectUs subscription.<br><br>
+                        <strong>Plan:</strong> ConnectUs ${plan.name} — ${plan.billing}<br>
+                        <strong>Limits:</strong> ${plan.studentLimit} students · ${plan.teacherLimit} teachers · ${plan.adminLimit} admins<br>
+                        <strong>Renewal:</strong> ${new Date(expiresAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}<br>
+                        <strong>Subscriber Email:</strong> ${subscriberEmail}<br>
+                        <strong>PayPal Subscription ID:</strong> ${subscriptionId}
+                    </p>`
                 });
 
             } else {
@@ -1537,12 +1529,10 @@ exports.onPayPalWebhook = onRequest({ region: 'us-central1', minInstances: 1 }, 
                 </body>
                 </html>`;
 
-                await db.collection('mail').add({
+                await sendMail({
                     to: HQ_EMAIL_ADDRESS,
-                    message: {
-                        subject: `💳 New Subscription: ConnectUs ${plan.name} (${plan.billing}) — ${subscriberEmail}`,
-                        html:    hqNotificationHtml
-                    }
+                    subject: `💳 New Subscription: ConnectUs ${plan.name} (${plan.billing}) — ${subscriberEmail}`,
+                    html:    hqNotificationHtml
                 });
             }
         }
@@ -1614,9 +1604,10 @@ exports.onPayPalWebhook = onRequest({ region: 'us-central1', minInstances: 1 }, 
                     </table>
                     </body></html>`;
 
-                    await db.collection('mail').add({
+                    await sendMail({
                         to: school.contactEmail,
-                        message: { subject: 'Action Required: Your ConnectUs Subscription Has Been Suspended', html: suspendedHtml }
+                        subject: 'Action Required: Your ConnectUs Subscription Has Been Suspended',
+                        html: suspendedHtml
                     });
                 }
                 console.log(`[onPayPalWebhook] SUSPENDED — suspended school ${school.id}`);
@@ -1681,9 +1672,10 @@ exports.onPayPalWebhook = onRequest({ region: 'us-central1', minInstances: 1 }, 
                 </table>
                 </body></html>`;
 
-                await db.collection('mail').add({
+                await sendMail({
                     to: school.contactEmail,
-                    message: { subject: 'Payment Failed: Please Update Your ConnectUs Subscription', html: failedHtml }
+                    subject: 'Payment Failed: Please Update Your ConnectUs Subscription',
+                    html: failedHtml
                 });
                 console.log(`[onPayPalWebhook] PAYMENT_FAILED — warning sent to ${school.contactEmail}`);
             }
@@ -1755,12 +1747,10 @@ exports.onPayPalWebhook = onRequest({ region: 'us-central1', minInstances: 1 }, 
                     </table>
                     </body></html>`;
 
-                    await db.collection('mail').add({
+                    await sendMail({
                         to: school.contactEmail,
-                        message: {
-                            subject: `Your ConnectUs Subscription Has Been Cancelled — ${school.schoolName || 'Access Continues Until ' + renewalDate}`,
-                            html:    cancelledHtml
-                        }
+                        subject: `Your ConnectUs Subscription Has Been Cancelled — ${school.schoolName || 'Access Continues Until ' + renewalDate}`,
+                        html:    cancelledHtml
                     });
                 }
                 console.log(`[onPayPalWebhook] CANCELLED — logged on school ${school.id}`);
@@ -1793,7 +1783,7 @@ exports.onPayPalWebhook = onRequest({ region: 'us-central1', minInstances: 1 }, 
 // nextRenewalDate that has passed, and are not in Cancelled status.
 // ═══════════════════════════════════════════════════════════════════════════════
 exports.autoSuspendExpiredSchools = onSchedule(
-    { schedule: '0 6 * * *', timeZone: 'America/Belize', region: 'us-central1' },
+    { schedule: '0 6 * * *', timeZone: 'America/Belize', region: 'us-central1', secrets: [GMAIL_APP_PASSWORD] },
     async () => {
         const now     = new Date().toISOString();
         const results = { suspended: 0, checked: 0, errors: 0 };
@@ -1851,7 +1841,7 @@ exports.autoSuspendExpiredSchools = onSchedule(
                 suspended.map(s => `${s.id} (${s.schoolName})`).join(', '));
 
             // ── Send warning email to each suspended school ───────────────────
-            const emailBatch = db.batch();
+            const emailSends = [];
 
             for (const school of suspended) {
                 if (!school.contactEmail) continue;
@@ -1889,17 +1879,18 @@ exports.autoSuspendExpiredSchools = onSchedule(
                 </table>
                 </body></html>`;
 
-                const mailRef = db.collection('mail').doc();
-                emailBatch.set(mailRef, {
-                    to:      school.contactEmail,
-                    message: {
+                emailSends.push(
+                    sendMail({
+                        to:      school.contactEmail,
                         subject: `Your ConnectUs Subscription Has Expired — ${school.schoolName}`,
                         html:    suspendedHtml
-                    }
-                });
+                    }).catch(err => {
+                        console.error(`[autoSuspendExpiredSchools] Failed to send suspension email to ${school.contactEmail}:`, err);
+                    })
+                );
             }
 
-            await emailBatch.commit();
+            await Promise.all(emailSends);
             console.log(`[autoSuspendExpiredSchools] Suspension emails sent to ${suspended.filter(s => s.contactEmail).length} schools.`);
 
             // ── Send HQ summary email ─────────────────────────────────────────
@@ -1947,12 +1938,10 @@ exports.autoSuspendExpiredSchools = onSchedule(
             </table>
             </body></html>`;
 
-            await db.collection('mail').add({
+            await sendMail({
                 to:      HQ_EMAIL_ADDRESS,
-                message: {
-                    subject: `⚠ ConnectUs Auto-Suspend: ${results.suspended} School${results.suspended !== 1 ? 's' : ''} Expired`,
-                    html:    hqSummaryHtml
-                }
+                subject: `⚠ ConnectUs Auto-Suspend: ${results.suspended} School${results.suspended !== 1 ? 's' : ''} Expired`,
+                html:    hqSummaryHtml
             });
 
             console.log(`[autoSuspendExpiredSchools] HQ summary email sent. Total suspended: ${results.suspended}/${results.checked}`);
@@ -2039,7 +2028,7 @@ async function verifyPayPalSandboxWebhook(headers, rawBody) {
 }
 
 // ── Sandbox: Main webhook handler ─────────────────────────────────────────────
-exports.onPayPalWebhookSandbox = onRequest({ region: 'us-central1' }, async (req, res) => {
+exports.onPayPalWebhookSandbox = onRequest({ region: 'us-central1', secrets: [GMAIL_APP_PASSWORD] }, async (req, res) => {
 
     if (req.method !== 'POST') {
         res.status(405).send('Method Not Allowed');
@@ -2122,18 +2111,16 @@ exports.onPayPalWebhookSandbox = onRequest({ region: 'us-central1' }, async (req
 
                 // HQ notification only — skip the customer-facing "Access Restored" email
                 // for reactivation tests to avoid confusing real customers
-                await db.collection('mail').add({
+                await sendMail({
                     to: HQ_EMAIL_ADDRESS,
-                    message: {
-                        subject: `🧪 SANDBOX Reactivation Test: ${schoolData.schoolName || schoolId}`,
-                        html: `<p style="font-family:sans-serif;font-size:14px;color:#334155;">
-                            <strong>⚠ SANDBOX TEST EVENT</strong><br><br>
-                            <strong>School:</strong> ${schoolData.schoolName || schoolId} (${schoolId})<br>
-                            <strong>Plan:</strong> ConnectUs ${plan.name} — ${plan.billing}<br>
-                            <strong>Subscriber Email:</strong> ${subscriberEmail}<br>
-                            <strong>Sandbox Subscription ID:</strong> ${subscriptionId}
-                        </p>`
-                    }
+                    subject: `🧪 SANDBOX Reactivation Test: ${schoolData.schoolName || schoolId}`,
+                    html: `<p style="font-family:sans-serif;font-size:14px;color:#334155;">
+                        <strong>⚠ SANDBOX TEST EVENT</strong><br><br>
+                        <strong>School:</strong> ${schoolData.schoolName || schoolId} (${schoolId})<br>
+                        <strong>Plan:</strong> ConnectUs ${plan.name} — ${plan.billing}<br>
+                        <strong>Subscriber Email:</strong> ${subscriberEmail}<br>
+                        <strong>Sandbox Subscription ID:</strong> ${subscriptionId}
+                    </p>`
                 });
 
             } else {
@@ -2185,21 +2172,19 @@ exports.onPayPalWebhookSandbox = onRequest({ region: 'us-central1' }, async (req
                 console.log(`[onPayPalWebhookSandbox] 🧪 NEW SUBSCRIBER — created quote_requests/${reqId} for ${subscriberEmail}`);
 
                 // HQ notification so you can confirm test fired
-                await db.collection('mail').add({
+                await sendMail({
                     to: HQ_EMAIL_ADDRESS,
-                    message: {
-                        subject: `🧪 SANDBOX Test: New Subscription — ${subscriberEmail}`,
-                        html: `<p style="font-family:sans-serif;font-size:14px;color:#334155;">
-                            <strong>⚠ SANDBOX TEST EVENT</strong><br><br>
-                            <strong>Subscriber:</strong> ${`${firstName} ${lastName}`.trim() || 'Unknown'}<br>
-                            <strong>Email:</strong> ${subscriberEmail}<br>
-                            <strong>Plan:</strong> ConnectUs ${plan.name} — ${plan.billing}<br>
-                            <strong>Quote Request ID:</strong> ${reqId}<br>
-                            <strong>Sandbox Subscription ID:</strong> ${subscriptionId}<br><br>
-                            Onboarding email has been triggered automatically.<br>
-                            To clean up: delete quote_requests/${reqId} from Firestore.
-                        </p>`
-                    }
+                    subject: `🧪 SANDBOX Test: New Subscription — ${subscriberEmail}`,
+                    html: `<p style="font-family:sans-serif;font-size:14px;color:#334155;">
+                        <strong>⚠ SANDBOX TEST EVENT</strong><br><br>
+                        <strong>Subscriber:</strong> ${`${firstName} ${lastName}`.trim() || 'Unknown'}<br>
+                        <strong>Email:</strong> ${subscriberEmail}<br>
+                        <strong>Plan:</strong> ConnectUs ${plan.name} — ${plan.billing}<br>
+                        <strong>Quote Request ID:</strong> ${reqId}<br>
+                        <strong>Sandbox Subscription ID:</strong> ${subscriptionId}<br><br>
+                        Onboarding email has been triggered automatically.<br>
+                        To clean up: delete quote_requests/${reqId} from Firestore.
+                    </p>`
                 });
             }
         }
