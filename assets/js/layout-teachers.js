@@ -48,8 +48,10 @@ export function injectTeacherLayout(activePageId, pageTitle, pageSub, showSearch
           <p class="nav-section-label">Main</p>
           <a href="../home/home.html"             id="nav-overview"     class="nav-item"><i class="fa-solid fa-chart-pie"></i><span>Overview</span></a>
           <a href="../roster/roster.html"         id="nav-students"     class="nav-item"><i class="fa-solid fa-users"></i><span>My Roster</span></a>
+          <a href="../attendance/attendance.html" id="nav-attendance"   class="nav-item"><i class="fa-solid fa-calendar-check"></i><span>Attendance</span></a>
           <a href="../grade_form/grade_form.html" id="nav-enter-grade"  class="nav-item"><i class="fa-solid fa-plus-circle"></i><span>Enter Grade</span></a>
           <a href="../subjects/subjects.html"     id="nav-subjects"     class="nav-item"><i class="fa-solid fa-layer-group"></i><span>Subjects</span></a>
+          <a href="../stream/stream.html"         id="nav-stream"       class="nav-item"><i class="fa-solid fa-bullhorn"></i><span>Class Stream</span></a>
           <a href="../gradebook/gradebook.html"   id="nav-gradebook"    class="nav-item"><i class="fa-solid fa-book"></i><span>Gradebook</span></a>
 
           <p class="nav-section-label">Reports & Analytics</p>

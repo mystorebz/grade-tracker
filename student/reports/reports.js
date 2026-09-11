@@ -2,7 +2,7 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, getDocs, doc, getDoc, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectStudentLayout } from '../../assets/js/layout-student.js';
-import { letterGrade, gradeColorClass, calculateWeightedAverage } from '../../assets/js/utils.js';
+import { letterGrade, gradeColorClass, calculateWeightedAverage, resolveGradeWeights } from '../../assets/js/utils.js';
 
 // ── 1. INIT & AUTH ────────────────────────────────────────────────────────
 const session = requireAuth('student', '../login.html');
@@ -98,10 +98,13 @@ async function initializeReports() {
             uniqueTeacherIds.map(async id => {
                 if (!teacherRubricsCache[id]) {
                     try {
+                        // ── PHASE 0: prefer the new teaching_assignments
+                        // weighting over the legacy gradeTypes/customGradeTypes
+                        // fields, still falling back to the teacher doc's
+                        // legacy fields when no teaching_assignment exists.
                         const snap = await getDoc(doc(db, 'teachers', id));
-                        teacherRubricsCache[id] = snap.exists()
-                            ? (snap.data().gradeTypes || snap.data().customGradeTypes || [])
-                            : [];
+                        const legacyData = snap.exists() ? snap.data() : null;
+                        teacherRubricsCache[id] = await resolveGradeWeights(session.schoolId, id, { legacyTeacherData: legacyData }) || [];
                     } catch (e) {
                         teacherRubricsCache[id] = [];
                     }

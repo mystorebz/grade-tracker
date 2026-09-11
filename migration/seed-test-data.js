@@ -19,14 +19,38 @@
  */
 
 const admin = require('firebase-admin');
+const crypto = require('crypto');
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) {
   console.error('FIRESTORE_EMULATOR_HOST is not set — refusing to seed. This must only ever run against the emulator.');
   process.exit(1);
 }
 
-admin.initializeApp({ projectId: 'demo-connectus' });
+admin.initializeApp({ projectId: 'school-grade-tracker' });
 const db = admin.firestore();
+
+// Matches functions/index.js's sha256Trim() exactly, so this hash verifies
+// against the real mintTeacherToken Cloud Function running in the emulator.
+function hashPin(pin) {
+  return crypto.createHash('sha256').update(String(pin).trim(), 'utf8').digest('hex');
+}
+
+// Matches functions/index.js's sha256Lower() exactly (lowercase + trim) —
+// mintAdminToken hashes the admin portal's code this way, distinct from
+// hashPin() above (teacher PINs are trim-only, no lowercasing).
+function hashAdminCode(code) {
+  return crypto.createHash('sha256').update(String(code).toLowerCase().trim(), 'utf8').digest('hex');
+}
+
+// Plaintext test PIN for Teacher A (T05-8KQ2M) — type this into the login
+// screen at teacher/login.html along with teacherId T05-8KQ2M.
+const TEST_PIN = '1234';
+
+// Plaintext super_admin code for school-1 — type this into admin/login.html
+// along with School ID school-1. Without this, the school doc has no
+// adminCode field at all and admin login always fails with "Incorrect
+// Admin Code", no matter what's typed.
+const TEST_ADMIN_CODE = '1234';
 
 async function main() {
   console.log('Clearing any existing emulator data under schools/ and teachers/...');
@@ -43,6 +67,20 @@ async function main() {
   const classesSnap = await db.collectionGroup('classes').get();
   await Promise.all(classesSnap.docs.map(d => d.ref.delete()));
 
+  console.log('Seeding school doc (isVerified:true, required by mintTeacherToken; adminCode set for admin login)...');
+  // {merge:true} so this never clobbers whatever the rules-tests suite
+  // (which shares this same emulator) has already set on schools/school-1 —
+  // it only guarantees isVerified/adminCode/name are present so login can succeed.
+  // securityQuestionsSet:true skips the first-time-setup onboarding redirect,
+  // same reason Teacher A's fixture below sets it.
+  await db.doc('schools/school-1').set({
+    name: 'Test School',
+    isVerified: true,
+    schoolType: 'K12',
+    adminCode: hashAdminCode(TEST_ADMIN_CODE),
+    securityQuestionsSet: true,
+  }, { merge: true });
+
   console.log('Seeding classes...');
   await db.doc('schools/school-1/classes/class-a').set({ name: 'Room A', order: 0 });
   await db.doc('schools/school-1/classes/class-b').set({ name: 'Room B', order: 1 });
@@ -53,20 +91,45 @@ async function main() {
 
   // A — top-level, current shape throughout. Should migrate cleanly:
   // 1 subject (with 1 nested assignment) under Room A, weighting carried
-  // forward from gradeTypes.
+  // forward from gradeTypes. Has a real PIN (see TEST_PIN above) so it can
+  // log in through teacher/login.html for manual browser verification.
   await db.doc('teachers/T05-8KQ2M').set({
     name: 'Teacher A (top-level, clean current shape)',
     currentSchoolId: 'school-1',
     classes: ['Room A'],
     activeSemesterId: 'sem-fall-2026',
+    pin: hashPin(TEST_PIN),
+    profileComplete: true,
+    securityQuestionsSet: true, // skips onboarding/first-time-setup.html so login goes straight to home/home.html
     gradeTypes: [{ name: 'Test', weight: 100 }],
-    subjects: [{
-      id: 'sub_a1', name: 'Mathematics', description: 'Core math', archived: false,
-      assignments: [{
-        id: 'asg_a1', title: 'Fractions Test', type: 'Test', maxScore: 100,
-        description: '', date: '2026-09-22', completed: false, createdAt: '2026-09-01T00:00:00.000Z',
-      }],
-    }],
+    subjects: [
+      {
+        id: 'sub_a1', name: 'Mathematics', description: 'Core math', archived: false,
+        assignments: [{
+          id: 'asg_a1', title: 'Fractions Test', type: 'Test', maxScore: 100,
+          description: '', date: '2026-09-22', completed: false, createdAt: '2026-09-01T00:00:00.000Z',
+        }],
+      },
+      // Reading — deliberately left un-migrated. Every other subject in this
+      // fixture (Mathematics included, historically) has already been carried
+      // over to a schools/{schoolId}/classes/{classId}/subjects document by an
+      // earlier `npm run apply` pass, so subjectsCache would merge them all as
+      // _source:'new' and the legacy fallback branch in archiveSubject() /
+      // restoreSubject() / permanentDeleteSubject() would never actually run.
+      // This one has no counterpart in the new per-class collection, so it
+      // merges in as _source:'legacy' — the real shape a not-yet-migrated
+      // school's data is still in today. Use it to walk through archive →
+      // restore → permanent delete once and confirm the legacy branch writes
+      // straight back to this embedded array (via getTeacherDocRef()) with no
+      // new-model document ever created for it.
+      {
+        id: 'sub_a2', name: 'Reading', description: 'Legacy fixture — not migrated to the new model on purpose.', archived: false,
+        assignments: [{
+          id: 'asg_a2', title: 'Reading Log', type: 'Homework', maxScore: 20,
+          description: '', date: '2026-09-15', completed: false, createdAt: '2026-09-01T00:00:00.000Z',
+        }],
+      },
+    ],
   });
 
   // B — school-scoped (schools/school-1/teachers/{id}). Confirms
@@ -135,11 +198,30 @@ async function main() {
     subjects: [{ id: 'sub_g1', name: 'Drama', description: '', archived: false, assignments: [] }],
   });
 
-  console.log('\nSeed complete: 7 teacher fixtures, 2 class docs, under project demo-connectus.');
+  // Real seeded student for Teacher A (Room A) — needed for manual browser
+  // testing of grade_form.js. Without at least one real student doc, any
+  // grade write is correctly PERMISSION_DENIED by firestore.rules (the
+  // students/{id}/grades create rule does get(students/{studentId}) and
+  // requires currentSchoolId to resolve to an active school — a
+  // nonexistent studentId always fails that check, by design).
+  console.log('Seeding a real student for Teacher A (Room A)...');
+  await db.doc('students/STU-0001').set({
+    name: 'Alex Sample',
+    currentSchoolId: 'school-1',
+    enrollmentStatus: 'Active',
+    teacherId: 'T05-8KQ2M',
+    className: 'Room A',
+    createdAt: new Date().toISOString(),
+  });
+
+  console.log('\nSeed complete: 7 teacher fixtures, 1 student, 2 class docs, under project demo-connectus.');
   console.log('Expected on the next dry-run: teachersScanned=7 (6 top-level, 1 school-scoped),');
   console.log('subjectsFound=4 (A, B, D, F), assignmentsFound=1 (A only),');
   console.log('orphanedClassNames=2 (E\'s Room Z, F\'s Room Y), legacyStringSubjectsTeachers=1 (C),');
   console.log('legacyLocalStorageWeightingTeachers=1 (D), skippedTeachersNoSchoolId=1 (G).');
+  console.log('\nTo log in as Teacher A in the browser: teacherId T05-8KQ2M, PIN ' + TEST_PIN);
+  console.log('To log in as admin in the browser: School ID school-1, Admin Code ' + TEST_ADMIN_CODE);
+  console.log('Teacher A\'s "Reading" subject is deliberately NOT migrated — do not run `npm run apply` again after seeding, or it will be swept into the new model too.');
 }
 
 main()

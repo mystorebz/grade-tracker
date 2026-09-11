@@ -2,7 +2,7 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, query, where, getDocs, getDoc, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
-import { gradeColorClass, letterGrade, downloadCSV, calculateWeightedAverage } from '../../assets/js/utils.js';
+import { gradeColorClass, letterGrade, downloadCSV, calculateWeightedAverage, resolveGradeWeights } from '../../assets/js/utils.js';
 
 // ── 1. AUTHENTICATION & LAYOUT ──────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
@@ -19,8 +19,14 @@ let currentQueryResults = [];
 let currentQueryMeta    = {};
 let resolvedSchoolName  = '';   // populated from the school doc in loadSemesters
 
+// PHASE 0: resolved once at init via resolveGradeWeights() — preferring the
+// new schools/{schoolId}/teaching_assignments weighting over the legacy
+// gradeTypes/customGradeTypes fields. This page is a passive display/report
+// builder, so a once-per-load resolve (not fresh-per-action) is correct.
+let resolvedGradeTypes = null;
+
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
-function getGradeTypes() { return session.teacherData.gradeTypes || session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
+function getGradeTypes() { return resolvedGradeTypes || DEFAULT_GRADE_TYPES; }
 
 // ── Weight lookup ─────────────────────────────────────────────────────────────
 function getWeight(typeName) {
@@ -71,6 +77,11 @@ async function init() {
     populateStaticCheckboxes();
     await loadSemesters();
     await loadStudents();
+    try {
+        resolvedGradeTypes = await resolveGradeWeights(session.schoolId, session.teacherId, { legacyTeacherData: session.teacherData });
+    } catch (e) {
+        console.error('[Reports] Failed to resolve grade weights:', e);
+    }
 }
 
 // ── Nothing pre-selected — isChecked defaults to false ───────────────────────

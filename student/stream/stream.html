@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Class Stream | ConnectUs</title>
+
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/student.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'DM Sans', sans-serif; background: #f0f2f8; }
+        .hidden { display: none !important; }
+
+        .cs-topbar {
+            background: linear-gradient(120deg, #1e1b4b 0%, #3730a3 55%, #4f46e5 100%);
+            padding: 28px 40px;
+        }
+        .cs-topbar h1 { font-size: 22px; font-weight: 800; color: #fff; margin: 0 0 4px; letter-spacing: -0.4px; }
+        .cs-topbar p  { font-size: 13px; color: rgba(255,255,255,0.6); margin: 0; font-weight: 500; }
+
+        .page-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 20px; gap: 14px; }
+        .page-loader i { font-size: 32px; color: #6366f1; }
+        .page-loader p { font-size: 13.5px; color: #94a3b8; font-weight: 600; margin: 0; }
+
+        .cs-toggle-btn { color: #64748b; }
+        .cs-toggle-btn.cs-active { background: #fff; color: #1e1b4b; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+
+        @media (max-width: 767px) {
+            .cs-topbar { padding: 20px; }
+        }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden">
+
+    <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
+
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <div class="flex-1 overflow-y-auto">
+
+            <div class="cs-topbar">
+                <h1>Class Stream</h1>
+                <p>Announcements and lesson plans from your teacher</p>
+            </div>
+
+            <div class="max-w-3xl mx-auto p-6 md:p-8 space-y-5">
+
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-wrap items-center gap-3 justify-between">
+                    <div class="flex items-center gap-2">
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Subject</label>
+                        <select id="subjectFilter" class="form-input p-2.5 bg-white border border-slate-200 rounded-lg text-[13px] font-semibold text-slate-700 outline-none focus:border-indigo-400 min-w-[180px]">
+                            <option value="">All Subjects</option>
+                        </select>
+                    </div>
+
+                    <div class="flex items-center gap-1 bg-slate-100 border border-slate-200 rounded-lg p-1">
+                        <button id="viewStreamBtn" data-toggle-group="view" class="cs-toggle-btn px-3 py-1.5 rounded-md text-[12px] font-bold transition">
+                            <i class="fa-solid fa-rss text-[11px] mr-1"></i>Stream
+                        </button>
+                        <button id="viewLessonPlansBtn" data-toggle-group="view" class="cs-toggle-btn px-3 py-1.5 rounded-md text-[12px] font-bold transition">
+                            <i class="fa-solid fa-calendar-days text-[11px] mr-1"></i>Lesson Plans
+                        </button>
+                    </div>
+                </div>
+
+                <div id="streamLoader" class="page-loader">
+                    <i class="fa-solid fa-circle-notch fa-spin"></i>
+                    <p>Loading your class stream…</p>
+                </div>
+
+                <div id="postListCount" class="hidden text-[11px] font-black text-slate-400 uppercase tracking-widest px-1"></div>
+                <div id="postList" class="space-y-3 pb-8"></div>
+
+            </div>
+        </div>
+    </main>
+
+    <script type="module" src="stream.js"></script>
+</body>
+</html>

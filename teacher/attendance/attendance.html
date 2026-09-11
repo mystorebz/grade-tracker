@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance | Teacher Portal | ConnectUs</title>
+
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/teachers.css">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="flex w-full h-screen overflow-hidden bg-[#f0fdf8]">
+
+    <div id="layout-sidebar-container" class="flex-shrink-0 h-full z-20"></div>
+
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
+
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <div class="flex-1 overflow-y-auto p-7 view-section">
+
+            <div class="flex flex-wrap gap-4 justify-between items-center mb-6">
+                <div class="flex items-center gap-3">
+                    <div class="w-11 h-11 bg-gradient-to-br from-teal-500 to-emerald-600 text-white rounded-2xl flex items-center justify-center text-lg shadow-md"><i class="fa-solid fa-calendar-check"></i></div>
+                    <div>
+                        <h2 class="font-black text-2xl text-slate-800 leading-tight">Attendance</h2>
+                        <p class="text-sm text-slate-400 font-semibold">Mark daily attendance for your class</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm mb-5">
+                <div class="flex flex-wrap items-end gap-3 justify-between">
+                    <div class="flex flex-wrap items-end gap-3">
+                        <div>
+                            <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Class</label>
+                            <select id="classPicker" class="form-input p-2.5 bg-white border border-slate-200 rounded-xl text-sm cursor-pointer min-w-[180px]">
+                                <option value="">Loading…</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Date</label>
+                            <input type="date" id="attDate" class="form-input p-2.5 bg-white border border-slate-200 rounded-xl text-sm cursor-pointer">
+                        </div>
+                        <button id="markAllPresentBtn" type="button" class="flex items-center gap-2 bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 border border-slate-200 hover:border-emerald-200 font-black px-4 py-2.5 rounded-xl text-sm transition">
+                            <i class="fa-solid fa-check-double"></i> Mark all Present
+                        </button>
+                    </div>
+                    <div class="text-right">
+                        <p id="attLastSaved" class="text-xs text-slate-400 font-bold mb-1.5">—</p>
+                        <button id="saveAttendanceBtn" type="button" class="flex items-center gap-2 bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white font-black px-5 py-2.5 rounded-xl text-sm shadow-md transition">
+                            <i class="fa-solid fa-floppy-disk mr-2"></i> Save Attendance
+                        </button>
+                    </div>
+                </div>
+                <div id="attSummary" class="flex flex-wrap items-center gap-2 mt-4"></div>
+                <p id="attSaveMsg" class="text-sm hidden font-bold p-2.5 mt-2 rounded-xl text-center"></p>
+            </div>
+
+            <div id="attLoader" class="flex justify-center py-16"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-teal-500"></i></div>
+
+            <p id="attEmpty" class="hidden text-sm font-bold text-slate-400 text-center bg-white border-2 border-dashed border-slate-200 rounded-2xl py-14 px-6"></p>
+
+            <div id="attBody" class="hidden bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden"></div>
+
+        </div>
+    </main>
+
+    <script type="module" src="attendance.js"></script>
+</body>
+</html>

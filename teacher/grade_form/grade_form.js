@@ -1,8 +1,8 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { doc, getDoc, getDocs, addDoc, collection, query, where, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { doc, getDoc, getDocs, setDoc, collection, query, where, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
-import { letterGrade } from '../../assets/js/utils.js';
+import { letterGrade, loadTeacherSubjectsCache, getTeacherDocRef, resolveGradeWeights, saveGrade } from '../../assets/js/utils.js';
 
 // ── 1. AUTH & LAYOUT ──────────────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
@@ -19,6 +19,18 @@ let selectedSubject     = '';        // currently chosen subject name
 let selectedAssignment  = null;      // currently chosen prepared assignment object (or null = manual)
 let fieldsUnlocked      = false;     // whether the locked title/type/max have been deliberately unlocked
 
+// PHASE 0: same merged legacy/new-model subjects list as subjects.js and
+// archives.js, built by the shared loadTeacherSubjectsCache() helper in
+// utils.js — populated once in init() below, before the subject picker
+// is drawn.
+let subjectsCache = [];
+
+// PHASE 0: resolved once at init via resolveGradeWeights() — preferring the
+// new schools/{schoolId}/teaching_assignments weighting over the legacy
+// gradeTypes/customGradeTypes fields. Only feeds the grade-type dropdown
+// (a display concern), so a once-per-load resolve is correct here.
+let resolvedGradeTypes = null;
+
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 
 // ── HELPERS ─────────────────────────────────────────────────────────────────
@@ -27,20 +39,14 @@ function escHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
-function getTeacherRef() {
-    return /^T\d{2}-[A-Z0-9]{5}$/i.test(session.teacherId)
-        ? doc(db, 'teachers', session.teacherId)
-        : doc(db, 'schools', session.schoolId, 'teachers', session.teacherId);
-}
-
 function getActiveSubjects() {
-    return (session.teacherData.subjects || []).filter(s => !s.archived);
+    return subjectsCache.filter(s => !s.archived);
 }
 function getSubjectByName(name) {
     return getActiveSubjects().find(s => s.name === name) || null;
 }
 function getGradeTypes() {
-    return session.teacherData.customGradeTypes || session.teacherData.gradeTypes || DEFAULT_GRADE_TYPES;
+    return resolvedGradeTypes || DEFAULT_GRADE_TYPES;
 }
 function gradeTypeNames() {
     return getGradeTypes().filter(Boolean).map(t => t.name || (typeof t === 'string' ? t : 'Uncategorized'));
@@ -80,7 +86,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const commitBtn = document.getElementById('saveGradeBtn');
-    if (commitBtn) commitBtn.addEventListener('click', saveGrade);
+    if (commitBtn) commitBtn.addEventListener('click', commitGrade);
 
     const closeBannerBtn = document.getElementById('closeBannerBtn');
     if (closeBannerBtn) closeBannerBtn.addEventListener('click', () => {
@@ -90,6 +96,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadSemesters();
     await loadStudents();
     await loadAllGradesThisTerm();
+
+    try {
+        const result = await loadTeacherSubjectsCache(session.schoolId, session.teacherId, session.teacherData);
+        subjectsCache = result.subjectsCache;
+    } catch (e) {
+        console.error('[Grade Form] Failed to load subjects cache:', e);
+    }
+    try {
+        resolvedGradeTypes = await resolveGradeWeights(session.schoolId, session.teacherId, { legacyTeacherData: session.teacherData });
+    } catch (e) {
+        console.error('[Grade Form] Failed to resolve grade weights:', e);
+    }
 
     populateSubjectPicker();
     renderState(); // initial render: picker visible, grading panel hidden
@@ -236,6 +254,9 @@ function renderAssignmentPicker() {
             </div>
         </button>`;
 
+    // PHASE 1 MILESTONE 3: due date + a Locked badge are informational only
+    // here — nothing below gates or blocks selecting/grading a locked
+    // assignment, this just surfaces what the teacher set on the Subjects page.
     const assignmentButtons = assignments.length
         ? assignments.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')).map(a => `
             <button type="button" onclick="selectAssignment('${a.id}')"
@@ -244,9 +265,10 @@ function renderAssignmentPicker() {
                     <p class="font-bold text-[#0d1f35] text-[13px] truncate">${escHtml(a.title)}</p>
                     <span class="text-[10px] font-bold text-[#6b84a0] bg-[#f8fafb] border border-[#dce3ed] px-2 py-0.5 rounded-sm flex-shrink-0">/ ${a.maxScore}</span>
                 </div>
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
                     <span class="text-[10px] font-bold uppercase tracking-widest text-[#0ea871] bg-[#edfaf4] border border-[#c6f0db] px-2 py-0.5 rounded-sm">${escHtml(a.type)}</span>
-                    ${a.date ? `<span class="text-[10px] text-[#9ab0c6] font-semibold"><i class="fa-regular fa-calendar mr-1"></i>${escHtml(a.date)}</span>` : ''}
+                    ${a.date ? `<span class="text-[10px] text-[#9ab0c6] font-semibold"><i class="fa-regular fa-calendar mr-1"></i>Due ${escHtml(a.date)}</span>` : ''}
+                    ${a.locked ? `<span class="text-[10px] font-bold uppercase tracking-widest text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-sm flex items-center gap-1"><i class="fa-solid fa-lock text-[9px]"></i>Locked</span>` : ''}
                 </div>
             </button>`).join('')
         : '';
@@ -560,8 +582,8 @@ function updatePreview() {
     }
 }
 
-// ── 9. SAVE GRADE ─────────────────────────────────────────────────────────
-async function saveGrade() {
+// ── 9. SAVE GRADE (click handler — commits via the shared saveGrade() helper below) ──
+async function commitGrade() {
     if (isSemesterLocked) { alert('This semester is locked. Grades are read-only.'); return; }
 
     const studentId = document.getElementById('agStudent')?.value;
@@ -599,13 +621,13 @@ async function saveGrade() {
     }
 
     try {
-        // ── NEW: CONVERT MANUAL ENTRY TO PREPARED ASSIGNMENT ──────────────
+        // ── CONVERT MANUAL ENTRY TO PREPARED ASSIGNMENT ───────────────────
         if (selectedAssignment && selectedAssignment.manual) {
             const sub = getSubjectByName(subject);
             if (sub) {
                 const existing = Array.isArray(sub.assignments) ? sub.assignments : [];
                 let matchedAsg = existing.find(a => (a.title || '').toLowerCase() === title.toLowerCase());
-                
+
                 // If it doesn't exist yet, build it identically to the Subjects page generator
                 if (!matchedAsg) {
                     matchedAsg = {
@@ -618,29 +640,37 @@ async function saveGrade() {
                         completed: false,
                         createdAt: new Date().toISOString()
                     };
-                    
-                    const subjects = (session.teacherData.subjects || []).map(s => {
-                        if (s.id !== sub.id) return s;
-                        return { ...s, assignments: [...existing, matchedAsg] };
-                    });
 
-                    await updateDoc(getTeacherRef(), { subjects });
-                    session.teacherData.subjects = subjects;
-                    setSessionData('teacher', session);
+                    // PHASE 0: write to wherever this subject actually lives —
+                    // its own assignments subcollection for a new-model subject,
+                    // or the legacy embedded array, unchanged, for a legacy one.
+                    if (sub._source === 'new') {
+                        await setDoc(doc(db, 'schools', session.schoolId, 'classes', sub.classId, 'subjects', sub.id, 'assignments', matchedAsg.id), matchedAsg);
+                    } else {
+                        const subjects = (session.teacherData.subjects || []).map(s => {
+                            if (s.id !== sub.id) return s;
+                            return { ...s, assignments: [...existing, matchedAsg] };
+                        });
+
+                        await updateDoc(getTeacherDocRef(session.schoolId, session.teacherId), { subjects });
+                        session.teacherData.subjects = subjects;
+                        setSessionData('teacher', session);
+                    }
+                    sub.assignments = [...existing, matchedAsg];
                 }
-                
+
                 // Update state in memory so the NEXT student graded uses this established template
                 selectedAssignment = matchedAsg;
-                fieldsUnlocked = false; 
+                fieldsUnlocked = false;
                 applyLockState(); // Visuals update to show the fields are now locked to this template
             }
         }
         // ──────────────────────────────────────────────────────────────────
 
-        const record = {
-            schoolId:    session.schoolId,
-            teacherId:   session.teacherId,
-            semesterId:  semId,
+        const fields = {
+            schoolId:   session.schoolId,
+            teacherId:  session.teacherId,
+            semesterId: semId,
             className,
             subject,
             type,
@@ -649,18 +679,25 @@ async function saveGrade() {
             score,
             max,
             notes,
-            historyLogs: [],
-            createdAt:   new Date().toISOString()
         };
-        // Stamp the assignment id for future-proofing when grading from a prepared assignment
-        if (selectedAssignment && !selectedAssignment.manual && selectedAssignment.id) {
-            record.assignmentId = selectedAssignment.id;
-        }
+        // PHASE 1 MILESTONE 5: assignmentId is the re-grade key — saveGrade()
+        // updates the existing grade doc (appending to historyLogs) instead of
+        // creating a duplicate whenever one already exists for this student +
+        // assignment. A manual entry with no matched/created template (sub not
+        // found) has no assignmentId and is always a fresh create, same as before.
+        const assignmentId = (selectedAssignment && !selectedAssignment.manual && selectedAssignment.id) || null;
+        const result = await saveGrade(studentId, assignmentId, fields);
 
-        const ref = await addDoc(collection(db, 'students', studentId, 'grades'), record);
-
-        // Update local term cache so the roster reflects this immediately
-        allGradesThisTerm.push({ id: ref.id, studentId, ...record });
+        // Update local term cache so the roster reflects this immediately.
+        // On a re-grade (result.created === false) this REPLACES the existing
+        // cache entry in place rather than appending a second one, so
+        // isStudentGraded() / the roster progress counts don't double-count
+        // this student.
+        const cacheRecord = { id: result.id, studentId, ...fields };
+        if (assignmentId) cacheRecord.assignmentId = assignmentId;
+        const existingIdx = allGradesThisTerm.findIndex(g => g.id === result.id);
+        if (existingIdx >= 0) allGradesThisTerm[existingIdx] = cacheRecord;
+        else allGradesThisTerm.push(cacheRecord);
 
         // Clear ONLY score + notes; keep subject/assignment/title/type/max for the next student
         if (scoreEl) scoreEl.value = '';
@@ -724,18 +761,24 @@ window.markAssignmentGraded = async function() {
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Saving…'; }
 
     try {
-        const subjects = (session.teacherData.subjects || []).map(s => {
-            if (s.id !== sub.id) return s;
-            const existing = Array.isArray(s.assignments) ? s.assignments : [];
-            return {
-                ...s,
-                assignments: existing.map(a => a.id === selectedAssignment.id ? { ...a, completed: true } : a)
-            };
-        });
+        if (sub._source === 'new') {
+            await updateDoc(doc(db, 'schools', session.schoolId, 'classes', sub.classId, 'subjects', sub.id, 'assignments', selectedAssignment.id), { completed: true });
+            sub.assignments = (sub.assignments || []).map(a => a.id === selectedAssignment.id ? { ...a, completed: true } : a);
+        } else {
+            const subjects = (session.teacherData.subjects || []).map(s => {
+                if (s.id !== sub.id) return s;
+                const existing = Array.isArray(s.assignments) ? s.assignments : [];
+                return {
+                    ...s,
+                    assignments: existing.map(a => a.id === selectedAssignment.id ? { ...a, completed: true } : a)
+                };
+            });
 
-        await updateDoc(getTeacherRef(), { subjects });
-        session.teacherData.subjects = subjects;
-        setSessionData('teacher', session);
+            await updateDoc(getTeacherDocRef(session.schoolId, session.teacherId), { subjects });
+            session.teacherData.subjects = subjects;
+            setSessionData('teacher', session);
+            sub.assignments = subjects.find(s => s.id === sub.id)?.assignments || [];
+        }
 
         // assignment is now complete → return to the assignment picker for this subject
         selectedAssignment = null;

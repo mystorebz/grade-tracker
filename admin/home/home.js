@@ -2,7 +2,7 @@ import { db } from '../../assets/js/firebase-init.js';
 import { doc, getDoc, getDocs, collection, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
-import { calculateWeightedAverage } from '../../assets/js/utils.js'; // Ensure Math Engine is imported
+import { calculateWeightedAverage, loadSchoolWeightingIndex, getWeightingFromIndex } from '../../assets/js/utils.js'; // Ensure Math Engine is imported
 
 // ── 1. AUTHENTICATION & LAYOUT INJECTION ──────────────────────────────────
 const session = requireAuth('admin', '../login.html');
@@ -25,9 +25,10 @@ let activeSemesterObj = null;   // active semester record (for the end-of-term g
 // ── 2. LOAD DASHBOARD STATS ───────────────────────────────────────────────
 async function loadOverviewStats() {
     try {
-        const [tSnap, sSnap] = await Promise.all([
+        const [tSnap, sSnap, weightingIdx] = await Promise.all([
             getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId))),
-            getDocs(query(collection(db, 'students'), where('currentSchoolId', '==', session.schoolId), where('enrollmentStatus', '==', 'Active')))
+            getDocs(query(collection(db, 'students'), where('currentSchoolId', '==', session.schoolId), where('enrollmentStatus', '==', 'Active'))),
+            loadSchoolWeightingIndex(session.schoolId)
         ]);
 
         const activeTeachers = tSnap.docs.length;
@@ -49,7 +50,7 @@ async function loadOverviewStats() {
         const teachersList = tSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         const studentsList = sSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         
-        loadSchoolAnalytics(teachersList, studentsList);
+        loadSchoolAnalytics(teachersList, studentsList, weightingIdx);
 
     } catch (error) {
         console.error("Error loading overview stats:", error);
@@ -74,18 +75,21 @@ async function loadSemesters() {
 }
 
 // ── 4. INSTITUTIONAL ANALYTICS ENGINE (ACCOUNTABILITY & GRADES) ───────────
-async function loadSchoolAnalytics(teachersList, studentsList) {
+async function loadSchoolAnalytics(teachersList, studentsList, weightingIdx) {
     if (!session.activeSemesterId) {
         analyticsLoader.innerHTML = '<p class="text-xs font-bold text-amber-500 uppercase tracking-widest">No active grading period set. Cannot run analytics.</p>';
         return;
     }
 
     try {
-        // 1. Build Teacher Rubric Cache & Maps
+        // ── PHASE 0: teacherRubrics built from the batch weighting index
+        // fetched once in loadOverviewStats() — preferring the new
+        // schools/{schoolId}/teaching_assignments weighting over the legacy
+        // gradeTypes/customGradeTypes fields, with no per-teacher query.
         const teacherRubrics = {};
         const teacherMap = {};
         teachersList.forEach(t => {
-            teacherRubrics[t.id] = t.gradeTypes || t.customGradeTypes || [];
+            teacherRubrics[t.id] = getWeightingFromIndex(weightingIdx, t.id, t) || [];
             teacherMap[t.id] = t.name;
         });
 

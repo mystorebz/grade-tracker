@@ -3,11 +3,16 @@ import {
     collection, query, where,
     getDocs, getDoc, doc,
     setDoc, updateDoc, addDoc, writeBatch,
-    arrayUnion
+    arrayUnion, arrayRemove
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
-import { openOverlay, closeOverlay, calculateWeightedAverage } from '../../assets/js/utils.js';
+import {
+    openOverlay, closeOverlay, calculateWeightedAverage,
+    loadTeacherSubjectsCache, resolveGradeWeights,
+    loadSchoolSubjectsIndex, mergeTeacherSubjectsFromIndex
+} from '../../assets/js/utils.js';
+import { sha256Trim } from '../../assets/js/crypto-utils.js';
 
 // ── 1. INIT & AUTH ─────────────────────────────────────────────────────────
 const session = requireAuth('admin', '../login.html');
@@ -20,6 +25,20 @@ let currentTeacherData = null;
 let slipData          = { name: '', id: '', pin: '' };
 let dynamicEvalTypes  = new Set();
 let schoolClasses     = [];   // ← class names from schools/{id}/classes subcollection
+let schoolClassDocs   = [];   // PASS B: [{id, name}] — same fetch, keeps the real doc ID so
+                               // class-doc writes (teacherIds sync) can resolve a name back to its ID
+
+// PHASE 0: dual-mode subjects/weighting state for whichever teacher's panel
+// is currently open. currentTeacherSubjectsCache/currentTeacherResolvedClasses
+// are populated by renderSubjectsTab() via loadTeacherSubjectsCache() — the
+// same per-teacher helper subjects.js uses — and drive both the Subjects
+// tab's list and the Add Subject modal's class picker. schoolSubjectsIndex
+// is a school-wide, once-per-page-load fetch (loadSchoolSubjectsIndex()) used
+// to compute every teacher's real subject list for the staff table/CSV
+// export in one batch instead of one query per teacher (N+1).
+let currentTeacherSubjectsCache    = [];
+let currentTeacherResolvedClasses  = [];
+let schoolSubjectsIndex            = null;
 
 const tbody = document.getElementById('teachersTableBody');
 
@@ -65,15 +84,25 @@ function isProfileComplete(t) {
 async function loadSchoolClasses() {
     try {
         const snap = await getDocs(collection(db, 'schools', session.schoolId, 'classes'));
-        schoolClasses = snap.docs
+        const sorted = snap.docs
             .map(d => ({ id: d.id, ...d.data() }))
-            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.name || '').localeCompare(b.name || ''))
-            .map(c => c.name)
-            .filter(Boolean);
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.name || '').localeCompare(b.name || ''));
+        schoolClassDocs = sorted.filter(c => c.name);
+        schoolClasses   = sorted.map(c => c.name).filter(Boolean);
     } catch (e) {
         console.error('[Teachers] loadSchoolClasses:', e);
-        schoolClasses = [];
+        schoolClasses   = [];
+        schoolClassDocs = [];
     }
+}
+
+// PASS B: resolve class NAMES (what the UI works in) to their real class-doc
+// IDs (what teacherIds lives on). Names with no matching class doc are
+// dropped rather than guessed — same caution the migration script uses.
+function classIdsForNames(names) {
+    return (names || [])
+        .map(n => schoolClassDocs.find(c => c.name === n)?.id)
+        .filter(Boolean);
 }
 
 // Returns the admin-defined class names. Any class a teacher is already
@@ -174,10 +203,15 @@ async function loadTeachers() {
     </td></tr>`;
 
     try {
-        const [tSnap, sSnap] = await Promise.all([
+        const [tSnap, sSnap, subjIndex] = await Promise.all([
             getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId))),
-            getDocs(query(collection(db, 'students'),  where('currentSchoolId', '==', session.schoolId)))
+            getDocs(query(collection(db, 'students'),  where('currentSchoolId', '==', session.schoolId))),
+            // PHASE 0: fetched ONCE for the whole staff list — see
+            // loadSchoolSubjectsIndex()'s comment in utils.js for why this
+            // replaces a per-teacher subjects query.
+            loadSchoolSubjectsIndex(session.schoolId)
         ]);
+        schoolSubjectsIndex = subjIndex;
 
         const studentCount = {};
         sSnap.forEach(d => {
@@ -187,10 +221,16 @@ async function loadTeachers() {
             }
         });
 
-        allTeachersCache = tSnap.docs.map(d => ({
-            id: d.id, ...d.data(),
-            studentCount: studentCount[d.id] || 0
-        }));
+        allTeachersCache = tSnap.docs.map(d => {
+            const t = { id: d.id, ...d.data(), studentCount: studentCount[d.id] || 0 };
+            // PHASE 0: real merged (new-model + legacy) subject list, computed
+            // in-memory against the already-fetched schoolSubjectsIndex — no
+            // extra query per teacher, so a subject already migrated to the
+            // new per-class model still shows up here instead of being
+            // silently hidden behind a stale legacy-only read.
+            t.mergedSubjects = mergeTeacherSubjectsFromIndex(t, schoolSubjectsIndex).subjectsCache;
+            return t;
+        });
 
         renderTable();
     } catch (e) {
@@ -215,7 +255,7 @@ function renderTable() {
 
     tbody.innerHTML = filtered.map(t => {
         const classes  = getTeacherClasses(t);
-        const subNames = getSubjectNames(t.subjects);
+        const subNames = getSubjectNames(t.mergedSubjects || t.subjects);
         const complete = isProfileComplete(t);
 
         const profileBadge = complete
@@ -348,19 +388,40 @@ document.getElementById('saveTeacherBtn').addEventListener('click', async () => 
 
         const newId    = generateTeacherId();
         const fullName = `${firstName} ${lastName}`;
+
+        // Generate the real PIN once, hash it for storage/login comparison,
+        // and keep the raw value only in memory (for the on-screen credential
+        // slip below) and in a short-lived `_tempPlaintextPin` field (for
+        // onTeacherCreated's welcome email, which deletes it right after
+        // sending — see functions/index.js). The `pin` field itself is never
+        // written in plain text.
+        const rawPin    = generatePin();
+        const hashedPin = await sha256Trim(rawPin);
+
         const docData  = blankTeacherDoc({
             firstName, lastName,
             name:      fullName,
             email, phone,
             classes:   selectedClasses,
-            className: selectedClasses[0] || ''
+            className: selectedClasses[0] || '',
+            pin:               hashedPin,
+            _tempPlaintextPin: rawPin
         });
 
         // ── BATCH WRITE: Create Teacher & Register Email ──
         const batch = writeBatch(db);
-        
+
         const teacherRef = doc(db, 'teachers', newId);
         batch.set(teacherRef, docData);
+
+        // PASS B: add this new teacher to every assigned class's teacherIds,
+        // so the class doc is the source of truth for "who may act on this
+        // class" from the moment the teacher exists.
+        classIdsForNames(selectedClasses).forEach(classId => {
+            batch.update(doc(db, 'schools', session.schoolId, 'classes', classId), {
+                teacherIds: arrayUnion(newId)
+            });
+        });
 
         if (targetEmail) {
             const emailRef = doc(db, 'registered_emails', targetEmail);
@@ -375,7 +436,7 @@ document.getElementById('saveTeacherBtn').addEventListener('click', async () => 
 
         await batch.commit();
 
-        slipData = { name: fullName, id: newId, pin: docData.pin };
+        slipData = { name: fullName, id: newId, pin: rawPin };
         window.closeAddTeacherModal();
         window.showCredentialSlip();
         loadTeachers();
@@ -712,10 +773,30 @@ window.saveClassAssignment = async () => {
     }
 
     try {
-        await updateDoc(doc(db, 'teachers', currentTeacherId), {
+        // PASS B: keep classes/{classId}.teacherIds in sync with this
+        // teacher's own classes array — the class doc's teacherIds array is
+        // the single source of truth Firestore rules will trust, so both
+        // sides of the relationship must move together in one batch.
+        const added   = selected.filter(c => !currentClasses.includes(c));
+        const batch   = writeBatch(db);
+
+        batch.update(doc(db, 'teachers', currentTeacherId), {
             classes:   selected,
             className: selected[0] || ''
         });
+
+        classIdsForNames(added).forEach(classId => {
+            batch.update(doc(db, 'schools', session.schoolId, 'classes', classId), {
+                teacherIds: arrayUnion(currentTeacherId)
+            });
+        });
+        classIdsForNames(removed).forEach(classId => {
+            batch.update(doc(db, 'schools', session.schoolId, 'classes', classId), {
+                teacherIds: arrayRemove(currentTeacherId)
+            });
+        });
+
+        await batch.commit();
         if (currentTeacherData) { currentTeacherData.classes = selected; currentTeacherData.className = selected[0] || ''; }
         const idx = allTeachersCache.findIndex(t => t.id === currentTeacherId);
         if (idx > -1) { allTeachersCache[idx].classes = selected; allTeachersCache[idx].className = selected[0] || ''; }
@@ -794,12 +875,22 @@ async function renderStudentsTab() {
 async function renderSubjectsTab() {
     const t = currentTeacherData;
     if (!t) return;
-    const pane     = document.getElementById('tab-subjects');
-    const subjects = t.subjects || [];
+    const pane = document.getElementById('tab-subjects');
 
     pane.innerHTML = `<div class="flex items-center justify-center py-16"><i class="fa-solid fa-spinner fa-spin text-2xl text-[#2563eb]"></i></div>`;
 
     try {
+        // PHASE 0: dual-mode read — merges any new per-class subject document
+        // with whatever's still embedded in the legacy teachers/{id}.subjects
+        // array, exactly like subjects.js's own Subjects page does for the
+        // teacher themselves. resolvedClasses (this teacher's classes,
+        // resolved to real classIds) also drives the Add Subject modal's
+        // class picker below.
+        const cacheResult = await loadTeacherSubjectsCache(session.schoolId, currentTeacherId, t);
+        currentTeacherSubjectsCache   = cacheResult.subjectsCache;
+        currentTeacherResolvedClasses = cacheResult.resolvedClasses;
+        const subjects = currentTeacherSubjectsCache.filter(s => !s.archived);
+
         const studSnap = await getDocs(
             query(collection(db, 'students'),
                 where('teacherId', '==', currentTeacherId),
@@ -816,7 +907,11 @@ async function renderSubjectsTab() {
             results.forEach(snap => snap.forEach(d => allGrades.push(d.data())));
         }
 
-        const gradeTypes = currentTeacherData.gradeTypes || currentTeacherData.customGradeTypes || ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
+        // PHASE 0: prefer the new schools/{schoolId}/teaching_assignments
+        // weighting, falling back to the legacy teacher-doc fields — same
+        // rule as everywhere else (gradebook.js, roster.js).
+        const resolvedWeights = await resolveGradeWeights(session.schoolId, currentTeacherId, { legacyTeacherData: t });
+        const gradeTypes = resolvedWeights || ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 
         const statsBySubject = {};
         subjects.forEach(s => {
@@ -875,6 +970,22 @@ window.openAddSubjectModal = () => {
     document.getElementById('customSubjectName').value = '';
     document.getElementById('customSubjectContainer').classList.add('hidden');
     document.getElementById('subjectDesc').value = '';
+
+    // PHASE 0: every subject is created class-scoped now (parity with the
+    // teacher-facing Subjects page), so the admin picks which of this
+    // teacher's (resolved) classes it belongs to — currentTeacherResolvedClasses
+    // was just populated by renderSubjectsTab() when this teacher's panel opened.
+    const classSel = document.getElementById('addSubjectClass');
+    if (classSel) {
+        if (currentTeacherResolvedClasses.length) {
+            classSel.innerHTML = currentTeacherResolvedClasses.map(c => `<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
+            classSel.disabled = false;
+        } else {
+            classSel.innerHTML = `<option value="">No resolvable classes for this teacher</option>`;
+            classSel.disabled = true;
+        }
+    }
+
     openOverlay('addSubjectModal', 'addSubjectModalInner');
 };
 
@@ -888,25 +999,63 @@ document.getElementById('saveSubjectBtn').addEventListener('click', async () => 
     const selectVal = document.getElementById('subjectSelect').value;
     let name = selectVal === 'Custom' ? document.getElementById('customSubjectName').value.trim() : selectVal;
     const desc = document.getElementById('subjectDesc').value.trim();
+    const classId = document.getElementById('addSubjectClass')?.value || '';
     if (!name) { alert('Subject name is required.'); return; }
+    if (!classId) { alert('Please choose a class for this subject.'); return; }
 
     const btn = document.getElementById('saveSubjectBtn');
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...';
     btn.disabled  = true;
-    await addSubject(name, desc);
+    await addSubject(name, desc, classId);
     btn.innerHTML = 'Save Subject';
     btn.disabled  = false;
     window.closeAddSubjectModal();
 });
 
-async function addSubject(name, description = '') {
-    const newSubject = { id: `sub_${Date.now()}`, name, archived: false, description, assignments: [] };
-    const updated    = [...(currentTeacherData.subjects || []), newSubject];
+function genSubjectId() { return 'sub_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 5); }
+
+// PHASE 0: rewritten to create a real per-class subject document — the same
+// new-model architecture the teacher-facing Subjects page uses — instead of
+// appending to the legacy teachers/{id}.subjects array. This also removes
+// the old hardcoded doc(db,'teachers',currentTeacherId) write entirely
+// (it was wrong for school-scoped teachers, e.g. schools/{id}/teachers/{id});
+// there's no teacher-doc write left for admin-created subjects to get wrong.
+async function addSubject(name, description = '', classId = '') {
+    if (!classId) { alert('Please choose a class for this subject.'); return; }
+
+    // Checked against the full merged (new-model + legacy) list, same
+    // duplicate rule subjects.js's own saveSubject() enforces.
+    if (currentTeacherSubjectsCache.some(s => s.name === name && !s.archived)) {
+        alert('This teacher already has an active subject with that name.');
+        return;
+    }
+
     try {
-        await updateDoc(doc(db, 'teachers', currentTeacherId), { subjects: updated });
-        currentTeacherData.subjects = updated;
+        const cls = currentTeacherResolvedClasses.find(c => c.id === classId);
+        const newSubjectId = genSubjectId();
+        const newSubjectData = {
+            name,
+            description,
+            schoolId: session.schoolId,
+            classId,
+            archived: false,
+            archivedAt: null,
+            createdAt: new Date().toISOString()
+        };
+
+        await setDoc(doc(db, 'schools', session.schoolId, 'classes', classId, 'subjects', newSubjectId), newSubjectData);
+
+        const newSubject = { id: newSubjectId, classId, className: cls?.name || '', _source: 'new', ...newSubjectData };
+        currentTeacherSubjectsCache.push(newSubject);
+
+        // Keep the staff-table/CSV batch cache in sync too, so it reflects
+        // the new subject without waiting for a full loadTeachers() reload.
         const idx = allTeachersCache.findIndex(t => t.id === currentTeacherId);
-        if (idx > -1) allTeachersCache[idx].subjects = updated;
+        if (idx > -1) {
+            if (!Array.isArray(allTeachersCache[idx].mergedSubjects)) allTeachersCache[idx].mergedSubjects = [];
+            allTeachersCache[idx].mergedSubjects.push(newSubject);
+        }
+
         renderSubjectsTab();
         renderTable();
     } catch (e) {
@@ -1303,7 +1452,13 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
                 const allGrades = [];
                 gradeResults.forEach(snap => snap.forEach(d => allGrades.push(d.data())));
 
-                const gradeTypes = t.gradeTypes || t.customGradeTypes || ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
+                // PHASE 0: this snapshot is written once into teachingHistory
+                // and never revisited, so — same defensive rule as roster.js's
+                // promotion/archive commits — resolve fresh at the moment of
+                // commit rather than trusting a page-load cache or a direct
+                // legacy read that could miss a migrated weighting.
+                const resolvedWeights = await resolveGradeWeights(session.schoolId, currentTeacherId, { legacyTeacherData: t });
+                const gradeTypes = resolvedWeights || ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
                 const bySubject  = {};
                 allGrades.forEach(g => {
                     if (!g.subject || !g.max) return;
@@ -1340,12 +1495,26 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
 
         snapshotEvaluations.unshift(exitEvalData);
 
+        // PHASE 0: same reasoning as the weighting above — a permanent
+        // historical record should reflect real dual-mode subjects (new
+        // per-class model included), not just whatever's still embedded in
+        // the legacy array, so this is a fresh per-teacher lookup rather
+        // than a direct t.subjects read.
+        let snapshotSubjectNames;
+        try {
+            const { subjectsCache } = await loadTeacherSubjectsCache(session.schoolId, currentTeacherId, t);
+            snapshotSubjectNames = getSubjectNames(subjectsCache);
+        } catch (e) {
+            console.warn('[Teachers] exit snapshot subjects lookup failed, falling back to legacy read:', e.message);
+            snapshotSubjectNames = getSubjectNames(t.subjects);
+        }
+
         const teachingSnapshot = {
             schoolId:       session.schoolId,
             semesterId,
             semesterName,
             classes:        getTeacherClasses(t),
-            subjects:       getSubjectNames(t.subjects),
+            subjects:       snapshotSubjectNames,
             studentCount,
             subjectAverages,
             evaluations:    snapshotEvaluations,
@@ -1362,6 +1531,17 @@ document.getElementById('confirmExitBtn').addEventListener('click', async () => 
             archived:          true,                           // ── FIX: marks teacher as archived so auth watcher and mintTeacherToken block access
             archivedSchoolIds: arrayUnion(session.schoolId),
             teachingHistory:   arrayUnion(teachingSnapshot)
+        });
+
+        // PASS B: an archived teacher must be stripped out of every class's
+        // teacherIds — otherwise their ID lingers as an authorized member of
+        // that class even though mintTeacherToken now refuses to log them in.
+        // Closing this gap was explicit — a stale reference here is exactly
+        // the kind of state Pass B's rules are meant to be able to trust.
+        classIdsForNames(getTeacherClasses(t)).forEach(classId => {
+            batch.update(doc(db, 'schools', session.schoolId, 'classes', classId), {
+                teacherIds: arrayRemove(currentTeacherId)
+            });
         });
 
         batch.set(evalRef, exitEvalData);
@@ -1402,7 +1582,19 @@ window.printTeacherPortfolio = async (tId) => {
 
         const schoolName      = session.schoolName || session.schoolId || 'ConnectUs School';
         const classesAssigned = getTeacherClasses(t).join(', ') || 'None';
-        const subjectsAssigned = getSubjectNames(t.subjects).join(', ') || 'None';
+
+        // PHASE 0: dual-mode subject read for the printed portfolio, so a
+        // subject already migrated to the new per-class model still shows
+        // up as "Active" here instead of only ever reflecting the legacy array.
+        let portfolioSubjectNames;
+        try {
+            const { subjectsCache } = await loadTeacherSubjectsCache(session.schoolId, tId, t);
+            portfolioSubjectNames = getSubjectNames(subjectsCache);
+        } catch (e) {
+            console.warn('[Teachers] portfolio subjects lookup failed, falling back to legacy read:', e.message);
+            portfolioSubjectNames = getSubjectNames(t.subjects);
+        }
+        const subjectsAssigned = portfolioSubjectNames.join(', ') || 'None';
 
         const history = t.teachingHistory || [];
         const historyHtml = history.length === 0
@@ -1533,7 +1725,7 @@ document.getElementById('exportCsvBtn').addEventListener('click', () => {
             t.email                 || '',
             t.phone                 || '',
             getTeacherClasses(t).join(' | '),
-            getSubjectNames(t.subjects).join(' | '),
+            getSubjectNames(t.mergedSubjects || t.subjects).join(' | '),
             t.studentCount          || 0,
             t.teacherLicenseNumber  || '',
             t.licenseType           || '',

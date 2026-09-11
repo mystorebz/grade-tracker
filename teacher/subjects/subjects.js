@@ -1,8 +1,10 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { collection, query, where, getDocs, getDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, query, where, getDocs, getDoc, doc, updateDoc, setDoc, deleteDoc, collectionGroup } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
-import { openOverlay, closeOverlay, showMsg, gradeColorClass, letterGrade, standingBadge, gradeFill, calculateWeightedAverage } from '../../assets/js/utils.js';
+import { openOverlay, closeOverlay, showMsg, gradeColorClass, letterGrade, standingBadge, gradeFill, calculateWeightedAverage, loadTeacherSubjectsCache, getTeacherDocRef, resolveGradeWeights, saveGrade } from '../../assets/js/utils.js';
+import { resolvePostContext } from '../../assets/js/posts.js';
+import { loadSubmissionsForAssignment } from '../../assets/js/submissions.js';
 
 // ── 1. AUTHENTICATION & LAYOUT ──────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
@@ -21,10 +23,53 @@ let currentSubjectName = null;
 let gradeDetailCache = {};
 let currentPanelTab = 'performance'; // NEW: tracks active tab inside the subject panel
 
+// PHASE 1 MILESTONE 3: null = composer is in "add new" mode; an assignment id
+// = composer is editing that existing assignment. Reset whenever the panel
+// tab changes or the subject panel closes, so switching away always lands
+// back on a clean "add new" composer.
+let editingAssignmentId = null;
+
+// PHASE 1 MILESTONE 5: state for the Review Submissions slide-in panel.
+// reviewAssignment carries the resolved {classId, subjectId, className,
+// subjectName} context (via resolvePostContext, same helper posts.js and
+// submissions.js already use) merged onto the raw assignment object, so
+// every fetch/save below has what it needs without re-resolving.
+// reviewRoster/reviewSubmissions/reviewGrades are populated fresh every
+// time the panel opens for a given assignment.
+let reviewAssignment = null;
+let reviewRoster = [];
+let reviewSubmissions = new Map();
+let reviewGrades = new Map();
+
+// PHASE 0: resolvedClasses is this teacher's className(s) resolved against
+// the real schools/{schoolId}/classes collection — populated once by
+// loadSubjectsCache(). subjectsCache merges, per subject: any real
+// schools/{schoolId}/classes/{classId}/subjects documents across every one
+// of those resolved classes (_source: 'new'), plus — only for a subject
+// name not already represented in that new-model list — whatever's still
+// sitting in the legacy teachers/{id}.subjects array (_source: 'legacy').
+// This is what makes a not-yet-migrated teacher/school see no change at
+// all, while new subjects (created via the class picker below, or already
+// migrated by the bulk script) read and write through the real collections.
+// Every _source:'new' subject's assignments subcollection is fetched
+// up front, in loadSubjectsCache(), and attached as sub.assignments — the
+// same shape a _source:'legacy' subject already carries embedded — because
+// the subject tile grid needs every subject's own assignment count, not
+// just whichever one panel happens to be open.
+let resolvedClasses = [];
+let subjectsCache = [];
+
+// PHASE 0: resolved once at init() via resolveGradeWeights() — preferring
+// the new schools/{schoolId}/teaching_assignments weighting over the
+// legacy gradeTypes/customGradeTypes fields, same precedence as every
+// other migrated page. Passive display data, so it's cached once here
+// rather than re-resolved on every getGradeTypes() call.
+let resolvedGradeTypes = null;
+
 // UPDATED: Pull the gradeTypes array saved from the new Settings page
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
-function getActiveSubjects() { return (session.teacherData.subjects || []).filter(s => !s.archived); }
-function getGradeTypes() { return session.teacherData.gradeTypes || session.teacherData.customGradeTypes || DEFAULT_GRADE_TYPES; }
+function getActiveSubjects() { return subjectsCache.filter(s => !s.archived); }
+function getGradeTypes() { return resolvedGradeTypes || DEFAULT_GRADE_TYPES; }
 function genId() { return 'sub_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 5); }
 function genAssignmentId() { return 'asg_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 5); }
 
@@ -58,18 +103,24 @@ function gradientFor(name) {
 
 // NEW: read the assignment templates for a subject by name (safe fallback to [])
 function getSubjectByName(name) {
-    return (session.teacherData.subjects || []).find(s => s.name === name && !s.archived) || null;
+    return subjectsCache.find(s => s.name === name && !s.archived) || null;
 }
+// Both _source values carry a real sub.assignments array by the time this
+// is called — 'new' subjects have theirs fetched up front in
+// loadSubjectsCache(), 'legacy' ones already have it embedded.
 function getAssignmentsForSubject(name) {
     const sub = getSubjectByName(name);
     return (sub && Array.isArray(sub.assignments)) ? sub.assignments : [];
 }
 
-// ── HELPER: resolve correct teacher document path (global vs legacy) ──────────
-function getTeacherRef() {
-    return /^T\d{2}-[A-Z0-9]{5}$/i.test(session.teacherId)
-        ? doc(db, 'teachers', session.teacherId)
-        : doc(db, 'schools', session.schoolId, 'teachers', session.teacherId);
+// PHASE 0: single source of truth for the legacy/new-model subjects merge —
+// lives in utils.js as loadTeacherSubjectsCache() so grade_form.js and
+// archives.js can share the exact same logic instead of each carrying
+// their own copy.
+async function loadSubjectsCache() {
+    const result = await loadTeacherSubjectsCache(session.schoolId, session.teacherId, session.teacherData);
+    subjectsCache = result.subjectsCache;
+    resolvedClasses = result.resolvedClasses;
 }
 
 // ── 3. INITIALIZATION ───────────────────────────────────────────────────────
@@ -87,6 +138,12 @@ async function init() {
 
     await loadSemestersAndLockStatus();
     await loadStudents();
+    await loadSubjectsCache();
+    try {
+        resolvedGradeTypes = await resolveGradeWeights(session.schoolId, session.teacherId, { legacyTeacherData: session.teacherData });
+    } catch (e) {
+        console.error('[Subjects] Failed to resolve grade weights:', e);
+    }
     await loadSubjectsTab();
 }
 
@@ -201,7 +258,7 @@ async function loadSubjectsTab() {
         const stuIds = [...new Set(sg.map(g => g.studentId))];
         const stuAvgs = stuIds.map(sid => {
             const sg2 = sg.filter(g => g.studentId === sid);
-            return calculateWeightedAverage(sg2, session.teacherData.gradeTypes || getGradeTypes());
+            return calculateWeightedAverage(sg2, getGradeTypes());
         }).filter(a => a !== null);
 
         const classAvg = stuAvgs.length ? Math.round(stuAvgs.reduce((a, b) => a + b, 0) / stuAvgs.length) : null;
@@ -212,9 +269,15 @@ async function loadSubjectsTab() {
         const safeName = sub.name.replace(/'/g, "\\'");
 
         return `
-        <button type="button" onclick="openSubjectPanel('${safeName}')"
-            class="subject-tile group text-left bg-white border border-slate-200 rounded-3xl p-5 shadow-sm hover:shadow-xl hover:border-teal-300 hover:-translate-y-1 transition-all duration-200 flex flex-col focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-offset-2">
-            <div class="flex items-start justify-between mb-4">
+        <div class="subject-tile group relative text-left bg-white border border-slate-200 rounded-3xl p-5 shadow-sm hover:shadow-xl hover:border-teal-300 hover:-translate-y-1 transition-all duration-200 flex flex-col cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-offset-2"
+            tabindex="0" role="button"
+            onclick="openSubjectPanel('${safeName}')"
+            onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openSubjectPanel('${safeName}');}">
+            <button type="button" onclick="event.stopPropagation(); archiveSubject('${sub.id}', '${safeName}')" title="Archive subject"
+                class="absolute top-4 right-4 z-10 w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-amber-600 hover:bg-amber-50 border border-transparent hover:border-amber-200 opacity-0 group-hover:opacity-100 transition-opacity">
+                <i class="fa-solid fa-box-archive text-xs"></i>
+            </button>
+            <div class="flex items-start justify-between mb-4 pr-8">
                 <div class="w-12 h-12 bg-gradient-to-br ${gradient} text-white rounded-2xl flex items-center justify-center font-black text-lg shadow-md flex-shrink-0">${escHtml(sub.name.charAt(0).toUpperCase())}</div>
                 ${atRisk
                     ? `<span class="inline-flex items-center gap-1 text-[11px] font-black text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-full"><i class="fa-solid fa-triangle-exclamation text-[9px]"></i> ${atRisk} at risk</span>`
@@ -241,7 +304,7 @@ async function loadSubjectsTab() {
                 <span class="text-[11px] font-bold text-slate-400">${sg.length} grade${sg.length !== 1 ? 's' : ''} logged</span>
                 <span class="text-[11px] font-bold text-slate-400">${lastGraded ? 'Last: ' + lastGraded : 'Not graded'}</span>
             </div>
-        </button>`;
+        </div>`;
     }).join('');
 }
 
@@ -249,6 +312,7 @@ async function loadSubjectsTab() {
 window.openSubjectPanel = async function(subjectName) {
     currentSubjectName = subjectName;
     currentPanelTab = 'performance'; // always reset to Performance on open
+    editingAssignmentId = null; // always reopen the assignments composer in "add new" mode
     document.getElementById('spPanelTitle').textContent = subjectName;
     document.getElementById('subjectPanelBody').innerHTML = '<div class="flex justify-center py-16"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-teal-500"></i></div>';
 
@@ -356,7 +420,7 @@ function getFilteredSubjectData() {
         if (fStanding) {
             if (grades.length > 0) {
                 // UPDATED: Using Teacher-Specific Grade Types
-                const avg = calculateWeightedAverage(grades, session.teacherData.gradeTypes || getGradeTypes());
+                const avg = calculateWeightedAverage(grades, getGradeTypes());
                 if (avg !== null) {
                     let std = 'none';
                     if (avg >= 90) std = 'excelling';
@@ -386,7 +450,7 @@ function getFilteredSubjectData() {
     const stuData = stuIds.map(sid => {
         const sg2 = sg.filter(g => g.studentId === sid);
         // UPDATED: Using Teacher-Specific Grade Types
-        const avg = calculateWeightedAverage(sg2, session.teacherData.gradeTypes || getGradeTypes()) || 0;
+        const avg = calculateWeightedAverage(sg2, getGradeTypes()) || 0;
         return { 
             sid, 
             name: studentMap[sid]?.name || 'Unknown', 
@@ -539,9 +603,20 @@ window.renderAssignmentsTab = function() {
     const semName = document.getElementById('activeSemester').options[document.getElementById('activeSemester').selectedIndex]?.text || '';
     document.getElementById('spPanelMeta').textContent = `${semName} · ${assignments.length} prepared task${assignments.length !== 1 ? 's' : ''}`;
 
+    // PHASE 1 MILESTONE 3: the same composer doubles as the edit form — when
+    // editingAssignmentId is set, fields are pre-filled from that assignment
+    // and the Save button commits an update instead of creating a new one.
+    // Computed before typeOptions below so the Type <select> can mark the
+    // right <option> selected (a plain value="" attribute has no effect on
+    // <select> — only a matching <option selected> does).
+    const isEditingAssignment = !!editingAssignmentId;
+    const editingAssignment = isEditingAssignment ? assignments.find(a => a.id === editingAssignmentId) : null;
+    if (isEditingAssignment && !editingAssignment) editingAssignmentId = null; // vanished (e.g. deleted elsewhere) — fall back to add mode
+
     const typeOptions = getGradeTypes().map(t => {
         const v = t.name || t;
-        return `<option value="${escHtml(v)}">${escHtml(v)}</option>`;
+        const isSelected = editingAssignment && editingAssignment.type === v;
+        return `<option value="${escHtml(v)}" ${isSelected ? 'selected' : ''}>${escHtml(v)}</option>`;
     }).join('');
 
     const lockedNotice = isSemesterLocked
@@ -553,15 +628,21 @@ window.renderAssignmentsTab = function() {
 
     const formCard = `
         <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm mb-5">
-            <h4 class="text-xs font-black text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2"><i class="fa-solid fa-circle-plus text-teal-500"></i> Prepare a new assignment</h4>
+            <div class="flex items-center justify-between mb-4">
+                <h4 class="text-xs font-black text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                    <i class="fa-solid ${editingAssignment ? 'fa-pen' : 'fa-circle-plus'} text-teal-500"></i>
+                    ${editingAssignment ? 'Edit assignment' : 'Prepare a new assignment'}
+                </h4>
+                ${editingAssignment ? `<button type="button" onclick="cancelEditAssignment()" class="text-[11px] font-black text-slate-400 hover:text-slate-600 flex items-center gap-1"><i class="fa-solid fa-xmark"></i> Cancel</button>` : ''}
+            </div>
 
             <!-- Title -->
             <div class="mb-3">
                 <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Title <span class="text-red-500">*</span></label>
-                <input type="text" id="asgTitle" placeholder="e.g. Chapter 5 Quiz" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm">
+                <input type="text" id="asgTitle" placeholder="e.g. Chapter 5 Quiz" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm" value="${escHtml(editingAssignment?.title || '')}">
             </div>
 
-            <!-- Type / Max / Date row -->
+            <!-- Type / Points / Due Date row -->
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
                 <div>
                     <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Type <span class="text-red-500">*</span></label>
@@ -571,19 +652,27 @@ window.renderAssignmentsTab = function() {
                     </select>
                 </div>
                 <div>
-                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Out of (max) <span class="text-red-500">*</span></label>
-                    <input type="number" id="asgMax" min="1" step="1" placeholder="e.g. 50" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm">
+                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Points possible <span class="text-red-500">*</span></label>
+                    <input type="number" id="asgMax" min="1" step="1" placeholder="e.g. 50" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm" value="${editingAssignment?.maxScore ?? ''}">
                 </div>
                 <div class="col-span-2 sm:col-span-1">
-                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Date <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
-                    <input type="date" id="asgDate" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm cursor-pointer">
+                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Due Date <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
+                    <input type="date" id="asgDate" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm cursor-pointer" value="${escHtml(editingAssignment?.date || '')}">
                 </div>
             </div>
 
-            <!-- Description (big, expandable) -->
+            <!-- Instructions (student-facing) -->
+            <div class="mb-3">
+                <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Instructions <span class="normal-case font-semibold text-slate-400">(optional — visible to students)</span></label>
+                <textarea id="asgInstructions" placeholder="What students should do, submit, or study for this assignment."
+                    class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm resize-none leading-relaxed"
+                    style="height: 5rem;">${escHtml(editingAssignment?.instructions || '')}</textarea>
+            </div>
+
+            <!-- Description (big, expandable — private teacher notes, never shown to students) -->
             <div class="mb-4">
                 <div class="flex items-center justify-between mb-1.5">
-                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider">Description <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
+                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider">Description <span class="normal-case font-semibold text-slate-400">(optional — private notes, not shown to students)</span></label>
                     <button type="button" id="asgDescExpandBtn" onclick="toggleDescExpand()" title="Expand description"
                         class="flex items-center gap-1 text-[11px] font-black text-teal-600 hover:text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-2 py-1 rounded-lg transition">
                         <i id="asgDescExpandIcon" class="fa-solid fa-down-left-and-up-right-to-center fa-rotate-90 text-[10px]"></i>
@@ -592,11 +681,17 @@ window.renderAssignmentsTab = function() {
                 </div>
                 <textarea id="asgDesc" placeholder="Notes, instructions, topics covered, or a link to a Google Form — anything you want on record for this assignment."
                     class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm resize-none transition-all duration-200 leading-relaxed"
-                    style="height: 7rem;"></textarea>
+                    style="height: 7rem;">${escHtml(editingAssignment?.description || '')}</textarea>
             </div>
 
-            <button onclick="addAssignment()" id="asgSaveBtn" class="w-full bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white font-black py-3 rounded-xl transition shadow-md text-sm flex items-center justify-center gap-2">
-                <i class="fa-solid fa-plus"></i> Add to ${escHtml(currentSubjectName)}
+            <!-- Locked -->
+            <label class="flex items-center gap-2.5 mb-4 cursor-pointer select-none">
+                <input type="checkbox" id="asgLocked" class="w-4 h-4 rounded accent-teal-600 cursor-pointer" ${editingAssignment?.locked ? 'checked' : ''}>
+                <span class="text-[12.5px] font-bold text-slate-600">Locked <span class="font-normal text-slate-400">— marks this assignment as finalized. Informational only; does not restrict editing or grading.</span></span>
+            </label>
+
+            <button onclick="saveAssignment()" id="asgSaveBtn" class="w-full bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white font-black py-3 rounded-xl transition shadow-md text-sm flex items-center justify-center gap-2">
+                <i class="fa-solid ${editingAssignment ? 'fa-check' : 'fa-plus'}"></i> ${editingAssignment ? 'Save changes' : `Add to ${escHtml(currentSubjectName)}`}
             </button>
             <p id="asgMsg" class="text-sm hidden font-bold p-2.5 mt-2 rounded-xl text-center"></p>
         </div>`;
@@ -615,11 +710,21 @@ window.renderAssignmentsTab = function() {
                     <p class="font-black text-slate-700 text-sm truncate ${graded ? 'line-through decoration-slate-300' : ''}">${escHtml(a.title)}</p>
                     <span class="text-[10px] font-black uppercase bg-teal-50 text-teal-600 border border-teal-200 px-2 py-0.5 rounded-md">${escHtml(a.type)}</span>
                     <span class="text-[10px] font-black text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">/ ${a.maxScore}</span>
+                    ${a.locked ? `<span class="text-[10px] font-black uppercase bg-amber-50 text-amber-600 border border-amber-200 px-2 py-0.5 rounded-md flex items-center gap-1"><i class="fa-solid fa-lock text-[9px]"></i>Locked</span>` : ''}
                 </div>
+                ${a.instructions ? `<p class="text-xs text-slate-500 font-semibold mt-0.5 truncate"><span class="text-slate-400 font-black">Instructions:</span> ${escHtml(a.instructions)}</p>` : ''}
                 ${a.description ? `<p class="text-xs text-slate-400 font-semibold mt-0.5 truncate">${escHtml(a.description)}</p>` : ''}
-                ${a.date ? `<p class="text-[11px] text-slate-400 font-bold mt-0.5"><i class="fa-regular fa-calendar mr-1"></i>${escHtml(a.date)}</p>` : ''}
+                ${a.date ? `<p class="text-[11px] text-slate-400 font-bold mt-0.5"><i class="fa-regular fa-calendar mr-1"></i>Due ${escHtml(a.date)}</p>` : ''}
             </div>
             <div class="flex items-center gap-1.5 flex-shrink-0">
+                <button onclick="openReviewSubmissions('${a.id}')" title="Review submissions and grade inline"
+                    class="flex items-center gap-1 text-[11px] font-black text-teal-700 hover:text-white bg-teal-50 hover:bg-teal-600 border border-teal-200 hover:border-teal-600 px-2.5 py-1.5 rounded-lg transition">
+                    <i class="fa-solid fa-inbox text-[10px]"></i> Review
+                </button>
+                <button onclick="editAssignment('${a.id}')" title="Edit assignment"
+                    class="flex items-center gap-1 text-[11px] font-black text-slate-500 hover:text-teal-700 bg-slate-100 hover:bg-teal-50 border border-slate-200 hover:border-teal-200 px-2.5 py-1.5 rounded-lg transition">
+                    <i class="fa-solid fa-pen text-[10px]"></i> Edit
+                </button>
                 ${graded
                     ? `<button onclick="toggleAssignmentComplete('${a.id}')" title="Reopen for grading"
                            class="flex items-center gap-1 text-[11px] font-black text-slate-500 hover:text-teal-700 bg-slate-100 hover:bg-teal-50 border border-slate-200 hover:border-teal-200 px-2.5 py-1.5 rounded-lg transition">
@@ -629,6 +734,10 @@ window.renderAssignmentsTab = function() {
                            class="flex items-center gap-1 text-[11px] font-black text-emerald-700 hover:text-white bg-emerald-50 hover:bg-emerald-600 border border-emerald-200 hover:border-emerald-600 px-2.5 py-1.5 rounded-lg transition">
                            <i class="fa-solid fa-check text-[10px]"></i> Mark graded
                        </button>`}
+                <button onclick="toggleAssignmentLocked('${a.id}')" title="${a.locked ? 'Unlock assignment' : 'Lock assignment'}"
+                    class="text-slate-300 hover:text-amber-500 h-8 w-8 rounded-lg flex items-center justify-center hover:bg-amber-50 transition ${a.locked ? 'text-amber-500' : ''}">
+                    <i class="fa-solid ${a.locked ? 'fa-lock' : 'fa-lock-open'} text-sm"></i>
+                </button>
                 <button onclick="deleteAssignment('${a.id}')" title="Remove assignment"
                     class="text-slate-300 hover:text-red-500 h-8 w-8 rounded-lg flex items-center justify-center hover:bg-red-50 transition">
                     <i class="fa-solid fa-trash-can text-sm"></i>
@@ -699,12 +808,17 @@ window.toggleDescExpand = function() {
     }
 };
 
-window.addAssignment = async function() {
+// PHASE 1 MILESTONE 3: entry point for the composer's Save button in both
+// modes. editingAssignmentId === null means "create"; otherwise this updates
+// that existing assignment in place, preserving its id/createdAt/completed.
+window.saveAssignment = async function() {
     const title = document.getElementById('asgTitle').value.trim();
     const type = document.getElementById('asgType').value;
     const maxRaw = document.getElementById('asgMax').value;
     const date = document.getElementById('asgDate').value || '';
+    const instructions = document.getElementById('asgInstructions').value.trim();
     const desc = document.getElementById('asgDesc').value.trim();
+    const locked = document.getElementById('asgLocked').checked;
     const max = parseInt(maxRaw, 10);
 
     if (!title) { showMsg('asgMsg', 'Title is required.', true); return; }
@@ -719,39 +833,90 @@ window.addAssignment = async function() {
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
     btn.disabled = true;
 
+    const editingId = editingAssignmentId;
+
     try {
-        // Build the new subjects array immutably, attaching the assignment to the right subject
-        const subjects = (session.teacherData.subjects || []).map(s => {
-            if (s.id !== sub.id) return s;
-            const existing = Array.isArray(s.assignments) ? s.assignments : [];
-            // Prevent duplicate titles within the same subject (case-insensitive)
-            if (existing.some(a => (a.title || '').toLowerCase() === title.toLowerCase())) {
-                throw new Error('DUPLICATE');
-            }
-            const newAssignment = {
-                id: genAssignmentId(),
-                title,
-                type,
+        const existing = getAssignmentsForSubject(currentSubjectName);
+        // Prevent duplicate titles within the same subject (case-insensitive),
+        // excluding the assignment currently being edited against itself.
+        if (existing.some(a => a.id !== editingId && (a.title || '').toLowerCase() === title.toLowerCase())) {
+            throw new Error('DUPLICATE');
+        }
+
+        const now = new Date().toISOString();
+        let savedAssignment;
+
+        if (editingId) {
+            const current = existing.find(a => a.id === editingId);
+            if (!current) throw new Error('NOT_FOUND');
+            const wasLocked = !!current.locked;
+            const patch = {
+                title, type,
                 maxScore: max,
                 description: desc,
+                instructions,
                 date,
-                completed: false,
-                createdAt: new Date().toISOString()
+                locked,
+                lockedAt: locked ? (wasLocked ? (current.lockedAt || now) : now) : null,
+                updatedAt: now
             };
-            return { ...s, assignments: [...existing, newAssignment] };
-        });
+            savedAssignment = { ...current, ...patch };
 
-        await updateDoc(getTeacherRef(), { subjects });
-        session.teacherData.subjects = subjects;
-        setSessionData('teacher', session);
+            if (sub._source === 'new') {
+                await updateDoc(doc(db, 'schools', session.schoolId, 'classes', sub.classId, 'subjects', sub.id, 'assignments', editingId), patch);
+                sub.assignments = (sub.assignments || []).map(a => a.id === editingId ? savedAssignment : a);
+            } else {
+                const subjects = (session.teacherData.subjects || []).map(s => {
+                    if (s.id !== sub.id) return s;
+                    return { ...s, assignments: existing.map(a => a.id === editingId ? savedAssignment : a) };
+                });
+                await updateDoc(getTeacherDocRef(session.schoolId, session.teacherId), { subjects });
+                session.teacherData.subjects = subjects;
+                setSessionData('teacher', session);
+                sub.assignments = subjects.find(s => s.id === sub.id)?.assignments || [];
+            }
+        } else {
+            savedAssignment = {
+                id: genAssignmentId(),
+                title, type,
+                maxScore: max,
+                description: desc,
+                instructions,
+                date,
+                locked,
+                lockedAt: locked ? now : null,
+                completed: false,
+                createdAt: now,
+                updatedAt: now
+            };
 
+            if (sub._source === 'new') {
+                // PHASE 0: assignments are their own documents under the subject
+                await setDoc(doc(db, 'schools', session.schoolId, 'classes', sub.classId, 'subjects', sub.id, 'assignments', savedAssignment.id), savedAssignment);
+                sub.assignments = [...(sub.assignments || []), savedAssignment];
+            } else {
+                // Legacy path, unchanged: rewrite the whole embedded subjects array
+                const subjects = (session.teacherData.subjects || []).map(s => {
+                    if (s.id !== sub.id) return s;
+                    return { ...s, assignments: [...existing, savedAssignment] };
+                });
+                await updateDoc(getTeacherDocRef(session.schoolId, session.teacherId), { subjects });
+                session.teacherData.subjects = subjects;
+                setSessionData('teacher', session);
+                sub.assignments = [...existing, savedAssignment];
+            }
+        }
+
+        editingAssignmentId = null;
         updateAssignmentTabBadge();
-        renderAssignmentsTab(); // re-render with the cleared form + new row
+        renderAssignmentsTab(); // re-render with the cleared form + new/updated row
     } catch (e) {
         if (e.message === 'DUPLICATE') {
             showMsg('asgMsg', 'An assignment with that title already exists for this subject.', true);
+        } else if (e.message === 'NOT_FOUND') {
+            showMsg('asgMsg', 'This assignment no longer exists. Please refresh.', true);
         } else {
-            console.error('[Subjects] addAssignment:', e);
+            console.error('[Subjects] saveAssignment:', e);
             showMsg('asgMsg', 'Could not save. Please try again.', true);
         }
         btn.innerHTML = prevHtml;
@@ -759,30 +924,92 @@ window.addAssignment = async function() {
     }
 };
 
+// PHASE 1 MILESTONE 3: switches the composer into edit mode for one
+// assignment. The composer itself (in renderAssignmentsTab) reads
+// editingAssignmentId to pre-fill its fields — this just sets that state,
+// re-renders, and scrolls the composer into view.
+window.editAssignment = function(assignmentId) {
+    editingAssignmentId = assignmentId;
+    renderAssignmentsTab();
+    document.getElementById('asgTitle')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+};
+
+window.cancelEditAssignment = function() {
+    editingAssignmentId = null;
+    renderAssignmentsTab();
+};
+
 window.toggleAssignmentComplete = async function(assignmentId) {
     const sub = getSubjectByName(currentSubjectName);
     if (!sub) return;
 
     try {
-        const subjects = (session.teacherData.subjects || []).map(s => {
-            if (s.id !== sub.id) return s;
-            const existing = Array.isArray(s.assignments) ? s.assignments : [];
-            return {
-                ...s,
-                assignments: existing.map(a =>
-                    a.id === assignmentId ? { ...a, completed: !a.completed } : a
-                )
-            };
-        });
-
-        await updateDoc(getTeacherRef(), { subjects });
-        session.teacherData.subjects = subjects;
-        setSessionData('teacher', session);
+        if (sub._source === 'new') {
+            const current = (sub.assignments || []).find(a => a.id === assignmentId);
+            const newCompleted = !(current?.completed);
+            await updateDoc(doc(db, 'schools', session.schoolId, 'classes', sub.classId, 'subjects', sub.id, 'assignments', assignmentId), { completed: newCompleted });
+            sub.assignments = (sub.assignments || []).map(a => a.id === assignmentId ? { ...a, completed: newCompleted } : a);
+        } else {
+            const subjects = (session.teacherData.subjects || []).map(s => {
+                if (s.id !== sub.id) return s;
+                const existing = Array.isArray(s.assignments) ? s.assignments : [];
+                return {
+                    ...s,
+                    assignments: existing.map(a =>
+                        a.id === assignmentId ? { ...a, completed: !a.completed } : a
+                    )
+                };
+            });
+            await updateDoc(getTeacherDocRef(session.schoolId, session.teacherId), { subjects });
+            session.teacherData.subjects = subjects;
+            setSessionData('teacher', session);
+            sub.assignments = subjects.find(s => s.id === sub.id)?.assignments || [];
+        }
 
         updateAssignmentTabBadge();
         renderAssignmentsTab();
     } catch (e) {
         console.error('[Subjects] toggleAssignmentComplete:', e);
+        alert('Could not update the assignment. Please try again.');
+    }
+};
+
+// PHASE 1 MILESTONE 3: quick-action lock toggle, mirroring
+// toggleAssignmentComplete's exact _source fork. Informational only — does
+// not gate editing, deleting, or grading; grade_form.js just displays it.
+window.toggleAssignmentLocked = async function(assignmentId) {
+    const sub = getSubjectByName(currentSubjectName);
+    if (!sub) return;
+
+    const now = new Date().toISOString();
+
+    try {
+        if (sub._source === 'new') {
+            const current = (sub.assignments || []).find(a => a.id === assignmentId);
+            const newLocked = !(current?.locked);
+            const patch = { locked: newLocked, lockedAt: newLocked ? now : null };
+            await updateDoc(doc(db, 'schools', session.schoolId, 'classes', sub.classId, 'subjects', sub.id, 'assignments', assignmentId), patch);
+            sub.assignments = (sub.assignments || []).map(a => a.id === assignmentId ? { ...a, ...patch } : a);
+        } else {
+            const subjects = (session.teacherData.subjects || []).map(s => {
+                if (s.id !== sub.id) return s;
+                const existing = Array.isArray(s.assignments) ? s.assignments : [];
+                return {
+                    ...s,
+                    assignments: existing.map(a =>
+                        a.id === assignmentId ? { ...a, locked: !a.locked, lockedAt: !a.locked ? now : null } : a
+                    )
+                };
+            });
+            await updateDoc(getTeacherDocRef(session.schoolId, session.teacherId), { subjects });
+            session.teacherData.subjects = subjects;
+            setSessionData('teacher', session);
+            sub.assignments = subjects.find(s => s.id === sub.id)?.assignments || [];
+        }
+
+        renderAssignmentsTab();
+    } catch (e) {
+        console.error('[Subjects] toggleAssignmentLocked:', e);
         alert('Could not update the assignment. Please try again.');
     }
 };
@@ -793,15 +1020,20 @@ window.deleteAssignment = async function(assignmentId) {
     if (!confirm('Remove this prepared assignment? Grades already recorded with this title are not affected.')) return;
 
     try {
-        const subjects = (session.teacherData.subjects || []).map(s => {
-            if (s.id !== sub.id) return s;
-            const existing = Array.isArray(s.assignments) ? s.assignments : [];
-            return { ...s, assignments: existing.filter(a => a.id !== assignmentId) };
-        });
-
-        await updateDoc(getTeacherRef(), { subjects });
-        session.teacherData.subjects = subjects;
-        setSessionData('teacher', session);
+        if (sub._source === 'new') {
+            await deleteDoc(doc(db, 'schools', session.schoolId, 'classes', sub.classId, 'subjects', sub.id, 'assignments', assignmentId));
+            sub.assignments = (sub.assignments || []).filter(a => a.id !== assignmentId);
+        } else {
+            const subjects = (session.teacherData.subjects || []).map(s => {
+                if (s.id !== sub.id) return s;
+                const existing = Array.isArray(s.assignments) ? s.assignments : [];
+                return { ...s, assignments: existing.filter(a => a.id !== assignmentId) };
+            });
+            await updateDoc(getTeacherDocRef(session.schoolId, session.teacherId), { subjects });
+            session.teacherData.subjects = subjects;
+            setSessionData('teacher', session);
+            sub.assignments = subjects.find(s => s.id === sub.id)?.assignments || [];
+        }
 
         updateAssignmentTabBadge();
         renderAssignmentsTab();
@@ -812,6 +1044,202 @@ window.deleteAssignment = async function(assignmentId) {
 };
 
 window.closeSubjectPanel = function() { closeOverlay('subjectPanel', 'subjectPanelInner', true); };
+
+// ── PHASE 1 MILESTONE 5: REVIEW SUBMISSIONS (inline grading) ────────────────
+// Slide-in panel, triggered per-assignment from the Assignments tab above.
+// Approved design: stays inline — never bounces the teacher out to
+// grade_form.js. Data fetching is exactly two reads: one getDocs on the
+// assignment's own submissions subcollection (who has submitted), and one
+// collectionGroup('grades') query filtered by assignmentId (who's graded,
+// class-wide) — see firestore.indexes.json's fieldOverrides entry for the
+// index this second read needs. Grading itself goes through utils.js's
+// shared saveGrade() helper, so re-grading here follows the exact same
+// no-duplicate-docs + historyLogs rule as grade_form.js.
+window.openReviewSubmissions = async function(assignmentId) {
+    const sub = getSubjectByName(currentSubjectName);
+    const assignments = (sub && Array.isArray(sub.assignments)) ? sub.assignments : [];
+    const assignment = assignments.find(a => a.id === assignmentId);
+    if (!sub || !assignment) return;
+
+    const context = resolvePostContext(sub, resolvedClasses);
+    if (!context) {
+        alert('Could not resolve this subject to a real class, so submissions can\'t be loaded. Try reopening the Subjects page.');
+        return;
+    }
+
+    reviewAssignment = { ...assignment, ...context };
+    reviewRoster = allStudentsCache.filter(s => s.className === context.className);
+    reviewSubmissions = new Map();
+    reviewGrades = new Map();
+
+    document.getElementById('reviewTitle').textContent = assignment.title;
+    document.getElementById('reviewMeta').textContent = `${context.subjectName} · ${context.className} · out of ${assignment.maxScore}`;
+    document.getElementById('reviewBody').innerHTML = `<div class="flex justify-center py-16"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-teal-500"></i></div>`;
+
+    openOverlay('reviewSubmissionsModal', 'reviewSubmissionsModalInner', true);
+
+    try {
+        const [submissionsMap, gradesSnap] = await Promise.all([
+            loadSubmissionsForAssignment(session.schoolId, reviewAssignment),
+            getDocs(query(collectionGroup(db, 'grades'), where('assignmentId', '==', assignmentId)))
+        ]);
+        reviewSubmissions = submissionsMap;
+        // Grade docs live at students/{studentId}/grades/{gradeId} and don't
+        // store studentId on themselves — it's the doc's grandparent id.
+        gradesSnap.docs.forEach(d => {
+            const studentId = d.ref.parent.parent?.id;
+            if (studentId) reviewGrades.set(studentId, { id: d.id, studentId, ...d.data() });
+        });
+    } catch (e) {
+        console.error('[Subjects] openReviewSubmissions load failed:', e);
+        document.getElementById('reviewBody').innerHTML = `<p class="text-sm font-bold text-red-600 text-center py-10">Could not load submissions. Please try again.</p>`;
+        return;
+    }
+
+    renderReviewBody();
+};
+
+window.closeReviewSubmissions = function() { closeOverlay('reviewSubmissionsModal', 'reviewSubmissionsModalInner', true); };
+
+function renderReviewBody() {
+    const wrap = document.getElementById('reviewBody');
+    if (!wrap || !reviewAssignment) return;
+
+    if (!reviewRoster.length) {
+        wrap.innerHTML = `<p class="text-sm font-bold text-slate-400 text-center py-10">No students on this class roster yet.</p>`;
+        return;
+    }
+
+    const submittedCount = reviewRoster.filter(s => reviewSubmissions.has(s.id)).length;
+    const gradedCount    = reviewRoster.filter(s => reviewGrades.has(s.id)).length;
+
+    const summary = `
+        <div class="flex items-center gap-4 text-xs font-black text-slate-500 mb-3">
+            <span><i class="fa-solid fa-inbox text-teal-500 mr-1"></i>${submittedCount} of ${reviewRoster.length} submitted</span>
+            <span><i class="fa-solid fa-circle-check text-emerald-500 mr-1"></i>${gradedCount} of ${reviewRoster.length} graded</span>
+        </div>`;
+
+    const lockedNotice = isSemesterLocked
+        ? `<div class="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs font-bold text-amber-700 flex items-center gap-2 mb-3"><i class="fa-solid fa-lock"></i> This period is locked. Grades are read-only.</div>`
+        : '';
+
+    const rows = reviewRoster.slice()
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        .map(renderReviewRow).join('');
+
+    wrap.innerHTML = summary + lockedNotice + `<div class="space-y-3">${rows}</div>`;
+}
+
+function renderReviewRow(s) {
+    const submission = reviewSubmissions.get(s.id) || null;
+    const grade = reviewGrades.get(s.id) || null;
+    const hasHistory = grade && Array.isArray(grade.historyLogs) && grade.historyLogs.length > 0;
+
+    const submissionBlock = submission
+        ? `<div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600 space-y-1.5">
+               ${submission.responseText ? `<p class="whitespace-pre-wrap leading-relaxed">${escHtml(submission.responseText)}</p>` : ''}
+               ${submission.linkUrl ? `<a href="${escHtml(submission.linkUrl)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-teal-600 font-bold hover:underline break-all"><i class="fa-solid fa-link text-[10px] flex-shrink-0"></i> ${escHtml(submission.linkUrl)}</a>` : ''}
+               ${!submission.responseText && !submission.linkUrl ? `<p class="italic text-slate-400">Submitted with no text or link.</p>` : ''}
+               <p class="text-[10px] text-slate-400 font-bold pt-0.5">Submitted ${submission.submittedAt ? new Date(submission.submittedAt).toLocaleString() : '—'}</p>
+           </div>`
+        : `<p class="text-xs italic text-slate-400 font-semibold bg-slate-50 border border-dashed border-slate-200 rounded-xl p-3">Not submitted yet.</p>`;
+
+    const historyBlock = hasHistory
+        ? `<details class="mt-2">
+               <summary class="text-[10px] font-black text-amber-600 cursor-pointer select-none">Regraded ${grade.historyLogs.length}× — view history</summary>
+               <ul class="mt-1 space-y-0.5 pl-0.5">
+                   ${grade.historyLogs.map(h => `<li class="text-[10px] text-slate-500 font-semibold">${new Date(h.timestamp).toLocaleString()}: ${h.oldScore} → ${h.newScore}</li>`).join('')}
+               </ul>
+           </details>`
+        : '';
+
+    return `
+    <div class="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-start gap-4">
+        <div class="sm:w-56 flex-shrink-0">
+            <p class="font-black text-slate-700 text-sm">${escHtml(s.name)}</p>
+            <p class="text-[11px] text-slate-400 font-bold mb-2 font-mono">${escHtml(s.id)}</p>
+            ${submissionBlock}
+        </div>
+        <div class="flex-1 flex items-start gap-3 flex-wrap">
+            <div>
+                <label class="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Score</label>
+                <div class="flex items-center gap-1.5">
+                    <input type="number" id="revScore_${s.id}" min="0" max="${reviewAssignment.maxScore}" step="1"
+                        value="${grade ? grade.score : ''}"
+                        class="form-input w-20 p-2 bg-white border border-slate-200 rounded-lg text-sm text-center font-bold">
+                    <span class="text-xs text-slate-400 font-bold">/ ${reviewAssignment.maxScore}</span>
+                </div>
+            </div>
+            <div class="flex-1 min-w-[140px]">
+                <label class="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Notes <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
+                <input type="text" id="revNotes_${s.id}" value="${escHtml(grade?.notes || '')}" placeholder="Feedback for this student"
+                    class="form-input w-full p-2 bg-white border border-slate-200 rounded-lg text-sm">
+            </div>
+            <div class="flex flex-col items-stretch gap-1">
+                <label class="block text-[10px] font-black text-transparent uppercase tracking-wider mb-1 select-none">·</label>
+                <button id="revSaveBtn_${s.id}" onclick="saveInlineGrade('${s.id}')"
+                    class="flex items-center gap-1.5 ${grade ? 'bg-slate-100 hover:bg-teal-50 text-slate-600 hover:text-teal-700 border-slate-200' : 'bg-teal-600 hover:bg-teal-700 text-white border-teal-600'} font-black px-3.5 py-2 rounded-lg text-xs border transition">
+                    <i class="fa-solid ${grade ? 'fa-rotate' : 'fa-check'} text-[10px]"></i> ${grade ? 'Update' : 'Save'}
+                </button>
+            </div>
+        </div>
+        ${historyBlock}
+    </div>`;
+}
+
+window.saveInlineGrade = async function(studentId) {
+    if (!reviewAssignment) return;
+    if (isSemesterLocked) { alert('This period is locked. Grades are read-only.'); return; }
+
+    const scoreEl = document.getElementById(`revScore_${studentId}`);
+    const notesEl = document.getElementById(`revNotes_${studentId}`);
+    const btn      = document.getElementById(`revSaveBtn_${studentId}`);
+    const max      = reviewAssignment.maxScore;
+    const score    = scoreEl ? parseFloat(scoreEl.value) : NaN;
+
+    if (isNaN(score) || score < 0 || score > max) {
+        alert(`Please enter a valid score between 0 and ${max}.`);
+        return;
+    }
+
+    const wasRegrade = reviewGrades.has(studentId);
+    const originalBtnHtml = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-[10px]"></i>'; }
+
+    try {
+        const semId = document.getElementById('activeSemester')?.value || '';
+        const fields = {
+            schoolId:   session.schoolId,
+            teacherId:  session.teacherId,
+            semesterId: semId,
+            className:  reviewAssignment.className,
+            subject:    reviewAssignment.subjectName,
+            type:       reviewAssignment.type,
+            date:       reviewAssignment.date || new Date().toISOString().split('T')[0],
+            title:      reviewAssignment.title,
+            score,
+            max,
+            notes: notesEl ? notesEl.value.trim() : '',
+        };
+
+        const result = await saveGrade(studentId, reviewAssignment.id, fields);
+
+        // Reflect the write locally without a re-fetch: on a create, start a
+        // fresh historyLogs; on an update, carry forward + append, mirroring
+        // exactly what saveGrade() itself just did server-side.
+        const priorHistory = wasRegrade ? (reviewGrades.get(studentId)?.historyLogs || []) : [];
+        const historyLogs = wasRegrade
+            ? [...priorHistory, { timestamp: new Date().toISOString(), oldScore: reviewGrades.get(studentId)?.score, newScore: score }]
+            : [];
+        reviewGrades.set(studentId, { id: result.id, studentId, ...fields, assignmentId: reviewAssignment.id, historyLogs });
+
+        renderReviewBody();
+    } catch (e) {
+        console.error('[Subjects] saveInlineGrade:', e);
+        alert('Could not save this grade. Please try again.');
+        if (btn) { btn.disabled = false; btn.innerHTML = originalBtnHtml; }
+    }
+};
 
 // ── 6. ASSIGNMENT DETAIL MODAL ──────────────────────────────────────────────
 window.openAssignmentModal = function(gradeId) {
@@ -851,6 +1279,20 @@ window.openSubjectFormModal = function() {
     document.getElementById('subjectFormName').value = '';
     document.getElementById('subjectFormDesc').value = '';
     document.getElementById('subjectFormMsg').classList.add('hidden');
+
+    // PHASE 0: every new subject is created class-scoped, so the teacher
+    // picks which of their (resolved) classes it belongs to.
+    const classSel = document.getElementById('subjectFormClass');
+    if (classSel) {
+        if (resolvedClasses.length) {
+            classSel.innerHTML = resolvedClasses.map(c => `<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
+            classSel.disabled = false;
+        } else {
+            classSel.innerHTML = `<option value="">No classes found for this school</option>`;
+            classSel.disabled = true;
+        }
+    }
+
     openOverlay('subjectFormModal', 'subjectFormModalInner');
 };
 window.closeSubjectFormModal = function() { closeOverlay('subjectFormModal', 'subjectFormModalInner'); };
@@ -858,28 +1300,43 @@ window.closeSubjectFormModal = function() { closeOverlay('subjectFormModal', 'su
 async function saveSubject() {
     const name = document.getElementById('subjectFormName').value.trim();
     const desc = document.getElementById('subjectFormDesc').value.trim();
-    
+    const classId = document.getElementById('subjectFormClass')?.value || '';
+
     if (!name) { showMsg('subjectFormMsg', 'Subject name is required.', true); return; }
-    
+    if (!classId) { showMsg('subjectFormMsg', 'Please choose a class.', true); return; }
+
     const btn = document.getElementById('saveSubjectFormBtn');
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
     btn.disabled = true;
-    
+
     try {
-        let newSubs = [...(session.teacherData.subjects || [])];
-        if (newSubs.some(s => s.name === name && !s.archived)) {
+        // Checked against the full merged list (new-model + legacy) so a
+        // teacher still can't create two subjects that show up with the
+        // same visible name, even though the new model itself only
+        // enforces uniqueness within one class.
+        if (subjectsCache.some(s => s.name === name && !s.archived)) {
             showMsg('subjectFormMsg', 'Subject already exists.', true);
             btn.innerHTML = 'Save Subject'; btn.disabled = false;
             return;
         }
-        
-        newSubs.push({ id: genId(), name, description: desc, archived: false, archivedAt: null, assignments: [] });
-        
-        // CHANGED: use getTeacherRef() for global/legacy compatibility
-        await updateDoc(getTeacherRef(), { subjects: newSubs });
-        session.teacherData.subjects = newSubs;
-        setSessionData('teacher', session);
-        
+
+        const cls = resolvedClasses.find(c => c.id === classId);
+        const newSubjectId = genId();
+        const newSubjectData = {
+            name,
+            description: desc,
+            schoolId: session.schoolId,
+            classId,
+            archived: false,
+            archivedAt: null,
+            createdAt: new Date().toISOString()
+        };
+
+        // PHASE 0: every new subject is created directly in the new
+        // per-class collection — never the legacy embedded array.
+        await setDoc(doc(db, 'schools', session.schoolId, 'classes', classId, 'subjects', newSubjectId), newSubjectData);
+        subjectsCache.push({ id: newSubjectId, classId, className: cls?.name || '', _source: 'new', ...newSubjectData });
+
         closeSubjectFormModal();
         loadSubjectsTab(); // Reload table
     } catch (e) {
@@ -889,6 +1346,39 @@ async function saveSubject() {
     btn.innerHTML = 'Save Subject';
     btn.disabled = false;
 }
+
+// ── 7a. ARCHIVE SUBJECT (tile hover icon) ───────────────────────────────────
+// Mirrors the dual-mode write archives.js's restoreSubject()/
+// permanentDeleteSubject() already use — this is the missing other end of
+// that flow: the only way a subject reaches the Archives page in the first
+// place. Hides it from this page immediately (getActiveSubjects() filters
+// on !archived) without touching its assignments or any grades already
+// recorded against it.
+window.archiveSubject = async function(subjectId, subjectName) {
+    const sub = subjectsCache.find(s => s.id === subjectId && !s.archived);
+    if (!sub) return;
+    if (!confirm(`Archive "${subjectName}"? It'll be hidden from this page and moved to Archives, where you can restore it or delete it permanently.`)) return;
+
+    try {
+        const archivedAt = new Date().toISOString();
+        if (sub._source === 'new') {
+            await updateDoc(doc(db, 'schools', session.schoolId, 'classes', sub.classId, 'subjects', sub.id), { archived: true, archivedAt });
+        } else {
+            const subjects = (session.teacherData.subjects || []).map(s =>
+                s.id === subjectId ? { ...s, archived: true, archivedAt } : s
+            );
+            await updateDoc(getTeacherDocRef(session.schoolId, session.teacherId), { subjects });
+            session.teacherData.subjects = subjects;
+            setSessionData('teacher', session);
+        }
+        sub.archived = true;
+        sub.archivedAt = archivedAt;
+        loadSubjectsTab();
+    } catch (e) {
+        console.error('[Subjects] archiveSubject:', e);
+        alert('Could not archive the subject. Please try again.');
+    }
+};
 
 // ── 8. PRINT REPORT (PROFESSIONAL TEMPLATE) ─────────────────────────────────
 window.printSubjectReport = function() {

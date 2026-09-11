@@ -167,6 +167,12 @@
             </div>
             <div class="p-7 space-y-4 bg-slate-50/50">
                 <div>
+                    <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Class *</label>
+                    <select id="subjectFormClass" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm cursor-pointer">
+                        <option value="">Loading classes…</option>
+                    </select>
+                </div>
+                <div>
                     <label class="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Subject Name *</label>
                     <input type="text" id="subjectFormName" placeholder="e.g. Physical Education" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm">
                 </div>
@@ -188,6 +194,27 @@
                 <button onclick="closeAssignmentModal()" class="text-slate-400 hover:text-red-500 h-8 w-8 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
             </div>
             <div class="p-7" id="aModalBody"></div>
+        </div>
+    </div>
+
+    <!-- PHASE 1 MILESTONE 5: Review Submissions slide-in panel — reuses the
+         same .overlay/.side-panel pattern as #subjectPanel above, at a
+         higher z-index since it opens on top of it. -->
+    <div id="reviewSubmissionsModal" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex justify-end hidden opacity-0">
+        <div id="reviewSubmissionsModalInner" class="side-panel bg-[#f0fdf8] w-full max-w-4xl h-full shadow-2xl flex flex-col translate-x-full">
+            <div class="h-1 bg-gradient-to-r from-teal-500 via-emerald-400 to-cyan-500 flex-shrink-0"></div>
+
+            <div class="px-7 py-5 border-b border-slate-200 bg-white flex justify-between items-center flex-shrink-0 flex-wrap gap-3">
+                <div>
+                    <h3 id="reviewTitle" class="font-black text-2xl text-slate-800">Assignment</h3>
+                    <p id="reviewMeta" class="text-sm text-teal-600 font-bold mt-0.5">Review submissions</p>
+                </div>
+                <button onclick="closeReviewSubmissions()" class="text-slate-400 hover:text-red-500 h-9 w-9 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-7" id="reviewBody">
+                <div class="flex justify-center py-16"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-teal-500"></i></div>
+            </div>
         </div>
     </div>
 

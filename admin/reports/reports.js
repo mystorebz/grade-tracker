@@ -2,7 +2,7 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, getDocs, query, where, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
-import { letterGrade, gradeColorClass, calculateWeightedAverage } from '../../assets/js/utils.js';
+import { letterGrade, gradeColorClass, calculateWeightedAverage, loadSchoolWeightingIndex, getWeightingFromIndex, loadSchoolSubjectsIndex, mergeTeacherSubjectsFromIndex } from '../../assets/js/utils.js';
 
 // ── 1. INIT ───────────────────────────────────────────────────────────────
 const session = requireAuth('admin', '../login.html');
@@ -15,15 +15,23 @@ let allStudents    = [];
 let CLASSES        = [];
 let resolvedSchoolName = '';
 
+// PHASE 0: batch weighting + subjects indexes, fetched once in
+// initializeBuilder() alongside allTeachers, so this multi-teacher
+// dashboard never issues one query per teacher (see utils.js).
+let weightingIndex = new Map();
+let subjectsIndex   = null;
+
+const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
+
 // ── 3. HELPERS ────────────────────────────────────────────────────────────
 function escHtml(s) {
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function getTeacherGradeTypes(teacherId) {
-    if (!teacherId) return ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
+    if (!teacherId) return DEFAULT_GRADE_TYPES;
     const t = allTeachers.find(x => x.id === teacherId);
-    return t?.gradeTypes || t?.customGradeTypes || ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
+    return getWeightingFromIndex(weightingIndex, teacherId, t) || DEFAULT_GRADE_TYPES;
 }
 
 // ── 3.5 SEARCHABLE DROPDOWN WIDGET (NEW UX UPGRADE) ───────────────────────
@@ -271,23 +279,29 @@ function populateSubjects() {
     subjectSelect.innerHTML = '<option value="all">All Subjects</option>';
     let validSubjects = new Set();
 
+    // ── PHASE 0: mergedSubjects (new-model + legacy) instead of t.subjects
+    // alone — see utils.js's loadSchoolSubjectsIndex/mergeTeacherSubjectsFromIndex.
     if (scope === 'school') {
         allTeachers.forEach(t => {
-            if (t.subjects) t.subjects.forEach(sub => validSubjects.add(typeof sub === 'string' ? sub : sub.name));
+            const subs = t.mergedSubjects || t.subjects;
+            if (subs) subs.forEach(sub => validSubjects.add(typeof sub === 'string' ? sub : sub.name));
         });
     } else if (scope === 'teacher' && target) {
         const t = allTeachers.find(x => x.id === target);
-        if (t && t.subjects) t.subjects.forEach(sub => validSubjects.add(typeof sub === 'string' ? sub : sub.name));
+        const subs = t && (t.mergedSubjects || t.subjects);
+        if (subs) subs.forEach(sub => validSubjects.add(typeof sub === 'string' ? sub : sub.name));
     } else if (scope === 'class' && target) {
         const teachers = allTeachers.filter(t => t.classes && t.classes.includes(target) || t.className === target);
         teachers.forEach(t => {
-            if (t.subjects) t.subjects.forEach(sub => validSubjects.add(typeof sub === 'string' ? sub : sub.name));
+            const subs = t.mergedSubjects || t.subjects;
+            if (subs) subs.forEach(sub => validSubjects.add(typeof sub === 'string' ? sub : sub.name));
         });
     } else if (scope === 'student' && target) {
         const s = allStudents.find(x => x.id === target);
         if (s && s.teacherId) {
             const t = allTeachers.find(x => x.id === s.teacherId);
-            if (t && t.subjects) t.subjects.forEach(sub => validSubjects.add(typeof sub === 'string' ? sub : sub.name));
+            const subs = t && (t.mergedSubjects || t.subjects);
+            if (subs) subs.forEach(sub => validSubjects.add(typeof sub === 'string' ? sub : sub.name));
         }
     }
 
@@ -305,13 +319,15 @@ function populateSubjects() {
 // ── 6. INIT BUILDER DROPDOWNS ─────────────────────────────────────────────
 async function initializeBuilder() {
     try {
-        const [semSnap, tSnap, sSnap, cSnap] = await Promise.all([
+        const [semSnap, tSnap, sSnap, cSnap, weightingIdx, subjectsIdx] = await Promise.all([
             getDocs(collection(db, 'schools', session.schoolId, 'semesters')),
             getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', session.schoolId))),
             getDocs(query(collection(db, 'students'),
                 where('currentSchoolId', '==', session.schoolId),
                 where('enrollmentStatus', '==', 'Active'))),
-            getDocs(collection(db, 'schools', session.schoolId, 'classes'))
+            getDocs(collection(db, 'schools', session.schoolId, 'classes')),
+            loadSchoolWeightingIndex(session.schoolId),
+            loadSchoolSubjectsIndex(session.schoolId)
         ]);
 
         allSemesters = semSnap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -319,6 +335,14 @@ async function initializeBuilder() {
                                    .sort((a, b) => a.order - b.order);
         allTeachers  = tSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         allStudents  = sSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // ── PHASE 0: one batch fetch each for weighting + subjects, then a
+        // pure in-memory merge per teacher — no per-teacher queries.
+        weightingIndex = weightingIdx;
+        subjectsIndex   = subjectsIdx;
+        allTeachers.forEach(t => {
+            t.mergedSubjects = mergeTeacherSubjectsFromIndex(t, subjectsIndex).subjectsCache;
+        });
 
         try {
             const schoolSnap = await getDoc(doc(db, 'schools', session.schoolId));

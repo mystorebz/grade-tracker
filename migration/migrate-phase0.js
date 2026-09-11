@@ -39,20 +39,31 @@ if (!MODE) {
 
 function initAdmin() {
   // Emulator mode: FIRESTORE_EMULATOR_HOST is set, no real credentials needed.
-  // Production mode: replace this with
-  //   admin.initializeApp({ credential: admin.credential.cert(require('./serviceAccountKey.json')) });
-  // — deliberately not wired up yet. This script has not been run against
-  // production, and per the plan's rollout section it shouldn't be until a
-  // single pilot school's dry run has been reviewed by hand.
   if (process.env.FIRESTORE_EMULATOR_HOST) {
-    admin.initializeApp({ projectId: 'demo-connectus' });
-  } else {
+    admin.initializeApp({ projectId: 'school-grade-tracker' });
+    return;
+  }
+
+  // Production mode: requires BOTH real Application Default Credentials
+  // (via `gcloud auth application-default login`, or GOOGLE_APPLICATION_CREDENTIALS
+  // pointing at a downloaded service-account key) AND an explicit
+  // ALLOW_PRODUCTION=1 flag — so forgetting to set FIRESTORE_EMULATOR_HOST can
+  // never silently run --apply against the real database. Do not run --apply
+  // against production without having reviewed a --dry-run report by hand first.
+  if (process.env.ALLOW_PRODUCTION !== '1') {
     console.error(
-      'FIRESTORE_EMULATOR_HOST is not set. Refusing to run against production ' +
-      'without a deliberate credential setup — see the comment in initAdmin().'
+      'FIRESTORE_EMULATOR_HOST is not set, and ALLOW_PRODUCTION=1 was not passed. ' +
+      'Refusing to run — set ALLOW_PRODUCTION=1 only when you deliberately intend ' +
+      'to target production Firestore, after authenticating via `gcloud auth ' +
+      'application-default login`.'
     );
     process.exit(1);
   }
+
+  admin.initializeApp({
+    credential: admin.credential.applicationDefault(),
+    projectId: 'school-grade-tracker',
+  });
 }
 initAdmin();
 const db = admin.firestore();

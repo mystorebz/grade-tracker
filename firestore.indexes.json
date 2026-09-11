@@ -21,13 +21,6 @@
       "collectionGroup": "teachers",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "currentSchoolId", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "teachers",
-      "queryScope": "COLLECTION",
-      "fields": [
         { "fieldPath": "currentSchoolId", "order": "ASCENDING" },
         { "fieldPath": "pin", "order": "ASCENDING" }
       ]
@@ -106,5 +99,13 @@
       ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "grades",
+      "fieldPath": "assignmentId",
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
+      ]
+    }
+  ]
 }
