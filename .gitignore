@@ -4,3 +4,15 @@ rules-tests/node_modules/
 firestore-debug.log
 ui-debug.log
 firebase-debug.log
+# Local scratch/log files (not part of the app)
+.agents/
+.claude/
+Claude outputs/
+database-debug.log
+functions/database-debug.log
+functions/pubsub-debug.log
+pubsub-debug.log
+skills-lock.json
+migration/cleanup-quote-test.js
+migration/migration-report.apply.json
+migration/migration-report.dry-run.json
