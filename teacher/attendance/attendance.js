@@ -93,13 +93,20 @@ function wireEvents() {
     els.saveAttendanceBtn.addEventListener('click', saveAttendance);
 }
 
-function showEmptyState(message) {
+function showEmptyState(message, opts) {
     els.attLoader?.classList.add('hidden');
     els.attBody?.classList.add('hidden');
     if (els.attEmpty) {
         els.attEmpty.textContent = message;
         els.attEmpty.classList.remove('hidden');
     }
+    // Roster/save controls otherwise stay live even with no roster loaded
+    // (they're outside attBody in the markup) — an uncached-while-offline
+    // date has no known-good statusMap to save, so make that explicit rather
+    // than leaving a clickable button that would silently no-op.
+    const disableControls = !!(opts && opts.disableControls);
+    if (els.saveAttendanceBtn) els.saveAttendanceBtn.disabled = disableControls;
+    if (els.markAllPresentBtn) els.markAllPresentBtn.disabled = disableControls;
 }
 
 // ── 4. LOAD ROSTER + EXISTING ATTENDANCE FOR THE SELECTED CLASS+DATE ─────
@@ -145,10 +152,26 @@ async function loadAndRender() {
 
         els.attLoader.classList.add('hidden');
         els.attBody.classList.remove('hidden');
+        if (els.saveAttendanceBtn) els.saveAttendanceBtn.disabled = false;
+        if (els.markAllPresentBtn) els.markAllPresentBtn.disabled = false;
         renderRoster();
     } catch (e) {
         console.error('[Attendance] loadAndRender:', e);
-        showEmptyState('Something went wrong loading attendance for this class/date. Please try again.');
+        // A Firestore read (roster query or the attendance-day doc) can fail
+        // with code 'unavailable' for two different reasons: a genuine
+        // network/server problem, or — while offline — simply because this
+        // particular document was never cached locally (setDoc queues while
+        // offline, but getDoc/getDocs reject immediately for anything not
+        // already in the local cache). We only want to show the friendlier
+        // "you're offline" message for that second case, and we check the
+        // error's stable `.code` field rather than matching on message text,
+        // since Firestore doesn't guarantee that string stays put across SDK
+        // versions and a looser match could mask a real bug as "offline".
+        if (e && e.code === 'unavailable') {
+            showEmptyState('You are currently offline. Please reconnect to load attendance for this date.', { disableControls: true });
+        } else {
+            showEmptyState('Something went wrong loading attendance for this class/date. Please try again.', { disableControls: true });
+        }
     }
 }
 
@@ -187,39 +210,126 @@ window.setAttendanceStatus = function(studentId, status) {
 };
 
 // ── 6. SAVE (one write for the whole class+day) ──────────────────────────
+// setDoc() does not resolve optimistically against the local cache — even
+// with persistentLocalCache enabled, the promise only settles once the
+// server acknowledges the write. While offline that means it never settles
+// on its own. So the save is raced against a short timeout: if the server
+// hasn't ack'd within SAVE_TIMEOUT_MS we assume the write is queued locally
+// (Firestore will flush it once connectivity returns) and tell the teacher
+// that, rather than leaving the button spinning forever. The real promise
+// is never abandoned — it keeps running in the background, and if it
+// resolves (or rejects) later while the teacher is still on this same
+// class+date, the UI is reconciled to the true end state at that point.
+const SAVE_TIMEOUT_MS = 2500;
+
+function showToast(message, kind) {
+    let toast = document.getElementById('attOfflineToast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'attOfflineToast';
+        toast.className = 'fixed bottom-6 right-6 z-50 max-w-xs px-4 py-3 rounded-xl shadow-lg text-sm font-bold transition-opacity duration-300';
+        document.body.appendChild(toast);
+    }
+    const palette = {
+        offline: 'bg-amber-500 text-white',
+        success: 'bg-emerald-600 text-white',
+        error:   'bg-red-600 text-white',
+    };
+    toast.className = `fixed bottom-6 right-6 z-50 max-w-xs px-4 py-3 rounded-xl shadow-lg text-sm font-bold transition-opacity duration-300 ${palette[kind] || palette.offline}`;
+    toast.textContent = message;
+    toast.style.opacity = '1';
+    clearTimeout(window.__attToastTimer);
+    window.__attToastTimer = setTimeout(() => { toast.style.opacity = '0'; }, 4500);
+}
+
+function applySavedResult(saved) {
+    existingDayDoc = saved;
+    dirty = false;
+    els.attLastSaved.textContent = `Last saved ${new Date(saved.updatedAt).toLocaleString()}`;
+}
+
 async function saveAttendance() {
     if (!selectedClassId || !els.attDate.value || !rosterForClass.length) return;
     const date = els.attDate.value;
+    const classIdAtSaveTime = selectedClassId;
+    const dateAtSaveTime = date;
 
     els.saveAttendanceBtn.disabled = true;
     els.saveAttendanceBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving...';
 
+    const now = new Date().toISOString();
+    const records = {};
+    rosterForClass.forEach(s => {
+        records[s.id] = { status: statusMap[s.id], markedAt: now, markedBy: session.teacherId };
+    });
+
+    const savePromise = saveAttendanceForDate(session.schoolId, selectedClassId, date, records, session.teacherId);
+    let settledWithinTimeout = false;
+
+    // Whenever the real save eventually settles — whether that's within the
+    // timeout window or long after, once connectivity returns — reconcile
+    // state. If it settles AFTER the timeout branch already told the teacher
+    // "Saved Offline (Will Sync)", surface the now-confirmed outcome (only
+    // when they're still looking at this same class+date); if it settles
+    // within the window, the try/await below already reports it, so this
+    // handler just applies the result without re-announcing it.
+    savePromise.then(saved => {
+        applySavedResult(saved);
+        if (!settledWithinTimeout && selectedClassId === classIdAtSaveTime && els.attDate.value === dateAtSaveTime) {
+            els.attSaveMsg.textContent = 'Attendance saved.';
+            els.attSaveMsg.className = 'text-sm font-bold p-2.5 mt-2 rounded-xl text-center text-green-700 bg-green-100 border border-green-200';
+            els.attSaveMsg.classList.remove('hidden');
+            clearTimeout(window.__attSaveMsgTimer);
+            window.__attSaveMsgTimer = setTimeout(() => els.attSaveMsg.classList.add('hidden'), 3500);
+            showToast('Attendance synced.', 'success');
+        }
+    }).catch(e => {
+        console.error('[Attendance] saveAttendance (background):', e);
+        if (!settledWithinTimeout && selectedClassId === classIdAtSaveTime && els.attDate.value === dateAtSaveTime) {
+            els.attSaveMsg.textContent = 'Could not save attendance. Please try again.';
+            els.attSaveMsg.className = 'text-sm font-bold p-2.5 mt-2 rounded-xl text-center text-red-700 bg-red-100 border border-red-200';
+            els.attSaveMsg.classList.remove('hidden');
+        }
+    });
+
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('SAVE_TIMEOUT')), SAVE_TIMEOUT_MS));
+
     try {
-        const now = new Date().toISOString();
-        const records = {};
-        rosterForClass.forEach(s => {
-            records[s.id] = { status: statusMap[s.id], markedAt: now, markedBy: session.teacherId };
-        });
+        const saved = await Promise.race([savePromise, timeout]);
+        settledWithinTimeout = true;
+        applySavedResult(saved);
 
-        const saved = await saveAttendanceForDate(session.schoolId, selectedClassId, date, records, session.teacherId);
-        existingDayDoc = saved;
-        dirty = false;
-
-        els.attLastSaved.textContent = `Last saved ${new Date(saved.updatedAt).toLocaleString()}`;
         els.attSaveMsg.textContent = 'Attendance saved.';
         els.attSaveMsg.className = 'text-sm font-bold p-2.5 mt-2 rounded-xl text-center text-green-700 bg-green-100 border border-green-200';
         els.attSaveMsg.classList.remove('hidden');
         clearTimeout(window.__attSaveMsgTimer);
         window.__attSaveMsgTimer = setTimeout(() => els.attSaveMsg.classList.add('hidden'), 3500);
-    } catch (e) {
-        console.error('[Attendance] saveAttendance:', e);
-        els.attSaveMsg.textContent = 'Could not save attendance. Please try again.';
-        els.attSaveMsg.className = 'text-sm font-bold p-2.5 mt-2 rounded-xl text-center text-red-700 bg-red-100 border border-red-200';
-        els.attSaveMsg.classList.remove('hidden');
-    }
 
-    els.saveAttendanceBtn.disabled = false;
-    els.saveAttendanceBtn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-2"></i> Save Attendance';
+        els.saveAttendanceBtn.disabled = false;
+        els.saveAttendanceBtn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-2"></i> Save Attendance';
+    } catch (e) {
+        if (e && e.message === 'SAVE_TIMEOUT') {
+            // Likely offline: the write is queued locally and will flush on
+            // reconnect (handled by the .then()/.catch() above). Don't leave
+            // the teacher staring at a spinner — tell them it's safe to move on.
+            dirty = false;
+            els.attSaveMsg.textContent = 'Saved Offline (Will Sync)';
+            els.attSaveMsg.className = 'text-sm font-bold p-2.5 mt-2 rounded-xl text-center text-amber-700 bg-amber-100 border border-amber-200';
+            els.attSaveMsg.classList.remove('hidden');
+            showToast('You appear to be offline. Attendance is saved on this device and will sync automatically once you’re back online. It’s safe to close this page.', 'offline');
+
+            els.saveAttendanceBtn.disabled = false;
+            els.saveAttendanceBtn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-2"></i> Save Attendance';
+        } else {
+            console.error('[Attendance] saveAttendance:', e);
+            els.attSaveMsg.textContent = 'Could not save attendance. Please try again.';
+            els.attSaveMsg.className = 'text-sm font-bold p-2.5 mt-2 rounded-xl text-center text-red-700 bg-red-100 border border-red-200';
+            els.attSaveMsg.classList.remove('hidden');
+
+            els.saveAttendanceBtn.disabled = false;
+            els.saveAttendanceBtn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-2"></i> Save Attendance';
+        }
+    }
 }
 
 init();

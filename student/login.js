@@ -145,6 +145,13 @@ async function handleLogin() {
 
         // ── Gate: Security questions ───────────────────────────────────────────
         if (!studentData.securityQuestionsSet) {
+            // The role is passed via sessionStorage rather than a query string
+            // because the local dev server issues a 301 redirect from
+            // "first-time-setup.html" to the extensionless "first-time-setup"
+            // path, and that redirect drops the query string — which silently
+            // sent every new student to the marketing homepage instead of the
+            // setup page. sessionStorage survives the redirect intact.
+            sessionStorage.setItem('connectus_setup_role', 'student');
             window.location.replace('../onboarding/first-time-setup.html?role=student');
             return;
         }

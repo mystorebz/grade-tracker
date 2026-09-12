@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exam | ConnectUs</title>
+
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/student.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'DM Sans', sans-serif; background: #f0f2f8; }
+        .hidden { display: none !important; }
+
+        .exam-topbar {
+            background: linear-gradient(120deg, #1e1b4b 0%, #3730a3 55%, #4f46e5 100%);
+            padding: 28px 40px;
+        }
+        .exam-topbar h1 { font-size: 22px; font-weight: 800; color: #fff; margin: 0 0 4px; letter-spacing: -0.4px; }
+        .exam-topbar p  { font-size: 13px; color: rgba(255,255,255,0.6); margin: 0; font-weight: 500; }
+
+        .page-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 20px; gap: 14px; }
+        .page-loader i { font-size: 32px; color: #6366f1; }
+        .page-loader p { font-size: 13.5px; color: #94a3b8; font-weight: 600; margin: 0; }
+
+        /* ── Sticky timer bar — always visible while scrolling through
+           questions, since the countdown is the one thing a student should
+           never lose sight of. Purely cosmetic (see take.js section 9): the
+           real time enforcement happens server-side regardless of whether
+           this element is even visible. ── */
+        #examTimerWrap {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            background: #fff;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        #examTimer { font-family: 'DM Mono', monospace; font-variant-numeric: tabular-nums; }
+
+        .fatal-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 20px; gap: 14px; text-align: center; }
+        .fatal-state i { font-size: 36px; color: #f43f5e; }
+        .fatal-state p { font-size: 14px; color: #64748b; font-weight: 600; margin: 0; max-width: 420px; }
+
+        @media (max-width: 767px) {
+            .exam-topbar { padding: 20px; }
+        }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden">
+
+    <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
+
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <div class="flex-1 overflow-y-auto">
+
+            <div class="exam-topbar">
+                <h1>Exam</h1>
+                <p>Answer each question — your work saves automatically as you go</p>
+            </div>
+
+            <!-- ── Sticky countdown bar ──────────────────────────────────── -->
+            <div id="examTimerWrap" class="hidden px-6 md:px-8 py-3 flex items-center justify-center gap-2.5">
+                <i class="fa-regular fa-clock text-indigo-500 text-sm"></i>
+                <span class="text-[11px] font-black text-slate-400 uppercase tracking-widest">Time Remaining:</span>
+                <span id="examTimer" class="text-lg font-black text-slate-800">--:--</span>
+            </div>
+
+            <div class="max-w-3xl mx-auto p-6 md:p-8 space-y-5">
+
+                <!-- ── Loading state ─────────────────────────────────────── -->
+                <div id="examLoader" class="page-loader">
+                    <i class="fa-solid fa-circle-notch fa-spin"></i>
+                    <p>Loading your exam…</p>
+                </div>
+
+                <!-- ── Fatal error state (exam not found / not live / bad link) ── -->
+                <div id="examFatalState" class="hidden fatal-state bg-white rounded-xl border border-slate-200">
+                    <i class="fa-solid fa-circle-exclamation"></i>
+                    <p id="examFatalMsg"></p>
+                </div>
+
+                <!-- ── Main exam body ────────────────────────────────────── -->
+                <div id="examBody" class="hidden">
+
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-5">
+                        <h2 id="examTitle" class="text-lg font-black text-slate-800 leading-tight m-0"></h2>
+                    </div>
+
+                    <div id="examQuestionList"></div>
+
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mt-2 mb-8">
+                        <button id="examSubmitBtn" onclick="submitExam()"
+                            class="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-black py-3 rounded-xl transition shadow-md text-sm flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-paper-plane"></i> Submit Exam
+                        </button>
+                        <p id="examSubmitMsg" class="hidden text-sm font-bold p-3 mt-3 rounded-xl text-center bg-slate-100 text-slate-600"></p>
+                    </div>
+
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <script type="module" src="take.js"></script>
+</body>
+</html>

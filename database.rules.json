@@ -1,0 +1,47 @@
+{
+  "rules": {
+    "examPresence": {
+      "$examId": {
+        ".read": "auth != null && (auth.token.role === 'teacher' || auth.token.role === 'super_admin' || auth.token.role === 'sub_admin')",
+
+        "$studentId": {
+          ".read": "auth != null && auth.token.studentId === $studentId",
+          ".write": "auth != null && auth.token.studentId === $studentId",
+          ".validate": "newData.hasChildren(['connectionState', 'lastSeenAt', 'tabFocused'])",
+
+          "connectionState": {
+            ".validate": "newData.isString() && (newData.val() === 'connected' || newData.val() === 'disconnected')"
+          },
+          "lastSeenAt": {
+            ".validate": "newData.isNumber()"
+          },
+          "tabFocused": {
+            ".validate": "newData.isBoolean()"
+          },
+          "lastFocusChangeAt": {
+            ".validate": "newData.isNumber()"
+          },
+          "clientReportedProgress": {
+            "questionsAnswered": {
+              ".validate": "newData.isNumber()"
+            },
+            "lastSavedAt": {
+              ".validate": "newData.isNumber()"
+            },
+            "$other": {
+              ".validate": false
+            }
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+
+    "$other": {
+      ".read": false,
+      ".write": false
+    }
+  }
+}

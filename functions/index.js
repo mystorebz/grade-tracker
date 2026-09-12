@@ -1,5 +1,6 @@
 const { onCall, HttpsError, onRequest } = require('firebase-functions/v2/https');
 const admin                  = require('firebase-admin');
+const { FieldValue }         = require('firebase-admin/firestore');
 const crypto                 = require('crypto');
 const { onSchedule }         = require('firebase-functions/v2/scheduler');
 const { sendMail, GMAIL_APP_PASSWORD } = require('./mailer');
@@ -530,7 +531,7 @@ exports.cancelPayPalSubscription = onCall({ region: 'us-central1', secrets: [GMA
 //
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 
 const HQ_EMAIL_ADDRESS = "info@connectusonline.org";
 
@@ -746,7 +747,7 @@ exports.onTeacherCreated = onDocumentCreated({ document: "teachers/{teacherId}",
     // this field must not linger in the database.
     if (data._tempPlaintextPin !== undefined) {
         try {
-            await event.data.ref.update({ _tempPlaintextPin: admin.firestore.FieldValue.delete() });
+            await event.data.ref.update({ _tempPlaintextPin: FieldValue.delete() });
         } catch (cleanupError) {
             console.error(`Failed to scrub _tempPlaintextPin for teacher ${teacherId}:`, cleanupError);
         }
@@ -848,7 +849,7 @@ exports.onStudentCreated = onDocumentCreated({ document: "students/{studentId}",
     // this field must not linger in the database.
     if (data._tempPlaintextPin !== undefined) {
         try {
-            await event.data.ref.update({ _tempPlaintextPin: admin.firestore.FieldValue.delete() });
+            await event.data.ref.update({ _tempPlaintextPin: FieldValue.delete() });
         } catch (cleanupError) {
             console.error(`Failed to scrub _tempPlaintextPin for student ${studentId}:`, cleanupError);
         }
@@ -1125,6 +1126,92 @@ exports.onPinResetRequested = onDocumentCreated({ document: "reset_vault/{tokenI
     return null;
 });
 // --- END: onPinResetRequested ----
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FUNCTION: onAttendanceSaved (privacy fan-out)
+//
+// WHY THIS EXISTS: the teacher/admin UI writes one document per class per day
+// at schools/{schoolId}/classes/{classId}/attendance/{date}, containing a
+// `records` map keyed by every student in the class. Firestore security
+// rules can only grant or deny access to that document as a WHOLE — there is
+// no way to write a rule that lets a student read only their own key inside
+// someone else's map. That meant any rule letting an enrolled student read
+// the class-day document at all handed back every classmate's attendance
+// status too (confirmed via a raw SDK read during Phase 1 Milestone 6
+// testing — the student-facing UI happened to filter correctly, but the
+// underlying payload did not).
+//
+// THE FIX: students are now denied read access to the class-day document
+// entirely (see firestore.rules). Instead, this function runs with Admin
+// SDK privileges (bypassing security rules) every time a teacher/admin
+// saves that document, and fans each student's own status out to a
+// genuinely per-student, per-day document at
+//   students/{studentId}/attendance/{date}
+// which the security rules scope so only that one student can ever read it,
+// and no client (including the student) can ever write it directly.
+// ═══════════════════════════════════════════════════════════════════════════════
+exports.onAttendanceSaved = onDocumentWritten(
+    "schools/{schoolId}/classes/{classId}/attendance/{date}",
+    async (event) => {
+        const { schoolId, classId, date } = event.params;
+
+        const beforeExists = event.data.before.exists;
+        const afterExists   = event.data.after.exists;
+
+        const beforeRecords = beforeExists ? (event.data.before.data().records || {}) : {};
+        const afterRecords   = afterExists  ? (event.data.after.data().records  || {}) : {};
+
+        const afterDoc = afterExists ? event.data.after.data() : null;
+        const markedBy  = afterDoc ? (afterDoc.updatedBy || afterDoc.markedBy || null) : null;
+
+        const batch = db.batch();
+        let writes = 0;
+
+        // Upsert/refresh a fanned-out doc for every student currently in the
+        // after-map (covers both brand-new saves and corrections).
+        for (const studentId of Object.keys(afterRecords)) {
+            const entry = afterRecords[studentId] || {};
+            const ref = db.collection('students').doc(studentId)
+                .collection('attendance').doc(date);
+            batch.set(ref, {
+                classId,
+                schoolId,
+                date,
+                status: entry.status || null,
+                markedAt: entry.markedAt || null,
+                markedBy: entry.markedBy || markedBy,
+                updatedAt: new Date().toISOString(),
+                updatedBy: markedBy,
+            });
+            writes++;
+        }
+
+        // Clean up any student who WAS in the before-map but is no longer in
+        // the after-map — covers un-marking a student and whole-document
+        // deletion (afterRecords is {} in that case, so every prior student
+        // is deleted).
+        for (const studentId of Object.keys(beforeRecords)) {
+            if (!(studentId in afterRecords)) {
+                const ref = db.collection('students').doc(studentId)
+                    .collection('attendance').doc(date);
+                batch.delete(ref);
+                writes++;
+            }
+        }
+
+        if (writes === 0) return null;
+
+        try {
+            await batch.commit();
+            console.log(`[onAttendanceSaved] Fanned out ${Object.keys(afterRecords).length} student(s) for ${schoolId}/${classId}/${date} (${writes} write(s)).`);
+        } catch (err) {
+            console.error(`[onAttendanceSaved] Fan-out failed for ${schoolId}/${classId}/${date}:`, err);
+        }
+
+        return null;
+    }
+);
+// --- END: onAttendanceSaved ---
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FUNCTION: onPayPalWebhook
@@ -2257,3 +2344,532 @@ exports.onPayPalWebhookSandbox = onRequest({ region: 'us-central1', secrets: [GM
     res.status(200).send('OK');
 });
 // --- END: onPayPalWebhookSandbox ---
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FUNCTION: startExamAttempt (ConnectUs Phase 2 — Exams foundation)
+// --- START: startExamAttempt ---
+// Creates a student's exam_submissions doc SERVER-SIDE so that serverDeadline
+// is computed from this function's own clock, never trusted from the client.
+// A client that could set its own deadline in a create() payload could simply
+// lie and grant itself unlimited time — that is exactly the gap this function
+// closes (see docs/phase2-exams-architecture.md, section 5, item 3).
+//
+// Idempotent by design: if the student already has a non-terminal submission
+// for this exam (in_progress), that same doc is returned instead of minting a
+// new deadline. Without this, a double-click on "Start Exam" or a page reload
+// mid-exam would silently create a second submission with a fresh deadline —
+// the opposite of "bulletproof resilience" this whole foundation is for.
+// ═══════════════════════════════════════════════════════════════════════════════
+exports.startExamAttempt = onCall({ region: 'us-central1' }, async (request) => {
+
+    // ── 1. Auth check ─────────────────────────────────────────────────────────
+    if (!request.auth) {
+        throw new HttpsError('unauthenticated', 'Authentication required.');
+    }
+    if (request.auth.token.role !== 'student') {
+        throw new HttpsError('permission-denied', 'Only students can start an exam attempt.');
+    }
+
+    const studentId = request.auth.token.studentId;
+    const schoolId  = request.auth.token.schoolId;
+
+    if (!studentId || !schoolId) {
+        throw new HttpsError('failed-precondition', 'Student session is missing required claims.');
+    }
+
+    // ── 2. Input validation ───────────────────────────────────────────────────
+    const { classId, subjectId, examId } = request.data || {};
+
+    if (!classId || !subjectId || !examId) {
+        throw new HttpsError('invalid-argument', 'classId, subjectId, and examId are required.');
+    }
+
+    console.log(`[startExamAttempt] ${studentId} requesting start of exam ${examId} (${schoolId}/${classId}/${subjectId})`);
+
+    // ── 3. Idempotency check — return the existing attempt if one is already
+    //      in progress, rather than minting a second deadline ─────────────────
+    const submissionsRef = db.collection('students').doc(studentId).collection('exam_submissions');
+    const existingSnap = await submissionsRef
+        .where('examId', '==', examId)
+        .where('status', '==', 'in_progress')
+        .limit(1)
+        .get();
+
+    if (!existingSnap.empty) {
+        const existingDoc = existingSnap.docs[0];
+        console.log(`[startExamAttempt] ${studentId} already has an in-progress attempt for ${examId} — returning existing submission ${existingDoc.id}.`);
+        return { examSubmissionId: existingDoc.id, submission: existingDoc.data() };
+    }
+
+    // ── 4. Verify the school is active ────────────────────────────────────────
+    const schoolSnap = await db.collection('schools').doc(schoolId).get();
+    if (!schoolSnap.exists || schoolSnap.data().isVerified !== true) {
+        throw new HttpsError('permission-denied', 'School account is not active.');
+    }
+
+    // ── 5. Fetch the exam config — this is the only place timeLimitSeconds and
+    //      isLive are read from; never trust a client-supplied value for either ──
+    const examRef = db.collection('schools').doc(schoolId)
+        .collection('classes').doc(classId)
+        .collection('subjects').doc(subjectId)
+        .collection('exams').doc(examId);
+    const examSnap = await examRef.get();
+
+    if (!examSnap.exists) {
+        throw new HttpsError('not-found', 'Exam not found.');
+    }
+
+    const examData = examSnap.data();
+
+    if (examData.isLive !== true) {
+        throw new HttpsError('failed-precondition', 'This exam is not currently live.');
+    }
+
+    const timeLimitSeconds = Number(examData.timeLimitSeconds);
+    if (!Number.isFinite(timeLimitSeconds) || timeLimitSeconds <= 0) {
+        throw new HttpsError('failed-precondition', 'Exam is misconfigured: invalid timeLimitSeconds.');
+    }
+
+    // If the exam itself has a hard liveEndsAt (the whole class's window
+    // closing, e.g. teacher ended the exam for everyone), don't hand out a
+    // student deadline that runs past it.
+    let deadlineMs = Date.now() + timeLimitSeconds * 1000;
+    if (examData.liveEndsAt) {
+        const liveEndsMs = new Date(examData.liveEndsAt).getTime();
+        if (Number.isFinite(liveEndsMs)) {
+            deadlineMs = Math.min(deadlineMs, liveEndsMs);
+        }
+    }
+
+    // ── 6. Create the submission doc — server clock is the only source of
+    //      startedAt/serverDeadline; the student's client never supplies these ──
+    //
+    //      isSchoolActive is denormalized onto the doc itself, computed from
+    //      the same schoolSnap.isVerified check already enforced in step 4
+    //      above (this function throws before reaching this line if the
+    //      school isn't active, so the value written here is always true —
+    //      no extra read is needed). This exists so that
+    //      teacher/exams/live.js's collection-group `list` query on
+    //      exam_submissions can filter with `.where('isSchoolActive', '==', true)`
+    //      and firestore.rules can check `resource.data.isSchoolActive == true`
+    //      directly, instead of calling the isSchoolActive(schoolId) helper
+    //      (which does its own get()/exists() against schools/{schoolId}).
+    //      A get()-based check inside an `allow list` rule can't be statically
+    //      proven safe for a collection-group query — Firestore rejects the
+    //      whole query outright ("queries are all or nothing" — see
+    //      https://firebase.google.com/docs/firestore/security/rules-query).
+    //      Denormalizing the boolean here is what makes the field provable
+    //      from the query's own where clause instead.
+    const now = new Date();
+    const submissionData = {
+        examId,
+        studentId,
+        schoolId,
+        classId,
+        subjectId,
+
+        isSchoolActive: true,
+
+        status: 'in_progress',
+
+        startedAt: now.toISOString(),
+        serverDeadline: new Date(deadlineMs).toISOString(),
+
+        answers: {},
+
+        submittedAt: null,
+        autoSubmitReason: null,
+
+        score: null,
+        gradedAt: null,
+        gradedBy: null,
+
+        proctoring: {
+            tabFocusEvents: [],
+            disconnectEvents: [],
+        },
+    };
+
+    const newRef = await submissionsRef.add(submissionData);
+
+    console.log(`[startExamAttempt] Created submission ${newRef.id} for ${studentId}, exam ${examId}, deadline ${submissionData.serverDeadline}.`);
+
+    return { examSubmissionId: newRef.id, submission: submissionData };
+});
+// --- END: startExamAttempt ---
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FUNCTION: autoSubmitExpiredExams (ConnectUs Phase 2 — Exams foundation)
+// --- START: autoSubmitExpiredExams ---
+// Runs every 2 minutes. This is the actual enforcement of the exam time
+// limit — a Firestore rule cannot do this on its own, because rules only
+// evaluate at the moment of a read/write; nothing "wakes up" a rule when a
+// clock reaches a value (see docs/phase2-exams-architecture.md, section 5).
+// This sweep is what makes serverDeadline a real deadline instead of just a
+// number sitting in a document that nothing ever acts on.
+//
+// Uses a COLLECTION GROUP query (db.collectionGroup, not db.collection) —
+// exam_submissions lives at students/{studentId}/exam_submissions/{id}, a
+// subcollection under every student, not a single top-level collection, so
+// a normal collection() query cannot search across all students'
+// submissions at once. Requires the composite index added to
+// firestore.indexes.json (status ASC, serverDeadline ASC) — without it this
+// query throws FAILED_PRECONDITION at runtime, not a silent no-op, so if
+// this function ever starts erroring after deploy, check that the index has
+// actually finished building (the emulator builds it locally; production
+// requires a real index build, which is not instant).
+//
+// Deliberately does NOT also grade the exam here — auto-grading is a
+// separate concern (autoGradeObjectiveAnswers below), triggered by the
+// status transition this function writes, not called inline. Keeping the
+// two responsibilities in two functions means a bug in grading can never
+// block or delay the timeout enforcement itself.
+// ═══════════════════════════════════════════════════════════════════════════════
+exports.autoSubmitExpiredExams = onSchedule(
+    { schedule: 'every 2 minutes', region: 'us-central1' },
+    async () => {
+        const nowIso = new Date().toISOString();
+        const results = { checked: 0, autoSubmitted: 0, errors: 0 };
+
+        try {
+            const snap = await db.collectionGroup('exam_submissions')
+                .where('status', '==', 'in_progress')
+                .where('serverDeadline', '<=', nowIso)
+                .get();
+
+            results.checked = snap.size;
+
+            if (snap.empty) {
+                console.log(`[autoSubmitExpiredExams] Checked — no expired in-progress submissions.`);
+                return;
+            }
+
+            // Batched, but chunked at 400 writes per batch — Firestore's hard
+            // cap is 500 per batch; 400 leaves headroom rather than cutting
+            // it exactly at the limit.
+            const docs = snap.docs;
+            const CHUNK_SIZE = 400;
+
+            for (let i = 0; i < docs.length; i += CHUNK_SIZE) {
+                const chunk = docs.slice(i, i + CHUNK_SIZE);
+                const batch = db.batch();
+
+                chunk.forEach(doc => {
+                    batch.update(doc.ref, {
+                        status: 'auto_submitted_timeout',
+                        submittedAt: nowIso,
+                        autoSubmitReason: 'timeout',
+                    });
+                });
+
+                await batch.commit();
+                results.autoSubmitted += chunk.length;
+            }
+
+            console.log(`[autoSubmitExpiredExams] Checked ${results.checked} expired submission(s) — auto-submitted ${results.autoSubmitted}.`);
+        } catch (err) {
+            results.errors++;
+            console.error('[autoSubmitExpiredExams] Sweep failed:', err);
+        }
+    }
+);
+// --- END: autoSubmitExpiredExams ---
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FUNCTION: autoGradeObjectiveAnswers (ConnectUs Phase 2 — Exams foundation)
+// --- START: autoGradeObjectiveAnswers ---
+// Triggers on every exam_submissions write; does real work only when status
+// just transitioned INTO 'submitted' or an 'auto_submitted_*' value FROM
+// something else (guards against re-running on every subsequent edit to the
+// same already-graded doc, e.g. a teacher's manual free-response grading
+// touching the doc afterward — see the re-entrancy guard below).
+//
+// Grades ONLY objective question types (currently: multiple_choice) against
+// exam_answer_keys/{examId}, which only this function (Admin SDK) can read —
+// see that collection's `allow read, write: if false` in firestore.rules.
+// free_response questions are deliberately left ungraded here: writing a
+// guessed pass/fail for a free-response answer would be a false verdict, not
+// a real signal (the same "raw signal, not fabricated judgment" principle
+// this whole foundation was built around — see the design doc's section 0,
+// applied here to grading instead of proctoring). Their points are tracked
+// separately as pendingManualPoints so nothing is silently lost or hidden;
+// a teacher grades those by hand and the manual-grading UI (not yet built)
+// updates `score` to include them.
+//
+// Reads question TYPE from the exam config (schools/.../exams/{examId}),
+// never from the student's own submission — the submission is
+// student-writable data (their answers), so trusting a student-supplied
+// `type` field would let them mislabel a wrong multiple-choice answer as
+// "free_response" to dodge auto-grading against the answer key entirely.
+// ═══════════════════════════════════════════════════════════════════════════════
+const TERMINAL_GRADABLE_STATUSES = ['submitted', 'auto_submitted_timeout', 'auto_submitted_disconnect_grace_expired'];
+
+exports.autoGradeObjectiveAnswers = onDocumentUpdated(
+    'students/{studentId}/exam_submissions/{examSubmissionId}',
+    async (event) => {
+        const before = event.data.before.data();
+        const after  = event.data.after.data();
+
+        // Re-entrancy guard: only act on the actual transition INTO a
+        // gradable terminal status FROM something else. Without this, any
+        // later edit to an already-graded doc (a teacher adjusting a
+        // free-response score, for instance) would re-trigger this function
+        // and potentially stomp on manually-entered points with a fresh
+        // auto-grade recomputation.
+        const wasGradable = TERMINAL_GRADABLE_STATUSES.includes(before.status);
+        const isGradable   = TERMINAL_GRADABLE_STATUSES.includes(after.status);
+
+        if (wasGradable || !isGradable) {
+            return null; // not a fresh transition into a gradable state — skip
+        }
+
+        const { studentId, examSubmissionId } = event.params;
+        const examId = after.examId;
+
+        console.log(`[autoGradeObjectiveAnswers] ${studentId}/${examSubmissionId} transitioned to '${after.status}' — grading exam ${examId}.`);
+
+        try {
+            // ── 1. Fetch exam config (for question types/points) and the
+            //      answer key (correct values) — both via Admin SDK, which
+            //      bypasses the client-facing rules that deny both to
+            //      every other caller ─────────────────────────────────────
+            const examRef = db.collection('schools').doc(after.schoolId)
+                .collection('classes').doc(after.classId)
+                .collection('subjects').doc(after.subjectId)
+                .collection('exams').doc(examId);
+            const [examSnap, keySnap] = await Promise.all([
+                examRef.get(),
+                db.collection('exam_answer_keys').doc(examId).get(),
+            ]);
+
+            if (!examSnap.exists) {
+                console.error(`[autoGradeObjectiveAnswers] Exam config ${examId} not found — cannot grade ${studentId}/${examSubmissionId}.`);
+                return null;
+            }
+            if (!keySnap.exists) {
+                console.error(`[autoGradeObjectiveAnswers] Answer key for exam ${examId} not found — cannot grade ${studentId}/${examSubmissionId}.`);
+                return null;
+            }
+
+            const examData = examSnap.data();
+            const keyData  = keySnap.data();
+            const studentAnswers = after.answers || {};
+
+            // ── 2. Grade every objective question; track free-response
+            //      points separately rather than guessing at them ──────────
+            let autoGradedPoints = 0;
+            let pendingManualPoints = 0;
+            let objectiveGraded = 0;
+            let manualPending = 0;
+            const pendingManualQuestionIds = [];
+
+            for (const question of (examData.questions || [])) {
+                const keyEntry = keyData.answers ? keyData.answers[question.id] : null;
+
+                if (question.type === 'multiple_choice') {
+                    objectiveGraded++;
+                    if (!keyEntry) {
+                        console.error(`[autoGradeObjectiveAnswers] No answer key entry for question ${question.id} (exam ${examId}) — treating as 0 points, not skipping silently.`);
+                        continue;
+                    }
+                    const studentEntry = studentAnswers[question.id];
+                    const studentValue = studentEntry ? studentEntry.value : undefined;
+                    if (studentValue !== undefined && studentValue === keyEntry.correctValue) {
+                        autoGradedPoints += Number(question.points) || 0;
+                    }
+                    // No answer, or wrong answer: 0 points for this question —
+                    // already the default since autoGradedPoints isn't
+                    // incremented, so nothing further to write here.
+                } else {
+                    // free_response (or any future non-objective type):
+                    // never auto-graded. Points tracked as pending, not
+                    // guessed at. pendingManualQuestionIds is the actual
+                    // source of truth for "which questions still need a
+                    // teacher's grade" — recordManualGrade (functions/
+                    // index.js) checks this array, not the points total,
+                    // to decide when every free-response question has been
+                    // graded and the submission can flip to 'graded'.
+                    manualPending++;
+                    pendingManualPoints += Number(question.points) || 0;
+                    pendingManualQuestionIds.push(question.id);
+                }
+            }
+
+            // ── 3. Write results. `score` reflects ONLY what's been
+            //      confirmed (auto-graded objective points) — it does NOT
+            //      include pendingManualPoints, since those aren't graded
+            //      yet and folding them in as 0 would misrepresent an
+            //      ungraded question as a wrong answer. status stays at
+            //      whatever the submission transition set it to (submitted /
+            //      auto_submitted_*) — grading does not change submission
+            //      status; a separate teacher-facing "graded" state/flow
+            //      (gradedAt/gradedBy) is for when a teacher finishes manual
+            //      grading of the free-response portion, not for this
+            //      function to claim on their behalf. manualGrades starts
+            //      as an empty map here — recordManualGrade is the only
+            //      writer of entries into it. ─────────────────────────────
+            await event.data.after.ref.update({
+                score: autoGradedPoints,
+                pendingManualPoints,
+                pendingManualQuestionIds,
+                manualGrades: {},
+                autoGradedAt: new Date().toISOString(),
+            });
+
+            console.log(`[autoGradeObjectiveAnswers] Graded ${studentId}/${examSubmissionId}: ${autoGradedPoints} auto-graded point(s) across ${objectiveGraded} objective question(s), ${pendingManualPoints} point(s) pending manual grading across ${manualPending} free-response question(s) (${JSON.stringify(pendingManualQuestionIds)}).`);
+        } catch (err) {
+            console.error(`[autoGradeObjectiveAnswers] Grading failed for ${studentId}/${examSubmissionId}:`, err);
+        }
+
+        return null;
+    }
+);
+// --- END: autoGradeObjectiveAnswers ---
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FUNCTION: recordManualGrade (ConnectUs Phase 3 — Grading & Results)
+// --- START: recordManualGrade ---
+// The ONLY writer of manualGrades/score(for manual points)/pendingManual*/
+// gradedAt/gradedBy. Students never write any of these fields directly —
+// firestore.rules' student `allow update` rule explicitly forbids it (see
+// that rule for the enforcement side of this same boundary). A teacher's
+// client never calls updateDoc() on a submission either; grading a
+// free-response question always goes through this callable, so every
+// constraint below (points range, no double-grading, atomic finalization)
+// is enforced in one place instead of trusted to the UI.
+//
+// Runs inside a Firestore transaction because two teachers could otherwise
+// grade the same submission concurrently (e.g. a co-teacher reviewing the
+// same class): a naive read-then-write from two overlapping calls could
+// both read pendingManualQuestionIds with the just-graded question still
+// present, both award points, and both flip status to 'graded' — either
+// double-awarding points for one question or silently losing one grade's
+// feedback. The transaction's re-read-on-conflict retry makes the
+// double-grading check and the points/status writes atomic together.
+// ═══════════════════════════════════════════════════════════════════════════════
+exports.recordManualGrade = onCall({ region: 'us-central1' }, async (request) => {
+
+    // ── 1. Auth check — teacher (or admin) only ──────────────────────────────
+    if (!request.auth) {
+        throw new HttpsError('unauthenticated', 'Authentication required.');
+    }
+    if (!['teacher', 'super_admin', 'sub_admin'].includes(request.auth.token.role)) {
+        throw new HttpsError('permission-denied', 'Only a teacher or admin can record a grade.');
+    }
+
+    const graderId    = request.auth.token.teacherId || request.auth.token.adminId || request.auth.uid;
+    const schoolId    = request.auth.token.schoolId;
+
+    // ── 2. Input validation ───────────────────────────────────────────────────
+    const { studentId, examSubmissionId, questionId, pointsAwarded, feedback } = request.data || {};
+
+    if (!studentId || !examSubmissionId || !questionId) {
+        throw new HttpsError('invalid-argument', 'studentId, examSubmissionId, and questionId are required.');
+    }
+    if (typeof pointsAwarded !== 'number' || !Number.isFinite(pointsAwarded)) {
+        throw new HttpsError('invalid-argument', 'pointsAwarded must be a finite number.');
+    }
+    if (feedback !== undefined && feedback !== null && typeof feedback !== 'string') {
+        throw new HttpsError('invalid-argument', 'feedback must be a string when provided.');
+    }
+
+    const submissionRef = db.collection('students').doc(studentId).collection('exam_submissions').doc(examSubmissionId);
+
+    const result = await db.runTransaction(async (tx) => {
+        const submissionSnap = await tx.get(submissionRef);
+        if (!submissionSnap.exists) {
+            throw new HttpsError('not-found', 'Exam submission not found.');
+        }
+        const submission = submissionSnap.data();
+
+        // ── 3. Scope check — this submission must belong to the caller's
+        //      own school, same denormalized-field pattern used everywhere
+        //      else in this file for exam_submissions (see startExamAttempt
+        //      and autoGradeObjectiveAnswers) ──────────────────────────────
+        if (submission.schoolId !== schoolId) {
+            throw new HttpsError('permission-denied', 'This submission does not belong to your school.');
+        }
+
+        // ── 4. The submission must actually be in a gradable state, and
+        //      this specific question must still be pending ────────────────
+        const pendingIds = Array.isArray(submission.pendingManualQuestionIds) ? submission.pendingManualQuestionIds : [];
+        const manualGrades = submission.manualGrades || {};
+
+        if (!pendingIds.includes(questionId)) {
+            // Either this question was never pending (bad questionId / not a
+            // free-response question), or it was already graded — either
+            // way, this is the double-grading guard your instructions asked
+            // for. Distinguish the two cases in the error so the UI can
+            // tell them apart rather than showing one generic message.
+            if (manualGrades[questionId]) {
+                throw new HttpsError('failed-precondition', `Question ${questionId} has already been graded.`);
+            }
+            throw new HttpsError('failed-precondition', `Question ${questionId} is not pending manual grading for this submission.`);
+        }
+
+        // ── 5. Look up this question's max points from the exam config —
+        //      never trust a client-supplied max, exactly like
+        //      startExamAttempt never trusts a client-supplied deadline ────
+        const examRef = db.collection('schools').doc(submission.schoolId)
+            .collection('classes').doc(submission.classId)
+            .collection('subjects').doc(submission.subjectId)
+            .collection('exams').doc(submission.examId);
+        const examSnap = await tx.get(examRef);
+        if (!examSnap.exists) {
+            throw new HttpsError('not-found', 'Exam configuration not found.');
+        }
+        const question = (examSnap.data().questions || []).find(q => q.id === questionId);
+        if (!question) {
+            throw new HttpsError('not-found', `Question ${questionId} not found in exam configuration.`);
+        }
+        const maxPoints = Number(question.points) || 0;
+
+        // ── 6. Validate pointsAwarded is within range ────────────────────
+        if (pointsAwarded < 0 || pointsAwarded > maxPoints) {
+            throw new HttpsError('invalid-argument', `pointsAwarded must be between 0 and ${maxPoints} for this question.`);
+        }
+
+        // ── 7. Apply the grade — merge into manualGrades, add to score,
+        //      remove from pendingManualQuestionIds/pendingManualPoints ────
+        const now = new Date().toISOString();
+        const updatedManualGrades = {
+            ...manualGrades,
+            [questionId]: {
+                pointsAwarded,
+                feedback: feedback || null,
+                gradedBy: graderId,
+                gradedAt: now,
+            },
+        };
+        const updatedPendingIds = pendingIds.filter(id => id !== questionId);
+        const updatedPendingPoints = Math.max(0, (Number(submission.pendingManualPoints) || 0) - maxPoints);
+        const updatedScore = (Number(submission.score) || 0) + pointsAwarded;
+
+        const updates = {
+            manualGrades: updatedManualGrades,
+            pendingManualQuestionIds: updatedPendingIds,
+            pendingManualPoints: updatedPendingPoints,
+            score: updatedScore,
+        };
+
+        // ── 8. Atomic finalization — every free-response question graded
+        //      means the submission is fully graded, right here in the same
+        //      transaction that applied the last grade, so there is no
+        //      separate "finalize" step a teacher can forget to click ──────
+        const isFullyGraded = updatedPendingIds.length === 0;
+        if (isFullyGraded) {
+            updates.status   = 'graded';
+            updates.gradedAt = now;
+            updates.gradedBy = graderId;
+        }
+
+        tx.update(submissionRef, updates);
+
+        return { newScore: updatedScore, isFullyGraded, remainingPending: updatedPendingIds.length };
+    });
+
+    console.log(`[recordManualGrade] ${graderId} graded question ${questionId} for ${studentId}/${examSubmissionId}: +${pointsAwarded} point(s), fully graded: ${result.isFullyGraded}.`);
+
+    return result;
+});
+// --- END: recordManualGrade ---

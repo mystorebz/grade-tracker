@@ -168,7 +168,12 @@ service cloud.firestore {
       // ── 2b. Exam submissions (ConnectUs Phase 2) ──────────────────────────
       // Same reasoning and same shape as assignment submissions above.
       match /exam_submissions/{examSubmissionId} {
-        allow read: if isSchoolActive(
+        // GET (single-document read, e.g. a student loading their own
+        // submission by ID): unchanged from the original combined rule —
+        // this is a per-document check, so the get() lookup against
+        // students/{studentId} is fine here. It is NOT fine for the list
+        // rule below — see that rule's own comment for why.
+        allow get: if isSchoolActive(
                         get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
                       ) &&
                       request.auth != null &&
@@ -177,32 +182,179 @@ service cloud.firestore {
                         request.auth.token.schoolId ==
                           get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId));
 
-        // CREATE/UPDATE: the owning student may write their own answers while
-        //         the submission is in_progress or submitted, but never the
-        //         `score` field directly — only the autoGradeObjectiveAnswers
-        //         Cloud Function (Admin SDK, bypasses these rules) sets that.
-        //         A teacher/admin at that school may update any time (manual
-        //         grading of free-response answers).
-        allow create: if isSchoolActive(
-                          get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
-                        ) &&
-                        request.auth != null &&
-                        request.auth.token.studentId == studentId &&
-                        !('score' in request.resource.data.keys());
+        // LIST (collection-group queries, e.g. the teacher live proctoring
+        // dashboard querying every exam_submissions doc for one exam across
+        // its whole class): NOT handled here. A rule nested inside
+        // match /students/{studentId} { match /exam_submissions/{id} { ... } }
+        // only ever governs the single, specific path
+        // students/{studentId}/exam_submissions/{id} — it is never consulted
+        // for a collectionGroup('exam_submissions') query, no matter what its
+        // condition says. Firestore requires collection-group queries to be
+        // matched by a rule declared with a recursive-wildcard prefix,
+        // match /{path=**}/exam_submissions/{id} — see the standalone
+        // top-level block of that exact shape further down this file
+        // (search "COLLECTION-GROUP RULE — exam_submissions") for the actual
+        // `allow list` rule and the full explanation of why it has to live
+        // there instead of here.
+        //
+        // CREATE: disabled for every client, including the owning student.
+        //         The submission doc must only ever be created by
+        //         startExamAttempt (functions/index.js, an onCall function
+        //         running with Admin SDK privileges that bypass these rules
+        //         entirely) — that function is what computes serverDeadline
+        //         from the SERVER's own clock. A direct client create() here
+        //         would let a student set their own serverDeadline (or
+        //         status, or examId/studentId mismatch) to whatever value
+        //         they want, defeating the entire point of server-side time
+        //         enforcement. Admin/teacher creation isn't needed either —
+        //         nothing in this app has a teacher create a submission on a
+        //         student's behalf.
+        allow create: if false;
 
+        // UPDATE: the owning student may keep writing their own answers
+        //         (autosave) only while status is still 'in_progress' — the
+        //         moment it becomes 'submitted' or any 'auto_submitted_*'
+        //         value (set either by the student's own submit action or by
+        //         the server-side timeout sweep — see
+        //         docs/phase2-exams-architecture.md section 5, item 1), the
+        //         student loses write access entirely, even if their own
+        //         client is stale and still showing the exam as open. This is
+        //         tighter than the original draft, which only locked the
+        //         student out once status reached 'graded' — that left a
+        //         window where a student could keep "saving" answers after
+        //         their own submission (or a server-side auto-submit) had
+        //         already finalized. `status` itself may never move BACKWARD
+        //         out of a terminal state via a student write — enforced
+        //         implicitly by only granting the student branch when the
+        //         CURRENT (resource.data) status is still 'in_progress'.
+        //
+        //         Every grading field — score, pendingManualPoints,
+        //         pendingManualQuestionIds, manualGrades, gradedAt, gradedBy
+        //         — is explicitly forbidden from the student's diff, on top
+        //         of the pre-existing serverDeadline guard (ConnectUs Phase
+        //         3 — Grading & Results). This isn't just "the student
+        //         shouldn't write these" as a UI convention: autoGradeObjective
+        //         Answers and recordManualGrade (functions/index.js, both
+        //         Admin SDK, both bypass these rules) are the ONLY intended
+        //         writers of these fields, so a student write that happens
+        //         to touch any of them — even as a side effect of some other
+        //         intended change — must be rejected outright, not merged.
+        //
+        //         NO teacher/admin branch exists here anymore. Every
+        //         legitimate teacher-side write to a submission (manual
+        //         grading) now goes through recordManualGrade, an onCall
+        //         function that runs under the Admin SDK and enforces its
+        //         own points-range and no-double-grading checks — see that
+        //         function's own comment for why those checks belong in
+        //         server code, not client-trusted rules, the same reasoning
+        //         already applied to startExamAttempt's serverDeadline.
+        //         Removing the teacher branch here (rather than merely
+        //         restricting its allowed fields) is deliberate: a rules
+        //         allowlist of "teachers may touch these fields but not
+        //         those" is one missed field away from reopening exactly the
+        //         bypass this design is meant to close, whereas "teachers
+        //         have no client update path at all" cannot be partially
+        //         gotten wrong. A teacher's read access is unaffected — the
+        //         `allow get` rule above still applies.
         allow update: if isSchoolActive(
                           get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
                         ) &&
                         request.auth != null &&
-                        ((request.auth.token.studentId == studentId &&
-                          resource.data.status != 'graded' &&
-                          !('score' in request.resource.data.diff(resource.data).affectedKeys())) ||
-                         (request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] &&
-                          request.auth.token.schoolId ==
-                            get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId));
+                        request.auth.token.studentId == studentId &&
+                        resource.data.status == 'in_progress' &&
+                        // The student's own client makes two different kinds
+                        // of write while in_progress: repeated autosaves that
+                        // never touch `status` at all (it stays 'in_progress'
+                        // after the merge), and exactly one final submit that
+                        // moves it to 'submitted' (take.js's submitExam(),
+                        // verified end-to-end in Phase 2 testing). Both are
+                        // legitimate; what's never legitimate from a student
+                        // write is landing on 'graded' or any
+                        // 'auto_submitted_*' value — those come only from
+                        // recordManualGrade and the server-side timeout sweep,
+                        // respectively. So this is an allowlist of the two
+                        // destination statuses a student write may produce,
+                        // not a blocklist of 'graded' alone.
+                        request.resource.data.status in ['in_progress', 'submitted'] &&
+                        !('score' in request.resource.data.diff(resource.data).affectedKeys()) &&
+                        !('serverDeadline' in request.resource.data.diff(resource.data).affectedKeys()) &&
+                        !('pendingManualPoints' in request.resource.data.diff(resource.data).affectedKeys()) &&
+                        !('pendingManualQuestionIds' in request.resource.data.diff(resource.data).affectedKeys()) &&
+                        !('manualGrades' in request.resource.data.diff(resource.data).affectedKeys()) &&
+                        !('gradedAt' in request.resource.data.diff(resource.data).affectedKeys()) &&
+                        !('gradedBy' in request.resource.data.diff(resource.data).affectedKeys());
 
         allow delete: if false;
       }
+
+      // ── 2c. Attendance (fan-out target — Phase 1 Milestone 6 privacy fix) ──
+      // Each doc here is written ONLY by the onAttendanceSaved Cloud Function
+      // via the Admin SDK, which bypasses these rules entirely — that is the
+      // whole point: it lets the function populate this path even though
+      // `allow write: if false` below denies every client write, including
+      // the owning student's own. The class-day source document
+      // (schools/{schoolId}/classes/{classId}/attendance/{date}) can only
+      // ever be read by admins/teachers now (see that match block above);
+      // this is the ONLY path a student can read their own attendance from,
+      // and a rule scoped to a single document like this can safely grant
+      // that without ever exposing a classmate's status alongside it.
+      match /attendance/{attDate} {
+        allow read: if request.auth != null &&
+                       request.auth.token.studentId == studentId &&
+                       (get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId == null ||
+                        get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId == '' ||
+                        isSchoolActive(
+                          get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
+                        ));
+
+        allow write: if false;
+      }
+    }
+
+    // ── 2d. COLLECTION-GROUP RULE — exam_submissions ───────────────────────
+    // This is a SEPARATE, top-level match block from the nested
+    // students/{studentId}/exam_submissions/{examSubmissionId} rules in
+    // section 2b above — and it has to be. A rule nested inside
+    // match /students/{studentId} { match /exam_submissions/{id} { ... } }
+    // only ever governs the single, specific document path
+    // students/{studentId}/exam_submissions/{id}; it is NEVER consulted for
+    // a collectionGroup('exam_submissions') query, regardless of what its
+    // condition says. Firestore requires collection-group queries to be
+    // matched by a rule declared with a recursive-wildcard prefix —
+    // match /{path=**}/exam_submissions/{id} — per Firebase's own docs
+    // (firebase.google.com/docs/firestore/security/rules-structure: "If you
+    // use collection group queries, you must use version 2" [rules_version
+    // = '2' at the top of this file] and rules-query's own worked example,
+    // match /{path=**}/songs/{song}). Without a block in exactly this shape,
+    // a collectionGroup('exam_submissions') query — teacher/exams/live.js's
+    // live proctoring dashboard, querying every exam_submissions doc for one
+    // exam across a whole class in one listener — is rejected outright
+    // (permission-denied on the whole query, falling through to this file's
+    // final deny-all match /{document=**} block), even when the query's own
+    // where() clauses exactly match this rule's conditions, and even
+    // against an EMPTY result set: this is a structural reachability
+    // problem, not a condition ever being evaluated and found false.
+    //
+    // The condition itself matches section 2b's original design intent: a
+    // teacher/admin at the same active school as the document, proven from
+    // resource.data fields alone (never a get()/exists() call — see 2b's
+    // own comment on why any get() inside a list rule is independently fatal
+    // to the "queries are all or nothing" proof, on top of this reachability
+    // issue). schoolId and isSchoolActive are both denormalized onto every
+    // exam_submissions doc by startExamAttempt at create time (see
+    // functions/index.js) specifically so this rule — and the caller's
+    // matching where('schoolId', ...) / where('isSchoolActive', ...)
+    // clauses in live.js — never need one.
+    //
+    // Students never list this collection group themselves (they only ever
+    // get() their own single submission by ID via startExamAttempt's return
+    // value, which is still governed by section 2b's nested `allow get`
+    // rule, unaffected by this block) — so this rule is teacher/admin-only.
+    match /{path=**}/exam_submissions/{examSubmissionId} {
+      allow list: if request.auth != null &&
+                     request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] &&
+                     resource.data.isSchoolActive == true &&
+                     resource.data.schoolId == request.auth.token.schoolId;
     }
 
     // ── 3. Siloed School Data ──────────────────────────────────────────────
@@ -396,21 +548,81 @@ service cloud.firestore {
                           getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
         allow update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
 
-        // Everything NESTED under a class document — attendance, subjects,
-        // and subjects' own assignments/posts/submissions — is UNCHANGED:
-        // the exact same broad same-school grant it always had under the
-        // old single wildcard. Scoping these to per-class isolation too
-        // would be a much larger frontend+rules change (every one of these
-        // collections would need the same teacherIds/classId membership
-        // check) and was not asked for in this pass. Each is matched by its
-        // literal name rather than a recursive wildcard — see the NOTE
-        // above for why a recursive wildcard doesn't work here.
+        // Everything NESTED under a class document EXCEPT attendance —
+        // subjects, and subjects' own assignments/posts/submissions — is
+        // UNCHANGED: the exact same broad same-school grant it always had
+        // under the old single wildcard. Scoping those to per-class
+        // isolation too would be a much larger frontend+rules change (every
+        // one of these collections would need the same teacherIds/classId
+        // membership check) and was not asked for in this pass. Each is
+        // matched by its literal name rather than a recursive wildcard —
+        // see the NOTE above for why a recursive wildcard doesn't work here.
+        //
+        // attendance IS scoped, as of this pass — mirroring section 3a's
+        // GET rule on the class doc itself exactly:
+        //   READ: admin (unrestricted) OR teacher assigned to THIS class
+        //         (teacherIds, looked up via get() on the class doc, since
+        //         resource here is the attendance doc, not the class doc)
+        //         OR student whose OWN classId (looked up via get() on
+        //         their student doc) matches THIS class.
+        //   WRITE (create/update/delete): admin OR the specific teacher(s)
+        //         assigned to THIS class — never a student, regardless of
+        //         the read grant above. This closes a real gap: the prior
+        //         version granted read AND write to any same-school caller,
+        //         which let a student create/edit/delete their own
+        //         attendance record even though the UI never exposed a way
+        //         to do so. The backend rule now enforces what the UI
+        //         already implied (student/attendance is read-only;
+        //         teacher/attendance is the only write flow) instead of
+        //         relying on the UI alone.
+        //
+        // ── PRIVACY FIX (fan-out) ──────────────────────────────────────────
+        // Students are now DENIED read access to this document entirely.
+        // Reason: this document's `records` field is a map keyed by every
+        // student in the class, and Firestore security rules can only grant
+        // or deny access to a document as a WHOLE — there is no way to write
+        // a rule that lets one student read only their own key inside this
+        // map. Any rule that let an enrolled student read this document at
+        // all handed back every classmate's attendance status too. This was
+        // confirmed directly: a raw Firestore SDK read of this document as
+        // an authenticated student returned the full `records` map for every
+        // student in the class, even though the student-facing UI happened
+        // to filter its display down to just that student's own row.
+        //
+        // The real fix lives elsewhere: onAttendanceSaved (functions/index.js)
+        // fans this document out, via the Admin SDK (which bypasses these
+        // rules), into a genuinely per-student document at
+        // students/{studentId}/attendance/{date} — see the match block for
+        // that path under students/{studentId} below. Students now read
+        // ONLY that fanned-out path; this class-day document is admin/
+        // teacher-only for both read and write.
         match /attendance/{attendanceId} {
-          allow read, update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
-          allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
-                           (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
-                            existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
-                            getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
+          allow read: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) && (
+            request.auth.token.role in ['super_admin', 'sub_admin'] ||
+            (request.auth.token.role == 'teacher' &&
+             request.auth.token.teacherId in
+               get(/databases/$(database)/documents/schools/$(schoolId)/classes/$(classId)).data.teacherIds)
+          );
+
+          allow update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) && (
+            request.auth.token.role in ['super_admin', 'sub_admin'] ||
+            (request.auth.token.role == 'teacher' &&
+             request.auth.token.teacherId in
+               get(/databases/$(database)/documents/schools/$(schoolId)/classes/$(classId)).data.teacherIds)
+          );
+
+          allow create: if (
+            isCallerInSchool(schoolId) && isSchoolActive(schoolId) && (
+              request.auth.token.role in ['super_admin', 'sub_admin'] ||
+              (request.auth.token.role == 'teacher' &&
+               request.auth.token.teacherId in
+                 get(/databases/$(database)/documents/schools/$(schoolId)/classes/$(classId)).data.teacherIds)
+            )
+          ) || (
+            !exists(/databases/$(database)/documents/schools/$(schoolId)) &&
+            existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
+            getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true
+          );
         }
 
         match /subjects/{subjectId} {
@@ -442,6 +654,36 @@ service cloud.firestore {
                              (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
                               existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
                               getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
+          }
+
+          // ── Exams (ConnectUs Phase 2 — Exams foundation) ──────────────────
+          // Config only: questions, point values, time limit, and the isLive
+          // toggle — never correct answers (those live in exam_answer_keys,
+          // section 11, a top-level collection denied to every client).
+          // Like assignments/posts above, this is a NAMED nested match, not
+          // covered by the recursive-wildcard fallback below (see the NOTE
+          // on section 3a for why a recursive wildcard doesn't work anywhere
+          // in this subtree) — without this block, exams was UNREACHABLE by
+          // any rule and every read/write fell through to the final deny-all.
+          //
+          // READ: same broad same-school grant as assignments/posts — no
+          //       student data lives here, so no per-class isolation needed.
+          //
+          // CREATE/UPDATE: teacher/admin only, not the same broad grant as
+          //       assignments/posts. Reason: isLive/liveStartedAt/liveEndsAt
+          //       control whether students can currently start or submit an
+          //       exam attempt (see startExamAttempt, functions/index.js) —
+          //       a student able to write this document could flip isLive
+          //       true to start their own exam early, or extend liveEndsAt
+          //       to grant themselves extra time. There is no legitimate
+          //       student write path to this collection at all.
+          match /exams/{examId} {
+            allow read: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
+
+            allow create, update: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) &&
+                                      request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'];
+
+            allow delete: if false; // soft-delete/archive only, matches house convention elsewhere
           }
         }
       }

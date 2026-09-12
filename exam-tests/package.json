@@ -1,0 +1,17 @@
+{
+  "name": "exam-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Playwright E2E and offline-persistence tests for ConnectUs Phase 2/3 exam-taking and grading, run against the local Firebase emulators (Firestore 8080, Auth 9099, Functions 5001, Database 9000) with the app served locally via `npx serve -p 3000` from the repo root.",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "seed": "node seed.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.1.0"
+  }
+}

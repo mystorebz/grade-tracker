@@ -7,17 +7,27 @@
 // class per day, no matter how many students are on the roster — with a
 // `records` map keyed by studentId:
 //   { records: { [studentId]: { status, markedAt, markedBy } }, ... }
+// This remains the only thing the teacher/admin UI ever reads or writes.
 //
-// Because the document ID IS the date, a range of days is just a query
-// filtered by documentId() between two date strings — YYYY-MM-DD strings
-// sort correctly as plain strings, so this needs no extra field, no
-// composite index, and no fan-out write to a per-student collection.
-// Firestore's default per-collection __name__ index covers documentId()
-// range queries automatically. loadAttendanceHistoryForStudent() below is
-// exactly that range query, with one student's entry plucked out of each
-// day doc — the mechanism approved for "a student can still efficiently
-// query their own attendance history across the semester" without any
-// additional writes.
+// ── Privacy fix (fan-out) ─────────────────────────────────────────────────
+// A student was originally read out of this same class-day document
+// (loadAttendanceHistoryForStudent used to range-query the class's
+// `attendance` subcollection and pluck one entry out of each day's
+// `records` map). That was a real data-scoping gap: Firestore security
+// rules can only grant or deny a whole document, never a single key inside
+// its map, so any rule letting an enrolled student read that document at
+// all handed back every classmate's status too — confirmed by inspecting
+// the raw SDK payload during Phase 1 Milestone 6 testing, not just what the
+// UI happened to render.
+//
+// The fix: the onAttendanceSaved Cloud Function (functions/index.js) fans
+// each class-day save out, server-side via the Admin SDK, into a genuinely
+// per-student document at students/{studentId}/attendance/{date}. Students
+// now read ONLY that fanned-out path — loadAttendanceHistoryForStudent
+// below queries students/{studentId}/attendance directly, never the class
+// document. The security rule on students/{studentId}/attendance/{attDate}
+// denies all client writes (including the owning student's own), so this
+// path can never be used to fabricate or alter a status either.
 import { db } from './firebase-init.js';
 import { collection, doc, getDoc, getDocs, setDoc, query, where, orderBy, documentId }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
@@ -74,12 +84,24 @@ export async function loadAttendanceRangeForClass(schoolId, classId, startDate, 
 }
 
 // ── READ: one student's own attendance history across a date range ──────
-// Pulls just that student's entry out of each day doc in the range —
-// days where the student has no entry (day not yet taken, or the student
-// wasn't marked that day) are simply absent from the result, not an error.
+// Queries the student's own fanned-out students/{studentId}/attendance
+// collection directly — never the class-day document, which any enrolled
+// student's Firestore rule intentionally no longer grants read access to
+// (see the long comment at the top of this file). The document ID here is
+// still the YYYY-MM-DD date string, written by onAttendanceSaved to match
+// the class-day doc it was fanned out from, so this is the same cheap
+// documentId() range query as before — just against a collection that is
+// genuinely scoped to one student instead of a whole class.
+// classId/schoolId are accepted for call-site compatibility (existing
+// callers pass them) but are no longer used to build the query; the
+// fanned-out documents already carry their own classId/schoolId fields.
 export async function loadAttendanceHistoryForStudent(schoolId, classId, studentId, startDate, endDate) {
-    const days = await loadAttendanceRangeForClass(schoolId, classId, startDate, endDate);
-    return days
-        .filter(day => day.records && day.records[studentId])
-        .map(day => ({ date: day.id, ...day.records[studentId] }));
+    const q = query(
+        collection(db, 'students', studentId, 'attendance'),
+        where(documentId(), '>=', startDate),
+        where(documentId(), '<=', endDate),
+        orderBy(documentId())
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ date: d.id, ...d.data() }));
 }

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Exam Monitor | Teacher Portal | ConnectUs</title>
+
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/teachers.css">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+
+    <style>
+        .fatal-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 20px; gap: 14px; text-align: center; }
+        .fatal-state i { font-size: 36px; color: #f43f5e; }
+        .fatal-state p { font-size: 14px; color: #64748b; font-weight: 600; margin: 0; max-width: 420px; }
+
+        .page-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 20px; gap: 14px; }
+        .page-loader i { font-size: 32px; color: #0d9488; }
+        .page-loader p { font-size: 13.5px; color: #94a3b8; font-weight: 600; margin: 0; }
+
+        /* ── Summary stat tiles ── */
+        .stat-tile { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 16px 18px; }
+        .stat-tile-label { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin: 0 0 4px; }
+        .stat-tile-value { font-size: 26px; font-weight: 900; margin: 0; line-height: 1; }
+
+        /* ── Roster ── */
+        .roster-header, .roster-row {
+            display: grid;
+            grid-template-columns: 140px 200px 1fr 160px;
+            gap: 12px;
+            align-items: center;
+            padding: 12px 16px;
+        }
+        .roster-header {
+            font-size: 10.5px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #94a3b8;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .roster-row { border-bottom: 1px solid #f1f5f9; }
+        .roster-row:last-child { border-bottom: none; }
+        .roster-row-id { font-family: 'DM Mono', monospace; font-weight: 700; font-size: 13px; color: #1e293b; margin: 0; }
+        .roster-row-progress { font-size: 12.5px; color: #64748b; font-weight: 600; }
+
+        .status-pill {
+            display: inline-block;
+            font-size: 10.5px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            padding: 3px 9px;
+            border-radius: 8px;
+            border: 1px solid;
+            white-space: nowrap;
+        }
+
+        .signal-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11.5px;
+            font-weight: 700;
+            padding: 3px 9px;
+            border-radius: 8px;
+            border: 1px solid;
+            margin-right: 6px;
+            white-space: nowrap;
+        }
+        .signal-chip-ok { background: #f0fdfa; color: #0f766e; border-color: #99f6e4; }
+        .signal-chip-alert { background: #fff1f2; color: #be123c; border-color: #fecdd3; }
+        .signal-chip-neutral { background: #f8fafc; color: #94a3b8; border-color: #e2e8f0; }
+
+        @media (max-width: 900px) {
+            .roster-header, .roster-row {
+                grid-template-columns: 1fr;
+                gap: 6px;
+            }
+            .roster-header { display: none; }
+            .roster-row { padding: 14px 16px; border-bottom: 1px solid #e2e8f0; }
+        }
+    </style>
+</head>
+<body class="flex w-full h-screen overflow-hidden bg-[#f0fdf8]">
+
+    <div id="layout-sidebar-container" class="flex-shrink-0 h-full z-20"></div>
+
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
+
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <div class="flex-1 overflow-y-auto p-7 view-section">
+
+            <div class="flex flex-wrap gap-4 justify-between items-center mb-6">
+                <div class="flex items-center gap-3">
+                    <div class="w-11 h-11 bg-gradient-to-br from-teal-500 to-emerald-600 text-white rounded-2xl flex items-center justify-center text-lg shadow-md"><i class="fa-solid fa-tower-broadcast"></i></div>
+                    <div>
+                        <h2 class="font-black text-2xl text-slate-800 leading-tight">Live Exam Monitor</h2>
+                        <p class="text-sm text-slate-400 font-semibold">Real-time presence and progress for this exam</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Loading state ─────────────────────────────────────────── -->
+            <div id="dashLoader" class="page-loader">
+                <i class="fa-solid fa-circle-notch fa-spin"></i>
+                <p>Connecting to live exam data&hellip;</p>
+            </div>
+
+            <!-- ── Fatal error state ─────────────────────────────────────── -->
+            <div id="dashFatalState" class="hidden fatal-state bg-white rounded-2xl border border-slate-200">
+                <i class="fa-solid fa-circle-exclamation"></i>
+                <p id="dashFatalMsg"></p>
+            </div>
+
+            <!-- ── Main dashboard body ────────────────────────────────────── -->
+            <div id="dashBody" class="hidden">
+
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                    <div class="stat-tile">
+                        <p class="stat-tile-label">Connected</p>
+                        <p id="countConnected" class="stat-tile-value text-teal-600">0</p>
+                    </div>
+                    <div class="stat-tile">
+                        <p class="stat-tile-label">Disconnected</p>
+                        <p id="countDisconnected" class="stat-tile-value text-rose-600">0</p>
+                    </div>
+                    <div class="stat-tile">
+                        <p class="stat-tile-label">Tab Blurred</p>
+                        <p id="countBlurred" class="stat-tile-value text-amber-600">0</p>
+                    </div>
+                    <div class="stat-tile">
+                        <p class="stat-tile-label">Submitted</p>
+                        <p id="countSubmitted" class="stat-tile-value text-indigo-600">0</p>
+                    </div>
+                </div>
+
+                <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                    <div class="roster-header">
+                        <span>Student</span>
+                        <span>Status</span>
+                        <span>Live Signals</span>
+                        <span>Progress</span>
+                    </div>
+                    <div id="rosterList"></div>
+                    <p id="rosterEmpty" class="hidden text-sm font-bold text-slate-400 text-center py-14 px-6">No students have started this exam yet.</p>
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <script type="module" src="live.js"></script>
+</body>
+</html>

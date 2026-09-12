@@ -190,10 +190,20 @@ async function sha256(text) {
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
-const role = new URLSearchParams(window.location.search).get('role');
+// Prefer the query string, but fall back to sessionStorage: the local dev
+// server 301-redirects "first-time-setup.html" -> "first-time-setup" and
+// drops the query string in the process, which used to leave `role` empty
+// here and silently bounce every new user to the marketing homepage below.
+// The login pages stash the role in sessionStorage before navigating so it
+// survives that redirect either way.
+const queryRole = new URLSearchParams(window.location.search).get('role');
+const storedRole = sessionStorage.getItem('connectus_setup_role');
+const role = queryRole || storedRole;
+sessionStorage.removeItem('connectus_setup_role');
 const cfg  = ROLE_CONFIG[role];
 
 if (!cfg) {
+    console.error('[FirstTimeSetup] No valid role resolved from query string or sessionStorage — redirecting home.');
     window.location.replace('../index.html');
 }
 

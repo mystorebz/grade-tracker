@@ -49,6 +49,63 @@ async function main() {
     await db.doc('students/student-1/exam_submissions/exam-sub-open').set({ status: 'in_progress', examId: 'e1' });
     await db.doc('students/student-1/exam_submissions/exam-sub-graded').set({ status: 'graded', examId: 'e1', score: 85 });
 
+    // ── Cross-tenant isolation fixture for exam_submissions (ConnectUs
+    // Phase 3 — Grading & Results) ─────────────────────────────────────────
+    // The existing school-2 fixture elsewhere in this file is deliberately
+    // INACTIVE (isVerified: false) — it exists to prove the isSchoolActive
+    // wildcard denies an inactive school, which is a different property than
+    // "two ACTIVE schools can't see each other's data." Reusing it here would
+    // conflate the two: a denial in that case could be explained by either
+    // gate, so it wouldn't isolate the tenant-boundary check this exam_
+    // submissions rule actually relies on (resource.data.schoolId ==
+    // request.auth.token.schoolId, plus the get()-based check on `allow get`).
+    // school-3 below is a second, genuinely ACTIVE school, used only for this
+    // isolation test, so a denial here can only be explained by the schoolId
+    // mismatch itself.
+    await db.doc('schools/school-3').set({ isVerified: true, name: 'Second Active School' });
+    await db.doc('students/student-3').set({ currentSchoolId: 'school-3', name: 'Student Three', classId: 'class-3' });
+
+    // Full Phase 3 schema (schoolId/isSchoolActive denormalized by
+    // startExamAttempt; pendingManualQuestionIds/manualGrades written by
+    // autoGradeObjectiveAnswers) — matches what a real submission looks like
+    // after auto-grading, not just the older two-field fixture above.
+    await db.doc('students/student-1/exam_submissions/exam-sub-crosstenant').set({
+      status: 'submitted',
+      examId: 'e1',
+      schoolId: 'school-1',
+      classId: 'class-1',
+      subjectId: 'subj-1',
+      isSchoolActive: true,
+      score: 10,
+      pendingManualPoints: 5,
+      pendingManualQuestionIds: ['q2'],
+      manualGrades: {},
+    });
+
+    // school-3's OWN exam submission — used by the companion "same-school
+    // list still works" positive test, so the cross-tenant FAIL/PASS above
+    // is provably about tenant isolation specifically, not the collection-
+    // group query mechanism being broken outright for everyone.
+    await db.doc('students/student-3/exam_submissions/exam-sub-ownschool').set({
+      status: 'submitted',
+      examId: 'e3',
+      schoolId: 'school-3',
+      classId: 'class-3',
+      subjectId: 'subj-3',
+      isSchoolActive: true,
+      score: 8,
+      pendingManualPoints: 0,
+      pendingManualQuestionIds: [],
+      manualGrades: {},
+    });
+
+    // Fanned-out per-student attendance copy (Phase 1 Milestone 6 privacy
+    // fix) — onAttendanceSaved writes this via the Admin SDK from the
+    // shared class-day document; seeded directly here (bypassing rules,
+    // same as every other fixture in this block) to test the READ rule at
+    // students/{studentId}/attendance/{attDate} in isolation.
+    await db.doc('students/student-1/attendance/2026-09-01').set({ status: 'present', classId: 'class-1' });
+
     await db.doc('exam_answer_keys/e1').set({ answers: ['A', 'B', 'C'] });
 
     // ── Phase 0 correction: subjects/assignments/teaching_assignments, nested
@@ -104,6 +161,25 @@ async function main() {
     await db.doc('schools/school-1/classes/class-1/subjects/subj-delete-sameschool').set({
       name: 'Delete Target (same-school, expect allowed)', schoolId: 'school-1', classId: 'class-1', archived: false,
     });
+
+    // ── ATTENDANCE fixtures ─────────────────────────────────────────────
+    // One doc per class per day, records keyed by studentId — the actual
+    // shape used by teacher/student/admin attendance.js, not the per-student
+    // fan-out the original plan doc sketched. class-1 (teacher-1, student-1)
+    // and class-2 (teacher-3, student-2) already exist from PASS B PART 2
+    // above, so these reuse that same roster rather than adding new fixtures.
+    await db.doc('schools/school-1/classes/class-1/attendance/2026-09-01').set({
+      records: { 'student-1': 'present' },
+    });
+    await db.doc('schools/school-1/classes/class-2/attendance/2026-09-01').set({
+      records: { 'student-2': 'present' },
+    });
+    // Same shape under the inactive school-2, for the isSchoolActive-denial
+    // check below — matching every other inactive-school test in this file,
+    // which always targets a real seeded doc rather than a missing one.
+    await db.doc('schools/school-2/classes/class-x/attendance/2026-09-01').set({
+      records: {},
+    });
   });
 
   const student1Ctx = testEnv.authenticatedContext('uid-student-1', {
@@ -140,6 +216,16 @@ async function main() {
     role: 'super_admin', adminId: 'admin-2', schoolId: 'school-2',
   });
 
+  // Genuinely active-school counterparts, scoped to school-3 — see the
+  // school-3 fixture comment above for why school-2 (inactive) can't be
+  // reused for this specific isolation check.
+  const teacher3SchoolCtx = testEnv.authenticatedContext('uid-teacher-school3', {
+    role: 'teacher', teacherId: 'teacher-school3', schoolId: 'school-3',
+  });
+  const student3Ctx = testEnv.authenticatedContext('uid-student-3', {
+    role: 'student', studentId: 'student-3', schoolId: 'school-3',
+  });
+
   // Call .firestore() exactly once per context and reuse the same instance
   // for every operation below — calling it again after the instance has
   // already been used throws "Firestore has already been started..."
@@ -151,6 +237,8 @@ async function main() {
   const teacher2 = teacher2Ctx.firestore();
   const admin1 = admin1Ctx.firestore();
   const admin2 = admin2Ctx.firestore();
+  const teacherSchool3 = teacher3SchoolCtx.firestore();
+  const studentSchool3 = student3Ctx.firestore();
 
   console.log('\n--- students/{id}/submissions (assignment submissions) ---');
 
@@ -193,13 +281,22 @@ async function main() {
   console.log('\n--- students/{id}/exam_submissions ---');
 
   await check(
-    'Student creates their own exam submission (no score field)',
+    // firestore.rules' exam_submissions block has `allow create: if false`
+    // unconditionally (see that rule's own comment: the doc must only ever
+    // be created by startExamAttempt, an Admin-SDK callable, so it can
+    // compute serverDeadline from the server's own clock rather than trust
+    // a client-supplied one). This test previously expected a plain client
+    // create with no score field to succeed — that was never true against
+    // the actual deployed rule; it was a stale expectation nobody had
+    // caught because this suite had not been run against a live emulator
+    // until now. Corrected to match the rule as written.
+    'Student tries to CREATE their own exam submission directly, even with no score field (should be blocked — only startExamAttempt may create this doc)',
     student1.doc('students/student-1/exam_submissions/new-exam-sub').set({ status: 'in_progress', examId: 'e1', answers: ['A'] }),
-    true
+    false
   );
 
   await check(
-    'Student tries to CREATE an exam submission that includes a score field (should be blocked)',
+    'Student tries to CREATE an exam submission that includes a score field (should be blocked for this reason too, on top of create being disabled entirely)',
     student1.doc('students/student-1/exam_submissions/cheat-attempt').set({ status: 'in_progress', examId: 'e1', score: 100 }),
     false
   );
@@ -217,9 +314,107 @@ async function main() {
   );
 
   await check(
-    'Teacher sets the score on a student exam submission',
+    // ConnectUs Phase 3 — Grading & Results: a teacher's client no longer
+    // has ANY update path to exam_submissions. Manual grading now goes
+    // exclusively through the recordManualGrade callable (functions/
+    // index.js), which runs under the Admin SDK and bypasses these rules
+    // entirely — so this direct client-side write, which the old Phase 2
+    // rule allowed, must now be rejected. See firestore.rules' exam_submissions
+    // `allow update` comment for the full reasoning.
+    'Teacher tries to set the score directly on a student exam submission (should be blocked — must go through recordManualGrade)',
     teacher1.doc('students/student-1/exam_submissions/exam-sub-open').update({ score: 95, status: 'graded' }),
+    false
+  );
+
+  await check(
+    'Student submits their own exam (in_progress -> submitted, no grading fields touched)',
+    student1.doc('students/student-1/exam_submissions/exam-sub-open').update({ status: 'submitted', submittedAt: '2026-01-01T00:00:00.000Z' }),
     true
+  );
+
+  await check(
+    'Student tries to mark their own exam as graded (should be blocked)',
+    student1.doc('students/student-1/exam_submissions/exam-sub-open').update({ status: 'graded' }),
+    false
+  );
+
+  await check(
+    'Student tries to write manualGrades on their own submission (should be blocked)',
+    student1.doc('students/student-1/exam_submissions/exam-sub-open').update({ manualGrades: { q1: { pointsAwarded: 5 } } }),
+    false
+  );
+
+  console.log('\n--- exam_submissions: cross-tenant isolation (school-3 is ACTIVE, unlike the inactive school-2 used elsewhere in this file) ---');
+
+  await check(
+    "Cross-tenant: teacher at active school-3 tries to GET school-1's exam submission directly by ID (should be blocked)",
+    teacherSchool3.doc('students/student-1/exam_submissions/exam-sub-crosstenant').get(),
+    false
+  );
+
+  await check(
+    // Exercises the top-level `match /{path=**}/exam_submissions/{id}` collection-group
+    // rule (allow list), not the nested per-document `allow get` rule above —
+    // this is the actual rule teacher/exams/live.js's live proctoring dashboard
+    // depends on.
+    //
+    // CORRECTED (was wrongly asserted as shouldSucceed:true in an earlier
+    // draft of this test): firestore.rules' own inline comment on this rule
+    // says plainly that collection-group `list` rules are "all or nothing"
+    // — Firestore proves a rule can permit a query BEFORE running it, by
+    // checking the rule's condition against the query's own filters, not by
+    // running the query and filtering results after the fact. This query's
+    // where('schoolId','==','school-1') combined with the CALLER's token
+    // carrying schoolId:'school-3' means resource.data.schoolId ==
+    // request.auth.token.schoolId can never be true for anything this query
+    // could return — so Firestore rejects the ENTIRE QUERY up front with
+    // permission-denied, exactly like the reachability failure mode this
+    // same comment describes for a missing rule block, not a partial result
+    // silently filtered down to zero rows. Asserting shouldSucceed:true (as
+    // this test originally did) was actually asserting the INSECURE
+    // behavior — a query that runs and merely happens to return nothing.
+    // assertFails on the whole query is what proves the secure behavior:
+    // school-3 cannot even ask the question about school-1's data.
+    "Cross-tenant: teacher at active school-3 runs a collection-group LIST on exam_submissions filtered to school-1 (the whole query should be rejected outright — 'queries are all or nothing', not silently filtered to zero rows)",
+    teacherSchool3.collectionGroup('exam_submissions')
+      .where('isSchoolActive', '==', true)
+      .where('schoolId', '==', 'school-1')
+      .get(),
+    false
+  );
+
+  await check(
+    // Companion positive test: without this, the FAIL above could just as
+    // easily mean "this rule now blocks ALL collection-group list queries,
+    // even legitimate same-school ones" — which would be a correctness
+    // regression breaking teacher/exams/live.js entirely, not a security
+    // property. This proves the rule still lets a school-3 teacher list
+    // school-3's OWN exam data via the identical query shape, isolating the
+    // cross-tenant test above to actually be about tenant isolation, not
+    // about the query mechanism being broken outright.
+    "Same-school: teacher at active school-3 runs the identical collection-group LIST query filtered to their OWN school (school-3) — should succeed and return the seeded doc",
+    (async () => {
+      const snap = await teacherSchool3.collectionGroup('exam_submissions')
+        .where('isSchoolActive', '==', true)
+        .where('schoolId', '==', 'school-3')
+        .get();
+      if (snap.size !== 1) {
+        throw new Error(`Expected exactly 1 doc (school-3's own submission), got ${snap.size}.`);
+      }
+    })(),
+    true
+  );
+
+  await check(
+    "Cross-tenant: student at active school-3 tries to read school-1's exam submission (should be blocked)",
+    studentSchool3.doc('students/student-1/exam_submissions/exam-sub-crosstenant').get(),
+    false
+  );
+
+  await check(
+    "Cross-tenant: student at active school-3 tries to write manualGrades onto school-1's exam submission (should be blocked)",
+    studentSchool3.doc('students/student-1/exam_submissions/exam-sub-crosstenant').update({ manualGrades: { q2: { pointsAwarded: 5 } } }),
+    false
   );
 
   console.log('\n--- exam_answer_keys (should be locked to everyone, even teachers) ---');
@@ -449,6 +644,141 @@ async function main() {
     "Regression: UPDATE on a class doc is still same-school-only, not per-class, in this pass — Teacher A can still update class-2 even though they aren't in its teacherIds (flagged as a follow-up, not tightened here)",
     teacher1.doc('schools/school-1/classes/class-2').update({ order: 5 }),
     true
+  );
+
+  console.log('\n--- ATTENDANCE: schools/{schoolId}/classes/{classId}/attendance/{date} ---');
+  console.log('    (per-class read, teacher/admin-only write — students never write,');
+  console.log('     regardless of what the UI hides)');
+
+  await check(
+    "Teacher assigned to class-1 (teacher-1) reads class-1's attendance",
+    teacher1.doc('schools/school-1/classes/class-1/attendance/2026-09-01').get(),
+    true
+  );
+
+  await check(
+    "Teacher assigned to class-2 (teacher-3) blocked from reading class-1's attendance — same school, wrong class",
+    teacher3.doc('schools/school-1/classes/class-1/attendance/2026-09-01').get(),
+    false
+  );
+
+  await check(
+    // firestore.rules' own comment on this match block (search "Phase 1
+    // Milestone 6 privacy fix") is explicit: this class-day document is
+    // admin/teacher-only for BOTH read and write, on purpose — a student
+    // branch here would let one student's query see every other student's
+    // row in the same document. Students are meant to read only the
+    // fanned-out per-student copy at students/{studentId}/attendance/{date}
+    // (written by onAttendanceSaved via the Admin SDK) — see the next test
+    // below, which is what actually proves a student CAN read their own
+    // attendance, at the correct path. This test previously expected the
+    // wrong path to succeed for a student; corrected to match the rule
+    // (and the privacy fix) as actually written.
+    "Student in class-1 (student-1) tries to read the shared class-day attendance doc directly (should be blocked — wrong path; see the fanned-out per-student path test below for the correct one)",
+    student1.doc('schools/school-1/classes/class-1/attendance/2026-09-01').get(),
+    false
+  );
+
+  await check(
+    "Student in class-2 (student-2) also blocked from reading class-1's shared attendance doc — same reason as above, not merely wrong class",
+    student2.doc('schools/school-1/classes/class-1/attendance/2026-09-01').get(),
+    false
+  );
+
+  await check(
+    // THE CORRECT PATH: students never read the shared class-day document
+    // above — they read their own fanned-out copy, written by
+    // onAttendanceSaved (Admin SDK) to students/{studentId}/attendance/
+    // {date}. This is the test the two corrected cases above were meant to
+    // be testing all along; added here since no coverage of this path
+    // existed anywhere in this suite before now.
+    "Student-1 reads their OWN fanned-out attendance record at students/student-1/attendance/2026-09-01 (the actual correct read path)",
+    student1.doc('students/student-1/attendance/2026-09-01').get(),
+    true
+  );
+
+  await check(
+    "Student-2 blocked from reading student-1's fanned-out attendance record (cross-student isolation on the correct path)",
+    student2.doc('students/student-1/attendance/2026-09-01').get(),
+    false
+  );
+
+  await check(
+    "Admin reads class-1's attendance (unrestricted, like the class doc itself)",
+    admin1.doc('schools/school-1/classes/class-1/attendance/2026-09-01').get(),
+    true
+  );
+
+  await check(
+    "Admin reads class-2's attendance too (unrestricted across classes)",
+    admin1.doc('schools/school-1/classes/class-2/attendance/2026-09-01').get(),
+    true
+  );
+
+  await check(
+    "Unauthenticated caller blocked from reading class-1's attendance at an active school",
+    unauthed.doc('schools/school-1/classes/class-1/attendance/2026-09-01').get(),
+    false
+  );
+
+  await check(
+    'Teacher-1 creates a new attendance record for their OWN class (class-1)',
+    teacher1.doc('schools/school-1/classes/class-1/attendance/2026-09-02').set({ records: { 'student-1': 'absent' } }),
+    true
+  );
+
+  await check(
+    "Teacher-1 corrects (updates) an existing class-1 attendance record",
+    teacher1.doc('schools/school-1/classes/class-1/attendance/2026-09-01').update({ 'records.student-1': 'tardy' }),
+    true
+  );
+
+  await check(
+    "Teacher-3 (class-2's teacher) blocked from updating class-1's attendance — wrong class, even same school",
+    teacher3.doc('schools/school-1/classes/class-1/attendance/2026-09-01').update({ 'records.student-1': 'excused' }),
+    false
+  );
+
+  await check(
+    "Student-1 blocked from CREATING an attendance record for their own class (should be teacher/admin-only)",
+    student1.doc('schools/school-1/classes/class-1/attendance/2026-09-03').set({ records: { 'student-1': 'present' } }),
+    false
+  );
+
+  await check(
+    'THE GAP THIS PASS CLOSES: Student-1 blocked from UPDATING the existing class-1 attendance record',
+    student1.doc('schools/school-1/classes/class-1/attendance/2026-09-01').update({ 'records.student-1': 'present' }),
+    false
+  );
+
+  await check(
+    "Student-1 blocked from DELETING the class-1 attendance record",
+    student1.doc('schools/school-1/classes/class-1/attendance/2026-09-01').delete(),
+    false
+  );
+
+  await check(
+    "Admin can also write attendance directly (override), e.g. correcting a record on a teacher's behalf",
+    admin1.doc('schools/school-1/classes/class-1/attendance/2026-09-01').update({ 'records.student-1': 'present' }),
+    true
+  );
+
+  await check(
+    "Cross-tenant: teacher scoped to school-2 blocked from reading school-1's class-1 attendance",
+    teacher2.doc('schools/school-1/classes/class-1/attendance/2026-09-01').get(),
+    false
+  );
+
+  await check(
+    "Cross-tenant: teacher scoped to school-2 blocked from creating an attendance record under school-1/class-1",
+    teacher2.doc('schools/school-1/classes/class-1/attendance/2026-09-04').set({ records: {} }),
+    false
+  );
+
+  await check(
+    'Inactive school: teacher blocked from reading attendance at school-2 (isVerified: false)',
+    teacher1.doc('schools/school-2/classes/class-x/attendance/2026-09-01').get(),
+    false
   );
 
   console.log(`\n${pass} passed, ${fail} failed\n`);

@@ -83,7 +83,24 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
             claims               = idTokenResult.claims;
         } catch (authError) {
             console.error('[Teacher Login] Server rejected credentials:', authError);
-            showError(msgEl, 'Invalid Teacher ID or PIN.');
+
+            // Map the server's actual error code to a message instead of
+            // collapsing every failure into "Invalid Teacher ID or PIN" —
+            // that used to also cover archived/unenrolled/pending accounts
+            // and outright backend failures (e.g. Cloud Functions failing to
+            // load), which made real problems look like a typo'd password.
+            if (authError?.code === 'functions/not-found') {
+                showError(msgEl, 'Invalid Teacher ID or PIN.');
+            } else if (authError?.code === 'functions/unauthenticated') {
+                showError(msgEl, 'Invalid Teacher ID or PIN.');
+            } else if (authError?.code === 'functions/permission-denied') {
+                showError(msgEl, authError.message || 'Your account is not able to log in right now. Contact your administrator.');
+            } else if (authError?.code === 'functions/invalid-argument') {
+                showError(msgEl, authError.message || 'Please check your Teacher ID and PIN and try again.');
+            } else {
+                showError(msgEl, 'Connection error. Please try again.');
+            }
+
             resetLoginBtn(btn);
             return;
         }
@@ -186,6 +203,11 @@ async function finalizeLogin() {
     }
 
     if (isGlobalTeacher && !tempSession.teacherData.securityQuestionsSet) {
+        // See the matching comment in student/login.js: the dev server's
+        // redirect from "first-time-setup.html" to the extensionless path
+        // drops the query string, so the role is also stashed in
+        // sessionStorage to survive that redirect.
+        sessionStorage.setItem('connectus_setup_role', 'teacher');
         window.location.href = '../onboarding/first-time-setup.html?role=teacher';
         return;
     }

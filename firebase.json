@@ -3,6 +3,9 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
+  "database": {
+    "rules": "database.rules.json"
+  },
   "functions": [
     {
       "codebase": "default",
@@ -26,6 +29,12 @@
     },
     "firestore": {
       "port": 8080
+    },
+    "pubsub": {
+      "port": 8085
+    },
+    "database": {
+      "port": 9000
     },
     "ui": {
       "enabled": true,

@@ -50,6 +50,14 @@
       ]
     },
     {
+      "collectionGroup": "exam_submissions",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "serverDeadline", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "teaching_assignments",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
