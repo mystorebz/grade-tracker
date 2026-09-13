@@ -896,7 +896,26 @@ function registerAssignmentBlot() {
     AssignmentBlot.tagName = 'span';
     AssignmentBlot.className = 'assignment-embed';
 
+    // Divider ("Insert Horizontal Line") — registered here too, not just
+    // AssignmentBlot, because it hit the exact same class of bug: Quill
+    // 1.3.7 ships no formats/divider or formats/hr at all, so a raw <hr>
+    // handed to quill.clipboard.dangerouslyPasteHTML() has no matcher to
+    // convert it into a Delta op and gets silently dropped — confirmed live
+    // (button click produced zero DOM change, zero console error). A
+    // registered BlockEmbed is what actually makes Quill treat the tag as
+    // real content instead of discarding it, same fix shape as the
+    // assignment-embed flattening bug.
+    const BlockEmbed = Quill.import('blots/block/embed');
+    class DividerBlot extends BlockEmbed {
+        static create() {
+            return super.create();
+        }
+    }
+    DividerBlot.blotName = 'divider';
+    DividerBlot.tagName = 'hr';
+
     Quill.register(AssignmentBlot);
+    Quill.register(DividerBlot);
     assignmentBlotRegistered = true;
 }
 
@@ -970,14 +989,16 @@ function initQuillIfNeeded() {
 
     document.getElementById('insertDividerBtn').addEventListener('click', () => {
         const range = quill.getSelection(true) || { index: quill.getLength(), length: 0 };
-        // Quill's built-in 'divider' embed isn't registered by default in
-        // 1.3.7 — using a plain <hr> via clipboard.dangerouslyPasteHTML at
-        // the cursor keeps this a one-call insert without introducing a
-        // second custom Blot for something this simple. insertText('\n')
-        // brackets it so the rule doesn't merge into an existing paragraph.
-        quill.insertText(range.index, '\n', 'user');
-        quill.clipboard.dangerouslyPasteHTML(range.index + 1, '<hr>', 'user');
-        quill.setSelection(range.index + 2, 0, 'user');
+        // insertEmbed on the registered 'divider' BlockEmbed (see
+        // registerAssignmentBlot() above) — NOT dangerouslyPasteHTML with a
+        // raw <hr> string. That was tried first and silently inserted
+        // nothing: Quill 1.3.7 has no built-in divider/hr format, so an
+        // unregistered tag passed through its HTML clipboard matcher has no
+        // conversion rule and gets dropped with no error. insertEmbed goes
+        // straight through Quill's own Delta API, which only works once the
+        // format is actually registered — confirmed live after the fix.
+        quill.insertEmbed(range.index, 'divider', true, 'user');
+        quill.setSelection(range.index + 1, 0, 'user');
         hasUnsavedChanges = true;
     });
 
@@ -994,10 +1015,19 @@ function initQuillIfNeeded() {
     // break to organize long documents, until true multi-page Document
     // lessons are a real data-model feature.
     document.getElementById('addDocPageBtn').addEventListener('click', () => {
+        // Same registered 'divider' BlockEmbed the toolbar's own divider
+        // button uses (see registerAssignmentBlot()) — NOT
+        // dangerouslyPasteHTML, which silently drops any tag Quill has no
+        // format registered for (confirmed live; see the divider button fix
+        // above for the full explanation). insertEmbed at the end of the
+        // document, followed by a real newline so there's an editable line
+        // after it to land the cursor on, stands in for a "new page" until
+        // Document lessons support true multiple pages as a data-model
+        // feature.
         const endIndex = quill.getLength();
-        quill.insertText(endIndex - 1, '\n', 'user');
-        quill.clipboard.dangerouslyPasteHTML(endIndex, '<hr class="ql-page-break"><p><br></p>', 'user');
-        quill.setSelection(quill.getLength() - 1, 0, 'user');
+        quill.insertEmbed(endIndex - 1, 'divider', true, 'user');
+        quill.insertText(endIndex, '\n', 'user');
+        quill.setSelection(endIndex + 1, 0, 'user');
         quill.scrollingContainer?.scrollTo?.(0, quill.scrollingContainer.scrollHeight);
         hasUnsavedChanges = true;
     });
@@ -1153,13 +1183,21 @@ function onImportSlidesClick() {
         renderPropertiesPanel();
     } else {
         // Document format has no media-slide concept — embed it inline in
-        // the Quill content instead, at the end of the document, the same
-        // way insertAssignmentBtn/insertDividerBtn insert inline content.
+        // the Quill content instead, at the end of the document, using
+        // Quill's own built-in 'video' format via insertEmbed (registered
+        // out of the box in 1.3.7, unlike 'divider' above) — NOT
+        // dangerouslyPasteHTML with a raw <iframe> string. That was tried
+        // first and silently inserted nothing, same root cause as the
+        // divider bug: Quill's HTML clipboard matcher has no conversion
+        // rule for an unrecognized tag and drops it with no error.
+        // insertEmbed goes straight through Quill's Delta API, which is
+        // reliable specifically because 'video' IS a real, always-registered
+        // format — no custom Blot needed for this one.
         initQuillIfNeeded();
         const endIndex = quill.getLength();
-        const iframeHtml = `<p><br></p><iframe src="${escHtml(embedUrl)}" style="width:100%;aspect-ratio:16/9;border:0;border-radius:12px;" allowfullscreen></iframe><p><br></p>`;
         quill.insertText(endIndex - 1, '\n', 'user');
-        quill.clipboard.dangerouslyPasteHTML(endIndex, iframeHtml, 'user');
+        quill.insertEmbed(endIndex, 'video', embedUrl, 'user');
+        quill.insertText(quill.getLength() - 1, '\n', 'user');
         hasUnsavedChanges = true;
     }
 
