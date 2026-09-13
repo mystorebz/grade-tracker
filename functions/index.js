@@ -273,6 +273,202 @@ exports.mintStudentToken = onCall({ region: 'us-central1' }, async (request) => 
 });
 // --- END: mintStudentToken ---
 
+// ── Generate Parent ID ────────────────────────────────────────────────────
+// Same charset/shape convention as generateStudentId() (teacher/roster/
+// roster.js) and generateReqId() above — excludes ambiguous I/O/0/1.
+function generateParentId() {
+    const year  = new Date().getFullYear().toString().slice(-2);
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let rand = '';
+    for (let i = 0; i < 5; i++) rand += chars.charAt(Math.floor(Math.random() * chars.length));
+    return `P${year}-${rand}`;
+}
+
+function normalizeParentEmail(email) {
+    return String(email).trim().toLowerCase();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FUNCTION 3b: linkOrCreateParent
+//
+// PHASE 3 STEP 1 — parent identity, server-side only (per DECISION APPROVED:
+// OPTION 1). Called by a teacher/admin's client when a student is created or
+// edited with a parent email — never by the parent themselves (they have no
+// account yet at this point). Does the email lookup, dedup, Parent ID
+// generation, and PIN hashing entirely with the Admin SDK, so Firestore
+// rules for parents/{parentId} and parent_emails/{email} can stay locked to
+// "no direct client access at all" (see firestore.rules section 2f/2g).
+//
+// Race-free by construction: parent_emails/{normalizedEmail} is read INSIDE
+// the transaction before branching, so two callers hitting this for the same
+// brand-new email at the same moment can never both take the "create a new
+// Parent ID" path — Firestore's transaction commit protocol aborts and
+// retries whichever one loses the race, and on retry it re-reads
+// parent_emails and correctly finds the other's freshly created doc, falling
+// through to the "append to existing parent" path instead. tx.create() (vs.
+// tx.set()) on both new docs is a second, explicit layer of the same
+// guarantee — it fails loudly on its own if a caller somehow reached the
+// "new email" branch for a doc that already exists, rather than silently
+// overwriting another family's parent record.
+//
+// Deploy command: firebase deploy --only functions:linkOrCreateParent
+// ═══════════════════════════════════════════════════════════════════════════════
+// --- START: linkOrCreateParent ---
+exports.linkOrCreateParent = onCall({ region: 'us-central1' }, async (request) => {
+
+    // ── 1. Caller must be an authenticated teacher/admin at the school
+    //      the student is actually being linked at — never the parent
+    //      (they aren't minted a token until AFTER their record exists),
+    //      and never a caller from a different school than the one passed in.
+    if (!request.auth || !['teacher', 'super_admin', 'sub_admin'].includes(request.auth.token.role)) {
+        throw new HttpsError('permission-denied', 'Only an authenticated teacher or admin may link a parent record.');
+    }
+
+    const { studentId, schoolId, parentName, parentEmail, parentPhone } = request.data || {};
+
+    if (!studentId || !schoolId || !parentEmail) {
+        throw new HttpsError('invalid-argument', 'studentId, schoolId, and parentEmail are required.');
+    }
+
+    if (request.auth.token.schoolId !== schoolId) {
+        throw new HttpsError('permission-denied', 'You may only link parents for your own school.');
+    }
+
+    const normalizedEmail = normalizeParentEmail(parentEmail);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+        throw new HttpsError('invalid-argument', 'A valid parentEmail is required.');
+    }
+
+    // ── 2. Confirm the student actually exists at the school the caller
+    //      claims — prevents a mismatched studentId/schoolId pair (typo or
+    //      otherwise) from ever entering a parent's linkedStudents.
+    const studentSnap = await db.collection('students').doc(String(studentId).trim().toUpperCase()).get();
+    if (!studentSnap.exists || studentSnap.data().currentSchoolId !== schoolId) {
+        throw new HttpsError('not-found', 'Student not found at the specified school.');
+    }
+    const resolvedStudentId = studentSnap.id;
+
+    const linkEntry = { studentId: resolvedStudentId, schoolId };
+    const nowIso = new Date().toISOString();
+
+    const parentEmailRef = db.collection('parent_emails').doc(normalizedEmail);
+
+    const result = await db.runTransaction(async (tx) => {
+        const emailSnap = await tx.get(parentEmailRef);
+
+        // ── Case B: existing email — append to that parent's linkedStudents.
+        if (emailSnap.exists) {
+            const existingParentId = emailSnap.data().parentId;
+            const parentRef = db.collection('parents').doc(existingParentId);
+            const parentSnap = await tx.get(parentRef);
+
+            if (!parentSnap.exists) {
+                // The index doc points at a parent record that doesn't exist —
+                // an inconsistent state that should never happen through this
+                // function alone. Fail loudly rather than silently create a
+                // second parent under a different ID for the same email.
+                throw new HttpsError('internal', 'Parent index is inconsistent for this email — contact support.');
+            }
+
+            tx.update(parentRef, {
+                linkedStudents: FieldValue.arrayUnion(linkEntry),
+                updatedAt: nowIso,
+            });
+
+            return { parentId: existingParentId, created: false };
+        }
+
+        // ── Case A: new email — mint a Parent ID + temporary PIN.
+        const parentId  = generateParentId();
+        const rawPin    = Math.floor(1000 + Math.random() * 9000).toString(); // same 4-digit convention as student/teacher creation
+        const pinHashed = sha256Trim(rawPin);
+        const parentRef = db.collection('parents').doc(parentId);
+
+        tx.create(parentEmailRef, { parentId, createdAt: nowIso });
+        tx.create(parentRef, {
+            parentId,
+            name:  (parentName || '').trim(),
+            email: normalizedEmail,
+            phone: (parentPhone || '').trim(),
+            pin:   pinHashed,
+            // Short-lived plain-text PIN, same pattern as students/teachers —
+            // a parent-welcome-email trigger (a later step) would read this
+            // once and scrub it, mirroring onStudentCreated/onTeacherCreated.
+            _tempPlaintextPin: rawPin,
+            linkedStudents: [linkEntry],
+            archived: false,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+        });
+
+        return { parentId, created: true };
+    });
+
+    return result;
+});
+// --- END: linkOrCreateParent ---
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FUNCTION 3c: mintParentToken
+//
+// Authenticates a parent using their Parent ID and PIN — same shape as
+// mintTeacherToken/mintStudentToken. Claims carry the full linkedStudents
+// list as a session-time convenience snapshot; it is NOT the source of
+// truth (parents/{parentId} is, readable by the parent themselves once
+// logged in via the self-only rule in firestore.rules) — a very large
+// family could in principle approach Firebase custom-token claims' ~1000
+// byte ceiling, in which case the client should fall back to reading the
+// full document rather than this function trying to compress or paginate
+// it, which is out of scope for Step 1 (token generation only).
+//
+// Deploy command: firebase deploy --only functions:mintParentToken
+// ═══════════════════════════════════════════════════════════════════════════════
+// --- START: mintParentToken ---
+exports.mintParentToken = onCall({ region: 'us-central1' }, async (request) => {
+
+    const { parentId, pin } = request.data || {};
+
+    if (!parentId || !pin) {
+        throw new HttpsError('invalid-argument', 'parentId and pin are required.');
+    }
+
+    const normalizedId = String(parentId).trim().toUpperCase();
+
+    if (!/^P\d{2}-[A-Z0-9]{5}$/.test(normalizedId)) {
+        throw new HttpsError('invalid-argument', 'Invalid Parent ID format.');
+    }
+
+    const parentSnap = await db.collection('parents').doc(normalizedId).get();
+
+    if (!parentSnap.exists) {
+        throw new HttpsError('not-found', 'Invalid Parent ID or PIN.');
+    }
+
+    const parentData = parentSnap.data();
+
+    // Hash-only, no plain-text fallback — matches mintTeacherToken/mintStudentToken.
+    const pinHashed = sha256Trim(String(pin).trim());
+
+    if (parentData.pin !== pinHashed) {
+        throw new HttpsError('unauthenticated', 'Invalid Parent ID or PIN.');
+    }
+
+    if (parentData.archived) {
+        throw new HttpsError('permission-denied', 'Account archived. Contact your school administrator.');
+    }
+
+    const linkedStudents = Array.isArray(parentData.linkedStudents) ? parentData.linkedStudents : [];
+
+    const token = await mintToken(normalizedId, {
+        role:     'parent',
+        parentId: normalizedId,
+        linkedStudents,
+    });
+
+    return { token };
+});
+// --- END: mintParentToken ---
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // FUNCTION 4: mintHQToken
 // ═══════════════════════════════════════════════════════════════════════════════

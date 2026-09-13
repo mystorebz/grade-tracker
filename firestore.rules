@@ -407,6 +407,42 @@ service cloud.firestore {
                      );
     }
 
+    // ── 2f. National Parent Registry (Phase 3 Step 1) ───────────────────────
+    // A parent can have children at more than one school, so — unlike
+    // teachers/students — there is no single schoolId to scope this
+    // collection by. Everything sensitive here (email lookup/dedup, PIN
+    // hashing, custom-token minting) runs server-side via linkOrCreateParent/
+    // mintParentToken (functions/index.js, Admin SDK — rules never apply to
+    // those calls). Client SDK access is therefore locked to self-read-only,
+    // exactly mirroring how mintTeacherToken/mintStudentToken already keep
+    // all credential-critical writes off the client.
+    match /parents/{parentId} {
+      // GET: a parent may read only their own document, once mintParentToken
+      // has logged them in (auth.uid == parentId, since mintToken(parentId, …)
+      // is what mints their custom token — same pattern as teachers/students).
+      allow get: if request.auth != null &&
+                    (request.auth.uid == parentId || request.auth.token.parentId == parentId);
+
+      // No client LIST (would leak every parent's email/phone/which-children-
+      // at-which-school to any authenticated caller — a bigger, cross-tenant
+      // PII surface than the teacher/student national registries carry), and
+      // no client CREATE/UPDATE/DELETE — parent lifecycle is Cloud-Function-only.
+      allow list, create, update, delete: if false;
+    }
+
+    // ── 2g. Parent email → Parent ID index (Phase 3 Step 1) ─────────────────
+    // Purely an internal, Admin-SDK-only index used by linkOrCreateParent's
+    // Firestore transaction to make "find-or-create a parent by email"
+    // race-free (two concurrent creations for the same brand-new email must
+    // never mint two different Parent IDs). Never read or written by any
+    // client SDK, and never exposed via a token claim — deny everything
+    // (the trailing match /{document=**} at the bottom of this file would
+    // already deny it by default with no rule at all, but this is written
+    // out explicitly, same as every other sensitive collection in this file).
+    match /parent_emails/{normalizedEmail} {
+      allow read, write: if false;
+    }
+
     // ── 3. Siloed School Data ──────────────────────────────────────────────
     match /schools/{schoolId} {
       // GET/LIST: public — needed by login pages, student portal, teacher
