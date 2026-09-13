@@ -10,18 +10,18 @@
 // never gives students a reason to try: it only ever reads the main lesson
 // doc, gated by loadLesson()'s own status == 'published' requirement,
 // enforced server-side).
-import { db } from '../../assets/js/firebase-init.js';
+import { db } from '../../../assets/js/firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { requireAuth } from '../../assets/js/auth.js';
-import { injectStudentLayout } from '../../assets/js/layout-student.js';
-import { loadTeacherSubjectsCache, getTeacherDocRef, openOverlay, closeOverlay, showMsg } from '../../assets/js/utils.js';
-import { resolvePostContext } from '../../assets/js/posts.js';
+import { requireAuth } from '../../../assets/js/auth.js';
+import { injectStudentLayout } from '../../../assets/js/layout-student.js';
+import { loadTeacherSubjectsCache, getTeacherDocRef, openOverlay, closeOverlay, showMsg } from '../../../assets/js/utils.js';
+import { resolvePostContext } from '../../../assets/js/posts.js';
 import {
     loadSubmission,
     saveSubmission,
     loadGradesIndexForStudent,
     isSubmissionFrozen
-} from '../../assets/js/submissions.js';
+} from '../../../assets/js/submissions.js';
 
 // ── 1. AUTHENTICATION & LAYOUT ──────────────────────────────────────────────
 const session = requireAuth('student', '../login.html');
