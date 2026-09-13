@@ -206,10 +206,26 @@ function renderPostList() {
     els.postList.innerHTML = posts.map(renderPostCard).join('');
 }
 
+// A post created by Lesson Builder's "Publish" action (see publishLesson()
+// in assets/js/lessons.js) carries linkedLessonId, patched on right after
+// createPost() — plus classId/subjectId, already denormalized onto every
+// post by createPost() itself. That's everything the viewer's URL needs;
+// no extra fetch required just to build the link.
+function lessonViewerUrl(post) {
+    const params = new URLSearchParams({
+        lessonId: post.linkedLessonId,
+        classId: post.classId,
+        subjectId: post.subjectId,
+        subjectName: post.subjectName || ''
+    });
+    return `../lessons/view.html?${params.toString()}`;
+}
+
 function renderPostCard(post) {
     const isLessonPlan = post.type === 'lesson_plan';
     const iconBg = isLessonPlan ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-indigo-50 text-indigo-600 border-indigo-200';
     const icon = isLessonPlan ? 'fa-calendar-days' : 'fa-bullhorn';
+    const isLessonPost = !!post.linkedLessonId;
 
     return `
     <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
@@ -226,6 +242,9 @@ function renderPostCard(post) {
                 </div>
                 ${post.body ? `<p class="text-[12.5px] text-slate-600 mt-1.5 mb-0 whitespace-pre-wrap">${escHtml(post.body)}</p>` : ''}
                 ${isLessonPlan && post.objectives ? `<p class="text-[11.5px] text-slate-500 mt-1.5 mb-0"><span class="font-bold">Objectives:</span> ${escHtml(post.objectives)}</p>` : ''}
+                ${isLessonPost ? `<a href="${escHtml(lessonViewerUrl(post))}" class="inline-flex items-center gap-1.5 mt-2 text-[12px] font-black text-indigo-600 hover:text-indigo-700">
+                    <i class="fa-solid fa-arrow-right"></i> Open Lesson
+                </a>` : ''}
                 <p class="text-[10.5px] text-slate-400 font-semibold mt-2 mb-0">${escHtml(post.authorName || '')} · ${escHtml(formatDate(post.createdAt))}</p>
             </div>
         </div>
