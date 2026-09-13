@@ -8,6 +8,7 @@ import {
     loadSubmissionsForAssignments,
     loadGradesIndexForStudent,
     saveSubmission,
+    uploadSubmissionAttachment,
     isSubmissionFrozen
 } from '../../assets/js/submissions.js';
 
@@ -385,15 +386,19 @@ function renderAssessmentSection(a, submission, frozen) {
     const saved = new Map((submission?.responses || []).map(r => [r.questionId, r]));
     const cards = a.questions.map((q, i) => renderStudentQuestionCard(q, i, saved.get(q.id), frozen)).join('');
 
-    const footer = frozen
-        ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[12px] font-bold text-amber-700 flex items-center gap-2">
+    let footer;
+    if (frozen) {
+        footer = `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[12px] font-bold text-amber-700 flex items-center gap-2">
                <i class="fa-solid fa-lock"></i> ${escHtml(submission ? 'This assessment has been graded, so your answers are locked.' : 'Your teacher has closed submissions for this assessment.')}
-           </div>`
-        : `<button id="adSubmitBtn" disabled title="Answer submission wires up in the next authorized build step"
-               class="w-full bg-slate-200 text-slate-400 font-black py-3 rounded-xl text-sm flex items-center justify-center gap-2 cursor-not-allowed">
-               <i class="fa-solid fa-paper-plane"></i> Submit
+           </div>`;
+    } else {
+        footer = `<button id="adSubmitBtn" onclick="submitAssessmentResponses()"
+               class="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-black py-3 rounded-xl transition shadow-md text-sm flex items-center justify-center gap-2">
+               <i class="fa-solid ${submission ? 'fa-rotate' : 'fa-paper-plane'}"></i> ${submission ? 'Update Answers' : 'Submit'}
            </button>
+           ${submission ? `<p class="text-[10.5px] text-slate-400 font-semibold text-center mt-2">Last updated ${escHtml(formatDate(submission.updatedAt))}</p>` : ''}
            <p id="adSubMsg" class="text-sm hidden font-bold p-2.5 mt-2 rounded-xl text-center"></p>`;
+    }
 
     return `
         <div>
@@ -549,6 +554,81 @@ function collectStudentResponses(a) {
         return { questionId: q.id, responseText, attachmentUrl };
     });
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// PHASE 3 STEP 2 — Submission persistence (Storage upload + Firestore write).
+// ─────────────────────────────────────────────────────────────────────────
+
+// Pure validation over collectStudentResponses()'s own output — every
+// question needs SOME answer (non-empty text, or an attachment captured)
+// before submission is allowed. Returns the list of unanswered question
+// NUMBERS (1-based, for the error message), empty = valid. Kept separate
+// from the DOM-touching submit handler so it's directly unit-testable.
+function validateAssessmentResponses(a, responses) {
+    const missing = [];
+    a.questions.forEach((q, i) => {
+        const r = responses[i];
+        const answered = q.type === 'attachment_response' ? !!r.attachmentUrl : !!(r.responseText && r.responseText.trim());
+        if (!answered) missing.push(i + 1);
+    });
+    return missing;
+}
+
+// Uploads any attachment_response answer that needs it (a drawn data: URL,
+// or a real File from a file/photo <input>) and returns a NEW responses
+// array with attachmentUrl replaced by the resolved Storage download URL.
+// Text-based answers pass through untouched. Nothing uploads until this
+// runs — never on file/photo pick, never mid-drawing — so a student who
+// never hits Submit never triggers a Storage write.
+async function resolveAttachmentUploads(a, responses) {
+    return Promise.all(a.questions.map(async (q, i) => {
+        const r = responses[i];
+        if (q.type !== 'attachment_response' || !r.attachmentUrl) return r;
+
+        const requires = q.studentResponse?.requires || 'file';
+        const source = requires === 'drawing'
+            ? r.attachmentUrl // the data: URL collectStudentResponses already captured
+            : document.querySelector(`input[type="file"][data-question-id="${q.id}"]`)?.files?.[0];
+        if (!source) return r;
+
+        const url = await uploadSubmissionAttachment(session.schoolId, a, session.studentId, q.id, source);
+        return { ...r, attachmentUrl: url };
+    }));
+}
+
+window.submitAssessmentResponses = async function() {
+    const a = assignmentsCache.find(x => x.id === currentAssignmentId);
+    if (!a) return;
+    if (isSubmissionFrozen(a, gradesById)) return; // guard against a stale panel
+
+    const raw = collectStudentResponses(a);
+    const missing = validateAssessmentResponses(a, raw);
+    if (missing.length) {
+        showMsg('adSubMsg', `Answer question${missing.length > 1 ? 's' : ''} ${missing.join(', ')} before submitting.`, true);
+        return;
+    }
+
+    const btn = document.getElementById('adSubmitBtn');
+    const prevHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submitting…';
+    btn.disabled = true;
+
+    try {
+        const resolved = await resolveAttachmentUploads(a, raw);
+        const studentName = session.studentData?.name || '';
+        const record = await saveSubmission(session.schoolId, a, session.studentId, studentName, { responses: resolved });
+        submissionsById.set(a.id, record);
+        renderList();
+        // Re-render the panel so it reflects the saved answers, the
+        // "Update Answers" label, and the new timestamp.
+        window.openAssignmentDetail(a.id);
+    } catch (e) {
+        console.error('[Student Assignments] submitAssessmentResponses:', e);
+        showMsg('adSubMsg', 'Could not submit your answers. Please try again.', true);
+        btn.innerHTML = prevHtml;
+        btn.disabled = false;
+    }
+};
 
 // ── 7. SAVE SUBMISSION ───────────────────────────────────────────────────
 window.saveMySubmission = async function() {

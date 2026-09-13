@@ -10,9 +10,11 @@
 // exist for a subcollection nested under it to work. classId is resolved
 // with the same resolvePostContext() helper posts.js already uses, imported
 // from there rather than duplicated.
-import { db } from './firebase-init.js';
+import { db, storage } from './firebase-init.js';
 import { collection, doc, getDoc, getDocs, setDoc, query, where }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { ref as storageRef, uploadBytes, getDownloadURL }
+    from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 import { resolvePostContext } from './posts.js';
 
 // ── MERGED ASSIGNMENT LIST (legacy + new-model, unified) ─────────────────
@@ -72,7 +74,19 @@ export async function loadSubmissionsForAssignments(schoolId, assignments, stude
 // Callers are responsible for checking isSubmissionFrozen() first — this
 // function itself does not re-check locked/graded state, so it stays a
 // plain, honest read-modify-write with no hidden business rules.
-export async function saveSubmission(schoolId, assignment, studentId, studentName, { responseText, linkUrl }) {
+//
+// PHASE 3 STEP 2: extended (not forked) to also accept a `responses` array
+// for Add Work assessment submissions, alongside the original responseText/
+// linkUrl shape for standard work and legacy assignments. Both shapes keep
+// every existing denormalized field (assignmentTitle, subjectId/Name,
+// classId/className) — the plan this replaced would have written a
+// differently-shaped doc for assessments (dropping those fields entirely),
+// which would have silently broken any teacher-side code that already
+// reads them off a submission record. `status`/`workType` are additive on
+// both shapes. submittedAt/updatedAt stay ISO strings, matching this
+// function's existing convention, rather than mixing in serverTimestamp()
+// for only one of the two submission shapes.
+export async function saveSubmission(schoolId, assignment, studentId, studentName, { responseText, linkUrl, responses } = {}) {
     const ref = assignmentSubmissionRef(schoolId, assignment, studentId);
     const existing = await getDoc(ref);
     const now = new Date().toISOString();
@@ -81,18 +95,56 @@ export async function saveSubmission(schoolId, assignment, studentId, studentNam
         studentId, studentName,
         assignmentId: assignment.id,
         assignmentTitle: assignment.title,
+        workType: assignment.workType || assignment.type || null,
         subjectId: assignment.subjectId,
         subjectName: assignment.subjectName,
         classId: assignment.classId,
         className: assignment.className,
-        responseText: (responseText || '').trim(),
-        linkUrl: (linkUrl || '').trim() || null,
+        status: 'submitted',
         submittedAt: existing.exists() ? existing.data().submittedAt : now,
         updatedAt: now
     };
 
-    await setDoc(ref, record);
+    if (Array.isArray(responses)) {
+        record.responses = responses;
+        record.responseText = null;
+        record.linkUrl = null;
+    } else {
+        record.responseText = (responseText || '').trim();
+        record.linkUrl = (linkUrl || '').trim() || null;
+    }
+
+    await setDoc(ref, record, { merge: true });
     return record;
+}
+
+// ── STORAGE: one attachment_response answer -> a real, downloadable URL ──
+// Called only at submit time (never on file/photo pick, never mid-drawing),
+// so nothing uploads until the student actually hits Submit. `source` is
+// either a data: URL (a drawing canvas's toDataURL() output) or a real File
+// (from a file/photo <input>) — collectStudentResponses() in assignments.js
+// only ever captures a LOCAL reference (a data: URL or a bare file name);
+// resolving that into an uploaded, publicly-fetchable URL happens here,
+// against the schools/{schoolId}/submissions/{assignmentId}/{studentId}/
+// {questionId}_{timestamp} path storage.rules scopes to this student alone.
+function dataUrlToBlob(dataUrl) {
+    const [header, base64] = dataUrl.split(',');
+    const mime = header.match(/data:(.*?);base64/)?.[1] || 'image/png';
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+}
+
+const EXT_BY_MIME = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'application/pdf': 'pdf' };
+
+export async function uploadSubmissionAttachment(schoolId, assignment, studentId, questionId, source) {
+    const blob = typeof source === 'string' ? dataUrlToBlob(source) : source;
+    const ext = EXT_BY_MIME[blob.type] || (blob.name?.split('.').pop()) || 'bin';
+    const path = `schools/${schoolId}/submissions/${assignment.id}/${studentId}/${questionId}_${Date.now()}.${ext}`;
+    const fileRef = storageRef(storage, path);
+    await uploadBytes(fileRef, blob);
+    return getDownloadURL(fileRef);
 }
 
 // ── READ: every submission for ONE assignment, across the whole class ────

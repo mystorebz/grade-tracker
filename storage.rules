@@ -1,0 +1,41 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Student assessment/standard-work submission attachments (Phase 3 Step 2).
+    // Storage has never been used by this app before this feature — this file
+    // is the FULL deployed ruleset once pushed (firebase deploy --only storage
+    // replaces the whole thing, it doesn't merge), so it's written the same
+    // deny-by-default way firestore.rules is: one path is explicitly opened,
+    // everything else stays inaccessible.
+    match /schools/{schoolId}/submissions/{assignmentId}/{studentId}/{fileName} {
+      // Read: the owning student, or a teacher/admin in the SAME school —
+      // never just "any authenticated user." This app is multi-tenant, and
+      // "if request.auth != null" alone would let a student or teacher at a
+      // DIFFERENT school read another school's submitted files just by
+      // knowing/guessing the path. Every other rule in this app scopes by
+      // schoolId the same way (see firestore.rules' isCallerInSchool and the
+      // work_answer_keys rule from Step 3).
+      allow read: if request.auth != null &&
+                     (request.auth.token.studentId == studentId ||
+                      (request.auth.token.schoolId == schoolId &&
+                       request.auth.token.role in ['teacher', 'super_admin', 'sub_admin']));
+
+      // Write (create/update/delete): only the owning student, capped at
+      // 10MB. token.studentId is a server-issued custom claim a student
+      // cannot forge, so this alone is sufficient tenant/ownership scoping —
+      // no separate schoolId check is needed on write the way read needs one.
+      // New uploads always get a fresh {questionId}_{timestamp} filename
+      // from the client (see uploadSubmissionAttachment in submissions.js),
+      // so accidental same-path overwrites don't need a rules-level guard on
+      // top of that.
+      allow write: if request.auth != null &&
+                      request.auth.token.studentId == studentId &&
+                      request.resource.size < 10 * 1024 * 1024;
+    }
+
+    // ── Deny everything else ────────────────────────────────────────────
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
