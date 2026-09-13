@@ -3,7 +3,7 @@
 // slide-based decks. Storage mirrors the same nesting depth posts.js and
 // submissions.js already use:
 //   schools/{schoolId}/classes/{classId}/subjects/{subjectId}/lessons/{lessonId}
-// — main doc (title, status, slides[]) — plus:
+// — main doc (title, status, format, slides[]) — plus:
 //   .../lessons/{lessonId}/private/notes
 // — a SEPARATE document for teacher-only pacingNotes/standards, because
 // Firestore security rules can only grant/deny a whole document, never
@@ -17,6 +17,20 @@
 // classId/subjectId resolution reuses resolvePostContext() from posts.js
 // rather than duplicating it — same subject shape, same legacy-subject
 // fallback behavior.
+//
+// ── DUAL-FORMAT LESSONS (Slide Deck vs. Document) ─────────────────────────
+// A lesson now carries a `format: 'slides' | 'document'` field. Both
+// formats share the exact same `slides[]` array field on the main doc — a
+// Document-format lesson simply always contains exactly one block:
+// newSlide('richtext'). This is deliberate: saveLessonContent(),
+// publishLesson(), unpublishLesson(), deleteLesson(), and
+// subscribeToLesson() below are already format-agnostic (they just
+// read/write whatever is in slides[]), so none of them needed any changes
+// to support the new format. Only createLesson() (which now takes format)
+// and the three read paths (loadLesson/loadLessonsForSubject/
+// subscribeToLesson, which normalize a missing/legacy format to 'slides'
+// for backward compatibility with lessons created before this feature
+// existed) needed real changes.
 import { db } from './firebase-init.js';
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
@@ -40,7 +54,7 @@ function lessonPrivateRef(schoolId, postContext, lessonId) {
     return doc(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'lessons', lessonId, 'private', 'notes');
 }
 
-// ── SLIDE TEMPLATES ───────────────────────────────────────────────────────
+// ── SLIDE / BLOCK TEMPLATES ───────────────────────────────────────────────
 // One factory per slide type, so the builder's "add slide" action and any
 // future template additions have a single source of truth for a new slide's
 // default shape. Every slide always carries id + type; everything else is
@@ -63,6 +77,17 @@ export function newSlide(type) {
             return { id, type: 'media', mediaKind: 'video', heading: '', provider: null, mediaUrl: '', embedUrl: '', imageUrl: '', imageAlt: '', caption: '' };
         case 'assignment':
             return { id, type: 'assignment', heading: '', prompt: '', linkedAssignmentId: null };
+        case 'richtext':
+            // The single block a Document-format lesson holds (see
+            // createLesson() below) — contentHtml is Quill's own sanitized
+            // HTML output for the entire flowing document, including any
+            // embedded Linked Assignment cards (saved as part of the same
+            // HTML string). Kept as one block inside the same slides[]
+            // array every other lesson type already uses, rather than a
+            // new top-level field, so every existing save/load/publish/
+            // delete function below works on a Document lesson completely
+            // unchanged.
+            return { id, type: 'richtext', contentHtml: '' };
         case 'content':
         default:
             return { id, type: 'content', heading: '', body: '', bullets: [] };
@@ -123,10 +148,20 @@ export function isLikelyImageUrl(rawUrl) {
            /^https:\/\/drive\.google\.com\/uc\?/i.test(url); // Drive's direct-image export form
 }
 
+// Normalizes a raw Firestore lesson doc's format field: any lesson saved
+// before this feature existed has no `format` field at all, and should be
+// treated exactly like an explicit 'slides' lesson — never crash or show a
+// blank builder for old data.
+function normalizeFormat(data) {
+    return data.format === 'document' ? 'document' : 'slides';
+}
+
 // ── READ: one lesson's main document ─────────────────────────────────────
 export async function loadLesson(schoolId, postContext, lessonId) {
     const snap = await getDoc(lessonRef(schoolId, postContext, lessonId));
-    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+    if (!snap.exists()) return null;
+    const data = snap.data();
+    return { id: snap.id, ...data, format: normalizeFormat(data) };
 }
 
 // ── READ: this teacher-only private doc (pacingNotes/standards) ─────────
@@ -143,27 +178,34 @@ export async function loadLessonPrivateNotes(schoolId, postContext, lessonId) {
 export async function loadLessonsForSubject(schoolId, postContext) {
     const { classId, subjectId } = postContext;
     const snap = await getDocs(collection(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'lessons'));
-    const lessons = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const lessons = snap.docs.map(d => {
+        const data = d.data();
+        return { id: d.id, ...data, format: normalizeFormat(data) };
+    });
     lessons.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
     return lessons;
 }
 
 // ── WRITE: create a new lesson (always starts as a draft) ────────────────
 // authorContext: { authorId, authorName } — same shape posts.js's
-// createPost() already takes.
-export async function createLesson(schoolId, postContext, authorContext, { title }) {
+// createPost() already takes. format: 'slides' | 'document' — defaults to
+// 'slides' for any caller that doesn't pass one (keeps this function
+// backward-compatible with any future call site that forgets the option).
+export async function createLesson(schoolId, postContext, authorContext, { title, format }) {
     const { classId, className, subjectId, subjectName } = postContext;
     const id = genLessonId();
     const now = new Date().toISOString();
+    const resolvedFormat = format === 'document' ? 'document' : 'slides';
 
     const lesson = {
         title: (title || '').trim() || 'Untitled Lesson',
+        format: resolvedFormat,
         status: 'draft',
         schoolId, classId, className,
         subjectId, subjectName,
         authorId: authorContext.authorId,
         authorName: authorContext.authorName,
-        slides: [newSlide('title')],
+        slides: resolvedFormat === 'document' ? [newSlide('richtext')] : [newSlide('title')],
         createdAt: now,
         updatedAt: now,
         publishedAt: null
@@ -177,7 +219,10 @@ export async function createLesson(schoolId, postContext, authorContext, { title
 // Does NOT touch status/publishedAt — use publishLesson()/unpublishLesson()
 // for those, so "Save" (draft editing) and "Publish" (the one-way action
 // that also fires the Class Stream announcement) can never be confused
-// with each other at the call site.
+// with each other at the call site. Format-agnostic: works identically for
+// a Slides lesson's array of blocks or a Document lesson's single richtext
+// block — the caller (builder.js's currentSlidesForSave()) is what decides
+// what `slides` actually contains before calling this.
 export async function saveLessonContent(schoolId, postContext, lessonId, { title, slides }) {
     const updates = {
         title: (title || '').trim() || 'Untitled Lesson',
@@ -205,7 +250,8 @@ export async function saveLessonPrivateNotes(schoolId, postContext, lessonId, { 
 // viewer, instead of duplicating the lesson's content into the post body.
 // This is the one and only place a lesson's publish action and its Stream
 // announcement are wired together — the Student Viewer itself never needs
-// to know posts.js exists.
+// to know posts.js exists. Format-agnostic, same reasoning as
+// saveLessonContent() above.
 export async function publishLesson(schoolId, postContext, lessonId, lesson, authorContext) {
     const now = new Date().toISOString();
     await updateDoc(lessonRef(schoolId, postContext, lessonId), {
@@ -265,7 +311,10 @@ export async function deleteLesson(schoolId, postContext, lessonId) {
 // returns an unsubscribe function the caller MUST invoke when done.
 export function subscribeToLesson(schoolId, postContext, lessonId, onChange) {
     return onSnapshot(lessonRef(schoolId, postContext, lessonId), (snap) => {
-        if (snap.exists()) onChange({ id: snap.id, ...snap.data() });
+        if (snap.exists()) {
+            const data = snap.data();
+            onChange({ id: snap.id, ...data, format: normalizeFormat(data) });
+        }
     }, (error) => {
         console.error(`[Lessons] subscribeToLesson failed for ${lessonId}:`, error);
     });

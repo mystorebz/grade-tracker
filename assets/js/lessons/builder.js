@@ -1,10 +1,15 @@
-// ── ENTERPRISE LESSON REDESIGN, PHASE 1: TEACHER SLIDE-DECK BUILDER ───────
-// Three-pane authoring UI: slide sidebar (thumbnails, add/delete/reorder),
-// center canvas (the selected slide's editable content), right properties
-// panel (that slide's type-specific fields — media URL + live embed
-// preview, or the linked-assignment picker). A single in-memory
-// `lessonDraft` object mirrors the lessons/{lessonId} schema exactly;
-// every edit mutates it directly and re-renders only what changed.
+// ── ENTERPRISE LESSON REDESIGN, PHASE 1: TEACHER LESSON BUILDER ───────────
+// Two builder UIs sharing one lesson list and one lessonDraft object:
+//   - Slide Deck builder (#builderView): slide sidebar (thumbnails,
+//     add/delete/reorder), center canvas (the selected slide's editable
+//     content), right properties panel (that slide's type-specific fields).
+//   - Document builder (#docBuilderView): a single scrolling Quill.js
+//     rich-text page, Word/Docs-style, with a custom toolbar button for
+//     inserting a non-editable "Linked Assignment" card inline.
+// A single in-memory `lessonDraft` object mirrors the lessons/{lessonId}
+// schema exactly (including its `format` field); every edit mutates it
+// directly (or, in Document mode, mutates the live Quill instance, pulled
+// back into lessonDraft only at save time — see currentSlidesForSave()).
 import { requireAuth } from '../../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../../assets/js/layout-teachers.js';
 import { showMsg, loadTeacherSubjectsCache } from '../../../assets/js/utils.js';
@@ -33,6 +38,12 @@ let lessonDraft = null;        // the open lesson's full in-memory doc (schema-s
 let currentLessonId = null;    // null while on the picker view
 let currentSlideIndex = 0;
 let hasUnsavedChanges = false;
+
+// Document-format state — Quill is the live source of truth for document
+// content while the editor is open; lessonDraft.slides[0].contentHtml is
+// only synced from it at save time (see currentSlidesForSave()).
+let quill = null;
+let pendingAssignmentBlotRange = null; // where to insert once a picker selection is made
 
 const ASSIGNMENT_TEMPLATE_LABELS = {
     title: 'Title / Objective',
@@ -78,20 +89,35 @@ async function init() {
 
 function cacheEls() {
     [
-        'lessonPickerView', 'builderView',
+        'lessonPickerView', 'builderView', 'docBuilderView',
         'subjectSelect', 'newLessonBtn', 'lessonListCount', 'lessonList',
         'backToListBtn', 'slideThumbList', 'addSlideBtn', 'slideTemplateMenu',
         'lessonTitleInput', 'statusPill', 'saveMsg', 'notesBtn', 'saveBtn', 'publishBtn', 'publishBtnLabel',
         'slideCanvas', 'propertiesPanel',
+        'docBackToListBtn', 'docLessonTitleInput', 'docStatusPill', 'docSaveMsg',
+        'docNotesBtn', 'docSaveBtn', 'docPublishBtn', 'docPublishBtnLabel',
+        'docToolbar', 'docEditor',
+        'formatChoiceOverlay', 'closeFormatChoiceBtn',
+        'assignmentPickerOverlay', 'closeAssignmentPickerBtn', 'assignmentPickerList',
         'notesOverlay', 'pacingNotesInput', 'standardsInput', 'closeNotesBtn', 'cancelNotesBtn', 'saveNotesBtn'
     ].forEach(id => { els[id] = document.getElementById(id); });
 }
 
 function wireEvents() {
     els.subjectSelect.addEventListener('change', onSubjectChange);
-    els.newLessonBtn.addEventListener('click', onCreateLesson);
+    els.newLessonBtn.addEventListener('click', openFormatChoiceModal);
     els.lessonList.addEventListener('click', onLessonListClick);
 
+    // ── Format choice modal ──
+    els.closeFormatChoiceBtn.addEventListener('click', closeFormatChoiceModal);
+    els.formatChoiceOverlay.addEventListener('click', (e) => {
+        if (e.target === els.formatChoiceOverlay) closeFormatChoiceModal();
+    });
+    document.querySelectorAll('.format-choice-btn').forEach(btn => {
+        btn.addEventListener('click', () => onCreateLesson(btn.dataset.format));
+    });
+
+    // ── Slide builder top bar ──
     els.backToListBtn.addEventListener('click', () => {
         if (hasUnsavedChanges && !confirm('You have unsaved changes. Leave without saving?')) return;
         closeBuilder();
@@ -125,9 +151,33 @@ function wireEvents() {
     els.publishBtn.addEventListener('click', onPublishToggle);
 
     els.notesBtn.addEventListener('click', openNotesModal);
+
+    // ── Document builder top bar (mirrors the Slide bar's handlers) ──
+    els.docBackToListBtn.addEventListener('click', () => {
+        if (hasUnsavedChanges && !confirm('You have unsaved changes. Leave without saving?')) return;
+        closeBuilder();
+    });
+
+    els.docLessonTitleInput.addEventListener('input', () => {
+        lessonDraft.title = els.docLessonTitleInput.value;
+        hasUnsavedChanges = true;
+    });
+
+    els.docSaveBtn.addEventListener('click', onSaveDraft);
+    els.docPublishBtn.addEventListener('click', onPublishToggle);
+    els.docNotesBtn.addEventListener('click', openNotesModal);
+
+    // ── Teacher-only notes modal (shared by both formats) ──
     els.closeNotesBtn.addEventListener('click', closeNotesModal);
     els.cancelNotesBtn.addEventListener('click', closeNotesModal);
     els.saveNotesBtn.addEventListener('click', onSaveNotes);
+
+    // ── Assignment-embed picker (Document mode only) ──
+    els.closeAssignmentPickerBtn.addEventListener('click', closeAssignmentPicker);
+    els.assignmentPickerOverlay.addEventListener('click', (e) => {
+        if (e.target === els.assignmentPickerOverlay) closeAssignmentPicker();
+    });
+    els.assignmentPickerList.addEventListener('click', onAssignmentPickerClick);
 }
 
 // ── 4. SUBJECT SELECTION ─────────────────────────────────────────────────
@@ -187,16 +237,24 @@ function renderLessonCard(lesson) {
     const pillClasses = isPublished
         ? 'bg-[#ecfdf5] text-[#059669] border-[#a7f3d0]'
         : 'bg-[#f4f7fb] text-[#6b84a0] border-[#dce3ed]';
+    const isDocument = lesson.format === 'document';
     const slideCount = (lesson.slides || []).length;
+    const metaLabel = isDocument ? 'Document' : `${slideCount} slide${slideCount === 1 ? '' : 's'}`;
+    const formatIcon = isDocument ? 'fa-file-lines' : 'fa-images';
 
     return `
     <div class="lesson-card bg-white rounded-xl shadow-sm border border-[#dce3ed] p-4 flex items-center justify-between gap-3" data-lesson-id="${escHtml(lesson.id)}">
-        <div class="min-w-0 cursor-pointer flex-1" data-action="open">
-            <div class="flex items-center gap-2 flex-wrap mb-1">
-                <p class="font-bold text-[#0d1f35] text-[14px] m-0">${escHtml(lesson.title) || 'Untitled Lesson'}</p>
-                <span class="text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded-md border ${pillClasses}">${isPublished ? 'Published' : 'Draft'}</span>
+        <div class="min-w-0 cursor-pointer flex-1 flex items-center gap-3" data-action="open">
+            <div class="w-8 h-8 rounded-lg bg-[#eef4ff] text-[#2563eb] border border-[#c7d9fd] flex items-center justify-center flex-shrink-0">
+                <i class="fa-solid ${formatIcon} text-[12px]"></i>
             </div>
-            <p class="text-[11px] text-[#9ab0c6] font-semibold m-0">${slideCount} slide${slideCount === 1 ? '' : 's'} · Updated ${escHtml(formatDate(lesson.updatedAt))}</p>
+            <div class="min-w-0">
+                <div class="flex items-center gap-2 flex-wrap mb-1">
+                    <p class="font-bold text-[#0d1f35] text-[14px] m-0">${escHtml(lesson.title) || 'Untitled Lesson'}</p>
+                    <span class="text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded-md border ${pillClasses}">${isPublished ? 'Published' : 'Draft'}</span>
+                </div>
+                <p class="text-[11px] text-[#9ab0c6] font-semibold m-0">${metaLabel} · Updated ${escHtml(formatDate(lesson.updatedAt))}</p>
+            </div>
         </div>
         <button data-action="delete" class="text-[#6b84a0] hover:text-[#e31b4a] hover:bg-[#fff0f3] h-8 w-8 rounded flex items-center justify-center transition flex-shrink-0" title="Delete">
             <i class="fa-solid fa-trash text-xs"></i>
@@ -227,14 +285,21 @@ async function onLessonListClick(e) {
     }
 }
 
-async function onCreateLesson() {
-    if (!currentPostContext) {
-        alert('Select a subject first.');
-        return;
-    }
+// ── 6. FORMAT CHOICE MODAL + CREATE ──────────────────────────────────────
+function openFormatChoiceModal() {
+    if (!currentPostContext) { alert('Select a subject first.'); return; }
+    els.formatChoiceOverlay.classList.remove('hidden');
+}
+
+function closeFormatChoiceModal() {
+    els.formatChoiceOverlay.classList.add('hidden');
+}
+
+async function onCreateLesson(format) {
+    closeFormatChoiceModal();
     try {
         const authorContext = { authorId: session.teacherId, authorName: session.teacherData.name };
-        const lesson = await createLesson(session.schoolId, currentPostContext, authorContext, { title: 'Untitled Lesson' });
+        const lesson = await createLesson(session.schoolId, currentPostContext, authorContext, { title: 'Untitled Lesson', format });
         lessonsCache.unshift(lesson);
         await openBuilder(lesson.id);
     } catch (e) {
@@ -243,7 +308,7 @@ async function onCreateLesson() {
     }
 }
 
-// ── 6. OPEN / CLOSE BUILDER ──────────────────────────────────────────────
+// ── 7. OPEN / CLOSE BUILDER ──────────────────────────────────────────────
 async function openBuilder(lessonId) {
     try {
         const lesson = await loadLesson(session.schoolId, currentPostContext, lessonId);
@@ -257,10 +322,20 @@ async function openBuilder(lessonId) {
         hasUnsavedChanges = false;
 
         els.lessonPickerView.classList.add('hidden');
-        els.builderView.classList.remove('hidden');
-        els.builderView.classList.add('flex');
 
-        renderAll();
+        if (lessonDraft.format === 'document') {
+            els.builderView.classList.add('hidden');
+            els.builderView.classList.remove('flex');
+            els.docBuilderView.classList.remove('hidden');
+            els.docBuilderView.classList.add('flex');
+            renderDocAll();
+        } else {
+            els.docBuilderView.classList.add('hidden');
+            els.docBuilderView.classList.remove('flex');
+            els.builderView.classList.remove('hidden');
+            els.builderView.classList.add('flex');
+            renderAll();
+        }
     } catch (e) {
         console.error('[Lesson Builder] openBuilder:', e);
         alert('Failed to open this lesson. Please try again.');
@@ -274,11 +349,28 @@ function closeBuilder() {
 
     els.builderView.classList.add('hidden');
     els.builderView.classList.remove('flex');
+    els.docBuilderView.classList.add('hidden');
+    els.docBuilderView.classList.remove('flex');
     els.lessonPickerView.classList.remove('hidden');
 
     // Refresh the list so title/status/slide-count edits made in the
     // builder are reflected immediately without a full page reload.
     onSubjectChange();
+}
+
+// Single format-aware bridge between whichever UI is live and what actually
+// gets persisted: for Slides mode, lessonDraft.slides is already kept live
+// by the per-field mutation handlers below, so it's returned as-is. For
+// Document mode, Quill (not lessonDraft) is the live source of truth while
+// the editor is open, so its current HTML is pulled into the lesson's
+// single richtext block right before saving.
+function currentSlidesForSave() {
+    if (lessonDraft.format === 'document') {
+        const block = lessonDraft.slides[0] || newSlide('richtext');
+        block.contentHtml = quill ? quill.root.innerHTML : (block.contentHtml || '');
+        lessonDraft.slides = [block];
+    }
+    return lessonDraft.slides;
 }
 
 function renderAll() {
@@ -292,24 +384,31 @@ function renderAll() {
 
 function renderStatusPill() {
     const isPublished = lessonDraft.status === 'published';
-    els.statusPill.textContent = isPublished ? 'Published' : 'Draft';
-    els.statusPill.className = 'text-[10px] font-black uppercase tracking-wide px-2.5 py-1 rounded-md flex-shrink-0 whitespace-nowrap ' +
+    const label = isPublished ? 'Published' : 'Draft';
+    const classes = 'text-[10px] font-black uppercase tracking-wide px-2.5 py-1 rounded-md flex-shrink-0 whitespace-nowrap ' +
         (isPublished ? 'bg-[#ecfdf5] text-[#059669] border border-[#a7f3d0]' : 'bg-[#f4f7fb] text-[#6b84a0] border border-[#dce3ed]');
+    els.statusPill.textContent = label;
+    els.statusPill.className = classes;
+    els.docStatusPill.textContent = label;
+    els.docStatusPill.className = classes;
 }
 
 function renderPublishButton() {
     const isPublished = lessonDraft.status === 'published';
     els.publishBtnLabel.textContent = isPublished ? 'Unpublish' : 'Publish';
-    els.publishBtn.classList.toggle('bg-[#0d1f35]', !isPublished);
-    els.publishBtn.classList.toggle('hover:bg-[#2563eb]', !isPublished);
-    els.publishBtn.classList.toggle('bg-white', isPublished);
-    els.publishBtn.classList.toggle('text-[#0d1f35]', isPublished);
-    els.publishBtn.classList.toggle('border', isPublished);
-    els.publishBtn.classList.toggle('border-[#dce3ed]', isPublished);
-    els.publishBtn.classList.toggle('text-white', !isPublished);
+    els.docPublishBtnLabel.textContent = isPublished ? 'Unpublish' : 'Publish';
+    [els.publishBtn, els.docPublishBtn].forEach(btn => {
+        btn.classList.toggle('bg-[#0d1f35]', !isPublished);
+        btn.classList.toggle('hover:bg-[#2563eb]', !isPublished);
+        btn.classList.toggle('bg-white', isPublished);
+        btn.classList.toggle('text-[#0d1f35]', isPublished);
+        btn.classList.toggle('border', isPublished);
+        btn.classList.toggle('border-[#dce3ed]', isPublished);
+        btn.classList.toggle('text-white', !isPublished);
+    });
 }
 
-// ── 7. SLIDE SIDEBAR (thumbnails, select, delete, reorder) ───────────────
+// ── 8. SLIDE SIDEBAR (thumbnails, select, delete, reorder) ───────────────
 function renderSlideThumbs() {
     els.slideThumbList.innerHTML = lessonDraft.slides.map((slide, i) => renderSlideThumb(slide, i)).join('');
 }
@@ -398,7 +497,7 @@ function addSlide(type) {
     renderPropertiesPanel();
 }
 
-// ── 8. SLIDE CANVAS (center pane — the slide's main editable content) ────
+// ── 9. SLIDE CANVAS (center pane — the slide's main editable content) ────
 function currentSlide() {
     return lessonDraft.slides[currentSlideIndex] || null;
 }
@@ -542,7 +641,7 @@ function wireCanvasInputs(slide) {
     });
 }
 
-// ── 9. PROPERTIES PANEL (right pane — type-specific extras) ──────────────
+// ── 10. PROPERTIES PANEL (right pane — type-specific extras) ─────────────
 function renderPropertiesPanel() {
     const slide = currentSlide();
     if (!slide) { els.propertiesPanel.innerHTML = ''; return; }
@@ -590,9 +689,6 @@ function renderVideoProperties(slide) {
         }
         hasUnsavedChanges = true;
         renderSlideCanvas(); // re-render to update the live embed preview + error message
-        // Re-focus + restore cursor since renderSlideCanvas rebuilds the DOM;
-        // the properties panel input isn't rebuilt so it keeps focus, but the
-        // canvas's own preview needs the fresh embedUrl to show immediately.
     });
 }
 
@@ -643,15 +739,16 @@ function renderAssignmentProperties(slide) {
     });
 }
 
-// ── 10. SAVE / PUBLISH ───────────────────────────────────────────────────
+// ── 11. SAVE / PUBLISH (shared by both formats) ──────────────────────────
 async function onSaveDraft() {
-    const prevLabel = els.saveBtn.textContent;
-    els.saveBtn.disabled = true;
-    els.saveBtn.textContent = 'Saving…';
+    const btn = lessonDraft.format === 'document' ? els.docSaveBtn : els.saveBtn;
+    const prevLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
     try {
         await saveLessonContent(session.schoolId, currentPostContext, currentLessonId, {
             title: lessonDraft.title,
-            slides: lessonDraft.slides
+            slides: currentSlidesForSave()
         });
         hasUnsavedChanges = false;
         flashSaveMsg('Saved');
@@ -659,32 +756,34 @@ async function onSaveDraft() {
         console.error('[Lesson Builder] saveLessonContent:', e);
         alert('Failed to save this lesson. Please try again.');
     } finally {
-        els.saveBtn.disabled = false;
-        els.saveBtn.textContent = prevLabel;
+        btn.disabled = false;
+        btn.textContent = prevLabel;
     }
 }
 
 function flashSaveMsg(text) {
-    els.saveMsg.textContent = text;
-    els.saveMsg.classList.remove('hidden');
-    setTimeout(() => els.saveMsg.classList.add('hidden'), 2500);
+    const target = lessonDraft?.format === 'document' ? els.docSaveMsg : els.saveMsg;
+    target.textContent = text;
+    target.classList.remove('hidden');
+    setTimeout(() => target.classList.add('hidden'), 2500);
 }
 
 async function onPublishToggle() {
     // Publishing (and unpublishing) always saves current draft content
-    // first, so a teacher who edited slides and immediately hits Publish
+    // first, so a teacher who edited content and immediately hits Publish
     // never publishes stale content from the last explicit Save.
-    els.publishBtn.disabled = true;
+    const btn = lessonDraft.format === 'document' ? els.docPublishBtn : els.publishBtn;
+    btn.disabled = true;
     try {
         await saveLessonContent(session.schoolId, currentPostContext, currentLessonId, {
             title: lessonDraft.title,
-            slides: lessonDraft.slides
+            slides: currentSlidesForSave()
         });
         hasUnsavedChanges = false;
 
         if (lessonDraft.status === 'published') {
             if (!confirm('Unpublish this lesson? Students will no longer be able to open it. (Its Class Stream announcement, if any, stays visible.)')) {
-                els.publishBtn.disabled = false;
+                btn.disabled = false;
                 return;
             }
             await unpublishLesson(session.schoolId, currentPostContext, currentLessonId);
@@ -702,11 +801,11 @@ async function onPublishToggle() {
         console.error('[Lesson Builder] onPublishToggle:', e);
         alert('Failed to update this lesson\'s publish status. Please try again.');
     } finally {
-        els.publishBtn.disabled = false;
+        btn.disabled = false;
     }
 }
 
-// ── 11. TEACHER-ONLY NOTES MODAL ─────────────────────────────────────────
+// ── 12. TEACHER-ONLY NOTES MODAL (shared by both formats) ────────────────
 async function openNotesModal() {
     els.notesOverlay.classList.remove('hidden');
     els.pacingNotesInput.value = '';
@@ -743,6 +842,173 @@ async function onSaveNotes() {
         els.saveNotesBtn.disabled = false;
         els.saveNotesBtn.textContent = prevLabel;
     }
+}
+
+// ── 13. DOCUMENT BUILDER (Quill.js rich-text editor) ─────────────────────
+// A Document-format lesson always holds exactly one 'richtext' block in
+// lessonDraft.slides[0]. Quill itself — not lessonDraft — is the live
+// source of truth for content while the editor is open; contentHtml is
+// only pulled out of it at save time via currentSlidesForSave() above.
+
+let assignmentBlotRegistered = false;
+
+// Custom embed Blot for a "Linked Assignment" card. Registered once, the
+// first time Document mode is opened (Quill must already be loaded from
+// the CDN by then — it always is, since builder.html loads it eagerly).
+// static create(value): builds the DOM node Quill inserts into the editor.
+// static value(node): reconstructs the embed's data object FROM that saved
+// DOM/HTML on load — necessary because only the rendered HTML string is
+// what's actually persisted to Firestore, never the original JS object.
+function registerAssignmentBlot() {
+    if (assignmentBlotRegistered || !window.Quill) return;
+    const Embed = Quill.import('blots/embed');
+
+    class AssignmentBlot extends Embed {
+        static create(value) {
+            const node = super.create();
+            node.setAttribute('contenteditable', 'false');
+            node.setAttribute('data-assignment-id', value.id || '');
+            node.setAttribute('data-assignment-title', value.title || '');
+            node.innerHTML = `<i class="fa-solid fa-clipboard-check"></i><span>${escHtml(value.title || 'Assignment')}</span>`;
+            return node;
+        }
+        static value(node) {
+            return {
+                id: node.getAttribute('data-assignment-id') || '',
+                title: node.getAttribute('data-assignment-title') || ''
+            };
+        }
+    }
+    AssignmentBlot.blotName = 'assignmentEmbed';
+    AssignmentBlot.tagName = 'span';
+    AssignmentBlot.className = 'assignment-embed';
+
+    Quill.register(AssignmentBlot);
+    assignmentBlotRegistered = true;
+}
+
+function initQuillIfNeeded() {
+    if (quill) return;
+    registerAssignmentBlot();
+
+    // Custom toolbar: standard Quill formatting controls plus one extra
+    // custom button (the clipboard icon) for inserting a Linked Assignment
+    // embed. Quill's toolbar module supports arbitrary custom buttons by id
+    // — 'insertAssignment' is wired to openAssignmentPicker() below via the
+    // handlers option, same as any built-in toolbar action.
+    els.docToolbar.innerHTML = `
+        <span class="ql-formats">
+            <select class="ql-header">
+                <option value="1"></option>
+                <option value="2"></option>
+                <option value="3"></option>
+                <option selected></option>
+            </select>
+            <select class="ql-font"></select>
+            <select class="ql-size"></select>
+        </span>
+        <span class="ql-formats">
+            <button class="ql-bold"></button>
+            <button class="ql-italic"></button>
+            <button class="ql-underline"></button>
+            <button class="ql-strike"></button>
+        </span>
+        <span class="ql-formats">
+            <select class="ql-color"></select>
+            <select class="ql-background"></select>
+        </span>
+        <span class="ql-formats">
+            <button class="ql-list" value="ordered"></button>
+            <button class="ql-list" value="bullet"></button>
+        </span>
+        <span class="ql-formats">
+            <button class="ql-link"></button>
+            <button class="ql-image"></button>
+            <button class="ql-video"></button>
+        </span>
+        <span class="ql-formats">
+            <button id="insertAssignmentBtn" title="Insert Linked Assignment">
+                <i class="fa-solid fa-clipboard-check"></i>
+            </button>
+        </span>
+    `;
+
+    quill = new Quill(els.docEditor, {
+        theme: 'snow',
+        modules: {
+            toolbar: {
+                container: els.docToolbar,
+                handlers: {
+                    // Built-in handlers (bold/italic/list/etc.) are left to
+                    // Quill's own defaults — only the custom button needs a
+                    // handler wired here.
+                }
+            }
+        }
+    });
+
+    document.getElementById('insertAssignmentBtn').addEventListener('click', () => {
+        pendingAssignmentBlotRange = quill.getSelection(true);
+        openAssignmentPicker();
+    });
+
+    quill.on('text-change', (delta, oldDelta, source) => {
+        if (source === 'user') hasUnsavedChanges = true;
+    });
+}
+
+function renderDocAll() {
+    els.docLessonTitleInput.value = lessonDraft.title || '';
+    renderStatusPill();
+    renderPublishButton();
+
+    initQuillIfNeeded();
+
+    const block = lessonDraft.slides[0] || newSlide('richtext');
+    quill.root.innerHTML = block.contentHtml || '';
+    // Loading existing content into Quill would otherwise itself become an
+    // undo-able step (Ctrl+Z right after opening would blank the editor) —
+    // clearing history right after the load makes the loaded content the
+    // new baseline instead.
+    quill.history.clear();
+}
+
+// ── 14. ASSIGNMENT-EMBED PICKER (Document mode's toolbar button) ─────────
+function openAssignmentPicker() {
+    const assignments = (currentSubject?.assignments || []).filter(a => !a.archived);
+    if (!assignments.length) {
+        els.assignmentPickerList.innerHTML = `<p class="text-[12px] font-semibold text-[#9ab0c6] text-center py-6">No assignments exist for this subject yet — create one from Enter Grade first.</p>`;
+    } else {
+        els.assignmentPickerList.innerHTML = assignments.map(a => `
+            <button type="button" data-assignment-id="${escHtml(a.id)}" data-assignment-title="${escHtml(a.title)}"
+                class="w-full text-left px-3 py-2.5 rounded-lg border border-[#dce3ed] hover:border-[#2563eb] hover:bg-[#f8fafd] transition flex items-center justify-between gap-2">
+                <span class="text-[13px] font-bold text-[#0d1f35]">${escHtml(a.title)}</span>
+                <span class="text-[11px] font-semibold text-[#9ab0c6]">/${a.maxScore}</span>
+            </button>`).join('');
+    }
+    els.assignmentPickerOverlay.classList.remove('hidden');
+}
+
+function closeAssignmentPicker() {
+    els.assignmentPickerOverlay.classList.add('hidden');
+    pendingAssignmentBlotRange = null;
+}
+
+function onAssignmentPickerClick(e) {
+    const btn = e.target.closest('[data-assignment-id]');
+    if (!btn) return;
+
+    const value = { id: btn.dataset.assignmentId, title: btn.dataset.assignmentTitle };
+    const range = pendingAssignmentBlotRange || quill.getSelection(true) || { index: quill.getLength(), length: 0 };
+
+    quill.insertEmbed(range.index, 'assignmentEmbed', value, 'user');
+    // Leave a space after the card so the cursor doesn't land glued to a
+    // non-editable node (which can otherwise trap typing/backspace focus).
+    quill.insertText(range.index + 1, ' ', 'user');
+    quill.setSelection(range.index + 2, 0, 'user');
+
+    hasUnsavedChanges = true;
+    closeAssignmentPicker();
 }
 
 init();
