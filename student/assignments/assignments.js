@@ -36,6 +36,15 @@ function escHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
+function normalizeAssignment(a) {
+    return {
+        ...a,
+        type: a.workType || a.type || 'Assignment',
+        maxScore: a.pointsPossible ?? a.maxScore ?? 0,
+        date: a.dueDate || a.date || '',
+    };
+}
+
 function formatDate(iso) {
     if (!iso) return '';
     try {
@@ -88,7 +97,22 @@ async function init() {
         // Pure in-memory merge of legacy-embedded and new-model-subcollection
         // assignments — loadTeacherSubjectsCache() already fetched both, this
         // just unifies them into one flat, annotated list.
-        assignmentsCache = loadAssignmentsForSubjects(subjectsCache, resolvedClasses);
+        // Two schema generations exist side by side: legacy assignments use
+        // type/maxScore/date, the new "Add Work" model (Step 3) uses
+        // workType/pointsPossible/dueDate instead. normalizeAssignment()
+        // maps the new names onto the old ones so every existing render
+        // function below (card list, status pill, detail header) keeps
+        // working unchanged for both — this was the first thing that broke
+        // when checked against a real Add Work document: without it, a new
+        // assessment showed an "undefined" type badge and "/undefined" score.
+        //
+        // 'draft' status is filtered out here, not deep in a render
+        // function, so there is exactly one place that decides "is this
+        // visible to a student yet" — legacy assignments have no status
+        // field at all and are always visible, matching prior behavior.
+        assignmentsCache = loadAssignmentsForSubjects(subjectsCache, resolvedClasses)
+            .filter(a => a.status !== 'draft')
+            .map(normalizeAssignment);
 
         renderSubjectFilterOptions();
 
@@ -239,11 +263,45 @@ window.closeAssignmentDetail = function() {
     currentAssignmentId = null;
 };
 
+// Standard-work-only: teacher media attachments (Add Work's rich-attachment
+// model). Legacy assignments never have this field, so it renders nothing
+// for them — same as it always has.
+function renderAssignmentAttachments(attachments) {
+    if (!Array.isArray(attachments) || attachments.length === 0) return '';
+    const rows = attachments.map(att => `
+        <div class="flex items-center gap-2 text-[12.5px] bg-white border border-slate-200 rounded-lg px-3 py-2">
+            <i class="fa-solid fa-paperclip text-slate-400 flex-shrink-0"></i>
+            <a href="${escHtml(att.url)}" target="_blank" rel="noopener" class="text-indigo-600 font-bold hover:underline truncate">${escHtml(att.name || att.url)}</a>
+        </div>`).join('');
+    return `
+        <div>
+            <p class="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Materials</p>
+            <div class="space-y-1.5">${rows}</div>
+        </div>`;
+}
+
 function renderDetailBody(a) {
     const grade = gradesById.get(a.id);
     const submission = submissionsById.get(a.id);
     const frozen = isSubmissionFrozen(a, gradesById);
+    // Only Add Work's assessment category carries a real questions[] array —
+    // a legacy assignment or a standard-work item both fall through to the
+    // existing generic instructions + free-text/link form below, unchanged.
+    const isAssessment = a.category === 'assessment' && Array.isArray(a.questions) && a.questions.length > 0;
 
+    if (isAssessment) {
+        const gradeBlock = grade ? `
+        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+            <p class="text-[11px] font-black text-emerald-600 uppercase tracking-wider mb-1"><i class="fa-solid fa-circle-check mr-1"></i>Your Grade</p>
+            <p class="text-2xl font-black text-emerald-700">${grade.score}<span class="text-base text-emerald-500">/${grade.max}</span></p>
+            ${grade.notes ? `<p class="text-[12.5px] text-emerald-800 font-semibold mt-1 whitespace-pre-wrap">${escHtml(grade.notes)}</p>` : ''}
+        </div>` : '';
+        return gradeBlock + renderAssessmentSection(a, submission, frozen);
+    }
+
+    // Assessments never populate instructions/attachments (awSaveWork always
+    // writes '' / [] for category:'assessment'), so these two blocks are
+    // standard-work- and legacy-only in practice.
     const instructionsBlock = `
         <div>
             <p class="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Instructions</p>
@@ -251,6 +309,7 @@ function renderDetailBody(a) {
                 ? `<div class="bg-white border border-slate-200 rounded-xl p-4 text-[13px] text-slate-700 whitespace-pre-wrap leading-relaxed">${escHtml(a.instructions)}</div>`
                 : `<div class="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-4 text-[12.5px] text-slate-400 font-semibold">No additional instructions were provided for this assignment.</div>`}
         </div>`;
+    const attachmentsBlock = renderAssignmentAttachments(a.attachments);
 
     const gradeBlock = grade ? `
         <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
@@ -300,12 +359,195 @@ function renderDetailBody(a) {
         </div>`;
     }
 
-    return instructionsBlock + gradeBlock + submissionBlock;
+    return instructionsBlock + attachmentsBlock + gradeBlock + submissionBlock;
 }
 
 function wireDetailFormEvents(a) {
-    // Nothing to wire beyond the inline onclick handler above — kept as its
-    // own function so future additions (autosave, char counts) have a home.
+    // Drawing canvases need pointer-event handlers attached after their
+    // markup lands in the DOM — everything else on this panel is either a
+    // plain inline onclick or a value read at submit time, so this is the
+    // only case with anything to wire.
+    if (a.category === 'assessment') initAssessmentCanvases();
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// STEP 1 (Phase 3) — Student-facing assessment rendering.
+// Read-only against Firestore beyond what init() already loaded; nothing
+// here writes a submission. Submit is disabled with an explanatory title
+// until persistence is wired up in the next authorized step, mirroring how
+// the teacher builder's own Save/Publish buttons started out disabled in
+// its Step 1 before Step 3 wired them up.
+// ─────────────────────────────────────────────────────────────────────────
+
+const AW_STUDENT_REQUIRES_LABEL = { file: 'Upload a file', photo: 'Take a photo', drawing: 'Draw your answer' };
+
+function renderAssessmentSection(a, submission, frozen) {
+    const saved = new Map((submission?.responses || []).map(r => [r.questionId, r]));
+    const cards = a.questions.map((q, i) => renderStudentQuestionCard(q, i, saved.get(q.id), frozen)).join('');
+
+    const footer = frozen
+        ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[12px] font-bold text-amber-700 flex items-center gap-2">
+               <i class="fa-solid fa-lock"></i> ${escHtml(submission ? 'This assessment has been graded, so your answers are locked.' : 'Your teacher has closed submissions for this assessment.')}
+           </div>`
+        : `<button id="adSubmitBtn" disabled title="Answer submission wires up in the next authorized build step"
+               class="w-full bg-slate-200 text-slate-400 font-black py-3 rounded-xl text-sm flex items-center justify-center gap-2 cursor-not-allowed">
+               <i class="fa-solid fa-paper-plane"></i> Submit
+           </button>
+           <p id="adSubMsg" class="text-sm hidden font-bold p-2.5 mt-2 rounded-xl text-center"></p>`;
+
+    return `
+        <div>
+            <p class="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Questions</p>
+            <div id="adQuestionsContainer" class="space-y-3">${cards}</div>
+        </div>
+        ${footer}`;
+}
+
+function renderStudentQuestionCard(q, index, saved, frozen) {
+    return `
+    <div class="bg-white border border-slate-200 rounded-xl p-4" data-question-id="${escHtml(q.id)}">
+        <div class="flex items-start gap-2 mb-3">
+            <span class="w-6 h-6 flex-shrink-0 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-md flex items-center justify-center text-[10px] font-black">${index + 1}</span>
+            <div class="min-w-0 flex-1">
+                <p class="text-[13.5px] font-bold text-slate-800 whitespace-pre-wrap">${escHtml(q.prompt)}</p>
+                <p class="text-[10.5px] text-slate-400 font-semibold mt-0.5">${q.points ?? 0} point${(q.points ?? 0) === 1 ? '' : 's'}</p>
+            </div>
+        </div>
+        ${renderStudentQuestionInput(q, saved, frozen)}
+    </div>`;
+}
+
+function renderStudentQuestionInput(q, saved, frozen) {
+    const disabledAttr = frozen ? 'disabled' : '';
+
+    if (q.type === 'multiple_choice') {
+        const savedIndex = saved ? Number(saved.responseText) : null;
+        const options = (q.options || []).map((opt, i) => `
+            <label class="flex items-center gap-2 text-[13px] text-slate-700 py-1 ${frozen ? '' : 'cursor-pointer'}">
+                <input type="radio" name="q-${escHtml(q.id)}" value="${i}" data-question-id="${escHtml(q.id)}"
+                    data-question-type="multiple_choice" data-option-index="${i}"
+                    ${savedIndex === i ? 'checked' : ''} ${disabledAttr}
+                    class="w-4 h-4 accent-indigo-600">
+                <span>${escHtml(opt)}</span>
+            </label>`).join('');
+        return `<div class="pl-8">${options}</div>`;
+    }
+
+    if (q.type === 'free_response' || q.type === 'short_answer') {
+        const isShort = q.type === 'short_answer';
+        return `
+            <div class="pl-8">
+                ${q.hint ? `<p class="text-[11px] text-slate-400 font-semibold italic mb-1.5">${escHtml(q.hint)}</p>` : ''}
+                ${isShort
+                    ? `<input type="text" data-question-id="${escHtml(q.id)}" data-question-type="short_answer" ${disabledAttr}
+                           value="${escHtml(saved?.responseText || '')}"
+                           class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm">`
+                    : `<textarea data-question-id="${escHtml(q.id)}" data-question-type="free_response" ${disabledAttr}
+                           class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm resize-none" style="height:5.5rem;">${escHtml(saved?.responseText || '')}</textarea>`}
+            </div>`;
+    }
+
+    if (q.type === 'math') {
+        return `
+            <div class="pl-8">
+                ${q.hint ? `<p class="text-[11px] text-slate-400 font-semibold italic mb-1.5">${escHtml(q.hint)}</p>` : ''}
+                <input type="text" data-question-id="${escHtml(q.id)}" data-question-type="math" ${disabledAttr}
+                    value="${escHtml(saved?.responseText || '')}" placeholder="Type your answer…"
+                    class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm font-mono">
+            </div>`;
+    }
+
+    if (q.type === 'attachment_response') {
+        const requires = q.studentResponse?.requires || 'file';
+        const label = AW_STUDENT_REQUIRES_LABEL[requires] || AW_STUDENT_REQUIRES_LABEL.file;
+
+        if (requires === 'drawing') {
+            return `
+                <div class="pl-8">
+                    <p class="text-[11px] text-slate-400 font-semibold italic mb-1.5">${escHtml(label)}</p>
+                    <canvas id="canvas-${escHtml(q.id)}" data-aw-canvas data-question-id="${escHtml(q.id)}"
+                        width="400" height="220" class="border border-slate-200 rounded-lg bg-white w-full touch-none" style="max-width:400px;"></canvas>
+                    ${!frozen ? `<button type="button" data-aw-clear-canvas="${escHtml(q.id)}" class="text-[11px] font-bold text-slate-400 hover:text-rose-500 mt-1.5">Clear</button>` : ''}
+                </div>`;
+        }
+
+        // file / photo — a real Storage upload is out of scope until
+        // persistence is wired up; this captures the picked file's name only
+        // so the UI is honest about what will (and won't yet) be submitted.
+        const acceptAttr = requires === 'photo' ? 'accept="image/*" capture="environment"' : '';
+        return `
+            <div class="pl-8">
+                <p class="text-[11px] text-slate-400 font-semibold italic mb-1.5">${escHtml(label)} — uploading wires up in a later step</p>
+                <input type="file" ${acceptAttr} data-question-id="${escHtml(q.id)}" data-question-type="attachment_response" ${disabledAttr}
+                    class="text-[12.5px] text-slate-600">
+            </div>`;
+    }
+
+    return '';
+}
+
+// Pointer-drawn canvases: plain black stroke, no persistence — toDataURL()
+// is read later by collectStudentResponses() when submission is wired up.
+function initAssessmentCanvases() {
+    document.querySelectorAll('canvas[data-aw-canvas]').forEach(canvas => {
+        const ctx = canvas.getContext('2d');
+        let drawing = false;
+        const pos = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const p = e.touches ? e.touches[0] : e;
+            return { x: p.clientX - rect.left, y: p.clientY - rect.top };
+        };
+        canvas.addEventListener('pointerdown', (e) => { drawing = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); });
+        canvas.addEventListener('pointermove', (e) => { if (!drawing) return; const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); });
+        window.addEventListener('pointerup', () => { drawing = false; });
+    });
+    document.querySelectorAll('[data-aw-clear-canvas]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const canvas = document.getElementById(`canvas-${btn.dataset.awClearCanvas}`);
+            if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+        });
+    });
+}
+
+function canvasHasDrawing(canvas) {
+    const ctx = canvas.getContext('2d');
+    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let i = 3; i < data.length; i += 4) { if (data[i] !== 0) return true; } // any non-transparent pixel
+    return false;
+}
+
+// In-memory collector — pure read of the currently-rendered inputs, no
+// Firestore or Storage calls. Shape matches what the next step's
+// saveSubmission() extension will persist: an ordered array of
+// { questionId, responseText, attachmentUrl }. multiple_choice stores the
+// selected option's INDEX (as a string) rather than its text, so later
+// auto-grading can compare directly against work_answer_keys' numeric
+// indices without re-deriving them from option text that could since have
+// been edited.
+function collectStudentResponses(a) {
+    return (a.questions || []).map(q => {
+        let responseText = '';
+        let attachmentUrl = null;
+
+        if (q.type === 'multiple_choice') {
+            const checked = document.querySelector(`input[name="q-${q.id}"]:checked`);
+            responseText = checked ? String(checked.dataset.optionIndex) : '';
+        } else if (q.type === 'free_response' || q.type === 'short_answer' || q.type === 'math') {
+            const el = document.querySelector(`[data-question-id="${q.id}"][data-question-type="${q.type}"]`);
+            responseText = (el?.value || '').trim();
+        } else if (q.type === 'attachment_response') {
+            const requires = q.studentResponse?.requires || 'file';
+            if (requires === 'drawing') {
+                const canvas = document.getElementById(`canvas-${q.id}`);
+                attachmentUrl = canvas && canvasHasDrawing(canvas) ? canvas.toDataURL('image/png') : null;
+            } else {
+                const fileInput = document.querySelector(`input[type="file"][data-question-id="${q.id}"]`);
+                attachmentUrl = fileInput?.files?.[0]?.name || null; // name only — no upload wiring yet
+            }
+        }
+
+        return { questionId: q.id, responseText, attachmentUrl };
+    });
 }
 
 // ── 7. SAVE SUBMISSION ───────────────────────────────────────────────────
