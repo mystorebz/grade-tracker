@@ -52,44 +52,15 @@ export function requireAuth(role, redirectUrl = '../index.html') {
     }
 
     // ── 1b. AUTH IDENTITY DRIFT CHECK (session-bleed guard) ───────────────────
-    // getAuth(app) in firebase-init.js uses Firebase's default
-    // browserLocalPersistence, which is shared across every tab open at the
-    // SAME ORIGIN — there is exactly one live Firebase Auth identity per
-    // browser profile per origin, not one per tab. localStorage's
-    // connectus_{role}_session blob, by contrast, is written once at login
-    // and never re-validated against the live Auth session afterward.
-    //
-    // Concretely: a teacher signs in in Tab A (mints a teacher custom token,
-    // real Firebase Auth identity = teacher). A student then signs in in
-    // Tab B, at the same origin — this silently REPLACES the shared Auth
-    // identity out from under Tab A, whose UI still renders "teacher" from
-    // its untouched localStorage blob and whose Firestore writes then start
-    // getting rejected (Firestore correctly sees a caller whose real token
-    // claims say student, not teacher) — with no error surfaced anywhere
-    // except a generic "Missing or insufficient permissions" deep in
-    // whatever the teacher happened to click.
-    //
-    // This check catches that drift as soon as a real ID token is available
-    // (not just "some user is signed in", which the block above already
-    // checks) by confirming the live token's OWN role claim — set server-
-    // side by mintTeacherToken/mintStudentToken/mintAdminToken, never
-    // client-writable — actually matches the role this page requires. A
-    // mismatch means the localStorage session is stale relative to the
-    // browser's real Auth identity: continuing to render this page would
-    // just accumulate more silently-failing writes, so it force-signs-out
-    // and sends the user back to the right login instead.
+    // See awaitAuthReady() below for the full explanation and the blocking
+    // version of this same check. This fire-and-forget copy stays here too
+    // for pages that call requireAuth() without awaiting anything after it —
+    // it still recovers a drifted session, just not necessarily before that
+    // page's first Firestore call already got rejected. Pages that can be
+    // updated to call `await awaitAuthReady(role)` right after requireAuth()
+    // (builder.js does) get the race-free version instead.
     if (auth.currentUser) {
-        auth.currentUser.getIdTokenResult(false)
-            .then((tokenResult) => {
-                const tokenRole = tokenResult.claims?.role;
-                if (tokenRole && tokenRole !== role) {
-                    console.warn(`[ConnectUs] Auth identity drift detected: page requires '${role}' but the live Firebase Auth session is '${tokenRole}'. This browser profile is signed in as a different role in another tab. Forcing re-authentication.`);
-                    logout(redirectUrl);
-                }
-            })
-            .catch((e) => {
-                console.error('[ConnectUs] Auth identity drift check failed:', e);
-            });
+        checkAuthDrift(role, redirectUrl);
     }
 
     // ── 2. THE GHOSTBUSTER: REAL-TIME DATABASE KILL SWITCH ────────────────────
@@ -190,6 +161,69 @@ export function requireAuth(role, redirectUrl = '../index.html') {
     }
 
     return session;
+}
+
+// ── SHARED DRIFT CHECK (used by both the fire-and-forget copy above and
+// the blocking awaitAuthReady() below) ────────────────────────────────────
+// getAuth(app) in firebase-init.js uses Firebase's default
+// browserLocalPersistence, which is shared across every tab open at the
+// SAME ORIGIN — there is exactly one live Firebase Auth identity per
+// browser profile per origin, not one per tab. localStorage's
+// connectus_{role}_session blob, by contrast, is written once at login and
+// never re-validated against the live Auth session afterward.
+//
+// Concretely: a teacher signs in in Tab A (mints a teacher custom token,
+// real Firebase Auth identity = teacher). A student then signs in in Tab B,
+// at the same origin — this silently REPLACES the shared Auth identity out
+// from under Tab A, whose UI still renders "teacher" from its untouched
+// localStorage blob and whose Firestore writes then start getting rejected
+// (Firestore correctly sees a caller whose real token claims say student,
+// not teacher) — with no error surfaced anywhere except a generic "Missing
+// or insufficient permissions" deep in whatever the teacher happened to click.
+//
+// Confirms the live token's OWN role claim — set server-side by
+// mintTeacherToken/mintStudentToken/mintAdminToken, never client-writable —
+// actually matches the role this page requires. A mismatch means the
+// localStorage session is stale relative to the browser's real Auth
+// identity: continuing to use this page would just accumulate more
+// silently-failing writes, so it force-signs-out and sends the user back to
+// the right login instead. Returns true if a drift was found (and logout()
+// was triggered), false if the identity checks out.
+async function checkAuthDrift(role, redirectUrl) {
+    try {
+        const tokenResult = await auth.currentUser.getIdTokenResult(false);
+        const tokenRole = tokenResult.claims?.role;
+        if (tokenRole && tokenRole !== role) {
+            console.warn(`[ConnectUs] Auth identity drift detected: page requires '${role}' but the live Firebase Auth session is '${tokenRole}'. This browser profile is signed in as a different role in another tab. Forcing re-authentication.`);
+            await logout(redirectUrl);
+            return true;
+        }
+        return false;
+    } catch (e) {
+        console.error('[ConnectUs] Auth identity drift check failed:', e);
+        return false;
+    }
+}
+
+// ── BLOCKING VERSION — call this right after requireAuth() and await it ──
+// requireAuth() itself must stay synchronous (23 call sites across the app
+// rely on getting `session` back immediately), so its own drift check is
+// fire-and-forget and can't stop a page's first Firestore call from racing
+// ahead of it. Pages that do real writes shortly after load (builder.js's
+// saveLessonContent/publishLesson chief among them) should instead await
+// this function before doing anything else — it resolves only once the
+// live Firebase Auth token has actually been checked, so by the time it
+// returns, either the identity is confirmed correct, or logout() has
+// already been called and the page is on its way to the login screen.
+// Resolves true if the caller's own session is confirmed good and safe to
+// proceed with; false if a drift was found (the caller should stop —
+// logout()'s navigation is already underway) or no Firebase user is signed
+// in yet at all (session-expired handling in requireAuth() above covers
+// that case; callers can still choose to proceed and let that fire).
+export async function awaitAuthReady(role, redirectUrl = '../index.html') {
+    if (!auth.currentUser) return true;
+    const driftedAway = await checkAuthDrift(role, redirectUrl);
+    return !driftedAway;
 }
 
 export async function logout(redirectUrl = '../index.html') {

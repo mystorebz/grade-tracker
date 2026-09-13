@@ -234,6 +234,33 @@
         </div>
     </div>
 
+    <!-- ═══ ASSIGNMENT-EMBED VIEW/EDIT MODAL (click a card in the doc) ═════ -->
+    <!-- Same fade+scale transition pattern as assignmentPickerOverlay above.
+         Opened by builder.js's openAssignmentViewModal(id) from the
+         delegated click listener wired in initQuillIfNeeded(). Title/meta
+         are read-only (title/type/points/date come from the grade form,
+         not here); instructions is the one field a teacher can adjust from
+         the builder, saved via onSaveAssignmentViewEdits(). -->
+    <div id="assignmentViewOverlay" class="hidden opacity-0 fixed inset-0 bg-black/40 z-30 flex items-center justify-center p-4 transition-opacity duration-[180ms]">
+        <div id="assignmentViewPanel" class="scale-95 transition-transform duration-[180ms] bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div class="p-4 border-b border-[#dce3ed] flex items-center justify-between gap-3">
+                <div class="min-w-0">
+                    <h3 id="assignmentViewTitle" class="text-[14px] font-bold text-[#0d1f35] m-0 truncate">Assignment</h3>
+                    <p id="assignmentViewMeta" class="text-[11px] text-[#6b84a0] m-0"></p>
+                </div>
+                <button id="closeAssignmentViewBtn" class="shrink-0 text-[#6b84a0] hover:text-[#0d1f35] h-8 w-8 rounded flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-4">
+                <label class="block text-[10.5px] font-bold uppercase tracking-widest text-[#6b84a0] mb-1.5">Instructions (what students see)</label>
+                <textarea id="assignmentViewInstructions" rows="6" class="w-full border border-[#dce3ed] rounded-lg p-2.5 text-[13px] text-[#0d1f35] focus:outline-none focus:ring-2 focus:ring-[#2563eb]/30 focus:border-[#2563eb] resize-y"></textarea>
+                <p id="assignmentViewMsg" class="hidden text-[11px] font-semibold text-[#6b84a0] mt-2"></p>
+            </div>
+            <div class="p-4 pt-0 flex justify-end gap-2">
+                <button id="assignmentViewSaveBtn" class="bg-[#0d1f35] hover:bg-[#16324f] text-white font-bold py-2 px-4 rounded-sm transition text-[12px] uppercase tracking-widest">Save Instructions</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ═══ IMPORT MATERIALS MODAL (paste-Slides-link / stub .docx upload) ═ -->
     <div id="importOptionsOverlay" class="hidden opacity-0 fixed inset-0 bg-black/40 z-30 flex items-center justify-center p-4 transition-opacity duration-[180ms]">
         <div id="importOptionsPanel" class="scale-95 transition-transform duration-[180ms] bg-white rounded-xl shadow-xl w-full max-w-md">

@@ -10,10 +10,12 @@
 // schema exactly (including its `format` field); every edit mutates it
 // directly (or, in Document mode, mutates the live Quill instance, pulled
 // back into lessonDraft only at save time — see currentSlidesForSave()).
-import { requireAuth } from '../../../assets/js/auth.js';
+import { requireAuth, awaitAuthReady } from '../../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../../assets/js/layout-teachers.js';
-import { showMsg, loadTeacherSubjectsCache } from '../../../assets/js/utils.js';
+import { showMsg, loadTeacherSubjectsCache, getTeacherDocRef } from '../../../assets/js/utils.js';
 import { resolvePostContext } from '../../../assets/js/posts.js';
+import { db } from '../../../assets/js/firebase-init.js';
+import { doc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import {
     newSlide, parseMediaUrl, isLikelyImageUrl,
     loadLesson, loadLessonPrivateNotes, loadLessonsForSubject,
@@ -44,6 +46,7 @@ let hasUnsavedChanges = false;
 // only synced from it at save time (see currentSlidesForSave()).
 let quill = null;
 let pendingAssignmentBlotRange = null; // where to insert once a picker selection is made
+let openAssignmentViewId = null; // id of the assignment currently shown in the view/edit modal
 
 const ASSIGNMENT_TEMPLATE_LABELS = {
     title: 'Title / Objective',
@@ -78,6 +81,19 @@ async function init() {
     cacheEls();
     wireEvents();
 
+    // Wait for the auth-identity-drift check to actually resolve before
+    // firing any Firestore read/write. requireAuth()'s own drift check is
+    // fire-and-forget (it can't block a synchronous call), so without this,
+    // a browser profile whose Firebase Auth session drifted to a different
+    // role in another tab (see auth.js's checkAuthDrift) would race ahead —
+    // loadTeacherSubjectsCache/loadLessonsForSubject fire immediately, hit
+    // real "Missing or insufficient permissions" errors, and the page limps
+    // along broken until the drift check's own logout() catches up moments
+    // later. Waiting here means the redirect happens first, cleanly, with
+    // no failed reads and no confusing permission errors in between.
+    const authOk = await awaitAuthReady('teacher', '../login.html');
+    if (!authOk) return; // logout()/redirect already under way
+
     els.subjectSelect.innerHTML = '<option value="">Loading subjects…</option>';
     const result = await loadTeacherSubjectsCache(session.schoolId, session.teacherId, session.teacherData);
     subjectsCache = result.subjectsCache;
@@ -102,7 +118,10 @@ function cacheEls() {
         'importDocxInput', 'importDocxTrigger', 'importDocxStatus',
         'importSlidesUrlInput', 'importSlidesBtn', 'importSlidesStatus',
         'assignmentPickerOverlay', 'assignmentPickerPanel', 'closeAssignmentPickerBtn', 'assignmentPickerList',
-        'notesOverlay', 'pacingNotesInput', 'standardsInput', 'closeNotesBtn', 'cancelNotesBtn', 'saveNotesBtn'
+        'notesOverlay', 'pacingNotesInput', 'standardsInput', 'closeNotesBtn', 'cancelNotesBtn', 'saveNotesBtn',
+        'assignmentViewOverlay', 'assignmentViewPanel', 'closeAssignmentViewBtn',
+        'assignmentViewTitle', 'assignmentViewMeta', 'assignmentViewInstructions',
+        'assignmentViewSaveBtn', 'assignmentViewMsg'
     ].forEach(id => { els[id] = document.getElementById(id); });
 }
 
@@ -181,6 +200,13 @@ function wireEvents() {
         if (e.target === els.assignmentPickerOverlay) closeAssignmentPicker();
     });
     els.assignmentPickerList.addEventListener('click', onAssignmentPickerClick);
+
+    // ── Assignment-embed view/edit modal (Document mode only) ──
+    els.closeAssignmentViewBtn?.addEventListener('click', closeAssignmentViewModal);
+    els.assignmentViewOverlay?.addEventListener('click', (e) => {
+        if (e.target === els.assignmentViewOverlay) closeAssignmentViewModal();
+    });
+    els.assignmentViewSaveBtn?.addEventListener('click', onSaveAssignmentViewEdits);
 
     // ── Import Options modal ──
     els.importOptionsBtn.addEventListener('click', openImportOptionsModal);
@@ -753,21 +779,68 @@ function renderAssignmentProperties(slide) {
 }
 
 // ── 11. SAVE / PUBLISH (shared by both formats) ──────────────────────────
+// ── SAVE-FAILURE DIAGNOSIS ────────────────────────────────────────────────
+// Logs the specific, actionable reason a lesson save/publish failed —
+// Firestore's own error code and message, plus payload size and a scan for
+// undefined/function values that would otherwise silently serialize as
+// missing fields — instead of a bare "Failed to save" with no way to tell
+// a permissions problem from a payload problem from a stale-token problem.
+// Returns a short, user-facing message tailored to the most common causes;
+// the full diagnostic detail goes to console.error only, exactly like
+// showSaveError() in grade_form.js already does for the grade-entry form.
+function describeSaveFailure(context, e, payload) {
+    const code = e?.code || '';
+    const rawMessage = e?.message || String(e);
+
+    let payloadJson = '';
+    let payloadBytes = null;
+    let undefinedPaths = [];
+    try {
+        payloadJson = JSON.stringify(payload, (key, value) => {
+            if (value === undefined) undefinedPaths.push(key || '(root)');
+            return value;
+        });
+        payloadBytes = new Blob([payloadJson]).size;
+    } catch (jsonErr) {
+        payloadJson = `<could not stringify payload: ${jsonErr.message}>`;
+    }
+
+    console.error(
+        `[Lesson Builder] ${context} failed —`,
+        `code: ${code || '(none)'};`,
+        `message: ${rawMessage};`,
+        `payload size: ${payloadBytes === null ? 'unknown' : payloadBytes + ' bytes'};`,
+        `undefined fields found: ${undefinedPaths.length ? undefinedPaths.join(', ') : 'none'}`,
+        e
+    );
+
+    if (code === 'permission-denied' || /permission/i.test(rawMessage)) {
+        return 'You do not have permission to save this lesson right now. If you were just signed in as a different role in another tab, try reloading this page and signing back in as a teacher.';
+    }
+    if (code === 'invalid-argument' || undefinedPaths.length) {
+        return 'This lesson could not be saved because part of its content is invalid or missing. Please check recent edits and try again; if the problem persists, contact support.';
+    }
+    if (payloadBytes !== null && payloadBytes > 1_000_000) {
+        return 'This lesson is too large to save (Firestore documents are capped at 1MB). Try removing large embedded content or splitting it into multiple pages.';
+    }
+    if (code === 'unavailable' || /network|offline/i.test(rawMessage)) {
+        return 'Connection error — this lesson was not saved. Check your connection and try again.';
+    }
+    return 'Failed to save this lesson. Please try again or contact support if this keeps happening.';
+}
+
 async function onSaveDraft() {
     const btn = lessonDraft.format === 'document' ? els.docSaveBtn : els.saveBtn;
     const prevLabel = btn.textContent;
     btn.disabled = true;
     btn.textContent = 'Saving…';
+    const payload = { title: lessonDraft.title, slides: currentSlidesForSave() };
     try {
-        await saveLessonContent(session.schoolId, currentPostContext, currentLessonId, {
-            title: lessonDraft.title,
-            slides: currentSlidesForSave()
-        });
+        await saveLessonContent(session.schoolId, currentPostContext, currentLessonId, payload);
         hasUnsavedChanges = false;
         flashSaveMsg('Saved');
     } catch (e) {
-        console.error('[Lesson Builder] saveLessonContent:', e);
-        alert('Failed to save this lesson. Please try again.');
+        alert(describeSaveFailure('saveLessonContent (Save Draft)', e, payload));
     } finally {
         btn.disabled = false;
         btn.textContent = prevLabel;
@@ -787,11 +860,9 @@ async function onPublishToggle() {
     // never publishes stale content from the last explicit Save.
     const btn = lessonDraft.format === 'document' ? els.docPublishBtn : els.publishBtn;
     btn.disabled = true;
+    const payload = { title: lessonDraft.title, slides: currentSlidesForSave() };
     try {
-        await saveLessonContent(session.schoolId, currentPostContext, currentLessonId, {
-            title: lessonDraft.title,
-            slides: currentSlidesForSave()
-        });
+        await saveLessonContent(session.schoolId, currentPostContext, currentLessonId, payload);
         hasUnsavedChanges = false;
 
         if (lessonDraft.status === 'published') {
@@ -811,8 +882,7 @@ async function onPublishToggle() {
         renderPublishButton();
         flashSaveMsg(lessonDraft.status === 'published' ? 'Published — posted to Class Stream' : 'Unpublished');
     } catch (e) {
-        console.error('[Lesson Builder] onPublishToggle:', e);
-        alert('Failed to update this lesson\'s publish status. Please try again.');
+        alert(describeSaveFailure('onPublishToggle (Publish/Unpublish)', e, payload));
     } finally {
         btn.disabled = false;
     }
@@ -1035,6 +1105,19 @@ function initQuillIfNeeded() {
     quill.on('text-change', (delta, oldDelta, source) => {
         if (source === 'user') hasUnsavedChanges = true;
     });
+
+    // Delegated click listener on the editor's contenteditable root (not
+    // els.docEditor — Quill wraps that container and quill.root is the
+    // actual .ql-editor node the rendered .assignment-embed spans live
+    // inside). A previously-inserted embed just sat there inert; this
+    // opens a view/edit modal for the specific card clicked, reading the
+    // id straight off the embed's own data attribute (see
+    // registerAssignmentBlot()'s AssignmentBlot.create above).
+    quill.root.addEventListener('click', (e) => {
+        const card = e.target.closest('.assignment-embed');
+        if (!card) return;
+        openAssignmentViewModal(card.getAttribute('data-assignment-id'));
+    });
 }
 
 function renderDocAll() {
@@ -1085,6 +1168,99 @@ function closeAssignmentPicker() {
     els.assignmentPickerPanel?.classList.add('scale-95');
     setTimeout(() => els.assignmentPickerOverlay.classList.add('hidden'), 200);
     pendingAssignmentBlotRange = null;
+}
+
+// ── 14b. ASSIGNMENT-EMBED VIEW/EDIT MODAL (click on an inserted card) ────
+// The embed itself only stores {id, title} (see AssignmentBlot.value above)
+// — everything else a teacher would want to see (points, instructions) is
+// re-fetched here from currentSubject.assignments by matching on id, since
+// that's the same in-memory cache the picker itself reads from.
+function openAssignmentViewModal(assignmentId) {
+    const a = (currentSubject?.assignments || []).find(x => x.id === assignmentId);
+    if (!els.assignmentViewOverlay) return;
+    if (!a) {
+        els.assignmentViewTitle.textContent = 'Assignment not found';
+        els.assignmentViewMeta.textContent = 'This assignment may have been deleted or archived.';
+        els.assignmentViewInstructions.value = '';
+        els.assignmentViewInstructions.disabled = true;
+        if (els.assignmentViewSaveBtn) els.assignmentViewSaveBtn.classList.add('hidden');
+        openAssignmentViewId = null;
+    } else {
+        els.assignmentViewTitle.textContent = a.title || 'Untitled Assignment';
+        els.assignmentViewMeta.textContent = `${a.type || 'Assignment'} · /${a.maxScore ?? '—'}${a.date ? ' · Due ' + a.date : ''}`;
+        els.assignmentViewInstructions.value = a.instructions || '';
+        els.assignmentViewInstructions.disabled = false;
+        if (els.assignmentViewSaveBtn) els.assignmentViewSaveBtn.classList.remove('hidden');
+        openAssignmentViewId = a.id;
+    }
+    if (els.assignmentViewMsg) { els.assignmentViewMsg.textContent = ''; els.assignmentViewMsg.classList.add('hidden'); }
+
+    els.assignmentViewOverlay.classList.remove('hidden');
+    requestAnimationFrame(() => {
+        els.assignmentViewOverlay.classList.remove('opacity-0');
+        els.assignmentViewPanel?.classList.remove('scale-95');
+    });
+}
+
+function closeAssignmentViewModal() {
+    if (!els.assignmentViewOverlay) return;
+    els.assignmentViewOverlay.classList.add('opacity-0');
+    els.assignmentViewPanel?.classList.add('scale-95');
+    setTimeout(() => els.assignmentViewOverlay.classList.add('hidden'), 200);
+    openAssignmentViewId = null;
+}
+
+// Saves the edited instructions text back to wherever this subject's
+// assignments actually live — its own assignments subcollection for a
+// new-model subject (sub._source === 'new'), or the legacy embedded array
+// on the teacher document otherwise — the same dual-path write
+// grade_form.js's ensureAssignmentDoc() uses for the same data shape.
+async function onSaveAssignmentViewEdits() {
+    if (!openAssignmentViewId || !currentSubject) return;
+    const sub = currentSubject;
+    const existing = Array.isArray(sub.assignments) ? sub.assignments : [];
+    const idx = existing.findIndex(a => a.id === openAssignmentViewId);
+    if (idx === -1) return;
+
+    const newInstructions = els.assignmentViewInstructions.value;
+    const updatedAsg = { ...existing[idx], instructions: newInstructions };
+
+    if (els.assignmentViewSaveBtn) {
+        els.assignmentViewSaveBtn.disabled = true;
+        els.assignmentViewSaveBtn.textContent = 'Saving…';
+    }
+
+    try {
+        if (sub._source === 'new') {
+            await setDoc(doc(db, 'schools', session.schoolId, 'classes', sub.classId, 'subjects', sub.id, 'assignments', updatedAsg.id), updatedAsg);
+        } else {
+            const updatedAssignments = existing.map((a, i) => i === idx ? updatedAsg : a);
+            const subjects = (session.teacherData.subjects || []).map(s => {
+                if (s.id !== sub.id) return s;
+                return { ...s, assignments: updatedAssignments };
+            });
+            await updateDoc(getTeacherDocRef(session.schoolId, session.teacherId), { subjects });
+            session.teacherData.subjects = subjects;
+        }
+        sub.assignments = existing.map((a, i) => i === idx ? updatedAsg : a);
+
+        if (els.assignmentViewMsg) {
+            els.assignmentViewMsg.textContent = 'Saved.';
+            els.assignmentViewMsg.classList.remove('hidden');
+        }
+        setTimeout(closeAssignmentViewModal, 700);
+    } catch (e) {
+        console.error('[Lesson Builder] onSaveAssignmentViewEdits failed:', e);
+        if (els.assignmentViewMsg) {
+            els.assignmentViewMsg.textContent = 'Could not save — please try again.';
+            els.assignmentViewMsg.classList.remove('hidden');
+        }
+    } finally {
+        if (els.assignmentViewSaveBtn) {
+            els.assignmentViewSaveBtn.disabled = false;
+            els.assignmentViewSaveBtn.textContent = 'Save Instructions';
+        }
+    }
 }
 
 // ── IMPORT MATERIALS (Phase 3 scaffolding) ───────────────────────────────
