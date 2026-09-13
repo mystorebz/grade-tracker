@@ -489,27 +489,37 @@ export function subscribeToLiveSession(schoolId, postContext, lessonId, sessionI
 //
 // callerRole ('teacher' | 'student') decides the query SHAPE, not just what
 // the caller is allowed to see. firestore.rules' own `allow list` rule on
-// this path denies a student's blockType branch (resource.data.blockType ==
-// 'collaborative_board') unless the QUERY ITSELF filters on blockType —
-// found via live end-to-end testing: with the rule confirmed correct and
-// deployed (get()-free, matching data, fresh auth token), an unfiltered
-// getDocs()/onSnapshot() on this collection still failed with "Missing or
-// insufficient permissions" for the student. Firestore's list/collection
-// rules must be provable from the QUERY DEFINITION alone, before any data is
-// read — a data-dependent condition like resource.data.blockType == '...'
-// can only be proven safe for a query that itself carries a matching
-// where('blockType', '==', 'collaborative_board') clause; an unfiltered
-// query can return ANY document regardless of blockType, so Firestore has no
-// way to confirm every possible result would satisfy the rule and rejects
-// the whole request up front. The teacher/admin branch of the same rule has
-// no such problem (role is read from the caller's own token, not
-// resource.data), so the teacher dashboard's unfiltered query is unaffected
-// and keeps working exactly as before.
+// this path is:
+//   allow list: if request.auth != null &&
+//                  resource.data.schoolId == request.auth.token.schoolId && (
+//                    request.auth.token.role in ['teacher', ...] ||
+//                    resource.data.blockType == 'collaborative_board'
+//                  );
+// Firestore requires a list/collection query's rule to be provable from the
+// QUERY DEFINITION alone, before any data is read. A first pass (found via
+// live end-to-end testing) only filtered the STUDENT query on blockType,
+// reasoning that the teacher/admin branch is purely role-based (read from
+// the caller's token, not resource.data) and therefore needs no query
+// constraint. That reasoning was wrong and was caught by a second live test:
+// even for a teacher caller, an otherwise-unfiltered query still failed with
+// "Missing or insufficient permissions" — confirmed directly via a raw
+// getDocs() with a freshly re-authenticated, verified teacher token, and
+// confirmed fixed by adding where('schoolId', '==', schoolId) alone (no
+// blockType filter needed for teacher). The reason: the rule's leading
+// condition — resource.data.schoolId == request.auth.token.schoolId — is
+// ANDed onto BOTH branches of the role/blockType OR, so it constrains every
+// caller's query, teacher included, not just the student branch's OR
+// operand. An unfiltered query can't be proven to only ever touch documents
+// matching that schoolId condition, so Firestore rejects it outright
+// regardless of which OR branch a given caller would actually satisfy.
+// Every caller therefore needs at least a schoolId filter; a student
+// additionally needs the blockType filter for their own OR branch to be
+// provable.
 export function subscribeToLiveResponses(schoolId, postContext, lessonId, sessionId, onChange, callerRole) {
     const baseRef = liveResponsesCollectionRef(schoolId, postContext, lessonId, sessionId);
     const ref = callerRole === 'student'
-        ? query(baseRef, where('blockType', '==', 'collaborative_board'))
-        : baseRef;
+        ? query(baseRef, where('schoolId', '==', schoolId), where('blockType', '==', 'collaborative_board'))
+        : query(baseRef, where('schoolId', '==', schoolId));
     return onSnapshot(ref, (snap) => {
         const responses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         onChange(responses);
