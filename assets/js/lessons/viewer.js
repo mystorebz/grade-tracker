@@ -367,14 +367,22 @@ function renderDocumentView() {
         readOnly: true,
         modules: { toolbar: false }
     });
-    quillViewer.root.innerHTML = block.contentHtml || '';
+    // The embed's live status pill is baked into the HTML string BEFORE it
+    // ever reaches Quill's root — not patched onto the embed node afterward.
+    // Quill wires up its own MutationObserver the moment it's constructed;
+    // mutating a child of an already-mounted node later (as the old
+    // reviveAssignmentEmbeds() did, via node.innerHTML =) gave that
+    // observer a change to react to, and Quill's own DOM-to-Delta
+    // normalization doesn't recognize the assignment-embed span as
+    // anything special — it collapsed it down to plain (italicized) text.
+    // Setting root.innerHTML exactly once, fully-formed, means Quill only
+    // ever parses finished content and never "corrects" it after the fact.
+    quillViewer.root.innerHTML = reviveAssignmentEmbedsHtml(block.contentHtml || '');
     // Quill's read-only mode still leaves its root contenteditable="false"
     // wrapper focusable/selectable for text — that's fine and expected
     // (students can still select/copy text); only the assignment embed
     // itself is ever behaviorally special, via the click delegation wired
     // in wireEvents() rather than anything Quill-specific here.
-
-    reviveAssignmentEmbeds();
     lazifyDocumentMedia();
     buildTableOfContents();
 
@@ -427,12 +435,41 @@ function renderDocumentView() {
 // clickable in this read-only context and layers a live submission-status
 // pill on top (Submitted/Not submitted), which the teacher-side editable
 // version never shows since a teacher has no submission of their own.
-function reviveAssignmentEmbeds() {
-    els.docViewerEditor.querySelectorAll('.assignment-embed[data-assignment-id]').forEach(node => {
+//
+// Operates on the raw HTML STRING, via a detached <template> (never
+// attached to the document, never touched by Quill) — not on the live
+// nodes inside quillViewer.root. Quill wires a MutationObserver onto its
+// root the moment it's constructed; patching an embed node's innerHTML
+// after that (the previous approach) gave that observer a live mutation
+// to react to, and Quill's DOM-to-Delta normalization doesn't know what
+// an assignment-embed span is, so it flattened it to plain text. Building
+// the finished string here and handing Quill fully-formed content exactly
+// once (see renderDocumentView()) avoids that entirely.
+function reviveAssignmentEmbedsHtml(html) {
+    const template = document.createElement('template');
+    template.innerHTML = html;
+    template.content.querySelectorAll('.assignment-embed[data-assignment-id]').forEach(node => {
         const assignmentId = node.getAttribute('data-assignment-id');
         const title = node.getAttribute('data-assignment-title') || 'Assignment';
         node.innerHTML = buildAssignmentEmbedInnerHtml(assignmentId, title);
     });
+    return template.innerHTML;
+}
+
+// Re-renders the Document view's embed status pills after a grade/submission
+// may have changed (panel closed, or a submission just saved). Always
+// rebuilds from lesson.slides[0].contentHtml — the untouched, originally
+// saved string — rather than patching whatever's currently live in
+// quillViewer.root, for the same reason renderDocumentView() builds the
+// full string before ever handing it to Quill: patching an embed node's
+// innerHTML on an already-mounted Quill root is what caused the embed to
+// get flattened to plain text in the first place (Quill's own DOM
+// normalization reacts to that live mutation and doesn't recognize the
+// assignment-embed span). One full, pre-built reassignment sidesteps that.
+function refreshDocumentEmbedStatuses() {
+    if (!quillViewer) return;
+    const block = lesson.slides[0] || { contentHtml: '' };
+    quillViewer.root.innerHTML = reviveAssignmentEmbedsHtml(block.contentHtml || '');
 }
 
 function renderAssignmentEmbedHtml(linkedAssignmentId) {
@@ -570,7 +607,7 @@ function closeAssignmentPanel() {
     // a submission/grade just changed — cheapest correct approach is simply
     // re-rendering the current view's content rather than diffing.
     if (lesson.format === 'document') {
-        reviveAssignmentEmbeds();
+        refreshDocumentEmbedStatuses();
     } else {
         renderSlideCanvas();
     }
@@ -677,7 +714,7 @@ function wireAssignmentPanelForm(a) {
             wireAssignmentPanelForm(a);
             // Reflect the fresh submission status on whichever embed card
             // triggered this panel, without waiting for the panel to close.
-            if (lesson.format === 'document') reviveAssignmentEmbeds();
+            if (lesson.format === 'document') refreshDocumentEmbedStatuses();
             else renderSlideCanvas();
         } catch (e) {
             console.error('[Lesson Viewer] saveSubmission:', e);
