@@ -15,6 +15,26 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Quill.js — Document-format lessons only. Loaded on every builder
+         page load (not lazily) since it's a small library and the teacher
+         may switch between Slides/Document lessons in the same session. -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js"></script>
+
+    <style>
+        /* Match Quill's editing surface to this app's own type scale/colors
+           instead of its default look, and give the custom assignment-card
+           embed a visual identity that reads as "not plain text". */
+        #docEditor .ql-editor { font-family: 'DM Sans', sans-serif; font-size: 14.5px; color: #0d1f35; line-height: 1.6; min-height: 480px; }
+        #docEditor .ql-editor h1 { font-size: 24px; font-weight: 700; }
+        #docEditor .ql-editor h2 { font-size: 19px; font-weight: 700; }
+        #docEditor .ql-editor h3 { font-size: 16px; font-weight: 700; }
+        #docToolbar.ql-toolbar { border-color: #dce3ed; background: #f8fafb; border-radius: 0.75rem 0.75rem 0 0; }
+        #docEditor.ql-container { border-color: #dce3ed; border-radius: 0 0 0.75rem 0.75rem; font-family: 'DM Sans', sans-serif; }
+        .assignment-embed { display: inline-flex; align-items: center; gap: 6px; background: #eef4ff; border: 1px solid #c7d9fd; color: #2563eb; font-weight: 700; font-size: 12.5px; padding: 4px 10px 4px 8px; border-radius: 999px; cursor: pointer; user-select: none; }
+        .assignment-embed:hover { background: #dbe8ff; }
+    </style>
 </head>
 <body class="flex w-full h-screen overflow-hidden bg-[#f4f7fb] font-['DM_Sans']">
 
@@ -49,7 +69,7 @@
             </div>
         </div>
 
-        <!-- ═══ BUILDER VIEW (shown when a lesson is open) ═══════════════════ -->
+        <!-- ═══ SLIDE BUILDER VIEW (Slides-format lesson is open) ═══════════ -->
         <div id="builderView" class="hidden flex-1 flex overflow-hidden">
 
             <!-- ── LEFT: slide sidebar ─────────────────────────────────────── -->
@@ -117,7 +137,92 @@
             <div id="propertiesPanel" class="w-[300px] flex-shrink-0 h-full overflow-y-auto bg-white border-l border-[#dce3ed] p-4"></div>
         </div>
 
+        <!-- ═══ DOCUMENT BUILDER VIEW (Document-format lesson is open) ═════ -->
+        <div id="docBuilderView" class="hidden flex-1 flex-col h-full overflow-hidden">
+
+            <!-- Top bar: identical structure/ids-with-suffix to the Slide
+                 builder's top bar so builder.js can share one set of
+                 save/publish/notes handlers across both formats. -->
+            <div class="flex-shrink-0 bg-white border-b border-[#dce3ed] px-6 py-3 flex items-center justify-between gap-4">
+                <div class="flex items-center gap-3 min-w-0">
+                    <button id="docBackToListBtn" class="text-[#6b84a0] hover:text-[#0d1f35] text-[12px] font-bold flex items-center gap-1.5 flex-shrink-0">
+                        <i class="fa-solid fa-arrow-left text-[11px]"></i> All Lessons
+                    </button>
+                    <span class="text-[#dce3ed] flex-shrink-0">|</span>
+                    <input id="docLessonTitleInput" type="text" placeholder="Untitled Lesson"
+                        class="text-[15px] font-bold text-[#0d1f35] border-none outline-none bg-transparent min-w-0 flex-1 focus:bg-[#f4f7fb] rounded px-1 -ml-1">
+                    <span id="docStatusPill" class="text-[10px] font-black uppercase tracking-wide px-2.5 py-1 rounded-md flex-shrink-0 whitespace-nowrap"></span>
+                </div>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <span id="docSaveMsg" class="text-[11px] font-semibold text-[#6b84a0] hidden"></span>
+                    <button id="docNotesBtn" class="text-[#6b84a0] hover:text-[#2563eb] hover:bg-[#eef4ff] h-9 w-9 rounded flex items-center justify-center transition" title="Teacher Notes (hidden from students)">
+                        <i class="fa-solid fa-note-sticky"></i>
+                    </button>
+                    <button id="docSaveBtn" class="bg-white hover:bg-[#f4f7fb] text-[#0d1f35] font-bold py-2 px-4 rounded border border-[#dce3ed] transition text-[12.5px]">
+                        Save Draft
+                    </button>
+                    <button id="docPublishBtn" class="bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-2 px-4 rounded transition text-[12.5px] flex items-center gap-2">
+                        <i class="fa-solid fa-paper-plane"></i> <span id="docPublishBtnLabel">Publish</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Scrolling document page, Word/Docs-style: a centered white
+                 "page" on a gray background, toolbar pinned above it. -->
+            <div class="flex-1 overflow-y-auto p-8 bg-[#eef1f5]">
+                <div class="max-w-3xl mx-auto">
+                    <div id="docToolbar"></div>
+                    <div id="docEditor" class="bg-white"></div>
+                </div>
+            </div>
+        </div>
+
     </main>
+
+    <!-- ═══ FORMAT CHOICE MODAL (shown on "New Lesson") ══════════════════ -->
+    <div id="formatChoiceOverlay" class="hidden fixed inset-0 bg-black/40 z-30 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-lg">
+            <div class="p-4 border-b border-[#dce3ed] flex items-center justify-between">
+                <div>
+                    <h3 class="text-[14px] font-bold text-[#0d1f35] m-0">New Lesson</h3>
+                    <p class="text-[11px] text-[#6b84a0] m-0">Choose how you want to build this lesson</p>
+                </div>
+                <button id="closeFormatChoiceBtn" class="text-[#6b84a0] hover:text-[#0d1f35] h-8 w-8 rounded flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-5 grid grid-cols-2 gap-4">
+                <button data-format="slides" class="format-choice-btn text-left border-2 border-[#dce3ed] hover:border-[#2563eb] hover:bg-[#f8fafd] rounded-xl p-4 transition">
+                    <div class="w-10 h-10 rounded-lg bg-[#eef4ff] text-[#2563eb] border border-[#c7d9fd] flex items-center justify-center mb-3">
+                        <i class="fa-solid fa-images"></i>
+                    </div>
+                    <p class="font-bold text-[#0d1f35] text-[13.5px] m-0 mb-1">Slide Deck</p>
+                    <p class="text-[11.5px] text-[#6b84a0] m-0 leading-snug">A paginated, click-through presentation — like Google Slides.</p>
+                </button>
+                <button data-format="document" class="format-choice-btn text-left border-2 border-[#dce3ed] hover:border-[#2563eb] hover:bg-[#f8fafd] rounded-xl p-4 transition">
+                    <div class="w-10 h-10 rounded-lg bg-[#eef4ff] text-[#2563eb] border border-[#c7d9fd] flex items-center justify-center mb-3">
+                        <i class="fa-solid fa-file-lines"></i>
+                    </div>
+                    <p class="font-bold text-[#0d1f35] text-[13.5px] m-0 mb-1">Document</p>
+                    <p class="text-[11.5px] text-[#6b84a0] m-0 leading-snug">A single scrolling page with rich text — like Word or Google Docs.</p>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ ASSIGNMENT-EMBED PICKER (Document mode's toolbar button) ══════ -->
+    <div id="assignmentPickerOverlay" class="hidden fixed inset-0 bg-black/40 z-30 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-sm">
+            <div class="p-4 border-b border-[#dce3ed] flex items-center justify-between">
+                <div>
+                    <h3 class="text-[14px] font-bold text-[#0d1f35] m-0">Insert Linked Assignment</h3>
+                    <p class="text-[11px] text-[#6b84a0] m-0">Inserts a card students can open to submit their work</p>
+                </div>
+                <button id="closeAssignmentPickerBtn" class="text-[#6b84a0] hover:text-[#0d1f35] h-8 w-8 rounded flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-4">
+                <div id="assignmentPickerList" class="space-y-1.5 max-h-72 overflow-y-auto"></div>
+            </div>
+        </div>
+    </div>
 
     <!-- ═══ TEACHER-ONLY NOTES MODAL (pacing notes + standards) ═══════════ -->
     <div id="notesOverlay" class="hidden fixed inset-0 bg-black/40 z-30 flex items-center justify-center p-4">

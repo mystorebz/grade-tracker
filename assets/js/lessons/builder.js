@@ -417,6 +417,19 @@ function renderSlideCanvas() {
     wireCanvasInputs(slide);
 }
 
+// Whether a media slide's URL field currently fails validation — keyed by
+// slide id, not stored on the slide object itself, because it's pure
+// transient UI state (never saved, never loaded from Firestore). This
+// exists because renderSlideCanvas() replaces the canvas's innerHTML
+// wholesale on every keystroke to refresh the embed/image preview; a
+// property-panel handler that reached into the old DOM and toggled
+// `#mediaUrlError`'s `hidden` class directly would have that change
+// discarded the instant the very next render rebuilt the element fresh.
+// Computing the hidden state from this map inside renderMediaCanvas keeps
+// the error message correct across every re-render instead of only until
+// the next one.
+const mediaUrlInvalid = new Map();
+
 function fieldWrap(label, inputHtml) {
     return `<div class="mb-4"><label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">${label}</label>${inputHtml}</div>`;
 }
@@ -482,7 +495,7 @@ function renderMediaCanvas(slide) {
         </div>
 
         <div data-media-preview class="mb-2">${isImage ? imagePreview : videoPreview}</div>
-        <p id="mediaUrlError" class="text-[11px] font-bold text-[#e31b4a] mb-2 hidden">${isImage ? "That doesn't look like a direct image link (needs to end in .jpg, .png, etc.)." : "Couldn't recognize that as a YouTube, Vimeo, or Google Drive link."}</p>
+        <p id="mediaUrlError" class="text-[11px] font-bold text-[#e31b4a] mb-2 ${mediaUrlInvalid.get(slide.id) ? '' : 'hidden'}">${isImage ? "That doesn't look like a direct image link (needs to end in .jpg, .png, etc.)." : "Couldn't recognize that as a YouTube, Vimeo, or Google Drive link."}</p>
         ${fieldWrap('Caption', `<input data-field="caption" type="text" value="${escHtml(slide.caption)}" placeholder="Optional caption" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
     </div>
     <div id="imgPreviewFallback" class="hidden">
@@ -565,19 +578,18 @@ function renderVideoProperties(slide) {
     const input = document.getElementById('mediaUrlInput');
     input.addEventListener('input', () => {
         const parsed = parseMediaUrl(input.value);
-        const errorEl = document.getElementById('mediaUrlError');
         slide.mediaUrl = input.value;
         if (input.value.trim() && !parsed) {
             slide.provider = null;
             slide.embedUrl = '';
-            if (errorEl) errorEl.classList.remove('hidden');
+            mediaUrlInvalid.set(slide.id, true);
         } else {
             slide.provider = parsed?.provider || null;
             slide.embedUrl = parsed?.embedUrl || '';
-            if (errorEl) errorEl.classList.add('hidden');
+            mediaUrlInvalid.set(slide.id, false);
         }
         hasUnsavedChanges = true;
-        renderSlideCanvas(); // re-render to update the live embed preview
+        renderSlideCanvas(); // re-render to update the live embed preview + error message
         // Re-focus + restore cursor since renderSlideCanvas rebuilds the DOM;
         // the properties panel input isn't rebuilt so it keeps focus, but the
         // canvas's own preview needs the fresh embedUrl to show immediately.
@@ -596,15 +608,10 @@ function renderImageProperties(slide) {
 
     const urlInput = document.getElementById('imageUrlInput');
     urlInput.addEventListener('input', () => {
-        const errorEl = document.getElementById('mediaUrlError');
         slide.imageUrl = urlInput.value;
-        if (urlInput.value.trim() && !isLikelyImageUrl(urlInput.value)) {
-            if (errorEl) errorEl.classList.remove('hidden');
-        } else {
-            if (errorEl) errorEl.classList.add('hidden');
-        }
+        mediaUrlInvalid.set(slide.id, !!urlInput.value.trim() && !isLikelyImageUrl(urlInput.value));
         hasUnsavedChanges = true;
-        renderSlideCanvas(); // re-render to update the live image preview
+        renderSlideCanvas(); // re-render to update the live image preview + error message
     });
 
     document.getElementById('imageAltInput').addEventListener('input', (e) => {
