@@ -1,4 +1,4 @@
-{
+﻿{
   "indexes": [
     {
       "collectionGroup": "students",
@@ -121,6 +121,17 @@
       "fields": [
         { "fieldPath": "schoolId", "order": "ASCENDING" },
         { "fieldPath": "semesterId", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "grades",
+      "fieldPath": "assignmentId",
+      "ttl": false,
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION" },
+        { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
       ]
     }
   ]
