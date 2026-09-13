@@ -1046,6 +1046,39 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ── 11a. Work (Add Work rebuild) answer key isolation ──────────────────
+    // Same goal as exam_answer_keys — correct answers must never be
+    // client-readable, by the teacher's own session included — but a
+    // different mechanism: there's no Cloud Function that writes this
+    // collection (there isn't one for exam_answer_keys either yet), so the
+    // teacher's client writes it directly in the same batch as the clean
+    // assignment doc. Read stays permanently denied to every client, which
+    // is the actual security property that matters here.
+    //
+    // This is a TOP-LEVEL collection, so there's no {schoolId} path segment
+    // to check isCallerInSchool against the way every nested rule above
+    // does. Tenant scoping instead comes from the caller's own
+    // server-issued custom claim compared against the schoolId field IN
+    // THE DOCUMENT BEING WRITTEN (request.resource.data) — a teacher can
+    // only ever create a key doc claiming their own schoolId, since
+    // request.auth.token.schoolId cannot be forged from the client.
+    //
+    // create only — no update, no delete, matching the write-once intent:
+    // once a key is written, no client (compromised teacher session
+    // included) can silently alter or erase it afterward. hasOnly locks
+    // the document to exactly the four fields the schema defines, so this
+    // can't be repurposed to smuggle arbitrary data past the deny-all
+    // fallback.
+    match /work_answer_keys/{assignmentId} {
+      allow read, update, delete: if false;
+      allow create: if request.auth != null &&
+                       request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] &&
+                       request.auth.token.schoolId == request.resource.data.schoolId &&
+                       isSchoolActive(request.resource.data.schoolId) &&
+                       request.resource.data.assignmentId == assignmentId &&
+                       request.resource.data.keys().hasOnly(['assignmentId', 'schoolId', 'keys', 'createdAt']);
+    }
+
     // ── 12. Deny everything else ───────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;

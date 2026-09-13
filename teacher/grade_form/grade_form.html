@@ -352,15 +352,25 @@
 
             </div>
 
+            <!-- Save/validation feedback — lives inside the overlay itself; the
+                 page-level gradeSavedBanner/gradeErrorBanner sit underneath this
+                 modal's backdrop and would never be seen while it's open. -->
+            <div id="awErrorBanner" class="hidden mx-6 mb-4 bg-[#fff0f3] border border-[#fecaca] border-l-4 border-l-[#e31b4a] rounded-sm p-3 flex-shrink-0">
+                <p id="awErrorBannerText" class="font-bold text-[#e31b4a] text-[12px] m-0"></p>
+            </div>
+            <div id="awSavedBanner" class="hidden mx-6 mb-4 bg-[#edfaf4] border border-[#c6f0db] border-l-4 border-l-[#0ea871] rounded-sm p-3 flex-shrink-0">
+                <p id="awSavedBannerText" class="font-bold text-[#0ea871] text-[12px] m-0"></p>
+            </div>
+
             <!-- Action bar -->
             <div class="flex items-center justify-end gap-2.5 px-6 py-4 border-t border-[#f0f4f8] bg-[#f8fafb] flex-shrink-0">
                 <button onclick="closeAddWorkModal()" class="text-[12px] font-bold text-[#6b84a0] hover:text-[#0d1f35] bg-white border border-[#dce3ed] px-4 py-2.5 rounded-sm transition">
                     Cancel
                 </button>
-                <button id="awSaveDraftBtn" disabled class="text-[12px] font-bold text-[#9ab0c6] bg-[#eef2f7] border border-[#dce3ed] px-4 py-2.5 rounded-sm cursor-not-allowed" title="Wired up in the next authorized build step">
+                <button id="awSaveDraftBtn" onclick="awSaveWork('draft')" class="text-[12px] font-bold text-[#0d1f35] hover:bg-[#eef2f7] bg-white border border-[#dce3ed] px-4 py-2.5 rounded-sm transition">
                     Save Draft
                 </button>
-                <button id="awPublishBtn" disabled class="text-[12px] font-bold text-white bg-[#c5d0db] px-5 py-2.5 rounded-sm cursor-not-allowed uppercase tracking-widest" title="Wired up in the next authorized build step">
+                <button id="awPublishBtn" onclick="awSaveWork('posted')" class="text-[12px] font-bold text-white bg-[#0d1f35] hover:bg-[#0ea871] px-5 py-2.5 rounded-sm transition uppercase tracking-widest">
                     <i class="fa-solid fa-paper-plane mr-1.5"></i>Publish to Class
                 </button>
             </div>

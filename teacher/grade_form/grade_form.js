@@ -1,5 +1,5 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { doc, getDoc, getDocs, setDoc, collection, query, where, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { doc, getDoc, getDocs, setDoc, collection, query, where, updateDoc, writeBatch, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { letterGrade, loadTeacherSubjectsCache, getTeacherDocRef, resolveGradeWeights, saveGrade } from '../../assets/js/utils.js';
@@ -1046,7 +1046,11 @@ const AW_QUESTION_TYPES = [
 
 function awMakeQuestion(type = 'multiple_choice') {
     const base = { id: `q_${++awQuestionSeq}`, type, prompt: '', points: 1, attachments: [] };
-    if (type === 'multiple_choice') base.options = ['', ''];
+    // correctOptionIndex is Step 3's answer-key source for multiple_choice —
+    // it never leaves this in-memory state as part of the clean question
+    // object; awSaveWork lifts it out into the separate work_answer_keys
+    // write. null until the teacher marks one (validated before save).
+    if (type === 'multiple_choice') { base.options = ['', '']; base.correctOptionIndex = null; }
     if (type === 'free_response' || type === 'short_answer' || type === 'math') base.hint = '';
     if (type === 'attachment_response') base.responseType = 'File Upload';
     return base;
@@ -1055,8 +1059,8 @@ function awMakeQuestion(type = 'multiple_choice') {
 function awResetQuestionTypeFields(q, newType) {
     // Strip the old type's fields, then apply the new type's defaults —
     // keeps prompt/points/attachments (those are type-agnostic).
-    delete q.options; delete q.hint; delete q.responseType;
-    if (newType === 'multiple_choice') q.options = ['', ''];
+    delete q.options; delete q.hint; delete q.responseType; delete q.correctOptionIndex;
+    if (newType === 'multiple_choice') { q.options = ['', '']; q.correctOptionIndex = null; }
     if (newType === 'free_response' || newType === 'short_answer' || newType === 'math') q.hint = '';
     if (newType === 'attachment_response') q.responseType = 'File Upload';
     q.type = newType;
@@ -1153,6 +1157,9 @@ function awRenderQuestionTypeFields(q) {
     if (q.type === 'multiple_choice') {
         const options = (q.options || []).map((opt, i) => `
             <div class="flex items-center gap-2">
+                <input type="radio" name="aw-correct-${q.id}" data-question-id="${q.id}" data-option-index="${i}" data-aw-action="set-correct"
+                    ${q.correctOptionIndex === i ? 'checked' : ''}
+                    class="w-3.5 h-3.5 accent-[#0ea871] cursor-pointer flex-shrink-0" title="Mark as the correct answer">
                 <span class="text-[10px] font-bold text-[#9ab0c6] w-4 flex-shrink-0">${String.fromCharCode(65 + i)}</span>
                 <input type="text" value="${escHtml(opt)}" placeholder="Option ${i + 1}"
                     data-question-id="${q.id}" data-option-index="${i}" data-aw-input="option-text"
@@ -1168,6 +1175,7 @@ function awRenderQuestionTypeFields(q) {
                 ${options}
                 <button type="button" data-question-id="${q.id}" data-aw-action="add-option"
                     class="text-[10.5px] font-bold text-[#0ea871] hover:text-[#0d1f35] mt-1"><i class="fa-solid fa-plus mr-1"></i>Add option</button>
+                <p class="text-[9.5px] text-[#9ab0c6] italic m-0 pt-0.5">Select the circle next to the correct option — required before this can be saved.</p>
             </div>`;
     }
 
@@ -1303,7 +1311,18 @@ function initAddWorkBuilderEvents() {
             if (q?.options) q.options.push('');
         } else if (action === 'remove-option') {
             const q = awFindQuestion(qId);
-            if (q?.options && q.options.length > 2) q.options.splice(Number(btn.dataset.optionIndex), 1);
+            if (q?.options && q.options.length > 2) {
+                const idx = Number(btn.dataset.optionIndex);
+                q.options.splice(idx, 1);
+                // Keep correctOptionIndex meaningful after the shift: drop the
+                // mark if the removed option WAS correct, shift it down by one
+                // if a later option was correct, otherwise leave it alone.
+                if (q.correctOptionIndex === idx) q.correctOptionIndex = null;
+                else if (typeof q.correctOptionIndex === 'number' && q.correctOptionIndex > idx) q.correctOptionIndex -= 1;
+            }
+        } else if (action === 'set-correct') {
+            const q = awFindQuestion(qId);
+            if (q) q.correctOptionIndex = Number(btn.dataset.optionIndex);
         } else if (action === 'add-attachment') {
             const scope = btn.dataset.awScope;
             const input = container.querySelector(
@@ -1338,3 +1357,210 @@ function initAddWorkBuilderEvents() {
     });
 }
 initAddWorkBuilderEvents();
+
+// ─────────────────────────────────────────────────────────────────────────
+// STEP 3 — Firestore persistence (Save Draft / Publish to Class).
+//
+// Answer-key isolation: correctOptionIndex never appears in the object
+// written to the assignment doc. It's read out of awQuestions here, into a
+// separate `keys` map, and the two documents are written in one batch so
+// they can never end up out of sync (an assignment existing with no
+// matching key doc, or vice versa). See firestore.rules `work_answer_keys`
+// for why this is safe as a direct client write: read is permanently
+// denied there, and create is scoped to the caller's own schoolId.
+// ─────────────────────────────────────────────────────────────────────────
+
+function awClearBanners() {
+    document.getElementById('awErrorBanner')?.classList.add('hidden');
+    document.getElementById('awSavedBanner')?.classList.add('hidden');
+}
+function awShowError(message) {
+    document.getElementById('awSavedBanner')?.classList.add('hidden');
+    const text = document.getElementById('awErrorBannerText');
+    if (text) text.textContent = message;
+    document.getElementById('awErrorBanner')?.classList.remove('hidden');
+}
+function awShowSaved(message) {
+    document.getElementById('awErrorBanner')?.classList.add('hidden');
+    const text = document.getElementById('awSavedBannerText');
+    if (text) text.textContent = message;
+    document.getElementById('awSavedBanner')?.classList.remove('hidden');
+}
+
+// Validates the current modal state and returns a list of human-readable
+// problems (empty = valid). Pure function — no DOM writes — so it can be
+// unit-tested the same way Step 2's render functions were.
+function awValidate({ title, workType, category, subjectName, pointsPossible }) {
+    const errors = [];
+    if (!title) errors.push('Title is required.');
+    if (!workType || !category) errors.push('Type is required.');
+    if (!subjectName) errors.push('Subject is required.');
+    if (isNaN(pointsPossible) || pointsPossible <= 0) errors.push('Points Possible must be a positive number.');
+
+    if (category === 'assessment') {
+        if (awQuestions.length === 0) errors.push('Add at least one question.');
+        awQuestions.forEach((q, i) => {
+            const n = i + 1;
+            if (!(q.prompt || '').trim()) errors.push(`Question ${n}: a prompt is required.`);
+            if (q.type === 'multiple_choice') {
+                const filled = (q.options || []).filter(o => (o || '').trim() !== '');
+                if (filled.length < 2) errors.push(`Question ${n}: at least 2 non-empty options are required.`);
+                const ci = q.correctOptionIndex;
+                const hasMark = typeof ci === 'number' && q.options && (q.options[ci] || '').trim() !== '';
+                if (!hasMark) errors.push(`Question ${n}: select which option is correct.`);
+            }
+        });
+    }
+    return errors;
+}
+
+// Strips correctOptionIndex out of each question (into the returned
+// answerKeys map) and maps attachment_response's responseType into the
+// studentResponse shape Step 3's schema calls for. Nothing here mutates
+// awQuestions — the modal's own state stays exactly as the teacher left it
+// if the save fails and they need to retry.
+function awBuildCleanQuestions() {
+    const answerKeys = {};
+    const requiresMap = { 'File Upload': 'file', 'Camera Photo': 'photo', 'Drawing Canvas': 'drawing' };
+
+    const questions = awQuestions.map(q => {
+        const clean = {
+            id: q.id,
+            type: q.type,
+            prompt: q.prompt || '',
+            points: q.points ?? 0,
+            attachments: q.attachments || []
+        };
+        if (q.type === 'multiple_choice') {
+            clean.options = [...(q.options || [])];
+            if (typeof q.correctOptionIndex === 'number') answerKeys[q.id] = q.correctOptionIndex;
+            // correctOptionIndex deliberately not copied onto `clean`.
+        } else if (q.type === 'free_response' || q.type === 'short_answer' || q.type === 'math') {
+            clean.hint = q.hint || '';
+            // No captured "correct" value exists for these types (Step 2
+            // never added a field for one) — nothing to strip here, and
+            // nothing gets fabricated into the answer key either.
+        } else if (q.type === 'attachment_response') {
+            clean.responseType = q.responseType || 'File Upload';
+            clean.studentResponse = { requires: requiresMap[clean.responseType] || 'file' };
+        }
+        return clean;
+    });
+
+    return { questions, answerKeys };
+}
+
+window.awSaveWork = async function(status) {
+    awClearBanners();
+
+    const title           = document.getElementById('awTitle')?.value.trim() || '';
+    const subjectName     = document.getElementById('awSubject')?.value || '';
+    const dueDate         = document.getElementById('awDueDate')?.value || '';
+    const pointsPossible  = parseFloat(document.getElementById('awPoints')?.value);
+    const workType        = document.getElementById('awType')?.value || '';
+    const category        = AW_ASSESSMENT_TYPES.includes(workType) ? 'assessment'
+                             : AW_STANDARD_TYPES.includes(workType) ? 'standard' : '';
+
+    const errors = awValidate({ title, workType, category, subjectName, pointsPossible });
+    if (errors.length) {
+        awShowError(errors[0] + (errors.length > 1 ? ` (+${errors.length - 1} more issue${errors.length > 2 ? 's' : ''})` : ''));
+        return;
+    }
+
+    const sub = getSubjectByName(subjectName);
+    if (!sub) { awShowError('Could not resolve the selected subject.'); return; }
+
+    const isAssessment = category === 'assessment';
+    const { questions: cleanQuestions, answerKeys } = isAssessment
+        ? awBuildCleanQuestions()
+        : { questions: [], answerKeys: {} };
+
+    const assignmentId = 'work_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+    const nowIso = new Date().toISOString();
+
+    const assignmentData = {
+        id: assignmentId,
+        title,
+        workType,
+        category,
+        dueDate: dueDate || '',
+        pointsPossible,
+        status,
+        instructions: isAssessment ? '' : awStandardInstructions,
+        attachments: isAssessment ? [] : [...awStandardAttachments],
+        questions: cleanQuestions,
+        teacherId: session.teacherId,
+        createdAt: nowIso,
+        updatedAt: nowIso
+    };
+
+    const hasAnswerKeys = Object.keys(answerKeys).length > 0;
+    const answerKeyData = hasAnswerKeys ? {
+        assignmentId,
+        schoolId: session.schoolId,
+        keys: answerKeys,
+        createdAt: serverTimestamp()
+    } : null;
+
+    const saveDraftBtn = document.getElementById('awSaveDraftBtn');
+    const publishBtn   = document.getElementById('awPublishBtn');
+    const activeBtn    = status === 'draft' ? saveDraftBtn : publishBtn;
+    const originalHtml = activeBtn ? activeBtn.innerHTML : '';
+    [saveDraftBtn, publishBtn].forEach(b => { if (b) b.disabled = true; });
+    if (activeBtn) activeBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
+
+    try {
+        const batch = writeBatch(db);
+        const existing = Array.isArray(sub.assignments) ? sub.assignments : [];
+
+        // PHASE 0 hybrid model, same fork ensureAssignmentDoc already uses:
+        // a new-model subject gets its own real assignments subcollection;
+        // a legacy one embeds into the teacher doc's subjects[].assignments[].
+        let updatedSubjects = null;
+        if (sub._source === 'new') {
+            const assignmentRef = doc(db, 'schools', session.schoolId, 'classes', sub.classId, 'subjects', sub.id, 'assignments', assignmentId);
+            batch.set(assignmentRef, assignmentData);
+        } else {
+            updatedSubjects = (session.teacherData.subjects || []).map(s => {
+                if (s.id !== sub.id) return s;
+                return { ...s, assignments: [...existing, assignmentData] };
+            });
+
+            // Guard the Firestore 1MB document ceiling — this doc holds EVERY
+            // legacy subject's assignments, not just this one, so a rich Add
+            // Work payload (question text, attachment links) can push it over
+            // the limit in a way a plain grade record never could. Fail loudly
+            // here rather than let Firestore reject the write with a cryptic
+            // "resource-exhausted" the teacher can't act on.
+            const approxBytes = new Blob([JSON.stringify(updatedSubjects)]).size;
+            if (approxBytes > 900000) {
+                throw new Error("This subject's legacy record is too large to hold another rich assignment (Firestore's 1MB document limit). It needs migrating to the new class/subject model before adding more work here.");
+            }
+
+            batch.update(getTeacherDocRef(session.schoolId, session.teacherId), { subjects: updatedSubjects });
+        }
+
+        if (answerKeyData) {
+            batch.set(doc(db, 'work_answer_keys', assignmentId), answerKeyData);
+        }
+
+        await batch.commit();
+
+        // Mirror ensureAssignmentDoc: keep the in-memory cache (and, for the
+        // legacy path, sessionStorage) consistent with what was just written.
+        sub.assignments = [...existing, assignmentData];
+        if (sub._source !== 'new' && updatedSubjects) {
+            session.teacherData.subjects = updatedSubjects;
+            setSessionData('teacher', session);
+        }
+
+        awShowSaved(status === 'posted' ? 'Published to class.' : 'Draft saved.');
+        setTimeout(() => window.closeAddWorkModal(), 900);
+    } catch (err) {
+        console.error('[Add Work] awSaveWork failed:', err);
+        awShowError(err?.message || 'Could not save. Please try again.');
+    } finally {
+        [saveDraftBtn, publishBtn].forEach(b => { if (b) b.disabled = false; });
+        if (activeBtn) activeBtn.innerHTML = originalHtml;
+    }
+};
