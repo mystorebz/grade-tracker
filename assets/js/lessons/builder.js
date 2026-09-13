@@ -295,6 +295,10 @@ function renderLessonCard(lesson) {
                 <p class="text-[11px] text-[#9ab0c6] font-semibold m-0">${metaLabel} · Updated ${escHtml(formatDate(lesson.updatedAt))}</p>
             </div>
         </div>
+        ${isPublished ? `
+        <button data-action="golive" class="text-[#6b84a0] hover:text-[#0d9488] hover:bg-[#f0fdfa] h-8 w-8 rounded flex items-center justify-center transition flex-shrink-0" title="Go Live">
+            <i class="fa-solid fa-tower-broadcast text-xs"></i>
+        </button>` : ''}
         <button data-action="delete" class="text-[#6b84a0] hover:text-[#e31b4a] hover:bg-[#fff0f3] h-8 w-8 rounded flex items-center justify-center transition flex-shrink-0" title="Delete">
             <i class="fa-solid fa-trash text-xs"></i>
         </button>
@@ -310,6 +314,17 @@ async function onLessonListClick(e) {
 
     if (btn.dataset.action === 'open') {
         await openBuilder(lessonId);
+    } else if (btn.dataset.action === 'golive') {
+        // New tab, not a same-tab navigation: the teacher's own builder/
+        // lesson-list state is left exactly as it was, same reasoning as any
+        // other "open in a new context" action elsewhere in this app.
+        const params = new URLSearchParams({
+            lessonId,
+            classId: currentPostContext.classId,
+            subjectId: currentPostContext.subjectId,
+            subjectName: currentPostContext.subjectName || ''
+        });
+        window.open(`../lessons/live.html?${params.toString()}`, '_blank');
     } else if (btn.dataset.action === 'delete') {
         const lesson = lessonsCache.find(l => l.id === lessonId);
         if (!confirm(`Delete "${lesson?.title || 'this lesson'}"? This cannot be undone.`)) return;

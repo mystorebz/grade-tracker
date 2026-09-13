@@ -357,6 +357,33 @@ service cloud.firestore {
                      resource.data.schoolId == request.auth.token.schoolId;
     }
 
+    // ── 2e. COLLECTION-GROUP RULE — live_sessions/{id}/responses ───────────
+    // Same structural need as the exam_submissions collection-group rule
+    // directly above: the nested `match /responses/{responseId}` block under
+    // lessons/{lessonId}/live_sessions/{sessionId} (see section on Lessons,
+    // above) only ever governs a single, fully-specified document path — it
+    // is NEVER consulted for the teacher live dashboard's
+    // onSnapshot(collection(...'/responses')) listener, which lists every
+    // response in one session at once. That requires its own top-level rule
+    // declared with a recursive-wildcard prefix, exactly like
+    // exam_submissions above (see that rule's own comment for the full
+    // "queries are all or nothing" explanation — same reasoning applies here
+    // verbatim, just for a different collection).
+    //
+    // schoolId is denormalized onto every response doc by saveLiveResponse()
+    // (lessons.js) specifically so this rule never needs a get() lookup —
+    // a list rule that calls get()/exists() anywhere in its evaluation can't
+    // be proven safe for a list/collection-group query and gets rejected
+    // outright, same as exam_submissions. Teacher/admin only: students never
+    // list this collection group themselves (they only ever get() or
+    // create/update their OWN response doc, still governed by the nested
+    // rule above, unaffected by this block).
+    match /{path=**}/live_sessions/{sessionId}/responses/{responseId} {
+      allow list: if request.auth != null &&
+                     request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] &&
+                     resource.data.schoolId == request.auth.token.schoolId;
+    }
+
     // ── 3. Siloed School Data ──────────────────────────────────────────────
     match /schools/{schoolId} {
       // GET/LIST: public — needed by login pages, student portal, teacher
@@ -708,6 +735,59 @@ service cloud.firestore {
             match /private/{docId} {
               allow read, create, update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) &&
                                                       request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'];
+            }
+
+            // ── PHASE 3: LIVE SESSION ENGINE ──────────────────────────────
+            // The session doc itself (activeLessonId/teacherPositionId/
+            // startedAt/endedAt — never the responses, which are a separate
+            // subcollection matched below). READ is the same same-school
+            // grant every student already gets on assignments/posts (no
+            // per-student data lives on this doc, so no narrower isolation
+            // is needed) — a student must be able to onSnapshot this doc to
+            // auto-follow the teacher's live position at all. WRITE is
+            // teacher/admin only: a student able to set teacherPositionId
+            // could desync every other student's screen, and a student able
+            // to set endedAt could kill the session for the whole class.
+            match /live_sessions/{sessionId} {
+              allow read: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
+              allow create, update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) &&
+                                                request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'];
+
+              // GET (a single student's own response, or a teacher/admin
+              // reading one document by id): fine as a per-document get()
+              // rule — costs nothing extra for the "queries are all or
+              // nothing" reachability problem the LIST rule below has to
+              // solve separately, exactly like exam_submissions's own GET
+              // vs LIST split (see that match block's comments above).
+              //
+              // WRITE: a student may only ever create/update the response
+              // DOC THEY OWN. responseId.split('_')[0] alone is NOT enough
+              // to prove that — blockId (genSlideId()'s own output) always
+              // contains underscores itself, so responseId.split('_')[0]
+              // only ever recovers the studentId half correctly; it proves
+              // nothing about the REST of the id. Checking only that half
+              // would let a student pick any doc id starting with
+              // "<their own studentId>_" and write an arbitrary document
+              // under it — flooding this session's responses subcollection
+              // with junk (a cost/DoS issue on the teacher's live grid), or
+              // writing into a blockId they never actually answered by
+              // constructing "<their studentId>_<someone else's blockId>".
+              // The fix: require the FULL doc id to equal exactly
+              // "<studentId>_<blockId>" built from the WRITTEN document's
+              // own fields (request.resource.data), not just its prefix —
+              // this pins both halves of the id to real, validated fields
+              // rather than trusting client-supplied path segments alone.
+              match /responses/{responseId} {
+                allow get: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) && (
+                  request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] ||
+                  request.auth.token.studentId == responseId.split('_')[0]
+                );
+                allow create, update: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) &&
+                                          request.auth.token.role == 'student' &&
+                                          request.resource.data.studentId == request.auth.token.studentId &&
+                                          request.resource.data.blockId is string &&
+                                          responseId == request.resource.data.studentId + '_' + request.resource.data.blockId;
+              }
             }
           }
 

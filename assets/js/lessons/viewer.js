@@ -22,6 +22,12 @@ import {
     loadGradesIndexForStudent,
     isSubmissionFrozen
 } from '../../../assets/js/submissions.js';
+import {
+    getActiveLiveSession,
+    subscribeToLiveSession,
+    subscribeToLiveResponses,
+    saveLiveResponse
+} from '../../../assets/js/lessons.js';
 
 // ── 1. AUTHENTICATION & LAYOUT ──────────────────────────────────────────────
 const session = requireAuth('student', '../login.html');
@@ -52,6 +58,14 @@ let assignmentsById = new Map(); // linkedAssignmentId -> the real assignment re
 let gradesById = new Map();      // assignmentId -> grade record | null
 let currentPanelAssignmentId = null; // assignment currently open in the slide-in panel
 let loadedMediaSlideIds = new Set(); // slide ids whose iframe has already been lazily inserted (Slides format)
+
+// ── PHASE 3: LIVE SESSION ENGINE — student-side state ────────────────────
+let liveSessionId = null;          // this lesson's currently-active live session, if any
+let liveSessionData = null;        // { teacherPositionId, endedAt, ... } — last snapshot
+let unsubLiveSession = null;       // subscribeToLiveSession()'s unsubscribe
+let unsubLiveResponses = null;     // subscribeToLiveResponses()'s unsubscribe — re-registered per block, same as the teacher dashboard
+let liveResponsesForCurrentBlock = []; // collaborative_board's shared wall for whichever block is on screen
+let mySubmittedBlockIds = new Set(); // interactive_prompt/collaborative_board block ids this student has already answered this session (so a re-render doesn't blow away an in-progress unsent draft)
 
 const els = {};
 
@@ -192,6 +206,20 @@ async function init() {
         } else {
             renderDeckView();
         }
+
+        // ── PHASE 3: join this lesson's live session, if the teacher has
+        // one running right now. Non-fatal if this fails — the lesson still
+        // renders and functions exactly as a normal, non-live lesson; only
+        // auto-follow/live-response features are unavailable.
+        try {
+            const active = await getActiveLiveSession(session.schoolId, postContext, urlLessonId);
+            if (active) {
+                liveSessionId = active.id;
+                joinLiveSession();
+            }
+        } catch (e) {
+            console.error('[Lesson Viewer] Failed to check for an active live session:', e);
+        }
     } catch (e) {
         console.error('[Lesson Viewer] init:', e);
         showError('Something went wrong loading this lesson. Please try again later.');
@@ -204,13 +232,14 @@ function cacheEls() {
         'lvTitle', 'lvSubject', 'lvSlideCount', 'lvProgressFill',
         'lvDeckView', 'lvSlideCanvas', 'lvPrevBtn', 'lvNextBtn', 'lvDotRow',
         'lvDocView', 'lvTocList', 'docViewerEditor',
-        'lvAssignmentOverlay', 'lvAssignmentInner', 'lvAsgSubjectLabel', 'lvAsgTitle', 'lvAsgMetaRow', 'lvAssignmentBody', 'lvCloseAssignmentBtn'
+        'lvAssignmentOverlay', 'lvAssignmentInner', 'lvAsgSubjectLabel', 'lvAsgTitle', 'lvAsgMetaRow', 'lvAssignmentBody', 'lvCloseAssignmentBtn',
+        'lvLiveBanner'
     ].forEach(id => { els[id] = document.getElementById(id); });
 }
 
 function wireEvents() {
-    els.lvPrevBtn.addEventListener('click', () => goToSlide(currentSlideIndex - 1));
-    els.lvNextBtn.addEventListener('click', () => goToSlide(currentSlideIndex + 1));
+    els.lvPrevBtn.addEventListener('click', () => manualGoToSlide(currentSlideIndex - 1));
+    els.lvNextBtn.addEventListener('click', () => manualGoToSlide(currentSlideIndex + 1));
 
     document.addEventListener('keydown', (e) => {
         // Only steer the deck with arrow keys when the Slide Deck view is
@@ -219,8 +248,8 @@ function wireEvents() {
         // ArrowLeft/ArrowRight hijacked into changing slides underneath them).
         if (lesson?.format === 'document') return;
         if (!els.lvAssignmentOverlay.classList.contains('hidden')) return;
-        if (e.key === 'ArrowLeft') goToSlide(currentSlideIndex - 1);
-        if (e.key === 'ArrowRight') goToSlide(currentSlideIndex + 1);
+        if (e.key === 'ArrowLeft') manualGoToSlide(currentSlideIndex - 1);
+        if (e.key === 'ArrowRight') manualGoToSlide(currentSlideIndex + 1);
     });
 
     els.lvCloseAssignmentBtn.addEventListener('click', closeAssignmentPanel);
@@ -291,7 +320,7 @@ function renderDots() {
         `<button type="button" data-dot-index="${i}" class="rounded-full transition" style="width:${i === currentSlideIndex ? '20px' : '7px'};height:7px;background:${i === currentSlideIndex ? '#4338ca' : '#c7d2fe'}"></button>`
     ).join('');
     els.lvDotRow.querySelectorAll('[data-dot-index]').forEach(btn => {
-        btn.addEventListener('click', () => goToSlide(Number(btn.dataset.dotIndex)));
+        btn.addEventListener('click', () => manualGoToSlide(Number(btn.dataset.dotIndex)));
     });
 }
 
@@ -321,6 +350,23 @@ function currentSlide() {
     return lesson.slides[currentSlideIndex] || null;
 }
 
+// A student's own prev/next click or arrow key, as opposed to
+// joinLiveSession()'s teacher-driven goToSlide() call. Blocked outright
+// while this student is actively following a live, not-yet-ended session —
+// without this, a student's manual navigation would save that slide as
+// their new "resume position" (goToSlide()'s own localStorage write), only
+// for the very next teacherPositionId update to silently snap them back
+// with no explanation. Once the session ends (liveSessionData.endedAt is
+// set), manual navigation is freely allowed again — the lesson behaves like
+// any other non-live lesson from that point on.
+function manualGoToSlide(index) {
+    if (liveSessionId && liveSessionData && !liveSessionData.endedAt) {
+        showLiveBanner('Your teacher is presenting live — navigation follows their position.');
+        return;
+    }
+    goToSlide(index);
+}
+
 function renderSlideCanvas() {
     const slide = currentSlide();
     if (!slide) { els.lvSlideCanvas.innerHTML = ''; return; }
@@ -329,7 +375,9 @@ function renderSlideCanvas() {
         title: renderTitleSlideHtml,
         content: renderContentSlideHtml,
         media: renderMediaSlideHtml,
-        assignment: renderAssignmentSlideHtml
+        assignment: renderAssignmentSlideHtml,
+        interactive_prompt: renderInteractivePromptHtml,
+        collaborative_board: renderCollaborativeBoardHtml
     };
     els.lvSlideCanvas.innerHTML = (renderers[slide.type] || renderContentSlideHtml)(slide);
 
@@ -340,6 +388,22 @@ function renderSlideCanvas() {
     // guards that), so a student paging back and forth doesn't restart video
     // playback on every pass.
     if (slide.type === 'media') mountLazyMediaFrame(slide, els.lvSlideCanvas.querySelector('[data-lazy-media]'));
+
+    // ── PHASE 3: live-response wiring for the two interactive block types.
+    // Only meaningful during an active live session — outside one, these
+    // blocks render their static prompt text with no submission form at
+    // all, since there is no live_sessions document to write a response
+    // into (see the two render functions' own "no live session" branch).
+    if (liveSessionId && (slide.type === 'interactive_prompt' || slide.type === 'collaborative_board')) {
+        wireLiveBlockForm(slide);
+        registerBlockResponsesListener(slide.id, slide.type);
+    } else if (unsubLiveResponses) {
+        // Navigated to a non-interactive slide (or a live session isn't
+        // active) — tear down any listener left over from the previous
+        // slide rather than let it keep running unseen.
+        unsubLiveResponses();
+        unsubLiveResponses = null;
+    }
 }
 
 function renderTitleSlideHtml(slide) {
@@ -381,6 +445,161 @@ function renderAssignmentSlideHtml(slide) {
         ${slide.prompt ? `<p class="text-[13.5px] text-slate-600 leading-relaxed whitespace-pre-wrap mb-5">${escHtml(slide.prompt)}</p>` : ''}
         ${renderAssignmentEmbedHtml(slide.linkedAssignmentId)}
     </div>`;
+}
+
+// ── PHASE 3: LIVE SESSION ENGINE — interactive block rendering ──────────
+// Both block types render their prompt text unconditionally (a teacher
+// paging through the deck outside a live session, or a student opening the
+// lesson later for review, should still see what was asked) — only the
+// submission form itself is gated on liveSessionId actually being set, in
+// renderSlideCanvas() above.
+function renderInteractivePromptHtml(slide) {
+    const alreadySubmitted = mySubmittedBlockIds.has(slide.id);
+    return `
+    <div class="lv-slide-card">
+        <span class="lv-live-badge"><i class="fa-solid fa-bolt"></i> Live Prompt</span>
+        ${slide.heading ? `<h2 class="text-lg md:text-xl font-black text-slate-800 mt-3 mb-3">${escHtml(slide.heading)}</h2>` : ''}
+        <p class="text-[14px] text-slate-700 font-semibold leading-relaxed mb-4">${escHtml(slide.promptText) || 'No prompt text set.'}</p>
+        ${liveSessionId ? `
+            <div id="lvLiveFormWrap">
+                ${slide.promptKind === 'multiple_choice' && (slide.choices || []).length
+                    ? `<div class="space-y-2 mb-3">${slide.choices.map((c, i) => `
+                        <button type="button" data-live-choice="${escHtml(c)}" class="lv-choice-btn w-full text-left px-3.5 py-2.5 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 font-semibold text-[13px] text-slate-700 transition">${escHtml(c)}</button>`).join('')}</div>`
+                    : `<textarea id="lvLiveAnswerText" placeholder="Type your answer…" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm resize-none leading-relaxed mb-3" style="height:6rem;"></textarea>
+                       <button id="lvLiveSubmitBtn" class="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-black py-2.5 px-5 rounded-xl transition shadow-md text-sm"><i class="fa-solid fa-paper-plane mr-1"></i> Submit</button>`}
+                <p id="lvLiveMsg" class="text-[12px] font-bold mt-2 hidden"></p>
+                ${alreadySubmitted ? `<p class="text-[11.5px] font-bold text-emerald-600 mt-2"><i class="fa-solid fa-circle-check"></i> Your answer was submitted.</p>` : ''}
+            </div>`
+            : `<p class="text-[12px] font-semibold text-slate-400">This prompt is only live during an active session.</p>`}
+    </div>`;
+}
+
+function renderCollaborativeBoardHtml(slide) {
+    const alreadySubmitted = mySubmittedBlockIds.has(slide.id);
+    return `
+    <div class="lv-slide-card">
+        <span class="lv-live-badge lv-live-badge-board"><i class="fa-solid fa-people-group"></i> Collaborative Board</span>
+        ${slide.heading ? `<h2 class="text-lg md:text-xl font-black text-slate-800 mt-3 mb-3">${escHtml(slide.heading)}</h2>` : ''}
+        ${slide.instructions ? `<p class="text-[13.5px] text-slate-600 leading-relaxed whitespace-pre-wrap mb-4">${escHtml(slide.instructions)}</p>` : ''}
+        ${liveSessionId ? `
+            <div id="lvLiveFormWrap" class="mb-4">
+                <textarea id="lvLiveAnswerText" placeholder="Add your card…" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm resize-none leading-relaxed mb-3" style="height:4.5rem;"></textarea>
+                <button id="lvLiveSubmitBtn" class="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-black py-2.5 px-5 rounded-xl transition shadow-md text-sm"><i class="fa-solid fa-plus mr-1"></i> ${alreadySubmitted ? 'Update My Card' : 'Add My Card'}</button>
+                <p id="lvLiveMsg" class="text-[12px] font-bold mt-2 hidden"></p>
+            </div>
+            <div id="lvBoardWall" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5"></div>`
+            : `<p class="text-[12px] font-semibold text-slate-400">This board is only live during an active session.</p>`}
+    </div>`;
+}
+
+// Wires the Submit/Add-card button (and, for multiple_choice prompts, each
+// choice button) for whichever interactive block is currently on screen.
+// Re-called every renderSlideCanvas(), so no stale listener from a previous
+// slide's form can fire against the wrong block.
+function wireLiveBlockForm(slide) {
+    const submitBtn = document.getElementById('lvLiveSubmitBtn');
+    if (submitBtn) {
+        submitBtn.addEventListener('click', () => submitLiveResponse(slide, document.getElementById('lvLiveAnswerText')?.value || ''));
+    }
+    document.querySelectorAll('[data-live-choice]').forEach(btn => {
+        btn.addEventListener('click', () => submitLiveResponse(slide, btn.dataset.liveChoice));
+    });
+}
+
+async function submitLiveResponse(slide, answerText) {
+    const text = (answerText || '').trim();
+    if (!text) {
+        const msg = document.getElementById('lvLiveMsg');
+        if (msg) { msg.textContent = 'Write an answer before submitting.'; msg.className = 'text-[12px] font-bold mt-2 text-rose-600'; msg.classList.remove('hidden'); }
+        return;
+    }
+    const btn = document.getElementById('lvLiveSubmitBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; }
+
+    try {
+        const studentName = session.studentData?.name || '';
+        await saveLiveResponse(session.schoolId, postContext, lesson.id, liveSessionId, session.studentId, studentName, slide.id, { answerText: text });
+        mySubmittedBlockIds.add(slide.id);
+        const msg = document.getElementById('lvLiveMsg');
+        if (msg) { msg.textContent = 'Submitted!'; msg.className = 'text-[12px] font-bold mt-2 text-emerald-600'; msg.classList.remove('hidden'); }
+        const textarea = document.getElementById('lvLiveAnswerText');
+        if (slide.type === 'collaborative_board' && textarea) textarea.value = ''; // board keeps accepting new/updated cards; prompt is one-and-done
+        if (btn) { btn.disabled = false; btn.innerHTML = slide.type === 'collaborative_board' ? '<i class="fa-solid fa-plus mr-1"></i> Update My Card' : '<i class="fa-solid fa-paper-plane mr-1"></i> Submit'; }
+    } catch (e) {
+        console.error('[Lesson Viewer] submitLiveResponse:', e);
+        const msg = document.getElementById('lvLiveMsg');
+        if (msg) { msg.textContent = 'Could not submit — please try again.'; msg.className = 'text-[12px] font-bold mt-2 text-rose-600'; msg.classList.remove('hidden'); }
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-paper-plane mr-1"></i> Submit'; }
+    }
+}
+
+// One responses listener at a time, scoped to whichever interactive block
+// is currently on screen — mirrors the teacher dashboard's own
+// registerResponsesListener() exactly (same subscribeToLiveResponses() call,
+// same "list the whole session, filter to this block client-side"
+// approach), so the two sides of this feature share one read pattern. Only
+// collaborative_board actually shows the shared wall; interactive_prompt
+// is intentionally private (Nearpod-style individual input, never revealed
+// to classmates) — this still opens the listener for it so
+// mySubmittedBlockIds/mySubmittedBlockIds-driven UI stays accurate if this
+// student is viewing on a second device, but simply never renders the wall.
+function registerBlockResponsesListener(blockId, blockType) {
+    if (unsubLiveResponses) { unsubLiveResponses(); unsubLiveResponses = null; }
+    unsubLiveResponses = subscribeToLiveResponses(session.schoolId, postContext, lesson.id, liveSessionId, (responses) => {
+        const forThisBlock = responses.filter(r => r.blockId === blockId);
+        liveResponsesForCurrentBlock = forThisBlock;
+        if (forThisBlock.some(r => r.studentId === session.studentId)) mySubmittedBlockIds.add(blockId);
+
+        if (blockType === 'collaborative_board') {
+            const wall = document.getElementById('lvBoardWall');
+            if (wall) {
+                const sorted = [...forThisBlock].sort((a, b) => new Date(a.submittedAt || 0) - new Date(b.submittedAt || 0));
+                wall.innerHTML = sorted.map(r => `
+                    <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-3">
+                        <p class="text-[10.5px] font-black text-indigo-500 uppercase tracking-wide mb-1">${escHtml(r.studentName || r.studentId)}</p>
+                        <p class="text-[13px] font-semibold text-slate-700 m-0 whitespace-pre-wrap">${escHtml(r.answerText)}</p>
+                    </div>`).join('');
+            }
+        }
+    });
+}
+
+// ── PHASE 3: JOIN A LIVE SESSION + AUTO-FOLLOW ───────────────────────────
+// Subscribes to the session doc itself. Every time teacherPositionId
+// changes, this student's screen jumps to match — Slides format navigates
+// straight to that block's index; Document format (a single richtext block,
+// no discrete positions) has nothing to auto-follow to, so this is a no-op
+// there beyond the "session ended" banner, which still applies to both
+// formats.
+function joinLiveSession() {
+    unsubLiveSession = subscribeToLiveSession(session.schoolId, postContext, lesson.id, liveSessionId, (data) => {
+        liveSessionData = data;
+
+        if (data.endedAt) {
+            showLiveBanner('This live session has ended.');
+            if (unsubLiveResponses) { unsubLiveResponses(); unsubLiveResponses = null; }
+            return;
+        }
+
+        if (lesson.format === 'document') return; // no discrete position to follow
+
+        const targetIndex = lesson.slides.findIndex(s => s.id === data.teacherPositionId);
+        if (targetIndex >= 0 && targetIndex !== currentSlideIndex) {
+            goToSlide(targetIndex, /* skipSave */ true); // don't clobber this student's own saved resume position with the teacher's live position
+        }
+    });
+    showLiveBanner('Following your teacher live.');
+}
+
+function showLiveBanner(text) {
+    if (!els.lvLiveBanner) return;
+    // Text goes into the inner <span>, not the banner element itself — the
+    // banner also carries a static font-awesome icon as a sibling node,
+    // which a direct .textContent assignment on the outer element would
+    // silently wipe out.
+    const label = els.lvLiveBanner.querySelector('span') || els.lvLiveBanner;
+    label.textContent = text;
+    els.lvLiveBanner.classList.remove('hidden');
 }
 
 // Lazy iframe mount: called only when a media slide's canvas node has just
@@ -769,5 +988,18 @@ function wireAssignmentPanelForm(a) {
         }
     });
 }
+
+// ── PHASE 3: MEMORY LEAK GUARDRAIL ───────────────────────────────────────
+// Every onSnapshot this page can open — joinLiveSession()'s session listener
+// and registerBlockResponsesListener()'s per-block responses listener (which
+// is also individually torn down and re-registered on every slide change;
+// see renderSlideCanvas() above) — is unsubscribed here as the final safety
+// net for whichever one is still live when the student actually leaves this
+// page. Same cleanup contract as teacher/exams/live.js and this feature's
+// own teacher-side dashboard (lessons/live.js).
+window.addEventListener('pagehide', () => {
+    if (unsubLiveSession) { unsubLiveSession(); unsubLiveSession = null; }
+    if (unsubLiveResponses) { unsubLiveResponses(); unsubLiveResponses = null; }
+});
 
 init();

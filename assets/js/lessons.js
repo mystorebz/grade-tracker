@@ -32,7 +32,7 @@
 // for backward compatibility with lessons created before this feature
 // existed) needed real changes.
 import { db } from './firebase-init.js';
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp }
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, runTransaction }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { createPost } from './posts.js';
 
@@ -44,6 +44,10 @@ export function genSlideId() {
     return 'slide_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
 }
 
+export function genSessionId() {
+    return 'live_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+}
+
 function lessonRef(schoolId, postContext, lessonId) {
     const { classId, subjectId } = postContext;
     return doc(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'lessons', lessonId);
@@ -52,6 +56,47 @@ function lessonRef(schoolId, postContext, lessonId) {
 function lessonPrivateRef(schoolId, postContext, lessonId) {
     const { classId, subjectId } = postContext;
     return doc(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'lessons', lessonId, 'private', 'notes');
+}
+
+// ── PHASE 3: LIVE SESSION ENGINE ──────────────────────────────────────────
+// A live_sessions doc is nested under its own lesson (same nesting depth as
+// the lessons/{id}/private doc above), NOT top-level — this keeps its
+// firestore.rules block reachable from the same isCallerInSchool/
+// isSchoolActive checks already governing lessons/{lessonId}, without a new
+// top-level collection needing its own from-scratch rule design. Exactly one
+// field on the session doc actually changes during a live session
+// (teacherPositionId, written every time the teacher navigates) — the rest
+// (activeLessonId, startedAt, endedAt) are set once and read many times, by
+// both the teacher dashboard and every connected student's viewer.
+//
+// `responses` is a SEPARATE subcollection (not an array field on the session
+// doc) for the same reason submissions.js keeps grades/submissions as their
+// own documents rather than array entries: many students write concurrently,
+// and Firestore array-union writes from dozens of clients on one document
+// would serialize into a write-contention bottleneck (and blow the 1MB
+// document cap on a big class). One response doc per student per block
+// keeps every student's write independent and lets the teacher dashboard
+// onSnapshot the whole subcollection as one live-updating list.
+function liveSessionRef(schoolId, postContext, lessonId, sessionId) {
+    const { classId, subjectId } = postContext;
+    return doc(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'lessons', lessonId, 'live_sessions', sessionId);
+}
+
+function liveResponsesCollectionRef(schoolId, postContext, lessonId, sessionId) {
+    const { classId, subjectId } = postContext;
+    return collection(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'lessons', lessonId, 'live_sessions', sessionId, 'responses');
+}
+
+function liveResponseRef(schoolId, postContext, lessonId, sessionId, responseDocId) {
+    const { classId, subjectId } = postContext;
+    // responseDocId is a composite "{studentId}_{blockId}" id (built by
+    // saveLiveResponse() below), not a bare studentId — a student
+    // re-submitting the SAME block (e.g. updating their collaborative_board
+    // card) overwrites their own prior response rather than accumulating
+    // duplicates, exactly like grades/submissions.js's one-doc-per-student
+    // model for a single assignment, while still keeping their answers to
+    // DIFFERENT blocks in the same session as separate documents.
+    return doc(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'lessons', lessonId, 'live_sessions', sessionId, 'responses', responseDocId);
 }
 
 // ── SLIDE / BLOCK TEMPLATES ───────────────────────────────────────────────
@@ -77,6 +122,25 @@ export function newSlide(type) {
             return { id, type: 'media', mediaKind: 'video', heading: '', provider: null, mediaUrl: '', embedUrl: '', imageUrl: '', imageAlt: '', caption: '' };
         case 'assignment':
             return { id, type: 'assignment', heading: '', prompt: '', linkedAssignmentId: null };
+        case 'interactive_prompt':
+            // Nearpod-style: one question, every student answers privately.
+            // promptKind picks the input shape ('short_answer' free-text, or
+            // 'multiple_choice' against the choices[] list below) — both
+            // fields always exist (same "every field always present"
+            // convention newSlide() already follows for 'media' above) so
+            // switching kinds in a future builder UI never has to
+            // delete/recreate fields, only clear the ones that no longer
+            // apply. Live-only: this block does nothing outside an active
+            // live_sessions document — see lessons/live.js and
+            // lessons/viewer.js's live-session handling.
+            return { id, type: 'interactive_prompt', heading: '', promptText: '', promptKind: 'short_answer', choices: [] };
+        case 'collaborative_board':
+            // Padlet-style: every connected student's submitted card is
+            // visible to the whole class in real time (not just the
+            // teacher) — the one block type where onSnapshot on `responses`
+            // is wired on BOTH sides, not just the teacher dashboard. See
+            // lessons/viewer.js's renderCollaborativeBoardLive().
+            return { id, type: 'collaborative_board', heading: '', instructions: '' };
         case 'richtext':
             // The single block a Document-format lesson holds (see
             // createLesson() below) — contentHtml is Quill's own sanitized
@@ -318,4 +382,144 @@ export function subscribeToLesson(schoolId, postContext, lessonId, onChange) {
     }, (error) => {
         console.error(`[Lessons] subscribeToLesson failed for ${lessonId}:`, error);
     });
+}
+
+// ── PHASE 3: LIVE SESSION ENGINE — CRUD ──────────────────────────────────
+
+// Starts a new live session for a lesson (teacher action only — enforced by
+// firestore.rules, not just by which pages call this). teacherPositionId
+// starts pointed at the lesson's own first block, so a student who joins
+// before the teacher's first navigation still lands somewhere valid rather
+// than on a null position.
+//
+// RACE GUARD: two teacher tabs (or one teacher double-clicking "Go Live")
+// calling this concurrently, if each did its own read-then-write, could
+// both see "no active session" and each create a SEPARATE live_sessions
+// doc — splitting connected students across two sessions with no error
+// surfaced to either tab. Fixed by giving every lesson's live session a
+// FIXED, deterministic doc id ('current') instead of a random one, and
+// deciding "start fresh vs. resume" inside a single Firestore transaction
+// on that one document reference — transactions only support get() on
+// specific doc refs, not collection queries, which is exactly why this
+// needed a fixed id rather than the previous "list every session, filter
+// client-side" approach getActiveLiveSession() still uses for its own
+// (non-authoritative, read-only) resume check. Two concurrent calls now
+// both transact against the SAME document; Firestore's transaction retry
+// guarantees only one of them wins the "doesn't exist / already ended, so
+// create fresh" branch — the other sees the just-created doc and resumes
+// it instead, exactly like the intended-but-previously-racy behavior.
+export async function startLiveSession(schoolId, postContext, lessonId, authorContext) {
+    const ref = liveSessionRef(schoolId, postContext, lessonId, 'current');
+    const now = new Date().toISOString();
+
+    const result = await runTransaction(db, async (tx) => {
+        const snap = await tx.get(ref);
+        if (snap.exists() && !snap.data().endedAt) {
+            // Another concurrent call (or an already-running tab) already
+            // has this lesson live — resume it rather than overwrite its
+            // teacherPositionId back to null.
+            return { id: 'current', ...snap.data(), resumed: true };
+        }
+        const session = {
+            activeLessonId: lessonId,
+            teacherPositionId: null, // set by the caller once it knows the lesson's first block id — see live.js's init()
+            startedAt: now,
+            startedBy: authorContext?.authorId || null,
+            endedAt: null
+        };
+        tx.set(ref, session);
+        return { id: 'current', ...session, resumed: false };
+    });
+    return result;
+}
+
+// Ends a live session — students' onSnapshot listeners see endedAt flip and
+// should stop trying to auto-follow the teacher (see viewer.js's
+// subscribeToLiveSession handling). The doc itself is left in place (not
+// deleted) so `responses` remains readable afterward — a teacher reviewing
+// what students submitted during a session that already ended is a
+// legitimate, expected use, not a leftover to clean up.
+export async function endLiveSession(schoolId, postContext, lessonId, sessionId) {
+    const now = new Date().toISOString();
+    await updateDoc(liveSessionRef(schoolId, postContext, lessonId, sessionId), { endedAt: now });
+    return { endedAt: now };
+}
+
+// Teacher navigation — the one field that changes on every slide/scroll
+// step during a live session. Called frequently (every navigation), so this
+// stays a single-field updateDoc rather than a full document rewrite.
+export async function updateLiveSessionPosition(schoolId, postContext, lessonId, sessionId, teacherPositionId) {
+    await updateDoc(liveSessionRef(schoolId, postContext, lessonId, sessionId), { teacherPositionId });
+}
+
+// Finds the currently-active (not yet ended) live session for a lesson, if
+// any — used by viewer.js on load to decide whether to attach the live
+// listener at all, and by live.js's dashboard to decide whether to resume
+// instead of starting fresh. A single getDoc on the fixed 'current' doc id
+// (see startLiveSession()'s race-guard comment) rather than listing/
+// filtering/sorting the whole live_sessions collection — there is only ever
+// at most one live session per lesson now, so there is nothing to sort.
+export async function getActiveLiveSession(schoolId, postContext, lessonId) {
+    const snap = await getDoc(liveSessionRef(schoolId, postContext, lessonId, 'current'));
+    if (!snap.exists()) return null;
+    const data = snap.data();
+    return data.endedAt ? null : { id: 'current', ...data };
+}
+
+// LIVE: the session document itself — teacherPositionId (drives student
+// auto-follow) and endedAt (drives "session ended" banners on both sides).
+// Returns an unsubscribe function the caller MUST invoke when done — same
+// cleanup contract as subscribeToLesson() above and
+// teacher/exams/live.js's own listeners.
+export function subscribeToLiveSession(schoolId, postContext, lessonId, sessionId, onChange) {
+    return onSnapshot(liveSessionRef(schoolId, postContext, lessonId, sessionId), (snap) => {
+        if (snap.exists()) onChange({ id: snap.id, ...snap.data() });
+    }, (error) => {
+        console.error(`[Lessons] subscribeToLiveSession failed for ${sessionId}:`, error);
+    });
+}
+
+// LIVE: every response for one session, keyed by "{studentId}_{blockId}" doc
+// ids (see saveLiveResponse below) — used by both the teacher dashboard
+// (every student's answers, for the block currently in view) and, for
+// collaborative_board blocks only, every connected student (everyone's
+// cards, rendered as a shared wall). Returns an unsubscribe function; MUST
+// be re-registered (old one unsubscribed first) whenever the teacher
+// navigates to a different block — see live.js's onTeacherPositionChange().
+export function subscribeToLiveResponses(schoolId, postContext, lessonId, sessionId, onChange) {
+    return onSnapshot(liveResponsesCollectionRef(schoolId, postContext, lessonId, sessionId), (snap) => {
+        const responses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        onChange(responses);
+    }, (error) => {
+        console.error(`[Lessons] subscribeToLiveResponses failed for session ${sessionId}:`, error);
+    });
+}
+
+// WRITE: a student's answer to one interactive_prompt or collaborative_board
+// block. Doc id is "{studentId}_{blockId}" (not a bare studentId) so the
+// same student can hold one live response PER BLOCK across a session that
+// touches several interactive blocks, while still overwriting their own
+// prior answer to the SAME block on resubmission (setDoc, not addDoc) rather
+// than accumulating duplicate cards on a collaborative board every time a
+// student edits their answer. schoolId is denormalized onto the record
+// itself (never used for authorization on this doc's own per-document rule,
+// which already has schoolId from the caller's token — but REQUIRED for
+// firestore.rules' top-level responses collection-group rule, which backs
+// the teacher dashboard's onSnapshot(collection(...)) listener across every
+// student's response at once; see that rule's own comment for why a
+// collection-group list rule can't use get() and must read this field
+// straight off each document instead — exactly the same reason
+// exam_submissions carries the same two fields).
+export async function saveLiveResponse(schoolId, postContext, lessonId, sessionId, studentId, studentName, blockId, { answerText }) {
+    const now = new Date().toISOString();
+    const record = {
+        schoolId,
+        studentId,
+        studentName: studentName || '',
+        blockId,
+        answerText: (answerText || '').trim(),
+        submittedAt: now
+    };
+    await setDoc(liveResponseRef(schoolId, postContext, lessonId, sessionId, `${studentId}_${blockId}`), record);
+    return record;
 }

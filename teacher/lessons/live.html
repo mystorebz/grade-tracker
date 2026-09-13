@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Session | Teacher Portal | ConnectUs</title>
+
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/teachers.css">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+
+    <style>
+        .fatal-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 20px; gap: 14px; text-align: center; }
+        .fatal-state i { font-size: 36px; color: #f43f5e; }
+        .fatal-state p { font-size: 14px; color: #64748b; font-weight: 600; margin: 0; max-width: 420px; }
+
+        .page-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 20px; gap: 14px; }
+        .page-loader i { font-size: 32px; color: #0d9488; }
+        .page-loader p { font-size: 13.5px; color: #94a3b8; font-weight: 600; margin: 0; }
+
+        .lb-block-card {
+            background: #fff; border: 1px solid #e2e8f0; border-radius: 18px;
+            padding: 36px; min-height: 320px; display: flex; flex-direction: column; justify-content: center;
+        }
+        .lb-media-placeholder {
+            display: flex; align-items: center; justify-content: center; min-height: 220px;
+            background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 14px;
+            color: #94a3b8; font-size: 13px; font-weight: 700;
+        }
+        .lb-media-frame { position: relative; border-radius: 14px; overflow: hidden; background: #0f172a; aspect-ratio: 16/9; }
+        .lb-media-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+        .lb-richtext { display: block; text-align: left; }
+        .lb-richtext h1, .lb-richtext h2, .lb-richtext h3 { font-weight: 900; color: #1e293b; }
+
+        .lb-live-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
+            padding: 4px 10px; border-radius: 999px;
+            background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe;
+        }
+        .lb-live-badge-board { background: #f0fdfa; color: #0f766e; border-color: #99f6e4; }
+
+        .response-card {
+            background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 14px 16px;
+            break-inside: avoid;
+        }
+        .response-card-student { font-size: 11px; font-weight: 800; color: #4338ca; text-transform: uppercase; letter-spacing: 0.03em; margin: 0 0 6px; }
+        .response-card-text { font-size: 13.5px; font-weight: 600; color: #334155; margin: 0; white-space: pre-wrap; line-height: 1.5; }
+    </style>
+</head>
+<body class="flex w-full h-screen overflow-hidden bg-[#f4f7fb]">
+
+    <div id="layout-sidebar-container" class="flex-shrink-0 h-full z-20"></div>
+
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
+
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <div class="flex-1 overflow-y-auto p-7 view-section">
+
+            <div class="flex flex-wrap gap-4 justify-between items-center mb-6">
+                <div class="flex items-center gap-3 min-w-0">
+                    <div class="w-11 h-11 bg-gradient-to-br from-teal-500 to-emerald-600 text-white rounded-2xl flex items-center justify-center text-lg shadow-md flex-shrink-0"><i class="fa-solid fa-tower-broadcast"></i></div>
+                    <div class="min-w-0">
+                        <h2 id="lessonTitleLabel" class="font-black text-2xl text-slate-800 leading-tight truncate">Live Session</h2>
+                        <p id="subjectLabel" class="text-sm text-slate-400 font-semibold"></p>
+                    </div>
+                </div>
+                <button id="endSessionBtn" class="bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 px-5 rounded-xl transition text-[12.5px] uppercase tracking-widest flex items-center gap-2 flex-shrink-0">
+                    <i class="fa-solid fa-stop"></i> End Session
+                </button>
+            </div>
+
+            <!-- ── Loading state ─────────────────────────────────────────── -->
+            <div id="dashLoader" class="page-loader">
+                <i class="fa-solid fa-circle-notch fa-spin"></i>
+                <p>Starting live session&hellip;</p>
+            </div>
+
+            <!-- ── Fatal error state ─────────────────────────────────────── -->
+            <div id="dashFatalState" class="hidden fatal-state bg-white rounded-2xl border border-slate-200">
+                <i class="fa-solid fa-circle-exclamation"></i>
+                <p id="dashFatalMsg"></p>
+            </div>
+
+            <!-- ── Main dashboard body ────────────────────────────────────── -->
+            <div id="dashBody" class="hidden grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 items-start">
+
+                <!-- ── Presentation column ──────────────────────────────── -->
+                <div>
+                    <div id="presentCanvas" class="mb-4"></div>
+                    <div class="flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-5 py-3">
+                        <button id="prevBlockBtn" class="text-slate-600 hover:text-slate-900 font-bold text-[13px] flex items-center gap-2 disabled:opacity-30 disabled:pointer-events-none">
+                            <i class="fa-solid fa-chevron-left"></i> Previous
+                        </button>
+                        <span id="blockCounter" class="text-[12px] font-black text-slate-400 uppercase tracking-widest"></span>
+                        <button id="nextBlockBtn" class="text-slate-600 hover:text-slate-900 font-bold text-[13px] flex items-center gap-2 disabled:opacity-30 disabled:pointer-events-none">
+                            Next <i class="fa-solid fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ── Live responses column (interactive blocks only) ──── -->
+                <div id="responsesPanel" class="hidden bg-white border border-slate-200 rounded-2xl shadow-sm p-5 lg:sticky lg:top-0">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-black text-[14px] text-slate-800 m-0">Live Responses</h3>
+                        <span id="responsesCount" class="text-[11px] font-black text-teal-600 bg-teal-50 border border-teal-200 px-2.5 py-1 rounded-full">0 responses</span>
+                    </div>
+                    <div id="responsesGrid" class="space-y-2.5 max-h-[70vh] overflow-y-auto"></div>
+                    <p id="responsesEmpty" class="text-[12.5px] font-semibold text-slate-400 text-center py-10">Waiting for students to respond&hellip;</p>
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <script type="module" src="../../assets/js/lessons/live.js"></script>
+</body>
+</html>
