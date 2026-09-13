@@ -741,7 +741,7 @@ function renderCollaborativeBoardCanvas(slide) {
         </span>
         ${fieldWrap('Heading', `<input data-field="heading" type="text" value="${escHtml(slide.heading)}" placeholder="e.g. Share One Idea" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[16px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
         ${fieldWrap('Instructions', `<textarea data-field="instructions" rows="3" placeholder="What should students post to the board?" class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded text-[13.5px] text-[#0d1f35] outline-none focus:border-[#2563eb] resize-none leading-relaxed">${escHtml(slide.instructions)}</textarea>`)}
-        ${liveOnlyBanner('Every connected student\\'s card is visible to the whole class in real time. This only works during a live session (use the broadcast icon on the lesson list).')}
+        ${liveOnlyBanner("Every connected student's card is visible to the whole class in real time. This only works during a live session (use the broadcast icon on the lesson list).")}
     </div>`;
 }
 
