@@ -37,7 +37,12 @@ function generateStudentId() {
 }
 
 function generatePin() {
-    return String(Math.floor(100000 + Math.random() * 900000));
+    // Students log in via student/login.html, whose PIN field is a hard
+    // 4-digit input (maxlength="4", "4-DIGIT PIN" label) — this generator
+    // must stay in sync with that. Teacher PINs are intentionally 6-digit
+    // (see admin/teachers/teachers.js's own generatePin()); do not merge
+    // the two without also changing the teacher login page's expectations.
+    return String(Math.floor(1000 + Math.random() * 9000));
 }
 
 function escHtml(str) {
