@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lesson Builder | Teacher Portal | ConnectUs</title>
+
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/teachers.css">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body class="flex w-full h-screen overflow-hidden bg-[#f4f7fb] font-['DM_Sans']">
+
+    <div id="layout-sidebar-container" class="flex-shrink-0 h-full z-20"></div>
+
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden min-w-0">
+
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <!-- ═══ LESSON PICKER (shown when no lesson is open) ═══════════════ -->
+        <div id="lessonPickerView" class="flex-1 overflow-y-auto p-8 view-section">
+            <div class="max-w-4xl mx-auto space-y-6">
+
+                <div class="flex items-end justify-between border-b-2 border-[#0d1f35] pb-4 mb-2">
+                    <div>
+                        <h1 class="text-xl font-bold text-[#0d1f35] tracking-tight mb-1">Lesson Builder</h1>
+                        <p class="text-xs text-[#6b84a0] m-0">Build interactive slide-deck lessons for your subjects</p>
+                    </div>
+                    <button id="newLessonBtn" class="bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-2.5 px-5 rounded transition text-[13px] flex items-center gap-2">
+                        <i class="fa-solid fa-plus"></i> New Lesson
+                    </button>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-sm border border-[#dce3ed] p-4 flex flex-wrap items-center gap-3">
+                    <label class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest">Subject</label>
+                    <select id="subjectSelect" class="form-input p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb] min-w-[200px]"></select>
+                </div>
+
+                <div id="lessonListCount" class="text-[11px] font-bold text-[#6b84a0] uppercase tracking-widest px-1"></div>
+                <div id="lessonList" class="space-y-3 pb-8"></div>
+
+            </div>
+        </div>
+
+        <!-- ═══ BUILDER VIEW (shown when a lesson is open) ═══════════════════ -->
+        <div id="builderView" class="hidden flex-1 flex overflow-hidden">
+
+            <!-- ── LEFT: slide sidebar ─────────────────────────────────────── -->
+            <div class="w-[220px] flex-shrink-0 h-full flex flex-col bg-white border-r border-[#dce3ed]">
+                <div class="p-3 border-b border-[#dce3ed] flex items-center justify-between">
+                    <button id="backToListBtn" class="text-[#6b84a0] hover:text-[#0d1f35] text-[12px] font-bold flex items-center gap-1.5">
+                        <i class="fa-solid fa-arrow-left text-[11px]"></i> All Lessons
+                    </button>
+                </div>
+                <div id="slideThumbList" class="flex-1 overflow-y-auto p-3 space-y-2"></div>
+                <div class="p-3 border-t border-[#dce3ed]">
+                    <div class="relative">
+                        <button id="addSlideBtn" class="w-full bg-[#eef4ff] hover:bg-[#dbe8ff] text-[#2563eb] font-bold py-2.5 rounded text-[12.5px] flex items-center justify-center gap-2 transition">
+                            <i class="fa-solid fa-plus"></i> Add Slide
+                        </button>
+                        <div id="slideTemplateMenu" class="hidden absolute bottom-full left-0 mb-2 w-full bg-white border border-[#dce3ed] rounded-lg shadow-lg overflow-hidden z-10">
+                            <button data-template="title" class="w-full text-left px-3 py-2.5 text-[12.5px] font-semibold text-[#0d1f35] hover:bg-[#f4f7fb] flex items-center gap-2 border-b border-[#f0f4f8]">
+                                <i class="fa-solid fa-heading text-[#2563eb] w-4"></i> Title / Objective
+                            </button>
+                            <button data-template="content" class="w-full text-left px-3 py-2.5 text-[12.5px] font-semibold text-[#0d1f35] hover:bg-[#f4f7fb] flex items-center gap-2 border-b border-[#f0f4f8]">
+                                <i class="fa-solid fa-align-left text-[#2563eb] w-4"></i> Rich Content
+                            </button>
+                            <button data-template="media" class="w-full text-left px-3 py-2.5 text-[12.5px] font-semibold text-[#0d1f35] hover:bg-[#f4f7fb] flex items-center gap-2 border-b border-[#f0f4f8]">
+                                <i class="fa-solid fa-photo-film text-[#2563eb] w-4"></i> Media
+                            </button>
+                            <button data-template="assignment" class="w-full text-left px-3 py-2.5 text-[12.5px] font-semibold text-[#0d1f35] hover:bg-[#f4f7fb] flex items-center gap-2">
+                                <i class="fa-solid fa-clipboard-check text-[#2563eb] w-4"></i> Embedded Assignment
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── CENTER: slide canvas ────────────────────────────────────── -->
+            <div class="flex-1 flex flex-col h-full overflow-hidden min-w-0">
+
+                <!-- Top bar: lesson title, status, save/publish -->
+                <div class="flex-shrink-0 bg-white border-b border-[#dce3ed] px-6 py-3 flex items-center justify-between gap-4">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <input id="lessonTitleInput" type="text" placeholder="Untitled Lesson"
+                            class="text-[15px] font-bold text-[#0d1f35] border-none outline-none bg-transparent min-w-0 flex-1 focus:bg-[#f4f7fb] rounded px-1 -ml-1">
+                        <span id="statusPill" class="text-[10px] font-black uppercase tracking-wide px-2.5 py-1 rounded-md flex-shrink-0 whitespace-nowrap"></span>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <span id="saveMsg" class="text-[11px] font-semibold text-[#6b84a0] hidden"></span>
+                        <button id="notesBtn" class="text-[#6b84a0] hover:text-[#2563eb] hover:bg-[#eef4ff] h-9 w-9 rounded flex items-center justify-center transition" title="Teacher Notes (hidden from students)">
+                            <i class="fa-solid fa-note-sticky"></i>
+                        </button>
+                        <button id="saveBtn" class="bg-white hover:bg-[#f4f7fb] text-[#0d1f35] font-bold py-2 px-4 rounded border border-[#dce3ed] transition text-[12.5px]">
+                            Save Draft
+                        </button>
+                        <button id="publishBtn" class="bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-2 px-4 rounded transition text-[12.5px] flex items-center gap-2">
+                            <i class="fa-solid fa-paper-plane"></i> <span id="publishBtnLabel">Publish</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Slide canvas -->
+                <div class="flex-1 overflow-y-auto p-8">
+                    <div id="slideCanvas" class="max-w-2xl mx-auto"></div>
+                </div>
+            </div>
+
+            <!-- ── RIGHT: properties panel ─────────────────────────────────── -->
+            <div id="propertiesPanel" class="w-[300px] flex-shrink-0 h-full overflow-y-auto bg-white border-l border-[#dce3ed] p-4"></div>
+        </div>
+
+    </main>
+
+    <!-- ═══ TEACHER-ONLY NOTES MODAL (pacing notes + standards) ═══════════ -->
+    <div id="notesOverlay" class="hidden fixed inset-0 bg-black/40 z-30 flex items-center justify-center p-4">
+        <div id="notesInner" class="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div class="p-4 border-b border-[#dce3ed] flex items-center justify-between">
+                <div>
+                    <h3 class="text-[14px] font-bold text-[#0d1f35] m-0">Teacher-Only Notes</h3>
+                    <p class="text-[11px] text-[#6b84a0] m-0">Never visible to students — enforced by database rules</p>
+                </div>
+                <button id="closeNotesBtn" class="text-[#6b84a0] hover:text-[#0d1f35] h-8 w-8 rounded flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-4 space-y-4">
+                <div>
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Pacing Notes</label>
+                    <textarea id="pacingNotesInput" rows="4" placeholder="e.g. Spend ~10 min on slide 3; most students stall on..."
+                        class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb] resize-none"></textarea>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">State Standards <span class="normal-case font-semibold text-[#9ab0c6]">(comma-separated)</span></label>
+                    <input id="standardsInput" type="text" placeholder="e.g. NGSS MS-LS1-6, NGSS MS-LS1-7"
+                        class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">
+                </div>
+            </div>
+            <div class="p-4 border-t border-[#dce3ed] flex justify-end gap-2">
+                <button id="cancelNotesBtn" class="text-[#6b84a0] hover:text-[#0d1f35] font-bold py-2 px-4 rounded text-[13px] transition">Cancel</button>
+                <button id="saveNotesBtn" class="bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-2 px-4 rounded transition text-[13px]">Save Notes</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="../../assets/js/lessons/builder.js"></script>
+</body>
+</html>

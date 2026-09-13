@@ -656,6 +656,61 @@ service cloud.firestore {
                               getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
           }
 
+          // ── Lessons (Interactive Slide Decks) ─────────────────────────────
+          // Named nested match, same reason as assignments/posts above: this
+          // subtree carved named matches out of the old recursive-wildcard
+          // fallback (see the NOTE on section 3a), so a new collection here
+          // MUST be named explicitly or it is simply unreachable — every
+          // read/write on it would fall through to the final deny-all.
+          //
+          // READ: two tiers, unlike assignments/posts' single same-school
+          //       grant, because a lesson has a real draft/published gate a
+          //       student must never bypass by guessing/enumerating IDs:
+          //         (a) teacher/admin at this school — unrestricted (same
+          //             grant as assignments/posts), so the builder can list
+          //             and open a lesson's own drafts.
+          //         (b) a student (or any other same-school caller) — ONLY
+          //             if the lesson's own status field is 'published'.
+          //             request.auth.token.role doesn't need to be checked
+          //             on this branch: isCallerInSchool already requires a
+          //             valid token, and a draft lesson is denied to every
+          //             role but teacher/admin regardless of who is asking.
+          // CREATE/UPDATE/DELETE: teacher/admin only — a student has no
+          //       legitimate write path to a lesson document at all (unlike
+          //       assignments/posts, which allow the broader same-school
+          //       grant; nothing today has a student write those either, but
+          //       lessons is new enough to start it correctly rather than
+          //       carry the looser legacy grant forward).
+          match /lessons/{lessonId} {
+            allow read: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) && (
+              request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] ||
+              resource.data.status == 'published'
+            );
+
+            allow create, update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) &&
+                                              request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'];
+
+            // ── Teacher-only pacing notes / standards ───────────────────────
+            // Firestore rules cannot filter individual FIELDS within a
+            // document — only grant or deny the document as a whole (see the
+            // class-level attendance comment above, section 3a, for the
+            // exact same limitation hit and fixed the same way for a
+            // different collection). pacingNotes/standards therefore live in
+            // their OWN document, nested here, rather than as fields on the
+            // main lesson doc above — so they can be denied to students
+            // outright rather than merely hidden by client-side code (which
+            // any student could bypass with a raw SDK read, exactly as that
+            // earlier comment describes for the attendance fan-out gap).
+            //
+            // Students are NEVER granted read here, published or not — this
+            // is intentionally NOT symmetric with the main lesson doc's
+            // published-status carve-out above.
+            match /private/{docId} {
+              allow read, create, update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) &&
+                                                      request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'];
+            }
+          }
+
           // ── Exams (ConnectUs Phase 2 — Exams foundation) ──────────────────
           // Config only: questions, point values, time limit, and the isLive
           // toggle — never correct answers (those live in exam_answer_keys,
