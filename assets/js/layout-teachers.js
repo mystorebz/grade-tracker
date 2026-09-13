@@ -35,7 +35,7 @@ export function injectTeacherLayout(activePageId, pageTitle, pageSub, showSearch
             </div>
             <div class="sidebar-prop-row">
               <span class="sidebar-prop-key">Period</span>
-              <span class="sidebar-prop-val sidebar-prop-green" id="sb-period">—</span>
+              <span class="sidebar-prop-val sidebar-prop-green" id="sb-period">Current</span>
             </div>
             <div class="sidebar-prop-row sidebar-prop-row-last">
               <span class="sidebar-prop-key">At Risk</span>
@@ -110,8 +110,15 @@ export function injectTeacherLayout(activePageId, pageTitle, pageSub, showSearch
           <div class="topbar-period-wrap">
             <i class="fa-solid fa-calendar-days topbar-period-icon"></i>
             <span class="topbar-period-label hidden md:inline">Period</span>
-            <select id="activeSemester" class="topbar-period-select">
-              <option value="">Loading…</option>
+            <!-- Static placeholder until global period/semester filtering is
+                 built in a future phase — this select intentionally has one
+                 fixed option and no data-loading logic. Do not reintroduce a
+                 "Loading…"-only option here without also writing the code
+                 that populates it; see grade.js's PERIOD investigation
+                 (Phase 3 grading UI review) for why that combination is a
+                 real defect, not a timing artifact. -->
+            <select id="activeSemester" class="topbar-period-select" disabled>
+              <option value="current">Current Semester</option>
             </select>
           </div>
 
