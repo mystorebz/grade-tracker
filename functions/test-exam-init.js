@@ -20,12 +20,17 @@
 //   cd functions
 //   node test-exam-init.js
 //
-// Requires the emulators already running (firebase emulators:start) and a
-// seeded exam config at schools/school-1/classes/class-a/subjects/sub_a1/exams/exam_test01
-// with isLive: true (see the browser console commands used to seed one
-// during manual verification — this script does not seed its own, since
-// exam authoring is a teacher-facing flow this project doesn't have a UI
-// for yet).
+// Requires the emulators already running (firebase emulators:start). The
+// script seeds its own exam config at
+// schools/school-1/classes/class-a/subjects/sub_a1/exams/exam_test01 (via
+// the Admin SDK, which bypasses firestore.rules — appropriate here since
+// this is test SETUP, not something exercising rules enforcement; rules
+// enforcement is separately and correctly tested in step 5 below using a
+// real client token, not the Admin SDK) so the whole script is
+// self-contained and safe to run cold, with no manual/undocumented setup
+// step required first. Exam authoring still has no teacher-facing UI in
+// this project — this seed step exists only to make this verification
+// script reproducible, not as a stand-in for that feature.
 
 process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
 process.env.FIREBASE_AUTH_EMULATOR_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST || '127.0.0.1:9099';
@@ -88,12 +93,44 @@ async function callStartExamAttempt(idToken, data) {
     return { status: res.status, body: json };
 }
 
+// ── Self-contained seed: the exact exam config this script's own
+// assertions depend on. timeLimitSeconds is real and load-bearing — step 3
+// below computes an expected serverDeadline directly from it, so this must
+// stay a plausible, positive exam duration, not a placeholder value.
+const EXAM_CONFIG_SEED = {
+    isLive: true,
+    title: 'test-exam-init.js verification exam (auto-seeded, not real coursework)',
+    timeLimitSeconds: 1800, // 30 minutes
+    questions: [
+        { id: 'q1', type: 'multiple_choice', prompt: 'Seed question 1', points: 5, correctAnswer: '4' },
+        { id: 'q2', type: 'free_response', prompt: 'Seed question 2', points: 5 },
+    ],
+};
+
+async function seedExamConfig(db) {
+    const examRef = db
+        .collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(CLASS_ID)
+        .collection('subjects').doc(SUBJECT_ID)
+        .collection('exams').doc(EXAM_ID);
+
+    // set() with merge:false intentionally — this script owns exam_test01
+    // outright and always seeds it to this exact known state, so a stale
+    // doc from a previous run (or a previous version of this script) can
+    // never leave a mismatched field behind.
+    await examRef.set(EXAM_CONFIG_SEED);
+    return examRef;
+}
+
 async function main() {
     console.log('=== startExamAttempt emulator verification ===');
     console.log(`Student: ${STUDENT_ID} | Exam: ${SCHOOL_ID}/${CLASS_ID}/${SUBJECT_ID}/${EXAM_ID}`);
 
-    // ── 0. Sanity: confirm the exam config exists and is live ────────────────
+    // ── 0. Seed the exam config this script depends on, then confirm it
+    //      reads back as expected — self-contained, no manual setup step ──
     const db = admin.firestore();
+    await seedExamConfig(db);
+
     const examSnap = await db
         .collection('schools').doc(SCHOOL_ID)
         .collection('classes').doc(CLASS_ID)
@@ -102,14 +139,14 @@ async function main() {
         .get();
 
     if (!examSnap.exists) {
-        console.error(`FAIL: exam config ${EXAM_ID} does not exist. Seed it first (see script header comment).`);
+        console.error(`FAIL: exam config ${EXAM_ID} was seeded but could not be read back. Check Firestore emulator connectivity.`);
         process.exit(1);
     }
     if (examSnap.data().isLive !== true) {
-        console.error(`FAIL: exam config ${EXAM_ID} exists but isLive is not true.`);
+        console.error(`FAIL: exam config ${EXAM_ID} was seeded but isLive is not true — seed data itself is wrong, check EXAM_CONFIG_SEED above.`);
         process.exit(1);
     }
-    log('0. Exam config confirmed live', examSnap.data());
+    log('0. Exam config seeded and confirmed live', examSnap.data());
 
     // ── 1. Mint a real student ID token (same claims shape mintStudentToken produces) ──
     const idToken = await mintStudentIdToken(STUDENT_ID, {
