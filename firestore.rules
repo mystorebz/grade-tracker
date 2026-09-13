@@ -374,14 +374,37 @@ service cloud.firestore {
     // (lessons.js) specifically so this rule never needs a get() lookup —
     // a list rule that calls get()/exists() anywhere in its evaluation can't
     // be proven safe for a list/collection-group query and gets rejected
-    // outright, same as exam_submissions. Teacher/admin only: students never
-    // list this collection group themselves (they only ever get() or
-    // create/update their OWN response doc, still governed by the nested
-    // rule above, unaffected by this block).
+    // outright, same as exam_submissions.
+    //
+    // CORRECTED after live end-to-end testing: this was originally
+    // teacher/admin-only, on the assumption students never list this
+    // collection group. That assumption was wrong — collaborative_board is
+    // explicitly Padlet-style (every connected student's card is visible to
+    // the WHOLE CLASS, not just the teacher), so viewer.js's own
+    // registerBlockResponsesListener() opens exactly this same
+    // onSnapshot(collection(...)) listener on the student side too, to
+    // render the shared wall.
+    //
+    // A first fix just added a same-school student grant across the board,
+    // but that over-corrected: interactive_prompt is explicitly PRIVATE
+    // (Nearpod-style — a student's answer is never shown to classmates),
+    // and a blanket same-school list grant would let any student read every
+    // other student's private prompt answers directly via the SDK, even
+    // though viewer.js's own UI chooses not to render that wall — a
+    // client-side rendering choice was never a real security boundary.
+    // blockType (denormalized onto every response doc by saveLiveResponse(),
+    // same reason schoolId is) is what lets this rule tell the two block
+    // types apart without a get() lookup: a student may only list responses
+    // for a collaborative_board block (the one block type actually meant to
+    // be shared); teacher/admin keep unrestricted access to every response,
+    // interactive_prompt included, since only a teacher needs to see
+    // individual students' private prompt answers.
     match /{path=**}/live_sessions/{sessionId}/responses/{responseId} {
       allow list: if request.auth != null &&
-                     request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] &&
-                     resource.data.schoolId == request.auth.token.schoolId;
+                     resource.data.schoolId == request.auth.token.schoolId && (
+                       request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] ||
+                       resource.data.blockType == 'collaborative_board'
+                     );
     }
 
     // ── 3. Siloed School Data ──────────────────────────────────────────────
@@ -786,6 +809,7 @@ service cloud.firestore {
                                           request.auth.token.role == 'student' &&
                                           request.resource.data.studentId == request.auth.token.studentId &&
                                           request.resource.data.blockId is string &&
+                                          request.resource.data.blockType in ['interactive_prompt', 'collaborative_board'] &&
                                           responseId == request.resource.data.studentId + '_' + request.resource.data.blockId;
               }
             }

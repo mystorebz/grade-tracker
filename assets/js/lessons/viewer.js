@@ -396,11 +396,24 @@ function renderSlideCanvas() {
     // into (see the two render functions' own "no live session" branch).
     if (liveSessionId && (slide.type === 'interactive_prompt' || slide.type === 'collaborative_board')) {
         wireLiveBlockForm(slide);
+    }
+    // The live responses LISTENER (as opposed to the submission FORM above)
+    // is only ever opened for collaborative_board. interactive_prompt is
+    // intentionally private (Nearpod-style — a student's answer is never
+    // shown to classmates), and firestore.rules' responses collection-group
+    // rule enforces that server-side: a student listing responses for an
+    // interactive_prompt block is denied outright (confirmed via live
+    // testing — this used to be attempted here and simply threw a
+    // permission-denied on every prompt block until this guard was added).
+    // "Did I already submit this prompt" is tracked locally instead, via
+    // mySubmittedBlockIds.add() right inside submitLiveResponse() itself —
+    // it doesn't need a listener at all.
+    if (liveSessionId && slide.type === 'collaborative_board') {
         registerBlockResponsesListener(slide.id, slide.type);
     } else if (unsubLiveResponses) {
-        // Navigated to a non-interactive slide (or a live session isn't
-        // active) — tear down any listener left over from the previous
-        // slide rather than let it keep running unseen.
+        // Navigated away from the board (or a live session isn't active) —
+        // tear down any listener left over from the previous slide rather
+        // than let it keep running unseen.
         unsubLiveResponses();
         unsubLiveResponses = null;
     }
@@ -518,7 +531,7 @@ async function submitLiveResponse(slide, answerText) {
 
     try {
         const studentName = session.studentData?.name || '';
-        await saveLiveResponse(session.schoolId, postContext, lesson.id, liveSessionId, session.studentId, studentName, slide.id, { answerText: text });
+        await saveLiveResponse(session.schoolId, postContext, lesson.id, liveSessionId, session.studentId, studentName, slide.id, slide.type, { answerText: text });
         mySubmittedBlockIds.add(slide.id);
         const msg = document.getElementById('lvLiveMsg');
         if (msg) { msg.textContent = 'Submitted!'; msg.className = 'text-[12px] font-bold mt-2 text-emerald-600'; msg.classList.remove('hidden'); }
@@ -533,16 +546,13 @@ async function submitLiveResponse(slide, answerText) {
     }
 }
 
-// One responses listener at a time, scoped to whichever interactive block
-// is currently on screen — mirrors the teacher dashboard's own
-// registerResponsesListener() exactly (same subscribeToLiveResponses() call,
-// same "list the whole session, filter to this block client-side"
-// approach), so the two sides of this feature share one read pattern. Only
-// collaborative_board actually shows the shared wall; interactive_prompt
-// is intentionally private (Nearpod-style individual input, never revealed
-// to classmates) — this still opens the listener for it so
-// mySubmittedBlockIds/mySubmittedBlockIds-driven UI stays accurate if this
-// student is viewing on a second device, but simply never renders the wall.
+// One responses listener at a time, scoped to whichever collaborative_board
+// block is currently on screen — mirrors the teacher dashboard's own
+// registerResponsesListener() (same subscribeToLiveResponses() call, same
+// "list the session, filter to this block client-side" approach). Callers
+// (renderSlideCanvas() above) only ever invoke this for collaborative_board
+// — never interactive_prompt, which firestore.rules denies students list
+// access to entirely (see that rule's own comment for why).
 function registerBlockResponsesListener(blockId, blockType) {
     if (unsubLiveResponses) { unsubLiveResponses(); unsubLiveResponses = null; }
     unsubLiveResponses = subscribeToLiveResponses(session.schoolId, postContext, lesson.id, liveSessionId, (responses) => {

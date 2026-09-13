@@ -510,13 +510,27 @@ export function subscribeToLiveResponses(schoolId, postContext, lessonId, sessio
 // collection-group list rule can't use get() and must read this field
 // straight off each document instead — exactly the same reason
 // exam_submissions carries the same two fields).
-export async function saveLiveResponse(schoolId, postContext, lessonId, sessionId, studentId, studentName, blockId, { answerText }) {
+//
+// blockType is ALSO denormalized here — added after live testing surfaced a
+// real privacy gap: collaborative_board answers are meant to be visible to
+// the whole class (a shared wall), but interactive_prompt answers are
+// explicitly private, Nearpod-style, never shown to classmates. A single
+// same-school student grant on the responses collection-group list rule
+// would leak every student's private prompt answers to the whole class if
+// it didn't have some field to tell the two block types apart WITHOUT a
+// get() lookup (collection-group list rules can't use get(), same
+// constraint as schoolId above) — blockType is that field, checked directly
+// in firestore.rules rather than trusted to client-side rendering choices
+// alone (viewer.js's own choice to simply not render the prompt wall was
+// never a real security boundary on its own).
+export async function saveLiveResponse(schoolId, postContext, lessonId, sessionId, studentId, studentName, blockId, blockType, { answerText }) {
     const now = new Date().toISOString();
     const record = {
         schoolId,
         studentId,
         studentName: studentName || '',
         blockId,
+        blockType,
         answerText: (answerText || '').trim(),
         submittedAt: now
     };
