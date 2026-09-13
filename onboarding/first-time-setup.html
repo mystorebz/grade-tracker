@@ -230,6 +230,31 @@ if (session) {
     document.getElementById('setupContainer').classList.remove('hidden');
 }
 
+// ── Prevent picking the same security question twice ───────────────────────────
+// Submit-time already rejected q1 === q2, but nothing stopped a user from
+// selecting it in the first place — they'd only find out after typing both
+// answers and clicking submit. Disabling the other dropdown's matching
+// <option> live, on every change, catches it the moment they pick it instead.
+const secQ1Select = document.getElementById('setupSecQ1');
+const secQ2Select = document.getElementById('setupSecQ2');
+
+function syncSecurityQuestionOptions() {
+    const q1Value = secQ1Select.value;
+    const q2Value = secQ2Select.value;
+
+    for (const option of secQ2Select.options) {
+        if (!option.value) continue;
+        option.disabled = option.value === q1Value;
+    }
+    for (const option of secQ1Select.options) {
+        if (!option.value) continue;
+        option.disabled = option.value === q2Value;
+    }
+}
+
+secQ1Select.addEventListener('change', syncSecurityQuestionOptions);
+secQ2Select.addEventListener('change', syncSecurityQuestionOptions);
+
 // ── Submit ────────────────────────────────────────────────────────────────────
 document.getElementById('setupBtn').addEventListener('click', async () => {
     const q1    = document.getElementById('setupSecQ1').value;
