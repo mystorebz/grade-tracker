@@ -10,7 +10,7 @@
 // and its comment, which explicitly anticipates "class-stream posts"), so no
 // rules changes are needed for this collection.
 import { db } from './firebase-init.js';
-import { collection, doc, getDocs, setDoc, updateDoc, deleteDoc }
+import { collection, doc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 function genPostId() {
@@ -91,6 +91,44 @@ export async function loadPostsForSubjects(schoolId, postContexts) {
     const posts = perSubject.flat();
     posts.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     return posts;
+}
+
+// ── LIVE MULTI-SUBJECT SUBSCRIPTION (student combined stream) ────────────
+// Real-time counterpart to loadPostsForSubjects(): opens one onSnapshot
+// listener per subject (same one-query-per-subject shape as the one-time
+// read above — still no collectionGroup query, so no rules/index changes)
+// and keeps a merged, newest-first list in sync as posts are added, edited,
+// or removed by the teacher. `onChange` is called with the full merged list
+// every time any one subject's slice changes.
+//
+// Returns an `unsubscribe` function. CALLERS MUST call it when the
+// subscription is no longer needed (the student navigates to a different
+// page, or the view is torn down) — an onSnapshot listener left running
+// keeps billing reads and holding memory for as long as the tab is open
+// otherwise ("zombie listener").
+export function subscribeToPostsForSubjects(schoolId, postContexts, onChange) {
+    const bySubject = new Map(); // subjectId -> that subject's current posts[]
+
+    function emitMerged() {
+        const merged = [...bySubject.values()].flat();
+        merged.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        onChange(merged);
+    }
+
+    const unsubscribers = postContexts.map(ctx => {
+        const { classId, subjectId } = ctx;
+        const ref = collection(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'posts');
+        return onSnapshot(ref, (snap) => {
+            bySubject.set(subjectId, snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            emitMerged();
+        }, (error) => {
+            console.error(`[subscribeToPostsForSubjects] listener failed for subject ${subjectId}:`, error);
+            bySubject.set(subjectId, []); // don't let one bad subject silently freeze the merged list
+            emitMerged();
+        });
+    });
+
+    return () => unsubscribers.forEach(unsub => unsub());
 }
 
 // ── WRITE ─────────────────────────────────────────────────────────────────

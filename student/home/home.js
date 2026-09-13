@@ -1,8 +1,27 @@
 import { db } from '../../assets/js/firebase-init.js';
-import { collection, getDocs, doc, getDoc, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, getDocs, doc, getDoc, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectStudentLayout } from '../../assets/js/layout-student.js';
 import { calculateWeightedAverage, resolveGradeWeights } from '../../assets/js/utils.js';
+
+// Live grades subscription teardown (set once loadDashboardData() opens
+// it). MUST be called when this page is left so the onSnapshot listener it
+// holds doesn't keep running — and billing reads — after the student
+// navigates away or logs out.
+let unsubscribeGrades = null;
+
+function teardownGradesSubscription() {
+    if (unsubscribeGrades) {
+        unsubscribeGrades();
+        unsubscribeGrades = null;
+    }
+}
+
+// Multi-page site (real <a href> navigation, no SPA router) — pagehide
+// fires reliably for both a real navigation away and the logout button's
+// window.location.replace(), including back/forward-cache cases that
+// beforeunload can miss.
+window.addEventListener('pagehide', teardownGradesSubscription);
 
 // ── 1. AUTH & LAYOUT ──────────────────────────────────────────────────────
 const session = requireAuth('student', '../login.html');
@@ -79,67 +98,31 @@ async function loadDashboardData() {
         const tSnap = await getDocs(query(collection(db, 'teachers'), where('currentSchoolId', '==', schoolId)));
         tSnap.forEach(d => { teachersMap[d.id] = d.data().name; });
 
-        // Load grades from global student path
-        const gSnap = await getDocs(query(
+        // Live grades subscription: any grade the teacher adds or edits for
+        // this student, in this semester, re-runs the averages/activity
+        // feed/analytics below automatically — no reload needed. Only this
+        // part is live; school/semester/teacher-name lookups above are
+        // one-time reads since they rarely change during a session.
+        teardownGradesSubscription(); // guard against a stray double-init
+        unsubscribeGrades = onSnapshot(query(
             collection(db, 'students', studentId, 'grades'),
             where('schoolId', '==', schoolId),
             where('semesterId', '==', activeSemesterId)
-        ));
-        const currentGrades = gSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-        // Load teacher rubrics for weighted average calculation
-        const uniqueTeacherIds = [...new Set(currentGrades.map(g => g.teacherId).filter(Boolean))];
-        for (const tId of uniqueTeacherIds) {
-            if (!teacherRubricsCache[tId]) {
-                // ── PHASE 0: prefer the new teaching_assignments weighting
-                // over the legacy gradeTypes/customGradeTypes fields.
-                const tDoc = await getDoc(doc(db, 'teachers', tId));
-                const legacyData = tDoc.exists() ? tDoc.data() : null;
-                teacherRubricsCache[tId] = await resolveGradeWeights(session.schoolId, tId, { legacyTeacherData: legacyData }) || [];
+        ), async (gSnap) => {
+            try {
+                await renderFromGrades(gSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+            } catch (error) {
+                console.error('[StudentHome] Dashboard render error:', error);
+                activityListEl.innerHTML = `<p class="text-red-500 font-bold text-lg text-center">Failed to load dashboard data.</p>`;
+                document.getElementById('analyticsLoader').innerHTML =
+                    '<p class="text-base font-bold text-red-500 text-center">Analytics failed to load.</p>';
             }
-        }
-
-        // Weighted average per subject → overall average
-        const bySub = {};
-        currentGrades.forEach(g => {
-            const sub = g.subject || 'Uncategorized';
-            if (!bySub[sub]) bySub[sub] = [];
-            bySub[sub].push(g);
+        }, (error) => {
+            console.error('[StudentHome] Grades listener failed:', error);
+            activityListEl.innerHTML = `<p class="text-red-500 font-bold text-lg text-center">Failed to load dashboard data.</p>`;
+            document.getElementById('analyticsLoader').innerHTML =
+                '<p class="text-base font-bold text-red-500 text-center">Analytics failed to load.</p>';
         });
-
-        let sumSubjAvgs = 0, subjCount = 0;
-        const subjectAverages = {}; // used by analytics
-
-        for (const sub in bySub) {
-            const tId    = bySub[sub][0]?.teacherId;
-            const rubric = tId ? (teacherRubricsCache[tId] || []) : [];
-            const avg    = calculateWeightedAverage(bySub[sub], rubric);
-            if (avg !== null) {
-                sumSubjAvgs += avg;
-                subjCount++;
-                subjectAverages[sub] = Math.round(avg);
-            }
-        }
-
-        const overallAvg = subjCount > 0 ? Math.round(sumSubjAvgs / subjCount) : null;
-        dashAvgEl.textContent   = overallAvg !== null ? overallAvg : '--';
-        dashTotalEl.textContent = currentGrades.length;
-
-        // Recent activity (last 7 days)
-        const sevenAgo = new Date();
-        sevenAgo.setDate(sevenAgo.getDate() - 7);
-        const recent = currentGrades.filter(g => {
-            const d = g.createdAt ? new Date(g.createdAt) : new Date(g.date);
-            return d >= sevenAgo;
-        }).sort((a, b) => {
-            const da = a.createdAt ? new Date(a.createdAt) : new Date(a.date);
-            const db = b.createdAt ? new Date(b.createdAt) : new Date(b.date);
-            return db - da;
-        });
-
-        dashRecentEl.textContent = recent.length;
-        renderActivityFeed(recent);
-        renderAnalytics(currentGrades, subjectAverages, overallAvg);
 
     } catch (error) {
         console.error('[StudentHome] Dashboard error:', error);
@@ -147,6 +130,67 @@ async function loadDashboardData() {
         document.getElementById('analyticsLoader').innerHTML =
             '<p class="text-base font-bold text-red-500 text-center">Analytics failed to load.</p>';
     }
+}
+
+// ── 4b. RENDER FROM A GRADES SNAPSHOT (runs once per live update) ────────
+// Everything that depends on the grades list itself: rubric lookups,
+// weighted averages, the recent-activity feed, and analytics. Split out of
+// loadDashboardData() so the onSnapshot listener above can re-run just this
+// part on every change without re-fetching school/semester/teacher data.
+async function renderFromGrades(currentGrades) {
+    // Load teacher rubrics for weighted average calculation
+    const uniqueTeacherIds = [...new Set(currentGrades.map(g => g.teacherId).filter(Boolean))];
+    for (const tId of uniqueTeacherIds) {
+        if (!teacherRubricsCache[tId]) {
+            // ── PHASE 0: prefer the new teaching_assignments weighting
+            // over the legacy gradeTypes/customGradeTypes fields.
+            const tDoc = await getDoc(doc(db, 'teachers', tId));
+            const legacyData = tDoc.exists() ? tDoc.data() : null;
+            teacherRubricsCache[tId] = await resolveGradeWeights(session.schoolId, tId, { legacyTeacherData: legacyData }) || [];
+        }
+    }
+
+    // Weighted average per subject → overall average
+    const bySub = {};
+    currentGrades.forEach(g => {
+        const sub = g.subject || 'Uncategorized';
+        if (!bySub[sub]) bySub[sub] = [];
+        bySub[sub].push(g);
+    });
+
+    let sumSubjAvgs = 0, subjCount = 0;
+    const subjectAverages = {}; // used by analytics
+
+    for (const sub in bySub) {
+        const tId    = bySub[sub][0]?.teacherId;
+        const rubric = tId ? (teacherRubricsCache[tId] || []) : [];
+        const avg    = calculateWeightedAverage(bySub[sub], rubric);
+        if (avg !== null) {
+            sumSubjAvgs += avg;
+            subjCount++;
+            subjectAverages[sub] = Math.round(avg);
+        }
+    }
+
+    const overallAvg = subjCount > 0 ? Math.round(sumSubjAvgs / subjCount) : null;
+    dashAvgEl.textContent   = overallAvg !== null ? overallAvg : '--';
+    dashTotalEl.textContent = currentGrades.length;
+
+    // Recent activity (last 7 days)
+    const sevenAgo = new Date();
+    sevenAgo.setDate(sevenAgo.getDate() - 7);
+    const recent = currentGrades.filter(g => {
+        const d = g.createdAt ? new Date(g.createdAt) : new Date(g.date);
+        return d >= sevenAgo;
+    }).sort((a, b) => {
+        const da = a.createdAt ? new Date(a.createdAt) : new Date(a.date);
+        const db = b.createdAt ? new Date(b.createdAt) : new Date(b.date);
+        return db - da;
+    });
+
+    dashRecentEl.textContent = recent.length;
+    renderActivityFeed(recent);
+    renderAnalytics(currentGrades, subjectAverages, overallAvg);
 }
 
 // ── 5. ACTIVITY FEED (subject name on top, title below) ───────────────────

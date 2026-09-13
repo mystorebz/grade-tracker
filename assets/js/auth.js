@@ -87,6 +87,17 @@ export function requireAuth(role, redirectUrl = '../index.html') {
             const schoolId = data.currentSchoolId  || '';
             const path     = window.location.pathname;
 
+            // Keep the cached session's studentData in sync with live
+            // Firestore data. Without this, fields like classId/teacherId/
+            // className only ever reflected what existed at login time —
+            // e.g. a student assigned to a class mid-session would see
+            // "no teacher assigned" on Class Stream until they logged out
+            // and back in, even though the enrollment was already correct
+            // server-side. This does not by itself re-render a page that
+            // already read session.studentData before this fires; pages
+            // that need to react live should re-read getSessionData().
+            setSessionData('student', { ...session, studentData: data });
+
             if (status === 'Active') {
                 // Restored mid-session — send back to dashboard if on inactive page
                 if (path.includes('/inactive/')) window.location.replace('../home/home.html');

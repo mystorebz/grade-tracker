@@ -3,7 +3,7 @@ import { getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-fires
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectStudentLayout } from '../../assets/js/layout-student.js';
 import { loadTeacherSubjectsCache, getTeacherDocRef, loadSchoolHeaderInfo } from '../../assets/js/utils.js';
-import { resolvePostContext, loadPostsForSubjects } from '../../assets/js/posts.js';
+import { resolvePostContext, subscribeToPostsForSubjects } from '../../assets/js/posts.js';
 
 // ── 1. AUTHENTICATION & LAYOUT ──────────────────────────────────────────────
 const session = requireAuth('student', '../login.html');
@@ -15,6 +15,25 @@ if (session) {
 let postsCache = [];           // every post across every one of this student's subjects
 let currentView = 'stream';    // 'stream' | 'lessonPlans'
 let currentSubjectFilter = ''; // '' = All Subjects, else a subjectId
+
+// Live posts subscription teardown (set once init() opens it). MUST be
+// called when this page is left so the onSnapshot listeners it holds don't
+// keep running — and billing reads — after the student navigates away.
+let unsubscribePosts = null;
+
+function teardownPostsSubscription() {
+    if (unsubscribePosts) {
+        unsubscribePosts();
+        unsubscribePosts = null;
+    }
+}
+
+// Multi-page site (real <a href> navigation, no SPA router), so the normal
+// case is just the browser tearing down the whole page — but pagehide fires
+// reliably for that (including back/forward-cache navigations, unlike
+// beforeunload) and costs nothing to also call explicitly on the logout
+// button below, so both paths are covered.
+window.addEventListener('pagehide', teardownPostsSubscription);
 
 const els = {};
 
@@ -96,10 +115,17 @@ async function init() {
             return;
         }
 
-        postsCache = await loadPostsForSubjects(session.schoolId, postContexts);
-        els.streamLoader.classList.add('hidden');
-        els.postListCount.classList.remove('hidden');
-        renderPostList();
+        // Live subscription: any post the teacher adds, edits, pins, or
+        // deletes across these subjects re-renders this list automatically,
+        // with no page reload — this is what makes Class Stream update the
+        // moment a teacher posts, instead of only on next visit.
+        teardownPostsSubscription(); // guard against a stray double-init
+        unsubscribePosts = subscribeToPostsForSubjects(session.schoolId, postContexts, (merged) => {
+            postsCache = merged;
+            els.streamLoader.classList.add('hidden');
+            els.postListCount.classList.remove('hidden');
+            renderPostList();
+        });
     } catch (e) {
         console.error('[Student Stream] init:', e);
         showEmptyState('Something went wrong loading your class stream. Please try again later.');
