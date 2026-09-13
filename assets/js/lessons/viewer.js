@@ -555,6 +555,15 @@ async function submitLiveResponse(slide, answerText) {
 // access to entirely (see that rule's own comment for why).
 function registerBlockResponsesListener(blockId, blockType) {
     if (unsubLiveResponses) { unsubLiveResponses(); unsubLiveResponses = null; }
+    // callerRole: 'student' — MUST match firestore.rules' student list
+    // branch, which requires the QUERY ITSELF to filter on blockType (see
+    // subscribeToLiveResponses()'s own comment in lessons.js: an unfiltered
+    // query is denied outright for a student regardless of role, since
+    // Firestore can't prove a data-dependent rule condition safe for a query
+    // that doesn't filter on that same field). This function is only ever
+    // registered for collaborative_board blocks (see this function's own
+    // comment above), so the filter applied for a 'student' caller always
+    // matches what this listener actually wants.
     unsubLiveResponses = subscribeToLiveResponses(session.schoolId, postContext, lesson.id, liveSessionId, (responses) => {
         const forThisBlock = responses.filter(r => r.blockId === blockId);
         liveResponsesForCurrentBlock = forThisBlock;
@@ -571,7 +580,7 @@ function registerBlockResponsesListener(blockId, blockType) {
                     </div>`).join('');
             }
         }
-    });
+    }, 'student');
 }
 
 // ── PHASE 3: JOIN A LIVE SESSION + AUTO-FOLLOW ───────────────────────────

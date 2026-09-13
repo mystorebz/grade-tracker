@@ -261,6 +261,13 @@ function renderBlockHtml(block) {
 
 // ── 8. LIVE RESPONSES GRID (interactive_prompt / collaborative_board) ───
 function registerResponsesListener(blockId) {
+    // callerRole: 'teacher' — an unfiltered query (every response in the
+    // session, every blockType included) is correct and necessary here: the
+    // teacher needs interactive_prompt answers too, which the student-side
+    // query deliberately excludes (see subscribeToLiveResponses()'s own
+    // comment in lessons.js). firestore.rules' teacher/admin branch is
+    // role-based, not data-dependent, so an unfiltered query is provable and
+    // stays allowed regardless of blockType.
     unsubResponses = subscribeToLiveResponses(session.schoolId, postContext, urlLessonId, liveSessionId, (responses) => {
         // The subscription is on the WHOLE session's responses (every block
         // touched so far), not just this one — filtered client-side to the
@@ -272,7 +279,7 @@ function registerResponsesListener(blockId) {
         const forThisBlock = responses.filter(r => r.blockId === blockId);
         responsesByStudentBlock = new Map(forThisBlock.map(r => [r.id, r]));
         renderResponsesGrid(forThisBlock);
-    });
+    }, 'teacher');
 }
 
 function renderResponsesGrid(responses) {

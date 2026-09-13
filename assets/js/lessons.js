@@ -32,7 +32,7 @@
 // for backward compatibility with lessons created before this feature
 // existed) needed real changes.
 import { db } from './firebase-init.js';
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, runTransaction }
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, runTransaction, query, where }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { createPost } from './posts.js';
 
@@ -486,8 +486,31 @@ export function subscribeToLiveSession(schoolId, postContext, lessonId, sessionI
 // cards, rendered as a shared wall). Returns an unsubscribe function; MUST
 // be re-registered (old one unsubscribed first) whenever the teacher
 // navigates to a different block — see live.js's onTeacherPositionChange().
-export function subscribeToLiveResponses(schoolId, postContext, lessonId, sessionId, onChange) {
-    return onSnapshot(liveResponsesCollectionRef(schoolId, postContext, lessonId, sessionId), (snap) => {
+//
+// callerRole ('teacher' | 'student') decides the query SHAPE, not just what
+// the caller is allowed to see. firestore.rules' own `allow list` rule on
+// this path denies a student's blockType branch (resource.data.blockType ==
+// 'collaborative_board') unless the QUERY ITSELF filters on blockType —
+// found via live end-to-end testing: with the rule confirmed correct and
+// deployed (get()-free, matching data, fresh auth token), an unfiltered
+// getDocs()/onSnapshot() on this collection still failed with "Missing or
+// insufficient permissions" for the student. Firestore's list/collection
+// rules must be provable from the QUERY DEFINITION alone, before any data is
+// read — a data-dependent condition like resource.data.blockType == '...'
+// can only be proven safe for a query that itself carries a matching
+// where('blockType', '==', 'collaborative_board') clause; an unfiltered
+// query can return ANY document regardless of blockType, so Firestore has no
+// way to confirm every possible result would satisfy the rule and rejects
+// the whole request up front. The teacher/admin branch of the same rule has
+// no such problem (role is read from the caller's own token, not
+// resource.data), so the teacher dashboard's unfiltered query is unaffected
+// and keeps working exactly as before.
+export function subscribeToLiveResponses(schoolId, postContext, lessonId, sessionId, onChange, callerRole) {
+    const baseRef = liveResponsesCollectionRef(schoolId, postContext, lessonId, sessionId);
+    const ref = callerRole === 'student'
+        ? query(baseRef, where('blockType', '==', 'collaborative_board'))
+        : baseRef;
+    return onSnapshot(ref, (snap) => {
         const responses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         onChange(responses);
     }, (error) => {
