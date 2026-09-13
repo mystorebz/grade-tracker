@@ -129,8 +129,8 @@
                             <div class="flex items-center gap-3">
                                 <i class="fa-solid fa-circle-check text-[#0ea871] text-lg"></i>
                                 <div>
-                                    <p class="font-bold text-[#0d1f35] text-[13px] m-0">Record committed successfully.</p>
-                                    <p class="text-[11px] text-[#0ea871] font-bold m-0 mt-0.5">Moved to the next ungraded student.</p>
+                                    <p id="gradeSavedBannerTitle" class="font-bold text-[#0d1f35] text-[13px] m-0">Record committed successfully.</p>
+                                    <p id="gradeSavedBannerSubtitle" class="text-[11px] text-[#0ea871] font-bold m-0 mt-0.5">Moved to the next ungraded student.</p>
                                 </div>
                             </div>
                             <button id="closeBannerBtn" class="text-[#9ab0c6] hover:text-[#0d1f35] transition"><i class="fa-solid fa-xmark"></i></button>
@@ -243,6 +243,11 @@
                                         <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Record Notes <span class="text-[9px] font-bold normal-case text-[#2563eb] bg-[#eef4ff] border border-[#c7d9fd] px-1.5 py-0.5 rounded-sm ml-1 tracking-normal">Visible to Parents</span></label>
                                         <textarea id="agNotes" placeholder="Optional context or feedback..." class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] h-20 resize-none focus:border-[#2563eb] focus:ring-0 transition outline-none"></textarea>
                                     </div>
+
+                                    <button id="postToClassBtn" class="hidden w-full bg-white hover:bg-[#f4f7fb] text-[#0d1f35] font-bold py-3 rounded-sm transition text-[13px] flex justify-center items-center gap-2 uppercase tracking-widest border-2 border-dashed border-[#c5d0db] mb-2.5">
+                                        <i class="fa-solid fa-bullhorn text-[11px]"></i> Post to Class (Do Not Grade Yet)
+                                    </button>
+                                    <p id="postToClassHint" class="hidden text-[10.5px] text-[#6b84a0] font-semibold text-center mb-3 leading-snug">Posts this assignment to the class now — students can see the instructions and submit work right away. No grade is recorded and no student roster entry is created until you grade it later from here.</p>
 
                                     <button id="saveGradeBtn" class="w-full bg-[#0d1f35] hover:bg-[#0ea871] text-white font-bold py-3 rounded-sm transition text-[13px] flex justify-center items-center gap-2 uppercase tracking-widest">
                                         <i class="fa-solid fa-database text-[11px]"></i> Commit & Next

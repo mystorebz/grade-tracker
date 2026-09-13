@@ -88,6 +88,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const commitBtn = document.getElementById('saveGradeBtn');
     if (commitBtn) commitBtn.addEventListener('click', commitGrade);
 
+    const postBtn = document.getElementById('postToClassBtn');
+    if (postBtn) postBtn.addEventListener('click', postAssignmentToClass);
+
     const closeBannerBtn = document.getElementById('closeBannerBtn');
     if (closeBannerBtn) closeBannerBtn.addEventListener('click', () => {
         document.getElementById('gradeSavedBanner')?.classList.add('hidden');
@@ -262,8 +265,18 @@ function renderAssignmentPicker() {
     // PHASE 1 MILESTONE 3: due date + a Locked badge are informational only
     // here — nothing below gates or blocks selecting/grading a locked
     // assignment, this just surfaces what the teacher set on the Subjects page.
+    //
+    // "Needs Grading": an assignment posted to the class (via Post to Class,
+    // or any assignment that simply hasn't been graded for anyone yet) has
+    // zero entries in allGradesThisTerm for its title/subject — the same
+    // predicate isStudentGraded() already uses per-student, just checked
+    // across the whole roster at once. Purely a display label; grading
+    // still proceeds through the normal "click into it" flow below.
     const assignmentButtons = assignments.length
-        ? assignments.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')).map(a => `
+        ? assignments.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')).map(a => {
+            const gradedCount = rosterStudents().filter(s => isStudentGraded(s.id, selectedSubject, a.title)).length;
+            const needsGrading = gradedCount === 0;
+            return `
             <button type="button" onclick="selectAssignment('${a.id}')"
                 class="gf-asg-btn text-left bg-white border border-[#dce3ed] rounded-sm p-4 hover:border-[#0ea871] hover:shadow-md transition focus:outline-none focus:ring-2 focus:ring-[#0ea871]">
                 <div class="flex items-center justify-between gap-2 mb-1">
@@ -274,8 +287,10 @@ function renderAssignmentPicker() {
                     <span class="text-[10px] font-bold uppercase tracking-widest text-[#0ea871] bg-[#edfaf4] border border-[#c6f0db] px-2 py-0.5 rounded-sm">${escHtml(a.type)}</span>
                     ${a.date ? `<span class="text-[10px] text-[#9ab0c6] font-semibold"><i class="fa-regular fa-calendar mr-1"></i>Due ${escHtml(a.date)}</span>` : ''}
                     ${a.locked ? `<span class="text-[10px] font-bold uppercase tracking-widest text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-sm flex items-center gap-1"><i class="fa-solid fa-lock text-[9px]"></i>Locked</span>` : ''}
+                    ${needsGrading ? `<span class="text-[10px] font-bold uppercase tracking-widest text-[#2563eb] bg-[#eef4ff] border border-[#c7d9fd] px-2 py-0.5 rounded-sm flex items-center gap-1"><i class="fa-solid fa-clipboard-question text-[9px]"></i>Needs Grading</span>` : ''}
                 </div>
-            </button>`).join('')
+            </button>`;
+        }).join('')
         : '';
 
     const emptyHint = !assignments.length
@@ -419,6 +434,16 @@ function renderState() {
     updateGradingHeader();
     renderRoster();
     selectFirstUngradedStudent();
+
+    // "Post to Class" only makes sense for a brand-new manual assignment
+    // that doesn't exist as a template yet — once it's a real prepared
+    // assignment (selected from the picker, or already posted/graded once
+    // this session), grading proceeds through the normal Commit & Next flow.
+    const postBtn  = document.getElementById('postToClassBtn');
+    const postHint = document.getElementById('postToClassHint');
+    const showPostBtn = !!(selectedAssignment && selectedAssignment.manual);
+    postBtn?.classList.toggle('hidden', !showPostBtn);
+    postHint?.classList.toggle('hidden', !showPostBtn);
 }
 
 function populateTypeOptions() {
@@ -596,6 +621,150 @@ function updatePreview() {
     }
 }
 
+// ── 8b. CREATE (OR REUSE) THE PREPARED ASSIGNMENT DOCUMENT ───────────────────
+// Shared by both commitGrade() (grade-and-post-if-needed) and
+// postAssignmentToClass() (post-only, no grade). Writes the assignment
+// template itself — title/type/maxScore/instructions/date — to wherever
+// this subject's assignments actually live (new-model subcollection, or the
+// legacy embedded array), identically to how commitGrade() always has.
+// Returns the resolved assignment object (existing match, or newly created)
+// and updates in-memory state (selectedAssignment, fieldsUnlocked, lock UI)
+// exactly like the inline version this was extracted from. No-ops (returns
+// null) if the subject can't be resolved or title is blank — callers should
+// already have validated those themselves.
+async function ensureAssignmentDoc({ subject, type, title, max, date, instructions }) {
+    const sub = getSubjectByName(subject);
+    if (!sub) return null;
+
+    const existing = Array.isArray(sub.assignments) ? sub.assignments : [];
+    let matchedAsg = existing.find(a => (a.title || '').toLowerCase() === title.toLowerCase());
+
+    if (!matchedAsg) {
+        matchedAsg = {
+            id: 'asg_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 5),
+            title: title,
+            type: type,
+            maxScore: max,
+            description: '', // Blank by default, notes are usually student-specific
+            instructions: instructions || '', // shown to students in Assignments/Lesson viewer
+            date: date,
+            completed: false,
+            createdAt: new Date().toISOString()
+        };
+
+        // PHASE 0: write to wherever this subject actually lives — its own
+        // assignments subcollection for a new-model subject, or the legacy
+        // embedded array, unchanged, for a legacy one.
+        if (sub._source === 'new') {
+            await setDoc(doc(db, 'schools', session.schoolId, 'classes', sub.classId, 'subjects', sub.id, 'assignments', matchedAsg.id), matchedAsg);
+        } else {
+            const subjects = (session.teacherData.subjects || []).map(s => {
+                if (s.id !== sub.id) return s;
+                return { ...s, assignments: [...existing, matchedAsg] };
+            });
+
+            await updateDoc(getTeacherDocRef(session.schoolId, session.teacherId), { subjects });
+            session.teacherData.subjects = subjects;
+            setSessionData('teacher', session);
+        }
+        sub.assignments = [...existing, matchedAsg];
+    }
+
+    // Update state in memory so the NEXT student graded (or a later visit to
+    // this same assignment) uses this established template.
+    selectedAssignment = matchedAsg;
+    fieldsUnlocked = false;
+    applyLockState(); // Visuals update to show the fields are now locked to this template
+
+    return matchedAsg;
+}
+
+// ── 8c. POST TO CLASS (DO NOT GRADE YET) ─────────────────────────────────────
+// Creates the assignment template (via ensureAssignmentDoc above) so it's
+// immediately visible to every student in the class/subject through the
+// normal loadAssignmentsForSubjects() path — but writes NO grade record for
+// anyone. isSubmissionFrozen() in submissions.js only freezes a submission
+// once assignment.locked is true or a grade exists for that student, so an
+// assignment with zero grades reads as open/gradable-later on the student
+// side with no changes needed there — this button is the only missing half.
+async function postAssignmentToClass() {
+    if (isSemesterLocked) { alert('This semester is locked.'); return; }
+
+    const subject = document.getElementById('agSubject')?.value || selectedSubject || '';
+    const type    = document.getElementById('agType')?.value    || '';
+    const title   = document.getElementById('agTitle')?.value.trim() || '';
+    const maxEl   = document.getElementById('agMax');
+    const max     = maxEl ? parseFloat(maxEl.value) : NaN;
+    const dateEl  = document.getElementById('agDate');
+    const date    = dateEl ? dateEl.value : new Date().toISOString().split('T')[0];
+    const instructionsEl = document.getElementById('agInstructions');
+    const instructions   = instructionsEl ? instructionsEl.value.trim() : '';
+
+    if (!subject || !type || !title) { alert('Subject, grade type, and title are required.'); return; }
+    if (isNaN(max) || max <= 0) { alert('Please enter a valid max score.'); return; }
+
+    const btn = document.getElementById('postToClassBtn');
+    if (btn) {
+        btn.disabled  = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Posting...';
+    }
+
+    try {
+        const posted = await ensureAssignmentDoc({ subject, type, title, max, date, instructions });
+        if (!posted) throw new Error('Could not resolve the subject for this assignment.');
+
+        renderAssignmentPicker();
+        updateGradingHeader();
+        renderRoster();
+
+        // selectedAssignment is now a real (non-manual) template, so the
+        // "Post to Class" button/hint should hide — same condition
+        // renderState() applies, run directly since we're not re-entering
+        // renderState() itself here (the grading panel stays open/visible).
+        document.getElementById('postToClassBtn')?.classList.add('hidden');
+        document.getElementById('postToClassHint')?.classList.add('hidden');
+
+        document.getElementById('gradeErrorBanner')?.classList.add('hidden');
+        // showSavedBanner sets textContent (not innerHTML), so the title goes
+        // in raw here — escHtml would leave literal "&amp;"-style entities
+        // visible on screen instead of being decoded.
+        showSavedBanner(
+            `"${title}" was posted to the class.`,
+            'Students can see the instructions and submit their work now — grade it here whenever you’re ready.'
+        );
+    } catch (e) {
+        console.error('[Grade Form] postAssignmentToClass:', e);
+        showSaveError(e);
+    }
+
+    if (btn) {
+        btn.disabled  = false;
+        btn.innerHTML = '<i class="fa-solid fa-bullhorn text-[11px]"></i> Post to Class (Do Not Grade Yet)';
+    }
+}
+
+// Shared by both the "grade committed" success path and the new "posted to
+// class" path — same banner markup, different message each time. Always
+// resets to the grade-commit wording after the timeout so a later real
+// grade-commit doesn't inherit a stale "posted to class" message.
+function showSavedBanner(title, subtitle) {
+    const banner = document.getElementById('gradeSavedBanner');
+    const titleEl = document.getElementById('gradeSavedBannerTitle');
+    const subtitleEl = document.getElementById('gradeSavedBannerSubtitle');
+    if (!banner) return;
+
+    if (titleEl) titleEl.textContent = title;
+    if (subtitleEl) subtitleEl.textContent = subtitle;
+
+    banner.classList.remove('hidden');
+    clearTimeout(window.__gfBannerTimer);
+    window.__gfBannerTimer = setTimeout(() => {
+        banner.classList.add('hidden');
+        if (titleEl) titleEl.textContent = 'Record committed successfully.';
+        if (subtitleEl) subtitleEl.textContent = 'Moved to the next ungraded student.';
+    }, 4500);
+}
+
 // ── 9. SAVE GRADE (click handler — commits via the shared saveGrade() helper below) ──
 async function commitGrade() {
     if (isSemesterLocked) { alert('This semester is locked. Grades are read-only.'); return; }
@@ -639,49 +808,11 @@ async function commitGrade() {
 
     try {
         // ── CONVERT MANUAL ENTRY TO PREPARED ASSIGNMENT ───────────────────
+        // Shared with postAssignmentToClass() — see ensureAssignmentDoc()
+        // above. A no-op if selectedAssignment is already a real (non-manual)
+        // assignment, same as before this was extracted.
         if (selectedAssignment && selectedAssignment.manual) {
-            const sub = getSubjectByName(subject);
-            if (sub) {
-                const existing = Array.isArray(sub.assignments) ? sub.assignments : [];
-                let matchedAsg = existing.find(a => (a.title || '').toLowerCase() === title.toLowerCase());
-
-                // If it doesn't exist yet, build it identically to the Subjects page generator
-                if (!matchedAsg) {
-                    matchedAsg = {
-                        id: 'asg_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 5),
-                        title: title,
-                        type: type,
-                        maxScore: max,
-                        description: '', // Blank by default, notes are usually student-specific
-                        instructions: instructions, // shown to students in Assignments/Lesson viewer
-                        date: date,
-                        completed: false,
-                        createdAt: new Date().toISOString()
-                    };
-
-                    // PHASE 0: write to wherever this subject actually lives —
-                    // its own assignments subcollection for a new-model subject,
-                    // or the legacy embedded array, unchanged, for a legacy one.
-                    if (sub._source === 'new') {
-                        await setDoc(doc(db, 'schools', session.schoolId, 'classes', sub.classId, 'subjects', sub.id, 'assignments', matchedAsg.id), matchedAsg);
-                    } else {
-                        const subjects = (session.teacherData.subjects || []).map(s => {
-                            if (s.id !== sub.id) return s;
-                            return { ...s, assignments: [...existing, matchedAsg] };
-                        });
-
-                        await updateDoc(getTeacherDocRef(session.schoolId, session.teacherId), { subjects });
-                        session.teacherData.subjects = subjects;
-                        setSessionData('teacher', session);
-                    }
-                    sub.assignments = [...existing, matchedAsg];
-                }
-
-                // Update state in memory so the NEXT student graded uses this established template
-                selectedAssignment = matchedAsg;
-                fieldsUnlocked = false;
-                applyLockState(); // Visuals update to show the fields are now locked to this template
-            }
+            await ensureAssignmentDoc({ subject, type, title, max, date, instructions });
         }
         // ──────────────────────────────────────────────────────────────────
 
@@ -728,12 +859,7 @@ async function commitGrade() {
         advanceToNextUngraded(studentId);
 
         document.getElementById('gradeErrorBanner')?.classList.add('hidden');
-        const banner = document.getElementById('gradeSavedBanner');
-        if (banner) {
-            banner.classList.remove('hidden');
-            clearTimeout(window.__gfBannerTimer);
-            window.__gfBannerTimer = setTimeout(() => banner.classList.add('hidden'), 3500);
-        }
+        showSavedBanner('Record committed successfully.', 'Moved to the next ungraded student.');
 
     } catch (e) {
         console.error('Save Error:', e);
