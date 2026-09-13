@@ -69,6 +69,47 @@ function localStorageKey(lessonId) {
     return `connectus_lesson_progress_${lessonId}`;
 }
 
+// ── ASSIGNMENT EMBED BLOT (read-only viewer) ─────────────────────────────
+// Mirrors builder.js's registerAssignmentBlot() exactly. Quill's own
+// DOM-to-Delta normalization pass (confirmed via diagnostic logging to run
+// asynchronously, on the very next tick after any root.innerHTML mutation)
+// only preserves elements it has a registered Blot for — anything else gets
+// flattened to plain text on that pass, regardless of how the initial HTML
+// was assembled. builder.js registers this Blot and never sees the embed
+// get flattened; this file never registered it, which is the actual root
+// cause of the flattening bug (building the HTML string before Quill saw it
+// was necessary but not sufficient on its own). Registering it here, before
+// the read-only Quill instance is constructed, is what's actually needed.
+let assignmentBlotRegistered = false;
+
+function registerAssignmentBlot() {
+    if (assignmentBlotRegistered || !window.Quill) return;
+    const Embed = Quill.import('blots/embed');
+
+    class AssignmentBlot extends Embed {
+        static create(value) {
+            const node = super.create();
+            node.setAttribute('contenteditable', 'false');
+            node.setAttribute('data-assignment-id', value.id || '');
+            node.setAttribute('data-assignment-title', value.title || '');
+            node.innerHTML = buildAssignmentEmbedInnerHtml(value.id || '', value.title || 'Assignment');
+            return node;
+        }
+        static value(node) {
+            return {
+                id: node.getAttribute('data-assignment-id') || '',
+                title: node.getAttribute('data-assignment-title') || ''
+            };
+        }
+    }
+    AssignmentBlot.blotName = 'assignmentEmbed';
+    AssignmentBlot.tagName = 'span';
+    AssignmentBlot.className = 'assignment-embed';
+
+    Quill.register(AssignmentBlot);
+    assignmentBlotRegistered = true;
+}
+
 // ── 4. INITIALIZATION ───────────────────────────────────────────────────────
 async function init() {
     if (!session) return;
@@ -362,6 +403,11 @@ function renderDocumentView() {
 
     const block = lesson.slides[0] || { contentHtml: '' };
 
+    // MUST happen before `new Quill(...)` below — Quill's async DOM
+    // normalization pass only preserves elements it has a registered Blot
+    // for (see registerAssignmentBlot() above for why).
+    registerAssignmentBlot();
+
     quillViewer = new Quill(els.docViewerEditor, {
         theme: 'snow',
         readOnly: true,
@@ -372,18 +418,11 @@ function renderDocumentView() {
     // Quill wires up its own MutationObserver the moment it's constructed;
     // mutating a child of an already-mounted node later (as the old
     // reviveAssignmentEmbeds() did, via node.innerHTML =) gave that
-    // observer a change to react to, and Quill's own DOM-to-Delta
-    // normalization doesn't recognize the assignment-embed span as
-    // anything special — it collapsed it down to plain (italicized) text.
-    // Setting root.innerHTML exactly once, fully-formed, means Quill only
-    // ever parses finished content and never "corrects" it after the fact.
-    console.log('[DIAG] block.contentHtml:', JSON.stringify(block.contentHtml));
-    const __revivedHtml = reviveAssignmentEmbedsHtml(block.contentHtml || '');
-    console.log('[DIAG] revived html:', JSON.stringify(__revivedHtml));
-    quillViewer.root.innerHTML = __revivedHtml;
-    console.log('[DIAG] root.innerHTML immediately after assign:', JSON.stringify(quillViewer.root.innerHTML));
-    setTimeout(() => console.log('[DIAG] root.innerHTML after 0ms timeout:', JSON.stringify(quillViewer.root.innerHTML)), 0);
-    setTimeout(() => console.log('[DIAG] root.innerHTML after 500ms timeout:', JSON.stringify(quillViewer.root.innerHTML)), 500);
+    // observer a change to react to. Building the finished string first AND
+    // having a registered Blot for assignment-embed together are what keep
+    // Quill's own DOM-to-Delta normalization from collapsing it to plain
+    // text on the next tick.
+    quillViewer.root.innerHTML = reviveAssignmentEmbedsHtml(block.contentHtml || '');
     // Quill's read-only mode still leaves its root contenteditable="false"
     // wrapper focusable/selectable for text — that's fine and expected
     // (students can still select/copy text); only the assignment embed
