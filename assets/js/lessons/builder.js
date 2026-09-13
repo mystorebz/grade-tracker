@@ -52,7 +52,9 @@ const ASSIGNMENT_TEMPLATE_LABELS = {
     title: 'Title / Objective',
     content: 'Rich Content',
     media: 'Media',
-    assignment: 'Embedded Assignment'
+    assignment: 'Embedded Assignment',
+    interactive_prompt: 'Interactive Prompt',
+    collaborative_board: 'Collaborative Board'
 };
 
 const els = {};
@@ -468,7 +470,7 @@ function renderSlideThumbs() {
 }
 
 function slideThumbIcon(type) {
-    return { title: 'fa-heading', content: 'fa-align-left', media: 'fa-photo-film', assignment: 'fa-clipboard-check' }[type] || 'fa-file';
+    return { title: 'fa-heading', content: 'fa-align-left', media: 'fa-photo-film', assignment: 'fa-clipboard-check', interactive_prompt: 'fa-bolt', collaborative_board: 'fa-people-group' }[type] || 'fa-file';
 }
 
 function slideThumbLabel(slide) {
@@ -564,7 +566,9 @@ function renderSlideCanvas() {
         title: renderTitleCanvas,
         content: renderContentCanvas,
         media: renderMediaCanvas,
-        assignment: renderAssignmentCanvas
+        assignment: renderAssignmentCanvas,
+        interactive_prompt: renderInteractivePromptCanvas,
+        collaborative_board: renderCollaborativeBoardCanvas
     };
     els.slideCanvas.innerHTML = (renderers[slide.type] || renderContentCanvas)(slide);
     wireCanvasInputs(slide);
@@ -670,6 +674,77 @@ function renderAssignmentCanvas(slide) {
     </div>`;
 }
 
+// ── PHASE 3: LIVE SESSION ENGINE — canvas renderers ───────────────────────
+// Both block types are LIVE-ONLY: their student-facing form/wall only ever
+// renders inside an active live_sessions document (see lessons/live.js's
+// teacher dashboard and lessons/viewer.js's student auto-follow view) —
+// there is no "preview" of the interactive experience itself here, same
+// reason renderAssignmentCanvas above doesn't try to preview the student's
+// submission form. The canvas here is purely the teacher's AUTHORING form
+// for the block's own content (the prompt text / instructions), plus a
+// static banner explaining that the interactive part only appears once a
+// live session is started from this lesson's card in the Lesson Builder
+// list (see builder.js's onLessonListClick 'golive' branch).
+function liveOnlyBanner(text) {
+    return `
+    <p class="text-[11.5px] text-[#6b84a0] font-semibold bg-[#f4f7fb] border border-[#dce3ed] rounded-lg px-3 py-2.5 mt-2">
+        <i class="fa-solid fa-tower-broadcast mr-1.5 text-[#2563eb]"></i>${text}
+    </p>`;
+}
+
+function renderInteractivePromptCanvas(slide) {
+    const isMultipleChoice = slide.promptKind === 'multiple_choice';
+    const choicesHtml = (slide.choices || []).map((choice, i) => `
+        <div class="flex items-center gap-2 mb-2" data-choice-row="${i}">
+            <input data-choice-index="${i}" type="text" value="${escHtml(choice)}" placeholder="Choice ${i + 1}"
+                   class="form-input flex-1 p-2 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">
+            <button type="button" data-remove-choice="${i}" class="text-[#9ab0c6] hover:text-[#e31b4a] w-7 h-7 flex-shrink-0 flex items-center justify-center transition">
+                <i class="fa-solid fa-xmark text-[12px]"></i>
+            </button>
+        </div>`).join('');
+
+    return `
+    <div class="bg-white rounded-xl shadow-sm border border-[#dce3ed] p-8 min-h-[360px]">
+        <span class="lb-live-badge inline-flex items-center gap-1.5 text-[10.5px] font-black uppercase tracking-wide px-2.5 py-1 rounded-full bg-[#eef2ff] text-[#4338ca] border border-[#c7d2fe] mb-3">
+            <i class="fa-solid fa-bolt"></i> Interactive Prompt
+        </span>
+        ${fieldWrap('Heading', `<input data-field="heading" type="text" value="${escHtml(slide.heading)}" placeholder="e.g. Quick Check" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[16px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
+        ${fieldWrap('Prompt Text', `<textarea data-field="promptText" rows="3" placeholder="What question do you want students to answer?" class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded text-[13.5px] text-[#0d1f35] outline-none focus:border-[#2563eb] resize-none leading-relaxed">${escHtml(slide.promptText)}</textarea>`)}
+
+        <div class="flex items-center gap-1 bg-[#f4f7fb] border border-[#dce3ed] rounded-lg p-1 w-fit mb-3">
+            <button type="button" data-prompt-kind="short_answer" class="px-3 py-1.5 rounded text-[12px] font-bold transition ${!isMultipleChoice ? 'bg-white text-[#0d1f35] shadow-sm' : 'text-[#6b84a0]'}">
+                <i class="fa-solid fa-keyboard text-[11px] mr-1"></i>Short Answer
+            </button>
+            <button type="button" data-prompt-kind="multiple_choice" class="px-3 py-1.5 rounded text-[12px] font-bold transition ${isMultipleChoice ? 'bg-white text-[#0d1f35] shadow-sm' : 'text-[#6b84a0]'}">
+                <i class="fa-solid fa-list-check text-[11px] mr-1"></i>Multiple Choice
+            </button>
+        </div>
+
+        ${isMultipleChoice ? `
+        <div class="mb-2">
+            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Choices</label>
+            <div id="promptChoicesList">${choicesHtml}</div>
+            <button type="button" id="addChoiceBtn" class="text-[#2563eb] hover:text-[#1d4ed8] text-[12px] font-bold mt-1">
+                <i class="fa-solid fa-plus mr-1"></i>Add Choice
+            </button>
+        </div>` : ''}
+
+        ${liveOnlyBanner('Students answer this privately — only you see individual responses. This only works during a live session (use the broadcast icon on the lesson list).')}
+    </div>`;
+}
+
+function renderCollaborativeBoardCanvas(slide) {
+    return `
+    <div class="bg-white rounded-xl shadow-sm border border-[#dce3ed] p-8 min-h-[360px]">
+        <span class="lb-live-badge inline-flex items-center gap-1.5 text-[10.5px] font-black uppercase tracking-wide px-2.5 py-1 rounded-full bg-[#f0fdfa] text-[#0f766e] border border-[#99f6e4] mb-3">
+            <i class="fa-solid fa-people-group"></i> Collaborative Board
+        </span>
+        ${fieldWrap('Heading', `<input data-field="heading" type="text" value="${escHtml(slide.heading)}" placeholder="e.g. Share One Idea" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[16px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
+        ${fieldWrap('Instructions', `<textarea data-field="instructions" rows="3" placeholder="What should students post to the board?" class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded text-[13.5px] text-[#0d1f35] outline-none focus:border-[#2563eb] resize-none leading-relaxed">${escHtml(slide.instructions)}</textarea>`)}
+        ${liveOnlyBanner('Every connected student\\'s card is visible to the whole class in real time. This only works during a live session (use the broadcast icon on the lesson list).')}
+    </div>`;
+}
+
 function wireCanvasInputs(slide) {
     els.slideCanvas.querySelectorAll('[data-field]').forEach(input => {
         input.addEventListener('input', () => {
@@ -691,6 +766,54 @@ function wireCanvasInputs(slide) {
             hasUnsavedChanges = true;
             renderSlideCanvas();
             renderPropertiesPanel();
+        });
+    });
+
+    // Interactive Prompt: Short Answer / Multiple Choice toggle — same
+    // pattern as the media video/image toggle above. Switching to
+    // 'short_answer' intentionally leaves slide.choices untouched (so
+    // flipping back to 'multiple_choice' doesn't lose what was typed).
+    els.slideCanvas.querySelectorAll('[data-prompt-kind]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const kind = btn.dataset.promptKind;
+            if (slide.promptKind === kind) return;
+            slide.promptKind = kind;
+            if (kind === 'multiple_choice' && !(slide.choices || []).length) {
+                slide.choices = ['', ''];
+            }
+            hasUnsavedChanges = true;
+            renderSlideCanvas();
+        });
+    });
+
+    // Multiple Choice: Add Choice button — appends one empty choice and
+    // re-renders so the new input row appears.
+    els.slideCanvas.querySelector('#addChoiceBtn')?.addEventListener('click', () => {
+        slide.choices = [...(slide.choices || []), ''];
+        hasUnsavedChanges = true;
+        renderSlideCanvas();
+    });
+
+    // Multiple Choice: per-choice text inputs — updates in place, no
+    // full re-render needed (matches the generic [data-field] pattern
+    // above; avoids losing focus/cursor position while typing).
+    els.slideCanvas.querySelectorAll('[data-choice-index]').forEach(input => {
+        input.addEventListener('input', () => {
+            const i = Number(input.dataset.choiceIndex);
+            if (!Array.isArray(slide.choices)) slide.choices = [];
+            slide.choices[i] = input.value;
+            hasUnsavedChanges = true;
+        });
+    });
+
+    // Multiple Choice: remove-choice buttons — splice out the entry and
+    // re-render so remaining rows re-index correctly.
+    els.slideCanvas.querySelectorAll('[data-remove-choice]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const i = Number(btn.dataset.removeChoice);
+            slide.choices = (slide.choices || []).filter((_, idx) => idx !== i);
+            hasUnsavedChanges = true;
+            renderSlideCanvas();
         });
     });
 }

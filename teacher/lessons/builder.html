@@ -100,8 +100,21 @@
                             <button data-template="media" class="w-full text-left px-3 py-2.5 text-[12.5px] font-semibold text-[#0d1f35] hover:bg-[#f4f7fb] flex items-center gap-2 border-b border-[#f0f4f8]">
                                 <i class="fa-solid fa-photo-film text-[#2563eb] w-4"></i> Media
                             </button>
-                            <button data-template="assignment" class="w-full text-left px-3 py-2.5 text-[12.5px] font-semibold text-[#0d1f35] hover:bg-[#f4f7fb] flex items-center gap-2">
+                            <button data-template="assignment" class="w-full text-left px-3 py-2.5 text-[12.5px] font-semibold text-[#0d1f35] hover:bg-[#f4f7fb] flex items-center gap-2 border-b border-[#f0f4f8]">
                                 <i class="fa-solid fa-clipboard-check text-[#2563eb] w-4"></i> Embedded Assignment
+                            </button>
+                            <!-- PHASE 3: LIVE SESSION ENGINE — the two block types newSlide()
+                                 (assets/js/lessons.js) already supports, but the Add Slide menu
+                                 never exposed. Live-only: neither renders anything meaningful
+                                 outside an active live_sessions document (see lessons/live.js and
+                                 lessons/viewer.js), so a teacher previewing a lesson outside a
+                                 live session sees a static "this is live-only" placeholder — same
+                                 as an Embedded Assignment slide's read-only canvas preview. -->
+                            <button data-template="interactive_prompt" class="w-full text-left px-3 py-2.5 text-[12.5px] font-semibold text-[#0d1f35] hover:bg-[#f4f7fb] flex items-center gap-2 border-b border-[#f0f4f8]">
+                                <i class="fa-solid fa-bolt text-[#2563eb] w-4"></i> Interactive Prompt
+                            </button>
+                            <button data-template="collaborative_board" class="w-full text-left px-3 py-2.5 text-[12.5px] font-semibold text-[#0d1f35] hover:bg-[#f4f7fb] flex items-center gap-2">
+                                <i class="fa-solid fa-people-group text-[#2563eb] w-4"></i> Collaborative Board
                             </button>
                         </div>
                     </div>
