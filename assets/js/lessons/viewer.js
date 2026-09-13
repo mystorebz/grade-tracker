@@ -377,7 +377,13 @@ function renderDocumentView() {
     // anything special — it collapsed it down to plain (italicized) text.
     // Setting root.innerHTML exactly once, fully-formed, means Quill only
     // ever parses finished content and never "corrects" it after the fact.
-    quillViewer.root.innerHTML = reviveAssignmentEmbedsHtml(block.contentHtml || '');
+    console.log('[DIAG] block.contentHtml:', JSON.stringify(block.contentHtml));
+    const __revivedHtml = reviveAssignmentEmbedsHtml(block.contentHtml || '');
+    console.log('[DIAG] revived html:', JSON.stringify(__revivedHtml));
+    quillViewer.root.innerHTML = __revivedHtml;
+    console.log('[DIAG] root.innerHTML immediately after assign:', JSON.stringify(quillViewer.root.innerHTML));
+    setTimeout(() => console.log('[DIAG] root.innerHTML after 0ms timeout:', JSON.stringify(quillViewer.root.innerHTML)), 0);
+    setTimeout(() => console.log('[DIAG] root.innerHTML after 500ms timeout:', JSON.stringify(quillViewer.root.innerHTML)), 500);
     // Quill's read-only mode still leaves its root contenteditable="false"
     // wrapper focusable/selectable for text — that's fine and expected
     // (students can still select/copy text); only the assignment embed
