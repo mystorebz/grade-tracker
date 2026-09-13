@@ -52,7 +52,15 @@ export function newSlide(type) {
         case 'title':
             return { id, type: 'title', heading: '', subheading: '', objective: '' };
         case 'media':
-            return { id, type: 'media', heading: '', provider: null, mediaUrl: '', embedUrl: '', caption: '' };
+            // mediaKind picks which of the two sub-modes this slide is in —
+            // 'video' (external iframe embed: YouTube/Vimeo/Drive, via
+            // provider+embedUrl below) or 'image' (a directly hosted image
+            // URL, rendered as a plain <img>, via imageUrl below). Both
+            // sub-modes' fields always exist on every media slide (rather
+            // than only the active one) so switching kinds in the builder
+            // never has to delete/recreate fields — just clears the ones
+            // that no longer apply.
+            return { id, type: 'media', mediaKind: 'video', heading: '', provider: null, mediaUrl: '', embedUrl: '', imageUrl: '', imageAlt: '', caption: '' };
         case 'assignment':
             return { id, type: 'assignment', heading: '', prompt: '', linkedAssignmentId: null };
         case 'content':
@@ -90,6 +98,29 @@ export function parseMediaUrl(rawUrl) {
     if (m) return { provider: 'drive', embedUrl: `https://drive.google.com/file/d/${m[1]}/preview` };
 
     return null;
+}
+
+// ── IMAGE URL VALIDATION ──────────────────────────────────────────────────
+// No upload, no Storage cost — this is a link-only feature, same "zero
+// storage cost" principle as parseMediaUrl() above, just for a plain <img>
+// instead of an <iframe>. There's no transformation to do (unlike a
+// YouTube/Vimeo link, an image URL IS its own src), so this only validates
+// that what was pasted looks like a real, directly-loadable image link
+// rather than a webpage — catches the easy mistake of pasting a Google
+// Images *search result* page or a Drive *view* link (neither of which
+// serves raw image bytes) instead of a direct file URL. Returns true/false;
+// callers show an error on false rather than silently accepting a broken
+// <img src>.
+export function isLikelyImageUrl(rawUrl) {
+    const url = (rawUrl || '').trim();
+    if (!url) return false;
+    if (!/^https:\/\//i.test(url)) return false; // http:// images trigger mixed-content warnings/blocks on an https:// page
+    // A recognized image file extension, optionally followed by a query
+    // string (Google Drive's uc?export=view&id=... and most CDNs append
+    // one) — this is a heuristic, not a guarantee the URL truly serves an
+    // image, so the caller's <img> still needs its own onerror fallback.
+    return /\.(png|jpe?g|gif|webp|svg|avif)(\?.*)?$/i.test(url) ||
+           /^https:\/\/drive\.google\.com\/uc\?/i.test(url); // Drive's direct-image export form
 }
 
 // ── READ: one lesson's main document ─────────────────────────────────────

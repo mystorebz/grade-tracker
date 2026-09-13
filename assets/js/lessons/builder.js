@@ -10,7 +10,7 @@ import { injectTeacherLayout } from '../../../assets/js/layout-teachers.js';
 import { showMsg, loadTeacherSubjectsCache } from '../../../assets/js/utils.js';
 import { resolvePostContext } from '../../../assets/js/posts.js';
 import {
-    newSlide, parseMediaUrl,
+    newSlide, parseMediaUrl, isLikelyImageUrl,
     loadLesson, loadLessonPrivateNotes, loadLessonsForSubject,
     createLesson, saveLessonContent, saveLessonPrivateNotes,
     publishLesson, unpublishLesson, deleteLesson
@@ -439,7 +439,9 @@ function renderContentCanvas(slide) {
 }
 
 function renderMediaCanvas(slide) {
-    const preview = slide.embedUrl
+    const isImage = slide.mediaKind === 'image';
+
+    const videoPreview = slide.embedUrl
         ? `<div class="aspect-video w-full bg-black rounded-lg overflow-hidden border border-[#dce3ed]">
              <iframe src="${escHtml(slide.embedUrl)}" class="w-full h-full" frameborder="0" allowfullscreen></iframe>
            </div>`
@@ -450,12 +452,46 @@ function renderMediaCanvas(slide) {
              </div>
            </div>`;
 
+    // onerror swaps the broken <img> for the same placeholder markup a media
+    // slide already shows with no URL — a dead/incorrect image link degrades
+    // to "no image yet" rather than a browser broken-image icon. Handled
+    // inline (not addEventListener) because this string is re-parsed into
+    // innerHTML on every render, same as every other slide preview here.
+    const imagePreview = slide.imageUrl
+        ? `<img src="${escHtml(slide.imageUrl)}" alt="${escHtml(slide.imageAlt)}"
+               class="w-full max-h-[320px] object-contain rounded-lg border border-[#dce3ed] bg-[#f4f7fb]"
+               onerror="this.closest('[data-media-preview]').innerHTML = document.getElementById('imgPreviewFallback').innerHTML">`
+        : `<div class="w-full h-[220px] bg-[#f4f7fb] rounded-lg border border-dashed border-[#dce3ed] flex items-center justify-center text-[#9ab0c6]">
+             <div class="text-center">
+               <i class="fa-solid fa-image text-3xl mb-2 block"></i>
+               <p class="text-[12px] font-semibold">Paste a direct image link</p>
+             </div>
+           </div>`;
+
     return `
     <div class="bg-white rounded-xl shadow-sm border border-[#dce3ed] p-8 min-h-[360px]">
         ${fieldWrap('Heading', `<input data-field="heading" type="text" value="${escHtml(slide.heading)}" placeholder="Slide heading" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[16px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
-        <div class="mb-2">${preview}</div>
-        <p id="mediaUrlError" class="text-[11px] font-bold text-[#e31b4a] mb-2 hidden">Couldn't recognize that as a YouTube, Vimeo, or Google Drive link.</p>
+
+        <div class="flex items-center gap-1 bg-[#f4f7fb] border border-[#dce3ed] rounded-lg p-1 w-fit mb-3">
+            <button type="button" data-media-kind="video" class="px-3 py-1.5 rounded text-[12px] font-bold transition ${!isImage ? 'bg-white text-[#0d1f35] shadow-sm' : 'text-[#6b84a0]'}">
+                <i class="fa-solid fa-video text-[11px] mr-1"></i>Video
+            </button>
+            <button type="button" data-media-kind="image" class="px-3 py-1.5 rounded text-[12px] font-bold transition ${isImage ? 'bg-white text-[#0d1f35] shadow-sm' : 'text-[#6b84a0]'}">
+                <i class="fa-solid fa-image text-[11px] mr-1"></i>Image
+            </button>
+        </div>
+
+        <div data-media-preview class="mb-2">${isImage ? imagePreview : videoPreview}</div>
+        <p id="mediaUrlError" class="text-[11px] font-bold text-[#e31b4a] mb-2 hidden">${isImage ? "That doesn't look like a direct image link (needs to end in .jpg, .png, etc.)." : "Couldn't recognize that as a YouTube, Vimeo, or Google Drive link."}</p>
         ${fieldWrap('Caption', `<input data-field="caption" type="text" value="${escHtml(slide.caption)}" placeholder="Optional caption" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
+    </div>
+    <div id="imgPreviewFallback" class="hidden">
+        <div class="w-full h-[220px] bg-[#fff0f3] rounded-lg border border-dashed border-[#e31b4a] flex items-center justify-center text-[#e31b4a]">
+            <div class="text-center">
+                <i class="fa-solid fa-triangle-exclamation text-3xl mb-2 block"></i>
+                <p class="text-[12px] font-semibold">This image link couldn't be loaded</p>
+            </div>
+        </div>
     </div>`;
 }
 
@@ -474,6 +510,21 @@ function wireCanvasInputs(slide) {
             slide[input.dataset.field] = input.value;
             hasUnsavedChanges = true;
             renderSlideThumbs(); // heading changes should update the thumbnail label live
+        });
+    });
+
+    // Video/Image toggle only exists on a media slide's canvas. Switching
+    // kinds doesn't clear the other kind's fields (mediaUrl/embedUrl stay
+    // put when flipping to image, and vice versa) — so flipping back and
+    // forth doesn't lose what was already typed in either one.
+    els.slideCanvas.querySelectorAll('[data-media-kind]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const kind = btn.dataset.mediaKind;
+            if (slide.mediaKind === kind) return;
+            slide.mediaKind = kind;
+            hasUnsavedChanges = true;
+            renderSlideCanvas();
+            renderPropertiesPanel();
         });
     });
 }
@@ -495,6 +546,14 @@ function renderPropertiesPanel() {
 }
 
 function renderMediaProperties(slide) {
+    if (slide.mediaKind === 'image') {
+        renderImageProperties(slide);
+    } else {
+        renderVideoProperties(slide);
+    }
+}
+
+function renderVideoProperties(slide) {
     els.propertiesPanel.innerHTML = `
     <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Media Source</p>
     ${fieldWrap('Video URL', `<input id="mediaUrlInput" type="url" value="${escHtml(slide.mediaUrl)}" placeholder="https://youtube.com/watch?v=..." class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
@@ -522,6 +581,37 @@ function renderMediaProperties(slide) {
         // Re-focus + restore cursor since renderSlideCanvas rebuilds the DOM;
         // the properties panel input isn't rebuilt so it keeps focus, but the
         // canvas's own preview needs the fresh embedUrl to show immediately.
+    });
+}
+
+function renderImageProperties(slide) {
+    els.propertiesPanel.innerHTML = `
+    <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Media Source</p>
+    ${fieldWrap('Image URL', `<input id="imageUrlInput" type="url" value="${escHtml(slide.imageUrl)}" placeholder="https://example.com/photo.jpg" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
+    ${fieldWrap('Alt Text', `<input id="imageAltInput" type="text" value="${escHtml(slide.imageAlt)}" placeholder="Describe the image for screen readers" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
+    <p class="text-[11px] text-[#9ab0c6] font-semibold leading-relaxed">
+        <i class="fa-solid fa-circle-info mr-1"></i>
+        Paste a direct link to an image file. No uploads — this keeps storage costs at zero, same as video slides.
+    </p>`;
+
+    const urlInput = document.getElementById('imageUrlInput');
+    urlInput.addEventListener('input', () => {
+        const errorEl = document.getElementById('mediaUrlError');
+        slide.imageUrl = urlInput.value;
+        if (urlInput.value.trim() && !isLikelyImageUrl(urlInput.value)) {
+            if (errorEl) errorEl.classList.remove('hidden');
+        } else {
+            if (errorEl) errorEl.classList.add('hidden');
+        }
+        hasUnsavedChanges = true;
+        renderSlideCanvas(); // re-render to update the live image preview
+    });
+
+    document.getElementById('imageAltInput').addEventListener('input', (e) => {
+        slide.imageAlt = e.target.value;
+        hasUnsavedChanges = true;
+        // No canvas re-render needed here — alt text isn't visible in the
+        // preview itself, only in the <img alt> attribute.
     });
 }
 
