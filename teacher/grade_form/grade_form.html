@@ -183,6 +183,13 @@
                                             <input type="text" id="agTitle" placeholder="e.g. ENG-101 Midterm Paper" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] focus:border-[#2563eb] focus:ring-0 transition outline-none">
                                         </div>
 
+                                        <!-- Instructions (shown to students in the Assignments/Lesson viewer) -->
+                                        <div class="sm:col-span-2">
+                                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Assignment Instructions <span class="text-[9px] font-bold normal-case text-[#0ea871] bg-[#edfaf4] border border-[#c6f0db] px-1.5 py-0.5 rounded-sm ml-1 tracking-normal">Visible to Students</span></label>
+                                            <textarea id="agInstructions" placeholder="What should students do for this assignment? (e.g. Complete pages 12-14 and show your work.)" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] h-20 resize-none focus:border-[#2563eb] focus:ring-0 transition outline-none"></textarea>
+                                            <p id="agInstructionsLockedHint" class="hidden text-[10px] font-semibold text-[#9ab0c6] mt-1"><i class="fa-solid fa-lock text-[9px] mr-1"></i>This is a prepared assignment — instructions were set when it was created and aren't editable here.</p>
+                                        </div>
+
                                         <!-- Date -->
                                         <div>
                                             <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Date</label>

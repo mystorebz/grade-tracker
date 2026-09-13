@@ -302,6 +302,8 @@ window.selectAssignment = function(assignmentId) {
     document.getElementById('agMax').value = a.maxScore || '';
     const notesEl = document.getElementById('agNotes');
     if (notesEl) notesEl.value = '';
+    const instructionsEl = document.getElementById('agInstructions');
+    if (instructionsEl) instructionsEl.value = a.instructions || '';
 
     applyLockState();
     updatePreview();
@@ -319,6 +321,8 @@ window.selectManualEntry = function() {
     document.getElementById('agMax').value = 100;
     const notesEl = document.getElementById('agNotes');
     if (notesEl) notesEl.value = '';
+    const instructionsEl = document.getElementById('agInstructions');
+    if (instructionsEl) instructionsEl.value = '';
 
     applyLockState();
     updatePreview();
@@ -330,13 +334,17 @@ function applyLockState() {
     const titleEl = document.getElementById('agTitle');
     const typeEl  = document.getElementById('agType');
     const maxEl   = document.getElementById('agMax');
+    const instructionsEl = document.getElementById('agInstructions');
 
-    [titleEl, typeEl, maxEl].forEach(el => {
+    [titleEl, typeEl, maxEl, instructionsEl].forEach(el => {
         if (!el) return;
-        el.readOnly = locked && el.tagName === 'INPUT';
+        el.readOnly = locked && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
         el.disabled = locked && el.tagName === 'SELECT';
         el.classList.toggle('gf-locked', locked);
     });
+
+    const instructionsHint = document.getElementById('agInstructionsLockedHint');
+    if (instructionsHint) instructionsHint.classList.toggle('hidden', !locked);
 
     const lockBtn = document.getElementById('gfEditLockBtn');
     if (lockBtn) {
@@ -364,6 +372,7 @@ window.resetSelection = function() {
     document.getElementById('agMax').value = 100;
     document.getElementById('agScore').value = '';
     const notesEl = document.getElementById('agNotes'); if (notesEl) notesEl.value = '';
+    const instructionsEl = document.getElementById('agInstructions'); if (instructionsEl) instructionsEl.value = '';
     document.getElementById('gradePreview')?.classList.add('hidden');
     populateSubjectPicker();
     renderState();
@@ -609,6 +618,9 @@ async function commitGrade() {
     const notesEl = document.getElementById('agNotes');
     const notes   = notesEl ? notesEl.value.trim() : '';
 
+    const instructionsEl = document.getElementById('agInstructions');
+    const instructions   = instructionsEl ? instructionsEl.value.trim() : '';
+
     const semId = activeSemId || (rawSemesters[0]?.id || '');
 
     if (!subject || !type || !title) { alert('Subject, grade type, and title are required.'); return; }
@@ -641,6 +653,7 @@ async function commitGrade() {
                         type: type,
                         maxScore: max,
                         description: '', // Blank by default, notes are usually student-specific
+                        instructions: instructions, // shown to students in Assignments/Lesson viewer
                         date: date,
                         completed: false,
                         createdAt: new Date().toISOString()
