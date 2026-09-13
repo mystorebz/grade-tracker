@@ -996,6 +996,15 @@ window.openAddWorkModal = function() {
     const overlay = document.getElementById('addWorkModalOverlay');
     if (!overlay) return;
     populateAddWorkSubjects();
+    // Fresh in-memory state every time the modal opens — Step 2 has no
+    // persistence yet, so there is nothing to restore between opens.
+    awQuestions = [];
+    awQuestionSeq = 0;
+    awStandardInstructions = '';
+    awStandardAttachments = [];
+    const typeSel = document.getElementById('awType');
+    if (typeSel) typeSel.value = '';
+    awRenderBuilder();
     overlay.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
 };
@@ -1008,15 +1017,324 @@ window.closeAddWorkModal = function() {
 };
 
 window.handleAddWorkTypeChange = function() {
-    const type = document.getElementById('awType')?.value || '';
-    const placeholder = document.getElementById('addWorkBuilderPlaceholder');
-    if (!placeholder) return;
-
-    if (AW_ASSESSMENT_TYPES.includes(type)) {
-        placeholder.innerHTML = '<i class="fa-solid fa-list-check mr-1.5"></i>Question builder (multiple choice, free response/short answer, math, attachment-photo-drawing response) loads here in the next build step.';
-    } else if (AW_STANDARD_TYPES.includes(type)) {
-        placeholder.innerHTML = '<i class="fa-solid fa-paperclip mr-1.5"></i>Instruction attachments (PDF/image/video) and a student submission block load here in the next build step.';
-    } else {
-        placeholder.innerHTML = '<i class="fa-solid fa-arrow-up mr-1.5"></i>Select a type above to build this assignment.';
-    }
+    // Switching type wipes question state — the two categories don't share
+    // shape (questions[] vs instructions+attachments), so there's nothing
+    // sensible to carry over, and Step 2 has no draft-save to protect anyway.
+    awQuestions = [];
+    awQuestionSeq = 0;
+    awRenderBuilder();
 };
+
+// ─────────────────────────────────────────────────────────────────────────
+// STEP 2 — Dynamic question/attachment builder DOM engine.
+// Everything below is in-memory rendering only: no Firestore reads/writes,
+// no Storage uploads. #awSaveDraftBtn / #awPublishBtn remain disabled.
+// ─────────────────────────────────────────────────────────────────────────
+
+let awQuestions = [];              // [{id, type, prompt, points, options?, hint?, responseType?, attachments}]
+let awQuestionSeq = 0;
+let awStandardInstructions = '';
+let awStandardAttachments = [];    // [{id, name, url}] — link references only, no real upload yet
+
+const AW_QUESTION_TYPES = [
+    { value: 'multiple_choice',    label: 'Multiple Choice' },
+    { value: 'free_response',      label: 'Free Response' },
+    { value: 'short_answer',       label: 'Short Answer' },
+    { value: 'math',               label: 'Math / Equation' },
+    { value: 'attachment_response', label: 'Attachment / Draw / Photo Response' }
+];
+
+function awMakeQuestion(type = 'multiple_choice') {
+    const base = { id: `q_${++awQuestionSeq}`, type, prompt: '', points: 1, attachments: [] };
+    if (type === 'multiple_choice') base.options = ['', ''];
+    if (type === 'free_response' || type === 'short_answer' || type === 'math') base.hint = '';
+    if (type === 'attachment_response') base.responseType = 'File Upload';
+    return base;
+}
+
+function awResetQuestionTypeFields(q, newType) {
+    // Strip the old type's fields, then apply the new type's defaults —
+    // keeps prompt/points/attachments (those are type-agnostic).
+    delete q.options; delete q.hint; delete q.responseType;
+    if (newType === 'multiple_choice') q.options = ['', ''];
+    if (newType === 'free_response' || newType === 'short_answer' || newType === 'math') q.hint = '';
+    if (newType === 'attachment_response') q.responseType = 'File Upload';
+    q.type = newType;
+}
+
+function awFindQuestion(id) {
+    return awQuestions.find(q => q.id === id) || null;
+}
+
+// ── Top-level dispatcher: decides placeholder vs. assessment vs. standard ──
+function awRenderBuilder() {
+    const container = document.getElementById('addWorkBuilderContainer');
+    if (!container) return;
+    const type = document.getElementById('awType')?.value || '';
+
+    if (!type) {
+        container.className = 'border border-dashed border-[#c5d0db] rounded-sm p-8 text-center bg-[#f8fafb]';
+        container.innerHTML = `<p class="text-[12px] text-[#9ab0c6] font-semibold italic m-0">
+            <i class="fa-solid fa-arrow-up mr-1.5"></i>Select a type above to build this assignment.</p>`;
+        return;
+    }
+
+    container.className = '';
+    container.innerHTML = AW_ASSESSMENT_TYPES.includes(type) ? awRenderAssessmentBuilder() : awRenderStandardBuilder();
+}
+
+// ── Assessment builder: sequential question cards + Add Question ──────────
+function awRenderAssessmentBuilder() {
+    const cards = awQuestions.map((q, i) => awRenderQuestionCard(q, i)).join('');
+    const empty = awQuestions.length === 0
+        ? `<p class="text-[11px] text-[#9ab0c6] italic text-center py-3">No questions yet — add the first one below.</p>` : '';
+    return `
+        <div class="space-y-3">
+            ${cards}
+            ${empty}
+            <button type="button" data-aw-action="add-question"
+                class="w-full border-2 border-dashed border-[#c5d0db] hover:border-[#0ea871] text-[#6b84a0] hover:text-[#0ea871] rounded-sm py-3 text-[11px] font-bold uppercase tracking-widest transition">
+                <i class="fa-solid fa-plus mr-1.5"></i>Add Question
+            </button>
+        </div>`;
+}
+
+function awRenderQuestionCard(q, index) {
+    const typeOptions = AW_QUESTION_TYPES.map(t =>
+        `<option value="${t.value}" ${t.value === q.type ? 'selected' : ''}>${t.label}</option>`).join('');
+
+    return `
+    <div class="bg-white border border-[#dce3ed] rounded-sm p-4" data-question-id="${q.id}">
+        <div class="flex items-start justify-between gap-3 mb-3">
+            <div class="flex items-center gap-2 min-w-0">
+                <span class="w-6 h-6 flex-shrink-0 bg-[#edfaf4] text-[#0ea871] border border-[#c6f0db] rounded-sm flex items-center justify-center text-[10px] font-bold">${index + 1}</span>
+                <select data-question-id="${q.id}" data-field="type" data-aw-change="question-type"
+                    class="form-select text-[11px] font-bold text-[#0d1f35] border border-[#dce3ed] rounded-sm py-1 pl-2 pr-6 outline-none focus:border-[#2563eb] appearance-none">
+                    ${typeOptions}
+                </select>
+            </div>
+            <div class="flex items-center gap-1 flex-shrink-0">
+                <button type="button" data-question-id="${q.id}" data-aw-action="move-up" ${index === 0 ? 'disabled' : ''}
+                    class="w-7 h-7 flex items-center justify-center text-[#9ab0c6] hover:text-[#0d1f35] disabled:opacity-30 disabled:cursor-not-allowed rounded-sm transition" title="Move up">
+                    <i class="fa-solid fa-arrow-up text-[11px]"></i>
+                </button>
+                <button type="button" data-question-id="${q.id}" data-aw-action="move-down" ${index === awQuestions.length - 1 ? 'disabled' : ''}
+                    class="w-7 h-7 flex items-center justify-center text-[#9ab0c6] hover:text-[#0d1f35] disabled:opacity-30 disabled:cursor-not-allowed rounded-sm transition" title="Move down">
+                    <i class="fa-solid fa-arrow-down text-[11px]"></i>
+                </button>
+                <button type="button" data-question-id="${q.id}" data-aw-action="delete-question"
+                    class="w-7 h-7 flex items-center justify-center text-[#9ab0c6] hover:text-[#e31b4a] rounded-sm transition" title="Delete question">
+                    <i class="fa-solid fa-trash text-[11px]"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-[1fr_100px] gap-3 mb-3">
+            <div>
+                <label class="block text-[9px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Prompt</label>
+                <textarea data-question-id="${q.id}" data-field="prompt" data-aw-input="question-field"
+                    placeholder="Type the question…"
+                    class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[12.5px] text-[#0d1f35] h-16 resize-none focus:border-[#2563eb] focus:ring-0 transition outline-none">${escHtml(q.prompt || '')}</textarea>
+            </div>
+            <div>
+                <label class="block text-[9px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Points</label>
+                <input type="number" min="0" step="any" inputmode="decimal" value="${q.points ?? 1}"
+                    data-question-id="${q.id}" data-field="points" data-aw-input="question-field"
+                    class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[12.5px] text-[#0d1f35] focus:border-[#2563eb] focus:ring-0 transition outline-none">
+            </div>
+        </div>
+
+        ${awRenderQuestionTypeFields(q)}
+        ${awRenderAttachmentBlock(q.attachments, q.id, 'question')}
+    </div>`;
+}
+
+function awRenderQuestionTypeFields(q) {
+    if (q.type === 'multiple_choice') {
+        const options = (q.options || []).map((opt, i) => `
+            <div class="flex items-center gap-2">
+                <span class="text-[10px] font-bold text-[#9ab0c6] w-4 flex-shrink-0">${String.fromCharCode(65 + i)}</span>
+                <input type="text" value="${escHtml(opt)}" placeholder="Option ${i + 1}"
+                    data-question-id="${q.id}" data-option-index="${i}" data-aw-input="option-text"
+                    class="form-input flex-1 p-1.5 bg-white border border-[#dce3ed] rounded-sm text-[12px] text-[#0d1f35] focus:border-[#2563eb] focus:ring-0 transition outline-none">
+                <button type="button" data-question-id="${q.id}" data-option-index="${i}" data-aw-action="remove-option"
+                    ${(q.options || []).length <= 2 ? 'disabled' : ''}
+                    class="w-6 h-6 flex-shrink-0 flex items-center justify-center text-[#9ab0c6] hover:text-[#e31b4a] disabled:opacity-30 disabled:cursor-not-allowed rounded-sm transition">
+                    <i class="fa-solid fa-xmark text-[11px]"></i>
+                </button>
+            </div>`).join('');
+        return `
+            <div class="mb-3 pl-1 space-y-1.5">
+                ${options}
+                <button type="button" data-question-id="${q.id}" data-aw-action="add-option"
+                    class="text-[10.5px] font-bold text-[#0ea871] hover:text-[#0d1f35] mt-1"><i class="fa-solid fa-plus mr-1"></i>Add option</button>
+            </div>`;
+    }
+
+    if (q.type === 'free_response' || q.type === 'short_answer' || q.type === 'math') {
+        const label = q.type === 'math' ? 'Formula / LaTeX guidance for students (optional)' : 'Guidance shown to students — e.g. expected length (optional)';
+        return `
+            <div class="mb-3">
+                <input type="text" value="${escHtml(q.hint || '')}" placeholder="${label}"
+                    data-question-id="${q.id}" data-field="hint" data-aw-input="question-field"
+                    class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded-sm text-[12px] text-[#0d1f35] focus:border-[#2563eb] focus:ring-0 transition outline-none">
+            </div>`;
+    }
+
+    if (q.type === 'attachment_response') {
+        const opts = ['File Upload', 'Camera Photo', 'Drawing Canvas']
+            .map(o => `<option value="${o}" ${o === q.responseType ? 'selected' : ''}>${o}</option>`).join('');
+        return `
+            <div class="mb-3">
+                <label class="block text-[9px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Required student output</label>
+                <select data-question-id="${q.id}" data-field="responseType" data-aw-change="question-field"
+                    class="form-select w-full sm:w-64 p-2 bg-white border border-[#dce3ed] rounded-sm text-[12px] text-[#0d1f35] pr-8 focus:border-[#2563eb] focus:ring-0 transition outline-none appearance-none">
+                    ${opts}
+                </select>
+            </div>`;
+    }
+    return '';
+}
+
+// ── Standard-work builder: instructions + task-level teacher attachments ──
+function awRenderStandardBuilder() {
+    return `
+        <div class="bg-white border border-[#dce3ed] rounded-sm p-4 space-y-4">
+            <div>
+                <label class="block text-[9px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Instructions</label>
+                <textarea data-aw-input="standard-instructions" placeholder="What should students do? (e.g. Label the parts of this flower.)"
+                    class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] h-24 resize-none focus:border-[#2563eb] focus:ring-0 transition outline-none">${escHtml(awStandardInstructions)}</textarea>
+            </div>
+            ${awRenderAttachmentBlock(awStandardAttachments, null, 'standard')}
+        </div>`;
+}
+
+// ── Shared attachment block — used for both per-question and task-level media ──
+// Link references only for now; real file upload needs Storage wiring (later step).
+function awRenderAttachmentBlock(attachments, questionId, scope) {
+    const qAttr = questionId ? `data-question-id="${questionId}"` : '';
+    const rows = (attachments || []).map((a, i) => `
+        <div class="flex items-center gap-2 text-[12px]">
+            <i class="fa-solid fa-paperclip text-[#9ab0c6] text-[11px]"></i>
+            <span class="flex-1 truncate text-[#0d1f35] font-semibold">${escHtml(a.name || a.url)}</span>
+            <button type="button" ${qAttr} data-attachment-index="${i}" data-aw-scope="${scope}" data-aw-action="remove-attachment"
+                class="w-6 h-6 flex-shrink-0 flex items-center justify-center text-[#9ab0c6] hover:text-[#e31b4a] rounded-sm transition">
+                <i class="fa-solid fa-xmark text-[11px]"></i>
+            </button>
+        </div>`).join('');
+
+    return `
+        <div class="border-t border-[#f0f4f8] pt-3">
+            <label class="block text-[9px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">
+                ${scope === 'standard' ? 'Teacher media attachments' : 'Attach media to this question'}
+            </label>
+            <div class="space-y-1.5 mb-2">${rows}</div>
+            <div class="flex items-center gap-1.5">
+                <input type="url" placeholder="Paste a link (PDF/image/video)…" data-aw-scope="${scope}" ${qAttr}
+                    data-aw-field="attachment-url-input"
+                    class="form-input flex-1 p-1.5 bg-white border border-[#dce3ed] rounded-sm text-[11.5px] text-[#0d1f35] focus:border-[#2563eb] focus:ring-0 transition outline-none">
+                <button type="button" data-aw-scope="${scope}" ${qAttr} data-aw-action="add-attachment"
+                    class="text-[10.5px] font-bold text-[#0ea871] hover:text-[#0d1f35] px-2 py-1.5 whitespace-nowrap">
+                    <i class="fa-solid fa-plus mr-1"></i>Add
+                </button>
+                <button type="button" disabled title="File upload wiring comes in a later step"
+                    class="text-[10.5px] font-bold text-[#9ab0c6] bg-[#eef2f7] border border-[#dce3ed] px-2.5 py-1.5 rounded-sm cursor-not-allowed whitespace-nowrap">
+                    <i class="fa-solid fa-upload mr-1"></i>Upload File
+                </button>
+            </div>
+        </div>`;
+}
+
+// ── Event delegation: one listener set on the container, attached once ────
+// (grade_form.js is a static module script loaded after the DOM parses, so
+// #addWorkBuilderContainer already exists — no DOMContentLoaded wrapper needed.)
+function initAddWorkBuilderEvents() {
+    const container = document.getElementById('addWorkBuilderContainer');
+    if (!container) return;
+
+    // Continuous typing: mutate state only, never re-render (keeps focus/cursor intact).
+    container.addEventListener('input', (e) => {
+        const t = e.target;
+        if (t.dataset.awInput === 'question-field') {
+            const q = awFindQuestion(t.dataset.questionId);
+            if (!q) return;
+            q[t.dataset.field] = t.dataset.field === 'points' ? (parseFloat(t.value) || 0) : t.value;
+        } else if (t.dataset.awInput === 'option-text') {
+            const q = awFindQuestion(t.dataset.questionId);
+            if (!q || !q.options) return;
+            q.options[Number(t.dataset.optionIndex)] = t.value;
+        } else if (t.dataset.awInput === 'standard-instructions') {
+            awStandardInstructions = t.value;
+        }
+    });
+
+    // Discrete selects (per-question type, attachment-response output type).
+    container.addEventListener('change', (e) => {
+        const t = e.target;
+        if (t.dataset.awChange === 'question-type') {
+            const q = awFindQuestion(t.dataset.questionId);
+            if (!q) return;
+            awResetQuestionTypeFields(q, t.value);
+            awRenderBuilder();
+        } else if (t.dataset.awChange === 'question-field') {
+            const q = awFindQuestion(t.dataset.questionId);
+            if (q) q[t.dataset.field] = t.value;
+        }
+    });
+
+    // Structural actions (add/remove/reorder question, options, attachments).
+    container.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-aw-action]');
+        if (!btn || btn.disabled) return;
+        const action = btn.dataset.awAction;
+        const qId = btn.dataset.questionId;
+
+        if (action === 'add-question') {
+            awQuestions.push(awMakeQuestion('multiple_choice'));
+        } else if (action === 'delete-question') {
+            awQuestions = awQuestions.filter(q => q.id !== qId);
+        } else if (action === 'move-up' || action === 'move-down') {
+            const i = awQuestions.findIndex(q => q.id === qId);
+            const j = action === 'move-up' ? i - 1 : i + 1;
+            if (i < 0 || j < 0 || j >= awQuestions.length) return;
+            [awQuestions[i], awQuestions[j]] = [awQuestions[j], awQuestions[i]];
+        } else if (action === 'add-option') {
+            const q = awFindQuestion(qId);
+            if (q?.options) q.options.push('');
+        } else if (action === 'remove-option') {
+            const q = awFindQuestion(qId);
+            if (q?.options && q.options.length > 2) q.options.splice(Number(btn.dataset.optionIndex), 1);
+        } else if (action === 'add-attachment') {
+            const scope = btn.dataset.awScope;
+            const input = container.querySelector(
+                scope === 'standard'
+                    ? `input[data-aw-field="attachment-url-input"][data-aw-scope="standard"]`
+                    : `input[data-aw-field="attachment-url-input"][data-question-id="${qId}"]`
+            );
+            const url = (input?.value || '').trim();
+            if (!url) return;
+            let name;
+            try { name = new URL(url).pathname.split('/').filter(Boolean).pop() || url; } catch { name = url; }
+            const entry = { id: `att_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, name, url };
+            if (scope === 'standard') {
+                awStandardAttachments.push(entry);
+            } else {
+                const q = awFindQuestion(qId);
+                if (q) (q.attachments = q.attachments || []).push(entry);
+            }
+        } else if (action === 'remove-attachment') {
+            const scope = btn.dataset.awScope;
+            const idx = Number(btn.dataset.attachmentIndex);
+            if (scope === 'standard') {
+                awStandardAttachments.splice(idx, 1);
+            } else {
+                const q = awFindQuestion(qId);
+                if (q?.attachments) q.attachments.splice(idx, 1);
+            }
+        } else {
+            return; // unrecognized action — don't re-render for nothing
+        }
+        awRenderBuilder();
+    });
+}
+initAddWorkBuilderEvents();
