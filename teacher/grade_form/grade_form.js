@@ -970,3 +970,53 @@ window.markAssignmentGraded = async function() {
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Mark as graded'; }
     }
 };
+
+// ═════════════  "ADD WORK" MODAL — SHELL ONLY (Step 1 of rebuild)  ═════════════
+// Open/close + metadata population + type-selector presentation only.
+// Deliberately NO save/publish wiring and NO dynamic question/attachment
+// builder here — #awSaveDraftBtn and #awPublishBtn stay disabled in the HTML
+// until that engine is built and explicitly authorized in a later step.
+
+const AW_ASSESSMENT_TYPES = ['Test', 'Quiz', 'Midterm Exam', 'Final Exam'];
+const AW_STANDARD_TYPES = ['Assignment', 'Homework', 'Project'];
+
+function populateAddWorkSubjects() {
+    const sel = document.getElementById('awSubject');
+    if (!sel) return;
+    const subjects = getActiveSubjects();
+    sel.innerHTML = '<option value="">Select subject…</option>' +
+        subjects.map(s => `<option value="${escHtml(s.name)}">${escHtml(s.name)}</option>`).join('');
+    // Default to whatever subject the teacher already has open in the picker, if any.
+    if (selectedSubject && subjects.some(s => s.name === selectedSubject)) {
+        sel.value = selectedSubject;
+    }
+}
+
+window.openAddWorkModal = function() {
+    const overlay = document.getElementById('addWorkModalOverlay');
+    if (!overlay) return;
+    populateAddWorkSubjects();
+    overlay.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+};
+
+window.closeAddWorkModal = function() {
+    const overlay = document.getElementById('addWorkModalOverlay');
+    if (!overlay) return;
+    overlay.classList.add('hidden');
+    document.body.style.overflow = '';
+};
+
+window.handleAddWorkTypeChange = function() {
+    const type = document.getElementById('awType')?.value || '';
+    const placeholder = document.getElementById('addWorkBuilderPlaceholder');
+    if (!placeholder) return;
+
+    if (AW_ASSESSMENT_TYPES.includes(type)) {
+        placeholder.innerHTML = '<i class="fa-solid fa-list-check mr-1.5"></i>Question builder (multiple choice, free response/short answer, math, attachment-photo-drawing response) loads here in the next build step.';
+    } else if (AW_STANDARD_TYPES.includes(type)) {
+        placeholder.innerHTML = '<i class="fa-solid fa-paperclip mr-1.5"></i>Instruction attachments (PDF/image/video) and a student submission block load here in the next build step.';
+    } else {
+        placeholder.innerHTML = '<i class="fa-solid fa-arrow-up mr-1.5"></i>Select a type above to build this assignment.';
+    }
+};

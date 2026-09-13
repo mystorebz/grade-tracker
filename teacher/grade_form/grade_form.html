@@ -86,9 +86,14 @@
                                 Pick an assignment · <span id="assignmentPickerSubject" class="text-[#0ea871]">Subject</span>
                             </h3>
                         </div>
-                        <button onclick="resetSelection()" class="flex-shrink-0 flex items-center gap-1.5 text-[11px] font-bold text-[#6b84a0] hover:text-[#0d1f35] bg-white border border-[#dce3ed] px-3 py-1.5 rounded-sm transition">
-                            <i class="fa-solid fa-arrow-left text-[10px]"></i> Change subject
-                        </button>
+                        <div class="flex items-center gap-2 flex-shrink-0">
+                            <button onclick="openAddWorkModal()" class="flex items-center gap-1.5 text-[11px] font-bold text-white bg-[#0d1f35] hover:bg-[#0ea871] px-3 py-1.5 rounded-sm transition">
+                                <i class="fa-solid fa-plus text-[10px]"></i> Add Work
+                            </button>
+                            <button onclick="resetSelection()" class="flex items-center gap-1.5 text-[11px] font-bold text-[#6b84a0] hover:text-[#0d1f35] bg-white border border-[#dce3ed] px-3 py-1.5 rounded-sm transition">
+                                <i class="fa-solid fa-arrow-left text-[10px]"></i> Change subject
+                            </button>
+                        </div>
                     </div>
                     <div class="p-6">
                         <div id="assignmentPickerList" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
@@ -277,6 +282,91 @@
 
         </div>
     </main>
+
+    <!-- ═════════════  "ADD WORK" MODAL — SHELL ONLY (Step 1 of rebuild)  ═════════════
+         Overlay + header + metadata + type selector + action bar. No dynamic
+         question/attachment builder yet — Save Draft / Publish stay disabled
+         until that engine is built and explicitly authorized. -->
+    <div id="addWorkModalOverlay" class="hidden fixed inset-0 bg-[#0d1f35]/60 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8">
+        <div class="bg-white w-full max-w-3xl rounded-sm shadow-lg border border-[#dce3ed] my-auto flex flex-col max-h-[calc(100vh-4rem)]">
+
+            <!-- Header -->
+            <div class="flex items-center justify-between gap-3 px-6 py-4 border-b border-[#f0f4f8] bg-[#f8fafb] flex-shrink-0">
+                <div>
+                    <h2 class="text-[15px] font-bold text-[#0d1f35] m-0 leading-tight">Add Work</h2>
+                    <p class="text-[11px] text-[#6b84a0] font-semibold m-0 mt-0.5">Create an assessment or standard assignment for your class</p>
+                </div>
+                <button onclick="closeAddWorkModal()" class="flex-shrink-0 w-8 h-8 flex items-center justify-center text-[#9ab0c6] hover:text-[#0d1f35] hover:bg-[#eef2f7] rounded-sm transition">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Scrollable body -->
+            <div class="flex-1 overflow-y-auto p-6 space-y-5">
+
+                <!-- Metadata header -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="sm:col-span-2">
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Title <span class="text-[#e31b4a]">*</span></label>
+                        <input type="text" id="awTitle" placeholder="e.g. Unit 4 Test: Fractions" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] focus:border-[#2563eb] focus:ring-0 transition outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Subject <span class="text-[#e31b4a]">*</span></label>
+                        <select id="awSubject" class="form-select w-full p-2.5 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] pr-8 focus:border-[#2563eb] focus:ring-0 transition outline-none appearance-none">
+                            <option value="">Select subject…</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Due Date</label>
+                        <input type="date" id="awDueDate" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] focus:border-[#2563eb] focus:ring-0 transition outline-none cursor-pointer">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Points Possible</label>
+                        <input type="number" id="awPoints" min="0" step="any" inputmode="decimal" value="100" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] focus:border-[#2563eb] focus:ring-0 transition outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Type <span class="text-[#e31b4a]">*</span></label>
+                        <select id="awType" onchange="handleAddWorkTypeChange()" class="form-select w-full p-2.5 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-[#0d1f35] pr-8 focus:border-[#2563eb] focus:ring-0 transition outline-none appearance-none">
+                            <option value="">Select type…</option>
+                            <optgroup label="Assessment (question builder)">
+                                <option value="Test">Test</option>
+                                <option value="Quiz">Quiz</option>
+                                <option value="Midterm Exam">Midterm Exam</option>
+                                <option value="Final Exam">Final Exam</option>
+                            </optgroup>
+                            <optgroup label="Standard work (instructions + submission)">
+                                <option value="Assignment">Assignment</option>
+                                <option value="Homework">Homework</option>
+                                <option value="Project">Project</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Dynamic builder mount point — populated by type in a later, authorized step -->
+                <div id="addWorkBuilderContainer" class="border border-dashed border-[#c5d0db] rounded-sm p-8 text-center bg-[#f8fafb]">
+                    <p id="addWorkBuilderPlaceholder" class="text-[12px] text-[#9ab0c6] font-semibold italic m-0">
+                        <i class="fa-solid fa-arrow-up mr-1.5"></i>Select a type above to build this assignment.
+                    </p>
+                </div>
+
+            </div>
+
+            <!-- Action bar -->
+            <div class="flex items-center justify-end gap-2.5 px-6 py-4 border-t border-[#f0f4f8] bg-[#f8fafb] flex-shrink-0">
+                <button onclick="closeAddWorkModal()" class="text-[12px] font-bold text-[#6b84a0] hover:text-[#0d1f35] bg-white border border-[#dce3ed] px-4 py-2.5 rounded-sm transition">
+                    Cancel
+                </button>
+                <button id="awSaveDraftBtn" disabled class="text-[12px] font-bold text-[#9ab0c6] bg-[#eef2f7] border border-[#dce3ed] px-4 py-2.5 rounded-sm cursor-not-allowed" title="Wired up in the next authorized build step">
+                    Save Draft
+                </button>
+                <button id="awPublishBtn" disabled class="text-[12px] font-bold text-white bg-[#c5d0db] px-5 py-2.5 rounded-sm cursor-not-allowed uppercase tracking-widest" title="Wired up in the next authorized build step">
+                    <i class="fa-solid fa-paper-plane mr-1.5"></i>Publish to Class
+                </button>
+            </div>
+
+        </div>
+    </div>
 
     <script type="module" src="grade_form.js"></script>
 </body>
