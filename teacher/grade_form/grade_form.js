@@ -93,6 +93,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('gradeSavedBanner')?.classList.add('hidden');
     });
 
+    const closeErrorBannerBtn = document.getElementById('closeErrorBannerBtn');
+    if (closeErrorBannerBtn) closeErrorBannerBtn.addEventListener('click', () => {
+        document.getElementById('gradeErrorBanner')?.classList.add('hidden');
+    });
+
     await loadSemesters();
     await loadStudents();
     await loadAllGradesThisTerm();
@@ -709,6 +714,7 @@ async function commitGrade() {
         updateGradingHeader();
         advanceToNextUngraded(studentId);
 
+        document.getElementById('gradeErrorBanner')?.classList.add('hidden');
         const banner = document.getElementById('gradeSavedBanner');
         if (banner) {
             banner.classList.remove('hidden');
@@ -718,13 +724,47 @@ async function commitGrade() {
 
     } catch (e) {
         console.error('Save Error:', e);
-        alert('System error. Could not commit record.');
+        showSaveError(e);
     }
 
     if (btn) {
         btn.disabled  = false;
         btn.innerHTML = '<i class="fa-solid fa-database mr-2 text-xs"></i> Commit & Next';
     }
+}
+
+// ── SAVE ERROR BANNER ─────────────────────────────────────────────────────
+// A failed grade write must never fail silently — the old behavior here was
+// a blocking window.alert(), which (a) halts all page script execution
+// while it's up, so a teacher who dismisses it without reading it sees the
+// form return to a normal-looking, re-enabled state with no lasting record
+// anything went wrong, and (b) gives no indication of WHAT failed. This
+// shows a persistent, visible, in-page banner instead — it stays up until
+// the teacher closes it or successfully saves — and tailors the message to
+// the most common real causes so a config/permissions problem (which only
+// an admin/engineer can fix) reads differently from a transient network
+// hiccup (which is worth just retrying).
+function showSaveError(e) {
+    const banner = document.getElementById('gradeErrorBanner');
+    const detail = document.getElementById('gradeErrorDetail');
+    if (!banner) { alert('System error. Could not commit record.'); return; } // last-resort fallback if the banner markup is missing
+    document.getElementById('gradeSavedBanner')?.classList.add('hidden');
+
+    let message = 'The record was not committed. Please try again or contact support.';
+    const code = e?.code || '';
+    const text = `${code} ${e?.message || ''}`.toLowerCase();
+
+    if (code === 'permission-denied' || text.includes('permission')) {
+        message = 'You do not have permission to save this grade. Contact your school administrator.';
+    } else if (text.includes('requires an index') || text.includes('requires a') && text.includes('index')) {
+        message = 'This save failed because of a missing database configuration (index). This grade was NOT recorded — please notify support before re-entering it.';
+    } else if (code === 'unavailable' || text.includes('network') || text.includes('offline')) {
+        message = 'Connection error — the grade was not saved. Check your connection and try again.';
+    }
+
+    if (detail) detail.textContent = message;
+    banner.classList.remove('hidden');
+    banner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function advanceToNextUngraded(justGradedId) {

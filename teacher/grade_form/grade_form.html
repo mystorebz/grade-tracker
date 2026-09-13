@@ -136,6 +136,18 @@
                             <button id="closeBannerBtn" class="text-[#9ab0c6] hover:text-[#0d1f35] transition"><i class="fa-solid fa-xmark"></i></button>
                         </div>
 
+                        <!-- Save error banner (visible, non-blocking — replaces the old blocking alert()) -->
+                        <div id="gradeErrorBanner" class="hidden mx-6 mt-6 bg-[#fff0f3] border border-[#fecaca] border-l-4 border-l-[#e31b4a] rounded-sm p-4 flex items-center justify-between transition-all">
+                            <div class="flex items-center gap-3">
+                                <i class="fa-solid fa-triangle-exclamation text-[#e31b4a] text-lg"></i>
+                                <div>
+                                    <p class="font-bold text-[#0d1f35] text-[13px] m-0">Could not save this grade.</p>
+                                    <p id="gradeErrorDetail" class="text-[11px] text-[#be123c] font-bold m-0 mt-0.5">The record was not committed. Please try again or contact support.</p>
+                                </div>
+                            </div>
+                            <button id="closeErrorBannerBtn" class="text-[#9ab0c6] hover:text-[#0d1f35] transition"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+
                         <!-- Body: form (left) + roster (right) -->
                         <div class="p-6">
                             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">

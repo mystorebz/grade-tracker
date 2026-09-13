@@ -58,6 +58,15 @@
       ]
     },
     {
+      "collectionGroup": "exam_submissions",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "schoolId", "order": "ASCENDING" },
+        { "fieldPath": "isSchoolActive", "order": "ASCENDING" },
+        { "fieldPath": "examId", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "teaching_assignments",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
@@ -105,14 +114,20 @@
         { "fieldPath": "classId", "order": "ASCENDING" },
         { "fieldPath": "startTime", "order": "ASCENDING" }
       ]
-    }
-  ],
-  "fieldOverrides": [
+    },
     {
       "collectionGroup": "grades",
-      "fieldPath": "assignmentId",
-      "indexes": [
-        { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "assignmentId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "grades",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "schoolId", "order": "ASCENDING" },
+        { "fieldPath": "semesterId", "order": "ASCENDING" }
       ]
     }
   ]
