@@ -805,6 +805,47 @@ service cloud.firestore {
                   request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] ||
                   request.auth.token.studentId == responseId.split('_')[0]
                 );
+
+                // LIST: needed on top of the collection-group rule above
+                // (section 2e) — that rule only ever governs a
+                // collectionGroup('responses') query. lessons.js's
+                // subscribeToLiveResponses() does NOT do a collection-group
+                // query; it opens a plain onSnapshot(collection(...)) scoped
+                // to this exact nested path (schools/.../lessons/{lessonId}/
+                // live_sessions/{sessionId}/responses), which is a `list`
+                // against THIS match block, not the collection-group one.
+                // Without an explicit `allow list` here, that listener was
+                // denied outright for every caller, teacher included — found
+                // via live end-to-end testing.
+                //
+                // CORRECTED (second live-test pass): a first attempt at this
+                // rule gated on isCallerInSchool(schoolId) && isSchoolActive
+                // (schoolId), same as every other rule in this nested match
+                // block. That's wrong specifically for a LIST rule —
+                // isSchoolActive() calls get()/exists(), and per this file's
+                // own "queries are all or nothing" reasoning (see section 2b/
+                // 2d/2e's comments on why the exam_submissions and
+                // live_sessions/responses COLLECTION-GROUP rules never call
+                // get()/exists()), ANY get()/exists() call anywhere in a list
+                // rule's evaluation makes the whole query unprovable and
+                // Firestore denies it outright — confirmed live: a raw
+                // getDocs() on this exact path was denied even though the
+                // role/blockType logic below was already correct. GET/CREATE/
+                // UPDATE above are unaffected (per-document rules can call
+                // get() safely — that's a single lookup for a specific
+                // resource, not a query Firestore has to prove ahead of time),
+                // so only this LIST rule needed to change. Fixed the same way
+                // section 2e's collection-group rule already does it:
+                // schoolId is denormalized onto every response doc by
+                // saveLiveResponse() (lessons.js) specifically so this check
+                // never needs a get() lookup — compare resource.data.schoolId
+                // directly against the caller's own token instead.
+                allow list: if request.auth != null &&
+                               resource.data.schoolId == request.auth.token.schoolId && (
+                                 request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] ||
+                                 resource.data.blockType == 'collaborative_board'
+                               );
+
                 allow create, update: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) &&
                                           request.auth.token.role == 'student' &&
                                           request.resource.data.studentId == request.auth.token.studentId &&
