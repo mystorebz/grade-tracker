@@ -3,6 +3,14 @@ import { doc, getDoc, getDocs, setDoc, collection, query, where, updateDoc, writ
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { letterGrade, loadTeacherSubjectsCache, getTeacherDocRef, resolveGradeWeights, saveGrade } from '../../assets/js/utils.js';
+// PHASE 4: resolvePostContext resolves a legacy subject's classId exactly the
+// way submissions.js/posts.js already do (the shadow-doc write in awSaveWork
+// and the submission fetch below both need the SAME classId a student's own
+// submission was actually written under, or they'd read/write the wrong
+// path). loadSubmission reuses the exact Firestore path submissions.js uses
+// to save a submission, rather than re-deriving it a third time here.
+import { resolvePostContext } from '../../assets/js/posts.js';
+import { loadSubmission } from '../../assets/js/submissions.js';
 
 // ── 1. AUTH & LAYOUT ──────────────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
@@ -25,15 +33,45 @@ let fieldsUnlocked      = false;     // whether the locked title/type/max have b
 // is drawn.
 let subjectsCache = [];
 
+// PHASE 4: the resolvedClasses half of loadTeacherSubjectsCache()'s return
+// value — previously discarded here. Needed so a legacy subject's classId
+// can be resolved via resolvePostContext() the exact same way the student
+// side already does when it writes a submission, so the Phase 4 shadow-doc
+// write and submission fetch below always agree with where a submission
+// actually lives.
+let resolvedClassesCache = [];
+
 // PHASE 0: resolved once at init via resolveGradeWeights() — preferring the
 // new schools/{schoolId}/teaching_assignments weighting over the legacy
 // gradeTypes/customGradeTypes fields. Only feeds the grade-type dropdown
 // (a display concern), so a once-per-load resolve is correct here.
 let resolvedGradeTypes = null;
 
+// PHASE 4: the submission currently loaded for the selected student +
+// assessment assignment (null when there isn't one, or the assignment isn't
+// an assessment at all). currentSubmissionRequestToken guards against a
+// slower, now-stale fetch overwriting state after the teacher has already
+// moved on to a different student/assignment while it was in flight.
+let currentSubmission = null;
+let currentSubmissionRequestToken = null;
+
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 
 // ── HELPERS ─────────────────────────────────────────────────────────────────
+// Same helper as student/assignments/assignments.js — kept as a small
+// duplicated function rather than a shared-utils change, since the shared
+// loadTeacherSubjectsCache() is consumed by more pages than just these two
+// and changing its return shape directly is a bigger, less contained change
+// than normalizing at each consumer the way both of these already do.
+function normalizeAssignment(a) {
+    return {
+        ...a,
+        type: a.workType || a.type || 'Assignment',
+        maxScore: a.pointsPossible ?? a.maxScore ?? 0,
+        date: a.dueDate || a.date || '',
+    };
+}
+
 function escHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
@@ -108,6 +146,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         const result = await loadTeacherSubjectsCache(session.schoolId, session.teacherId, session.teacherData);
         subjectsCache = result.subjectsCache;
+        resolvedClassesCache = result.resolvedClasses || [];
+        // PHASE 4: same field-name gap fixed on the student side (Phase 3
+        // Step 1) exists here too — legacy assignments use type/maxScore/
+        // date, Add Work (Step 3) uses workType/pointsPossible/dueDate
+        // instead. Without this, the assignment picker showed "undefined"
+        // type and "/undefined" points for any Add Work assessment/standard
+        // item, which would have made this phase's own grading queue unable
+        // to display what it was selecting.
+        subjectsCache.forEach(sub => {
+            if (!Array.isArray(sub.assignments)) return;
+            sub.assignments = sub.assignments.map(normalizeAssignment);
+        });
     } catch (e) {
         console.error('[Grade Form] Failed to load subjects cache:', e);
     }
@@ -389,6 +439,9 @@ window.resetSelection = function() {
     const notesEl = document.getElementById('agNotes'); if (notesEl) notesEl.value = '';
     const instructionsEl = document.getElementById('agInstructions'); if (instructionsEl) instructionsEl.value = '';
     document.getElementById('gradePreview')?.classList.add('hidden');
+    currentSubmission = null;
+    currentSubmissionRequestToken = null;
+    document.getElementById('gfResponseViewer')?.classList.add('hidden');
     populateSubjectPicker();
     renderState();
 };
@@ -535,10 +588,185 @@ function renderRoster() {
     }
 }
 
+// ── 7c. PHASE 4: SUBMISSION RESPONSE VIEWER + OBJECTIVE AUTO-GRADE PREFILL ──
+// Only assessment-category Add Work assignments (real questions[], not the
+// legacy type/maxScore/date shape and not a manual entry) have a submission
+// worth fetching and rendering — every other case leaves the panel hidden
+// and every existing code path here behaves exactly as it did before
+// (No Regression for legacy assignment grading).
+function isAssessmentAssignment(a) {
+    return !!(a && !a.manual && a.category === 'assessment' && Array.isArray(a.questions) && a.questions.length > 0);
+}
+
+function optionLabel(i) {
+    return String.fromCharCode(65 + i); // 0 -> A, 1 -> B, ...
+}
+
+// Fetches (or clears) the submission for whatever student + assignment is
+// currently selected. This is the single funnel every call site below uses
+// so the panel, the auto-grade prefill, and the actual fetch can never fall
+// out of sync with each other.
+async function refreshSubmissionPanel() {
+    const panel = document.getElementById('gfResponseViewer');
+    const studentId = document.getElementById('agStudent')?.value || '';
+
+    if (!isAssessmentAssignment(selectedAssignment) || !studentId) {
+        currentSubmission = null;
+        currentSubmissionRequestToken = null;
+        if (panel) panel.classList.add('hidden');
+        return;
+    }
+
+    const sub = getSubjectByName(selectedSubject);
+    const ctx = sub ? resolvePostContext(sub, resolvedClassesCache) : null;
+    if (!ctx) {
+        // Same "can't resolve a class for this subject yet" case
+        // resolvePostContext's own callers already treat as unreachable —
+        // pre-existing, not new to Phase 4.
+        currentSubmission = null;
+        currentSubmissionRequestToken = null;
+        if (panel) panel.classList.add('hidden');
+        return;
+    }
+
+    const assignmentId = selectedAssignment.id;
+    const requestToken = `${assignmentId}:${studentId}`;
+    currentSubmissionRequestToken = requestToken;
+
+    if (panel) {
+        panel.classList.remove('hidden');
+        panel.innerHTML = `<p class="text-[11px] text-[#9ab0c6] italic font-semibold p-2">Loading submission…</p>`;
+    }
+
+    let submission = null;
+    try {
+        submission = await loadSubmission(session.schoolId, { classId: ctx.classId, subjectId: ctx.subjectId, id: assignmentId }, studentId);
+    } catch (e) {
+        console.error('[Grade Form] Failed to load submission for grading:', e);
+    }
+
+    // The teacher may have already switched to a different student or
+    // assignment while this fetch was in flight — a slower, now-stale
+    // response must never clobber whatever is now actually selected.
+    if (currentSubmissionRequestToken !== requestToken) return;
+
+    currentSubmission = submission;
+    renderSubmissionPanel();
+    applyAutoGradePrefill();
+}
+
+function renderSubmissionPanel() {
+    const panel = document.getElementById('gfResponseViewer');
+    if (!panel) return;
+
+    if (!isAssessmentAssignment(selectedAssignment)) { panel.classList.add('hidden'); return; }
+    panel.classList.remove('hidden');
+
+    if (!currentSubmission) {
+        panel.innerHTML = `
+            <div class="p-3 bg-[#fff8ed] border border-[#fde9c8] rounded-sm text-center">
+                <p class="text-[11px] font-bold text-[#92660a] m-0"><i class="fa-solid fa-circle-exclamation mr-1.5"></i>No submission on file for this student yet.</p>
+            </div>`;
+        return;
+    }
+
+    const responsesByQid = new Map((currentSubmission.responses || []).map(r => [r.questionId, r]));
+    const autoGrade = currentSubmission.objectiveAutoGrade || null;
+    const hasObjective = (selectedAssignment.questions || []).some(q => q.type === 'multiple_choice');
+
+    const autoSummary = autoGrade
+        ? `<p class="text-[11px] font-bold text-[#2563eb] bg-[#eef4ff] border border-[#c7d9fd] rounded-sm px-2.5 py-1.5 mb-2"><i class="fa-solid fa-robot mr-1.5"></i>Auto-graded ${autoGrade.correctCount}/${autoGrade.totalObjective} objective question(s) — ${autoGrade.points}/${autoGrade.maxObjectivePoints} pt(s). Score below pre-filled; review the rest before committing.</p>`
+        : hasObjective
+            ? `<p class="text-[11px] font-bold text-[#9ab0c6] bg-[#f8fafb] border border-[#dce3ed] rounded-sm px-2.5 py-1.5 mb-2"><i class="fa-solid fa-clock mr-1.5"></i>Auto-grading hasn't run for this submission yet.</p>`
+            : '';
+
+    const cards = (selectedAssignment.questions || []).map((q, i) => {
+        const r = responsesByQid.get(q.id) || null;
+        const num = i + 1;
+        let body = '';
+
+        if (q.type === 'multiple_choice') {
+            const selectedIndex = r && r.responseText !== '' && r.responseText != null ? Number(r.responseText) : null;
+            const graded = !!autoGrade && Object.prototype.hasOwnProperty.call(autoGrade.perQuestion || {}, q.id);
+            const isCorrect = graded ? autoGrade.perQuestion[q.id] : null;
+            const optionsHtml = (q.options || []).map((opt, oi) => {
+                const isSelected = selectedIndex === oi;
+                return `<div class="flex items-center gap-2 px-2.5 py-1.5 rounded-sm text-[12px] ${isSelected ? 'bg-[#eef4ff] border border-[#c7d9fd] font-bold text-[#0d1f35]' : 'text-[#6b84a0]'}">
+                    <span class="w-4 h-4 flex-shrink-0 rounded-full border ${isSelected ? 'border-[#2563eb] bg-[#2563eb] text-white' : 'border-[#c5d0db]'} flex items-center justify-center text-[9px] font-bold">${isSelected ? '<i class="fa-solid fa-check"></i>' : optionLabel(oi)}</span>
+                    <span>${escHtml(opt)}</span>
+                </div>`;
+            }).join('');
+            const badge = selectedIndex === null
+                ? `<span class="text-[10px] font-bold uppercase tracking-widest text-[#9ab0c6] bg-[#f8fafb] border border-[#dce3ed] px-2 py-0.5 rounded-sm">Not answered</span>`
+                : !graded
+                    ? `<span class="text-[10px] font-bold uppercase tracking-widest text-[#9ab0c6] bg-[#f8fafb] border border-[#dce3ed] px-2 py-0.5 rounded-sm">Not yet auto-graded</span>`
+                    : isCorrect
+                        ? `<span class="text-[10px] font-bold uppercase tracking-widest text-[#0ea871] bg-[#edfaf4] border border-[#c6f0db] px-2 py-0.5 rounded-sm"><i class="fa-solid fa-check text-[9px] mr-1"></i>Correct</span>`
+                        : `<span class="text-[10px] font-bold uppercase tracking-widest text-[#e31b4a] bg-[#fff0f3] border border-[#fecaca] px-2 py-0.5 rounded-sm"><i class="fa-solid fa-xmark text-[9px] mr-1"></i>Incorrect</span>`;
+            body = `<div class="space-y-1 mt-2">${optionsHtml}</div><div class="mt-2">${badge}</div>`;
+        } else if (q.type === 'free_response' || q.type === 'short_answer' || q.type === 'math') {
+            const text = r && r.responseText ? r.responseText : '';
+            body = text
+                ? `<p class="text-[12.5px] text-[#0d1f35] whitespace-pre-wrap bg-[#f8fafb] border border-[#dce3ed] rounded-sm p-2.5 mt-2">${escHtml(text)}</p>`
+                : `<p class="text-[11px] text-[#9ab0c6] italic mt-2">No answer provided.</p>`;
+        } else if (q.type === 'attachment_response') {
+            const url = r && r.attachmentUrl ? r.attachmentUrl : null;
+            if (!url) {
+                body = `<p class="text-[11px] text-[#9ab0c6] italic mt-2">No file/drawing submitted.</p>`;
+            } else if (/^data:image\//i.test(url) || /\.(png|jpe?g|gif|webp)(\?|$)/i.test(url)) {
+                body = `<a href="${escHtml(url)}" target="_blank" rel="noopener noreferrer" class="block mt-2"><img src="${escHtml(url)}" class="max-h-48 rounded-sm border border-[#dce3ed]" alt="Student submission"></a>`;
+            } else {
+                body = `<a href="${escHtml(url)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-[12px] font-bold text-[#2563eb] mt-2"><i class="fa-solid fa-paperclip text-[10px]"></i>View submitted file</a>`;
+            }
+        }
+
+        return `
+        <div class="border border-[#dce3ed] rounded-sm p-3 bg-white">
+            <div class="flex items-start justify-between gap-2">
+                <p class="text-[12px] font-bold text-[#0d1f35] m-0">Q${num}. ${escHtml(q.prompt)}</p>
+                <span class="text-[10px] font-bold text-[#9ab0c6] flex-shrink-0">${q.points ?? 0} pt${(q.points ?? 0) === 1 ? '' : 's'}</span>
+            </div>
+            ${body}
+        </div>`;
+    }).join('');
+
+    const statusNote = currentSubmission.status === 'graded'
+        ? `<p class="text-[10px] font-bold text-[#0ea871] uppercase tracking-widest mb-2"><i class="fa-solid fa-circle-check mr-1"></i>Already graded</p>`
+        : '';
+
+    panel.innerHTML = `
+        <div class="flex items-center justify-between mb-2">
+            <h4 class="text-[11px] font-bold text-[#0d1f35] uppercase tracking-widest m-0"><i class="fa-solid fa-file-lines mr-1.5 text-[#9ab0c6]"></i>Student Responses</h4>
+        </div>
+        ${statusNote}
+        ${autoSummary}
+        <div class="space-y-2 max-h-[26rem] overflow-y-auto pr-1">${cards}</div>`;
+}
+
+// Pre-fills the score from the server-computed objective auto-grade only —
+// never from anything read/derived client-side, the same isolation
+// principle work_answer_keys enforces everywhere else (autoGradeWorkSubmission
+// in functions/index.js is the only thing that ever sees the correct
+// answers). Only touches the score field while it's still blank, so it can
+// never overwrite a value the teacher already typed for this student.
+function applyAutoGradePrefill() {
+    if (!isAssessmentAssignment(selectedAssignment) || !currentSubmission) return;
+    const auto = currentSubmission.objectiveAutoGrade;
+    if (!auto) return;
+
+    const scoreEl = document.getElementById('agScore');
+    if (!scoreEl || scoreEl.value !== '') return;
+
+    scoreEl.value = auto.points;
+    sanitizeScore();
+    updatePreview();
+}
+
 window.pickStudent = function(studentId) {
     const select = document.getElementById('agStudent');
     if (select) select.value = studentId;
     renderRoster(); // refresh active highlight
+    refreshSubmissionPanel();
     // focus the score for fast entry
     const scoreEl = document.getElementById('agScore');
     if (scoreEl) scoreEl.focus();
@@ -555,6 +783,7 @@ function selectFirstUngradedStudent() {
     const select = document.getElementById('agStudent');
     if (select && target) select.value = target.id;
     renderRoster();
+    refreshSubmissionPanel();
 }
 
 // ── 8. SCORE VALIDATION + LIVE PREVIEW ──────────────────────────────────────
@@ -837,6 +1066,37 @@ async function commitGrade() {
         const assignmentId = (selectedAssignment && !selectedAssignment.manual && selectedAssignment.id) || null;
         const result = await saveGrade(studentId, assignmentId, fields);
 
+        // PHASE 4: lock the submission's status to "graded" once its grade is
+        // committed — separate from, and never blocking, the grade write
+        // above (that saveGrade() call is already the one source of truth
+        // for the student's score). Gated on currentSubmission actually
+        // matching this exact student+assignment pairing (via
+        // currentSubmissionRequestToken) so a fetch still in flight, or one
+        // left over from a student the teacher already moved away from,
+        // can never mark the wrong submission graded.
+        if (assignmentId && isAssessmentAssignment(selectedAssignment) && currentSubmission &&
+            currentSubmissionRequestToken === `${assignmentId}:${studentId}`) {
+            try {
+                const gradedSub = getSubjectByName(subject);
+                const gradedCtx = gradedSub ? resolvePostContext(gradedSub, resolvedClassesCache) : null;
+                if (gradedCtx) {
+                    await updateDoc(
+                        doc(db, 'schools', session.schoolId, 'classes', gradedCtx.classId, 'subjects', gradedCtx.subjectId, 'assignments', assignmentId, 'submissions', studentId),
+                        { status: 'graded' }
+                    );
+                    currentSubmission.status = 'graded'; // keep the in-memory copy consistent if the panel re-renders before a fresh fetch
+                }
+            } catch (e) {
+                // Non-fatal: the grade itself already committed successfully
+                // above. Failing to also flip the submission's status just
+                // means it may still read "submitted" instead of "graded"
+                // until the next successful commit — logged rather than
+                // shown as a save error, since the actual grade record is
+                // fine.
+                console.error('[Grade Form] Failed to update submission status to graded:', e);
+            }
+        }
+
         // Update local term cache so the roster reflects this immediately.
         // On a re-grade (result.created === false) this REPLACES the existing
         // cache entry in place rather than appending a second one, so
@@ -928,6 +1188,7 @@ function advanceToNextUngraded(justGradedId) {
         if (select) select.value = '';
     }
     renderRoster();
+    refreshSubmissionPanel();
 }
 
 // ── 10. MARK AS GRADED (closes the assignment) ──────────────────────────────
@@ -1538,6 +1799,40 @@ window.awSaveWork = async function(status) {
             }
 
             batch.update(getTeacherDocRef(session.schoolId, session.teacherId), { subjects: updatedSubjects });
+
+            // PHASE 4: a legacy subject has no real classes/{classId}/subjects/
+            // {subjectId} document of its own, so the embedded copy above is
+            // otherwise the ONLY place this assignment's questions/points
+            // would exist. autoGradeWorkSubmission (functions/index.js) grades
+            // server-side by reading the assignment doc at the exact real
+            // subcollection path every submission is written under
+            // (submissions.js: assignmentSubmissionRef) — a path Firestore
+            // lets exist even with no real parent `subjects/{subjectId}`
+            // document. Without this second write, that read would always
+            // come back "not found" and MC auto-grading would silently never
+            // fire for any legacy-subject assessment. This mirrors
+            // assignmentData verbatim — the same content the teacher already
+            // owns, nothing new exposed — and NEVER the answer key, which
+            // stays isolated in work_answer_keys exactly as it does for the
+            // new-model path. Uses the same resolvePostContext() helper the
+            // student side already resolves this classId/subjectId with, so
+            // this shadow doc can never land at a different path than where
+            // the real submission actually gets written.
+            if (isAssessment) {
+                const shadowCtx = resolvePostContext(sub, resolvedClassesCache);
+                if (shadowCtx) {
+                    const shadowRef = doc(db, 'schools', session.schoolId, 'classes', shadowCtx.classId, 'subjects', shadowCtx.subjectId, 'assignments', assignmentId);
+                    batch.set(shadowRef, { ...assignmentData, _legacyShadow: true });
+                } else {
+                    // No class resolvable for this subject at all — the same
+                    // case resolvePostContext's other callers already treat as
+                    // "students can't reach this yet" (loadAssignmentsForSubjects
+                    // skips it entirely), so there is no submission path for
+                    // auto-grading to serve here either. Pre-existing
+                    // limitation, not something Phase 4 introduces.
+                    console.error(`[Add Work] Could not resolve a class for subject "${sub.name}" — skipping the legacy auto-grade shadow doc for assignment ${assignmentId}.`);
+                }
+            }
         }
 
         if (answerKeyData) {

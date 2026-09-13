@@ -2873,3 +2873,129 @@ exports.recordManualGrade = onCall({ region: 'us-central1' }, async (request) =>
     return result;
 });
 // --- END: recordManualGrade ---
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FUNCTION: autoGradeWorkSubmission (Add Work rebuild — Phase 4)
+// --- START: autoGradeWorkSubmission ---
+// Mirrors autoGradeObjectiveAnswers' role for the exams feature, adapted to
+// Add Work's schema and rules. work_answer_keys/{assignmentId} is
+// `allow read: if false` for every client SDK — no teacher, no student, no
+// exception — same as exam_answer_keys. A teacher's browser cannot read the
+// correct answers, so it cannot compute an auto-grade itself; this function
+// does that server-side with Admin SDK privileges (which bypass the rule
+// entirely) and writes back only a SCORE and a per-question CORRECT/INCORRECT
+// boolean map — never the correct answer values themselves — onto the
+// submission doc, which teachers can already read under the existing
+// same-school submissions rule. grade_form.js's response viewer reads that
+// field to pre-fill the score and show a check/cross per MC question; it
+// never touches work_answer_keys directly.
+//
+// Triggers on writes (not just creates) to a submission doc, since a student
+// can resubmit before grading (isSubmissionFrozen() only locks once a grade
+// exists or the assignment itself is locked) — a resubmission should recompute,
+// not keep stale results. This function's OWN update() call is itself a write
+// to the same document it listens on, which would otherwise retrigger it
+// forever; the unchanged-result check below breaks that loop after exactly
+// one harmless extra invocation (recompute -> see nothing changed -> skip
+// the write -> no further trigger), the same shape of guard
+// autoGradeObjectiveAnswers and onAttendanceSaved already use elsewhere in
+// this file, just phrased as "did the output change" instead of "did the
+// status transition."
+exports.autoGradeWorkSubmission = onDocumentWritten(
+    'schools/{schoolId}/classes/{classId}/subjects/{subjectId}/assignments/{assignmentId}/submissions/{studentId}',
+    async (event) => {
+        const after = event.data?.after?.exists ? event.data.after.data() : null;
+        if (!after || after.status !== 'submitted') return null; // deleted, or not (yet) a real submission
+
+        // Standard-work submissions (responseText/linkUrl shape) have no
+        // responses[] at all — nothing objective to grade, and no reason to
+        // spend a read on the assignment/answer-key docs for every one of them.
+        if (!Array.isArray(after.responses)) return null;
+
+        const { schoolId, classId, subjectId, assignmentId, studentId } = event.params;
+
+        try {
+            const [assignmentSnap, keySnap] = await Promise.all([
+                db.collection('schools').doc(schoolId)
+                    .collection('classes').doc(classId)
+                    .collection('subjects').doc(subjectId)
+                    .collection('assignments').doc(assignmentId).get(),
+                db.collection('work_answer_keys').doc(assignmentId).get(),
+            ]);
+
+            if (!assignmentSnap.exists) {
+                console.error(`[autoGradeWorkSubmission] Assignment ${assignmentId} not found — cannot grade ${studentId}.`);
+                return null;
+            }
+            const assignment = assignmentSnap.data();
+            if (assignment.category !== 'assessment' || !Array.isArray(assignment.questions)) return null;
+
+            // No key doc exists when an assessment had zero multiple_choice
+            // questions (awSaveWork only creates one when there's at least
+            // one answer key entry to write) — every objective question below
+            // then correctly falls into the "no key entry" branch and is
+            // logged rather than silently scored, same as the exams pattern.
+            const keys = keySnap.exists ? (keySnap.data().keys || {}) : {};
+            const responsesByQuestionId = new Map(after.responses.map(r => [r.questionId, r]));
+
+            let points = 0;
+            let maxObjectivePoints = 0;
+            let correctCount = 0;
+            let totalObjective = 0;
+            const perQuestion = {};
+
+            for (const q of assignment.questions) {
+                // Only multiple_choice has a captured, comparable correct
+                // answer today (see grade_form.js's awBuildCleanQuestions —
+                // free_response/short_answer/math never had a "correct value"
+                // field to strip in the first place). Grading those would
+                // mean fabricating a judgment this function has no basis
+                // for, so they're left entirely to the teacher, same as
+                // exams leaves free_response ungraded here.
+                if (q.type !== 'multiple_choice') continue;
+
+                totalObjective++;
+                maxObjectivePoints += Number(q.points) || 0;
+
+                const correctIndex = keys[q.id];
+                if (correctIndex === undefined) {
+                    console.error(`[autoGradeWorkSubmission] No answer key entry for question ${q.id} (assignment ${assignmentId}) — treating as ungraded, not silently correct.`);
+                    continue;
+                }
+
+                const studentAnswer = responsesByQuestionId.get(q.id);
+                const studentIndex = studentAnswer ? Number(studentAnswer.responseText) : NaN;
+                const isCorrect = studentIndex === correctIndex;
+                perQuestion[q.id] = isCorrect;
+                if (isCorrect) {
+                    points += Number(q.points) || 0;
+                    correctCount++;
+                }
+            }
+
+            if (totalObjective === 0) return null; // nothing objective in this assessment
+
+            const newAutoGrade = { points, maxObjectivePoints, correctCount, totalObjective, perQuestion, gradedAt: new Date().toISOString() };
+
+            // Loop guard: compare against what's already there (ignoring
+            // gradedAt, which always differs) — if grading this submission
+            // again produces the identical result, skip the write entirely
+            // rather than retriggering this same function forever.
+            const existing = after.objectiveAutoGrade;
+            const unchanged = existing &&
+                existing.points === newAutoGrade.points &&
+                existing.correctCount === newAutoGrade.correctCount &&
+                existing.totalObjective === newAutoGrade.totalObjective &&
+                JSON.stringify(existing.perQuestion) === JSON.stringify(newAutoGrade.perQuestion);
+            if (unchanged) return null;
+
+            await event.data.after.ref.update({ objectiveAutoGrade: newAutoGrade });
+            console.log(`[autoGradeWorkSubmission] Graded ${studentId}/${assignmentId}: ${points}/${maxObjectivePoints} objective point(s), ${correctCount}/${totalObjective} correct.`);
+        } catch (err) {
+            console.error(`[autoGradeWorkSubmission] Grading failed for ${studentId}/${assignmentId}:`, err);
+        }
+
+        return null;
+    }
+);
+// --- END: autoGradeWorkSubmission ---
