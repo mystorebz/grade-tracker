@@ -98,7 +98,10 @@ function cacheEls() {
         'docNotesBtn', 'docSaveBtn', 'docPublishBtn', 'docPublishBtnLabel',
         'docToolbar', 'docEditor',
         'formatChoiceOverlay', 'closeFormatChoiceBtn',
-        'assignmentPickerOverlay', 'closeAssignmentPickerBtn', 'assignmentPickerList',
+        'importOptionsBtn', 'importOptionsOverlay', 'importOptionsPanel', 'closeImportOptionsBtn',
+        'importDocxInput', 'importDocxTrigger', 'importDocxStatus',
+        'importSlidesUrlInput', 'importSlidesBtn', 'importSlidesStatus',
+        'assignmentPickerOverlay', 'assignmentPickerPanel', 'closeAssignmentPickerBtn', 'assignmentPickerList',
         'notesOverlay', 'pacingNotesInput', 'standardsInput', 'closeNotesBtn', 'cancelNotesBtn', 'saveNotesBtn'
     ].forEach(id => { els[id] = document.getElementById(id); });
 }
@@ -178,6 +181,16 @@ function wireEvents() {
         if (e.target === els.assignmentPickerOverlay) closeAssignmentPicker();
     });
     els.assignmentPickerList.addEventListener('click', onAssignmentPickerClick);
+
+    // ── Import Options modal ──
+    els.importOptionsBtn.addEventListener('click', openImportOptionsModal);
+    els.closeImportOptionsBtn.addEventListener('click', closeImportOptionsModal);
+    els.importOptionsOverlay.addEventListener('click', (e) => {
+        if (e.target === els.importOptionsOverlay) closeImportOptionsModal();
+    });
+    els.importDocxTrigger.addEventListener('click', () => els.importDocxInput.click());
+    els.importDocxInput.addEventListener('change', onImportDocxFileSelected);
+    els.importSlidesBtn.addEventListener('click', onImportSlidesClick);
 }
 
 // ── 4. SUBJECT SELECTION ─────────────────────────────────────────────────
@@ -927,8 +940,16 @@ function initQuillIfNeeded() {
             <button class="ql-video"></button>
         </span>
         <span class="ql-formats">
+            <button id="insertDividerBtn" title="Insert Horizontal Line">
+                <i class="fa-solid fa-minus"></i>
+            </button>
             <button id="insertAssignmentBtn" title="Insert Linked Assignment">
                 <i class="fa-solid fa-clipboard-check"></i>
+            </button>
+        </span>
+        <span class="ql-formats">
+            <button id="addDocPageBtn" title="Add New Page" class="!w-auto px-2 gap-1.5 inline-flex items-center">
+                <i class="fa-solid fa-plus text-[11px]"></i><span class="text-[11.5px] font-bold">Page</span>
             </button>
         </span>
     `;
@@ -940,16 +961,45 @@ function initQuillIfNeeded() {
                 container: els.docToolbar,
                 handlers: {
                     // Built-in handlers (bold/italic/list/etc.) are left to
-                    // Quill's own defaults — only the custom button needs a
+                    // Quill's own defaults — only custom buttons need a
                     // handler wired here.
                 }
             }
         }
     });
 
+    document.getElementById('insertDividerBtn').addEventListener('click', () => {
+        const range = quill.getSelection(true) || { index: quill.getLength(), length: 0 };
+        // Quill's built-in 'divider' embed isn't registered by default in
+        // 1.3.7 — using a plain <hr> via clipboard.dangerouslyPasteHTML at
+        // the cursor keeps this a one-call insert without introducing a
+        // second custom Blot for something this simple. insertText('\n')
+        // brackets it so the rule doesn't merge into an existing paragraph.
+        quill.insertText(range.index, '\n', 'user');
+        quill.clipboard.dangerouslyPasteHTML(range.index + 1, '<hr>', 'user');
+        quill.setSelection(range.index + 2, 0, 'user');
+        hasUnsavedChanges = true;
+    });
+
     document.getElementById('insertAssignmentBtn').addEventListener('click', () => {
         pendingAssignmentBlotRange = quill.getSelection(true);
         openAssignmentPicker();
+    });
+
+    // "Add New Page" — Document-format lessons are a single scrolling page
+    // today (one slides[0] richtext block; see renderDocAll()), so there is
+    // no second page to navigate to yet. Rather than silently doing nothing,
+    // this inserts a clearly-marked page-break divider into the current
+    // document — a lightweight stand-in that gives teachers a visual section
+    // break to organize long documents, until true multi-page Document
+    // lessons are a real data-model feature.
+    document.getElementById('addDocPageBtn').addEventListener('click', () => {
+        const endIndex = quill.getLength();
+        quill.insertText(endIndex - 1, '\n', 'user');
+        quill.clipboard.dangerouslyPasteHTML(endIndex, '<hr class="ql-page-break"><p><br></p>', 'user');
+        quill.setSelection(quill.getLength() - 1, 0, 'user');
+        quill.scrollingContainer?.scrollTo?.(0, quill.scrollingContainer.scrollHeight);
+        hasUnsavedChanges = true;
     });
 
     quill.on('text-change', (delta, oldDelta, source) => {
@@ -986,12 +1036,135 @@ function openAssignmentPicker() {
                 <span class="text-[11px] font-semibold text-[#9ab0c6]">/${a.maxScore}</span>
             </button>`).join('');
     }
+    // Fade the backdrop in and scale/fade the panel up from 96% — the CSS
+    // transition is declared on both elements in builder.html
+    // (.modal-backdrop / .modal-panel); toggling 'hidden' off one frame,
+    // then removing the opacity-0/scale-95 starting classes on the next
+    // frame, is what actually gives the transition something to animate
+    // from (flipping them off in the same frame the element becomes
+    // visible would just snap straight to the end state, same as before).
     els.assignmentPickerOverlay.classList.remove('hidden');
+    requestAnimationFrame(() => {
+        els.assignmentPickerOverlay.classList.remove('opacity-0');
+        els.assignmentPickerPanel?.classList.remove('scale-95');
+    });
 }
 
 function closeAssignmentPicker() {
-    els.assignmentPickerOverlay.classList.add('hidden');
+    els.assignmentPickerOverlay.classList.add('opacity-0');
+    els.assignmentPickerPanel?.classList.add('scale-95');
+    setTimeout(() => els.assignmentPickerOverlay.classList.add('hidden'), 200);
     pendingAssignmentBlotRange = null;
+}
+
+// ── IMPORT MATERIALS (Phase 3 scaffolding) ───────────────────────────────
+// Two import paths, both reachable from one "Import Options" modal next to
+// "New Lesson": a Google Slides / PowerPoint "Publish to Web" embed link
+// (works today — see onImportSlidesClick, below), and a .docx file picker
+// (stubbed per this phase's scope — reads the file and reports back; actual
+// .docx → lesson-content conversion is intentionally NOT implemented yet).
+function openImportOptionsModal() {
+    if (!currentPostContext) { alert('Select a subject first.'); return; }
+    els.importDocxInput.value = '';
+    els.importDocxStatus.classList.add('hidden');
+    els.importSlidesUrlInput.value = '';
+    els.importSlidesStatus.classList.add('hidden');
+    els.importOptionsOverlay.classList.remove('hidden');
+    requestAnimationFrame(() => {
+        els.importOptionsOverlay.classList.remove('opacity-0');
+        els.importOptionsPanel?.classList.remove('scale-95');
+    });
+}
+
+function closeImportOptionsModal() {
+    els.importOptionsOverlay.classList.add('opacity-0');
+    els.importOptionsPanel?.classList.add('scale-95');
+    setTimeout(() => els.importOptionsOverlay.classList.add('hidden'), 200);
+}
+
+function showImportStatus(el, text, isError = false) {
+    el.textContent = text;
+    el.classList.remove('hidden');
+    el.classList.toggle('text-rose-600', isError);
+    el.classList.toggle('text-[#6b84a0]', !isError);
+}
+
+// .docx import stub: reads the selected file (confirms it's real and
+// readable) and reports back, but does NOT parse Word's XML into lesson
+// content yet — that conversion is out of scope for this phase. Wiring the
+// listener now means the real parser can be dropped in later without any
+// UI changes.
+async function onImportDocxFileSelected(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    showImportStatus(els.importDocxStatus, `Reading ${file.name}…`);
+    try {
+        // Confirms the file is actually readable end-to-end (not just that
+        // the browser accepted the picker selection) without doing
+        // anything with the bytes yet — real .docx parsing (e.g. via
+        // mammoth.js or a server-side conversion function) is a follow-up
+        // phase, not this one.
+        await file.arrayBuffer();
+        showImportStatus(els.importDocxStatus, `"${file.name}" received (${(file.size / 1024).toFixed(0)} KB). Word import isn't implemented yet — this is a placeholder for a future phase.`);
+    } catch (err) {
+        console.error('[Lesson Builder] .docx import stub:', err);
+        showImportStatus(els.importDocxStatus, 'Could not read that file. Please try a different .docx file.', true);
+    }
+}
+
+// Google Slides ("File → Share → Publish to web" → Embed tab, which yields
+// an <iframe src="https://docs.google.com/presentation/d/.../embed?...">
+// link) or any other already-hosted presentation embed URL. This inserts a
+// real, working 'media' slide (mediaKind: 'video', reusing the exact same
+// iframe-embed rendering path parseMediaUrl()'s YouTube/Vimeo/Drive results
+// already use — see newSlide('media') in lessons.js) rather than a UI-only
+// stub, since accepting an already-published embed URL needs no server-side
+// conversion at all: the teacher did the "export" step themselves via
+// Google's own Publish to Web flow.
+function onImportSlidesClick() {
+    const rawUrl = els.importSlidesUrlInput.value.trim();
+    if (!rawUrl) {
+        showImportStatus(els.importSlidesStatus, 'Paste a Google Slides "Publish to web" embed link (or PowerPoint Online embed link) first.', true);
+        return;
+    }
+
+    let embedUrl;
+    try {
+        const parsed = new URL(rawUrl);
+        if (parsed.protocol !== 'https:') throw new Error('not https');
+        embedUrl = parsed.href;
+    } catch {
+        showImportStatus(els.importSlidesStatus, 'That doesn\'t look like a valid link. Copy the embed URL from Google Slides\' Publish to Web dialog (or PowerPoint Online\'s Embed option).', true);
+        return;
+    }
+
+    if (lessonDraft.format === 'slides') {
+        const slide = newSlide('media');
+        slide.mediaKind = 'video';
+        slide.provider = 'embed';
+        slide.embedUrl = embedUrl;
+        slide.heading = 'Imported Presentation';
+        lessonDraft.slides.splice(currentSlideIndex + 1, 0, slide);
+        currentSlideIndex += 1;
+        hasUnsavedChanges = true;
+        renderSlideThumbs();
+        renderSlideCanvas();
+        renderPropertiesPanel();
+    } else {
+        // Document format has no media-slide concept — embed it inline in
+        // the Quill content instead, at the end of the document, the same
+        // way insertAssignmentBtn/insertDividerBtn insert inline content.
+        initQuillIfNeeded();
+        const endIndex = quill.getLength();
+        const iframeHtml = `<p><br></p><iframe src="${escHtml(embedUrl)}" style="width:100%;aspect-ratio:16/9;border:0;border-radius:12px;" allowfullscreen></iframe><p><br></p>`;
+        quill.insertText(endIndex - 1, '\n', 'user');
+        quill.clipboard.dangerouslyPasteHTML(endIndex, iframeHtml, 'user');
+        hasUnsavedChanges = true;
+    }
+
+    showImportStatus(els.importSlidesStatus, 'Embedded — close this and check the canvas.');
+    setTimeout(closeImportOptionsModal, 900);
 }
 
 function onAssignmentPickerClick(e) {

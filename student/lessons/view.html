@@ -48,14 +48,33 @@
         .lv-media-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #64748b; background: #1e293b; }
 
         /* ── Document (Quill read-only) ─────────────────────────────────── */
-        .lv-doc-layout { display: flex; gap: 32px; max-width: 960px; margin: 0 auto; width: 100%; padding: 32px 24px 64px; }
-        .lv-toc { width: 220px; flex-shrink: 0; position: sticky; top: 24px; align-self: flex-start; }
+        /* Soft gray "desk" background behind the page — set on the
+           scrolling container itself (#lvDocView) so it fills the whole
+           viewport behind the centered page, like a Word/Docs canvas. */
+        #lvDocView { background: #eef1f5; }
+        .lv-doc-layout { display: flex; gap: 32px; max-width: 960px; margin: 0 auto; width: 100%; padding: 40px 24px 80px; align-items: flex-start; }
+        .lv-toc { width: 220px; flex-shrink: 0; position: sticky; top: 40px; align-self: flex-start; }
         .lv-toc-title { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; margin-bottom: 10px; }
         .lv-toc-link { display: block; font-size: 12.5px; font-weight: 700; color: #4338ca; padding: 6px 10px; border-radius: 8px; text-decoration: none; margin-bottom: 2px; line-height: 1.4; cursor: pointer; }
         .lv-toc-link:hover { background: #eef2ff; }
         .lv-toc-link.lv-toc-h2 { padding-left: 20px; font-weight: 600; color: #64748b; font-size: 12px; }
-        .lv-doc-body { flex: 1; min-width: 0; background: #fff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 2px 12px rgba(30,27,75,0.05); padding: 8px; }
-        #docViewerEditor .ql-editor { font-family: 'DM Sans', sans-serif; font-size: 15px; color: #1e293b; line-height: 1.7; padding: 32px 40px; }
+        /* The "physical page" look: a bright white rectangle, sharp-ish
+           corners (a real document page, not an app card), and a soft
+           multi-layer drop shadow that reads as a page resting on a desk
+           rather than a UI panel floating above the background. */
+        .lv-doc-body {
+            flex: 1;
+            min-width: 0;
+            max-width: 720px;
+            background: #fff;
+            border-radius: 4px;
+            box-shadow:
+                0 1px 2px rgba(15, 23, 42, 0.06),
+                0 8px 24px rgba(15, 23, 42, 0.10),
+                0 24px 48px -12px rgba(15, 23, 42, 0.14);
+            padding: 8px;
+        }
+        #docViewerEditor .ql-editor { font-family: 'DM Sans', sans-serif; font-size: 15px; color: #1e293b; line-height: 1.7; padding: 56px 64px; }
         #docViewerEditor .ql-editor h1 { font-size: 26px; font-weight: 800; scroll-margin-top: 24px; }
         #docViewerEditor .ql-editor h2 { font-size: 20px; font-weight: 800; scroll-margin-top: 24px; }
         #docViewerEditor .ql-editor h3 { font-size: 17px; font-weight: 700; scroll-margin-top: 24px; }

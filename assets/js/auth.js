@@ -51,6 +51,47 @@ export function requireAuth(role, redirectUrl = '../index.html') {
         });
     }
 
+    // ── 1b. AUTH IDENTITY DRIFT CHECK (session-bleed guard) ───────────────────
+    // getAuth(app) in firebase-init.js uses Firebase's default
+    // browserLocalPersistence, which is shared across every tab open at the
+    // SAME ORIGIN — there is exactly one live Firebase Auth identity per
+    // browser profile per origin, not one per tab. localStorage's
+    // connectus_{role}_session blob, by contrast, is written once at login
+    // and never re-validated against the live Auth session afterward.
+    //
+    // Concretely: a teacher signs in in Tab A (mints a teacher custom token,
+    // real Firebase Auth identity = teacher). A student then signs in in
+    // Tab B, at the same origin — this silently REPLACES the shared Auth
+    // identity out from under Tab A, whose UI still renders "teacher" from
+    // its untouched localStorage blob and whose Firestore writes then start
+    // getting rejected (Firestore correctly sees a caller whose real token
+    // claims say student, not teacher) — with no error surfaced anywhere
+    // except a generic "Missing or insufficient permissions" deep in
+    // whatever the teacher happened to click.
+    //
+    // This check catches that drift as soon as a real ID token is available
+    // (not just "some user is signed in", which the block above already
+    // checks) by confirming the live token's OWN role claim — set server-
+    // side by mintTeacherToken/mintStudentToken/mintAdminToken, never
+    // client-writable — actually matches the role this page requires. A
+    // mismatch means the localStorage session is stale relative to the
+    // browser's real Auth identity: continuing to render this page would
+    // just accumulate more silently-failing writes, so it force-signs-out
+    // and sends the user back to the right login instead.
+    if (auth.currentUser) {
+        auth.currentUser.getIdTokenResult(false)
+            .then((tokenResult) => {
+                const tokenRole = tokenResult.claims?.role;
+                if (tokenRole && tokenRole !== role) {
+                    console.warn(`[ConnectUs] Auth identity drift detected: page requires '${role}' but the live Firebase Auth session is '${tokenRole}'. This browser profile is signed in as a different role in another tab. Forcing re-authentication.`);
+                    logout(redirectUrl);
+                }
+            })
+            .catch((e) => {
+                console.error('[ConnectUs] Auth identity drift check failed:', e);
+            });
+    }
+
     // ── 2. THE GHOSTBUSTER: REAL-TIME DATABASE KILL SWITCH ────────────────────
     // This listens to the school's document. If deleted or suspended, kicks them out.
     if (session.schoolId) {

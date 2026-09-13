@@ -53,9 +53,14 @@
                         <h1 class="text-xl font-bold text-[#0d1f35] tracking-tight mb-1">Lesson Builder</h1>
                         <p class="text-xs text-[#6b84a0] m-0">Build interactive slide-deck lessons for your subjects</p>
                     </div>
-                    <button id="newLessonBtn" class="bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-2.5 px-5 rounded transition text-[13px] flex items-center gap-2">
-                        <i class="fa-solid fa-plus"></i> New Lesson
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <button id="importOptionsBtn" class="bg-white hover:bg-[#f4f7fb] text-[#0d1f35] font-bold py-2.5 px-4 rounded border border-[#dce3ed] transition text-[13px] flex items-center gap-2">
+                            <i class="fa-solid fa-file-import"></i> Import Options
+                        </button>
+                        <button id="newLessonBtn" class="bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-2.5 px-5 rounded transition text-[13px] flex items-center gap-2">
+                            <i class="fa-solid fa-plus"></i> New Lesson
+                        </button>
+                    </div>
                 </div>
 
                 <div class="bg-white rounded-xl shadow-sm border border-[#dce3ed] p-4 flex flex-wrap items-center gap-3">
@@ -209,8 +214,13 @@
     </div>
 
     <!-- ═══ ASSIGNMENT-EMBED PICKER (Document mode's toolbar button) ══════ -->
-    <div id="assignmentPickerOverlay" class="hidden fixed inset-0 bg-black/40 z-30 flex items-center justify-center p-4">
-        <div class="bg-white rounded-xl shadow-xl w-full max-w-sm">
+    <!-- opacity-0/scale-95 are the transition's START state — builder.js's
+         openAssignmentPicker()/closeAssignmentPicker() remove/add them a
+         frame after toggling 'hidden', which is what gives the fade+scale
+         (0.18s, matching this app's other quick UI transitions) something
+         to animate between instead of the old instant hidden/!hidden snap. -->
+    <div id="assignmentPickerOverlay" class="hidden opacity-0 fixed inset-0 bg-black/40 z-30 flex items-center justify-center p-4 transition-opacity duration-[180ms]">
+        <div id="assignmentPickerPanel" class="scale-95 transition-transform duration-[180ms] bg-white rounded-xl shadow-xl w-full max-w-sm">
             <div class="p-4 border-b border-[#dce3ed] flex items-center justify-between">
                 <div>
                     <h3 class="text-[14px] font-bold text-[#0d1f35] m-0">Insert Linked Assignment</h3>
@@ -220,6 +230,64 @@
             </div>
             <div class="p-4">
                 <div id="assignmentPickerList" class="space-y-1.5 max-h-72 overflow-y-auto"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ IMPORT MATERIALS MODAL (paste-Slides-link / stub .docx upload) ═ -->
+    <div id="importOptionsOverlay" class="hidden opacity-0 fixed inset-0 bg-black/40 z-30 flex items-center justify-center p-4 transition-opacity duration-[180ms]">
+        <div id="importOptionsPanel" class="scale-95 transition-transform duration-[180ms] bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div class="p-4 border-b border-[#dce3ed] flex items-center justify-between">
+                <div>
+                    <h3 class="text-[14px] font-bold text-[#0d1f35] m-0">Import Existing Materials</h3>
+                    <p class="text-[11px] text-[#6b84a0] m-0">Bring in a document or slide deck instead of starting from scratch</p>
+                </div>
+                <button id="closeImportOptionsBtn" class="text-[#6b84a0] hover:text-[#0d1f35] h-8 w-8 rounded flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-4 space-y-3">
+                <!-- Word import: file picker stub. builder.js reads the file
+                     (FileReader) and wires the change listener now; actual
+                     .docx → lesson-content conversion is a later phase. -->
+                <div class="border border-[#dce3ed] rounded-lg p-3.5">
+                    <div class="flex items-center gap-2.5 mb-2">
+                        <div class="w-8 h-8 rounded-lg bg-[#eef4ff] text-[#2563eb] border border-[#c7d9fd] flex items-center justify-center flex-shrink-0">
+                            <i class="fa-solid fa-file-word"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <p class="font-bold text-[#0d1f35] text-[13px] m-0">Import Word Document</p>
+                            <p class="text-[10.5px] text-[#9ab0c6] m-0">.docx</p>
+                        </div>
+                    </div>
+                    <label class="block">
+                        <input type="file" id="importDocxInput" accept=".docx" class="hidden">
+                        <span id="importDocxTrigger" class="cursor-pointer w-full inline-flex items-center justify-center gap-2 bg-[#f4f7fb] hover:bg-[#eef4ff] text-[#0d1f35] font-bold py-2 px-3 rounded text-[12px] border border-[#dce3ed] transition">
+                            <i class="fa-solid fa-upload"></i> Choose .docx File
+                        </span>
+                    </label>
+                    <p id="importDocxStatus" class="text-[11px] font-semibold text-[#6b84a0] mt-2 m-0 hidden"></p>
+                </div>
+
+                <!-- Google Slides / PPT import: "Publish to Web" embed link,
+                     stored as a media slide's embedUrl — same field the
+                     existing Media slide template already renders via an
+                     iframe, so no new slide type is needed for this phase. -->
+                <div class="border border-[#dce3ed] rounded-lg p-3.5">
+                    <div class="flex items-center gap-2.5 mb-2">
+                        <div class="w-8 h-8 rounded-lg bg-[#fff3e8] text-[#c2410c] border border-[#fed7aa] flex items-center justify-center flex-shrink-0">
+                            <i class="fa-solid fa-display"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <p class="font-bold text-[#0d1f35] text-[13px] m-0">Import Presentation</p>
+                            <p class="text-[10.5px] text-[#9ab0c6] m-0">Google Slides (Publish to Web) or PowerPoint embed link</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <input type="url" id="importSlidesUrlInput" placeholder="Paste embed link here…"
+                            class="form-input flex-1 min-w-0 p-2 bg-white border border-[#dce3ed] rounded text-[12.5px] text-[#0d1f35] outline-none focus:border-[#2563eb]">
+                        <button id="importSlidesBtn" class="bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-2 px-3 rounded text-[12px] transition flex-shrink-0">Embed</button>
+                    </div>
+                    <p id="importSlidesStatus" class="text-[11px] font-semibold text-[#6b84a0] mt-2 m-0 hidden"></p>
+                </div>
             </div>
         </div>
     </div>
