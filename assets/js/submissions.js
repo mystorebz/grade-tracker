@@ -191,6 +191,74 @@ export async function loadGradesIndexForStudent(schoolId, studentId) {
     return map;
 }
 
+// ── DUE DATE & LATE TRACKING STATE MACHINE (shared) ──────────────────────
+// ARCHITECTURAL MANDATE: CLIENT-SIDE DUE DATES & CLOUD FUNCTION PURGE. This
+// used to exist TWICE — once client-side in student/assignments/
+// assignments.js, once server-side in functions/index.js's
+// getParentAssignments (deleted by this mandate) — kept in lockstep only by
+// a parity test harness. Now that BOTH the student and parent portals read
+// Firestore directly from the client, there is exactly one implementation,
+// imported by both, so they literally cannot disagree about one
+// assignment's status.
+//
+// Same strict priority order as before:
+//   1. Graded overrides everything — "Graded: X/Y", with a "· Late" suffix
+//      when the submission that earned it came in after the due deadline.
+//   2. Locked (teacher-manual, independent of due date) — "Locked ·
+//      Submitted" / "Locked · Not submitted"; a locked assignment is closed
+//      and can no longer accrue "Missing" urgency.
+//   3. Submitted — "Done" on time, "Done Late" otherwise.
+//   4. Not submitted — "Missing" once the due deadline has passed,
+//      "Assigned" otherwise (including when no due date was ever set).
+// `category` buckets independently of `locked` (a locked-but-never-
+// submitted assignment is still, honestly, not done) into 'graded' | 'done'
+// | 'todo' | 'missing' — 'missing' is split out from plain 'todo' so
+// callers can give it the amber/red "needs attention" treatment without
+// re-deriving overdue-ness themselves from raw dueDate/now.
+//
+// A due date with no time-of-day (every assignment saved before the due-
+// date-&-time engine, or one saved with the picker left at just a date) is
+// treated as due at the END of that calendar day, not compared as a raw
+// string — "due June 20" means the student has all of June 20, not that
+// it's overdue at 12:00:01 AM.
+// --- START: dueDateEngine ---
+export function resolveDueDeadline(dateStr) {
+    if (!dateStr) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        return new Date(y, m - 1, d, 23, 59, 59, 999);
+    }
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? null : d;
+}
+
+export function isLateSubmission(submittedAtIso, deadline) {
+    return !!(deadline && submittedAtIso && new Date(submittedAtIso) > deadline);
+}
+
+export function resolveAssignmentStatus({ grade, locked, hasSubmission, submittedAt, dueDate }) {
+    const deadline = resolveDueDeadline(dueDate);
+
+    if (grade) {
+        const late = isLateSubmission(submittedAt, deadline);
+        return { status: `Graded: ${grade.score}/${grade.max}${late ? ' · Late' : ''}`, category: 'graded', late };
+    }
+    if (locked) {
+        return {
+            status: hasSubmission ? 'Locked · Submitted' : 'Locked · Not submitted',
+            category: hasSubmission ? 'done' : 'todo',
+            late: false,
+        };
+    }
+    if (hasSubmission) {
+        const late = isLateSubmission(submittedAt, deadline);
+        return { status: late ? 'Done Late' : 'Done', category: 'done', late };
+    }
+    const overdue = !!(deadline && new Date() > deadline);
+    return { status: overdue ? 'Missing' : 'Assigned', category: overdue ? 'missing' : 'todo', late: false };
+}
+// --- END: dueDateEngine ---
+
 // ── FREEZE RULE: locked OR graded blocks further submission writes ───────
 // Approved decision: once a grade exists for an assignment, the submission
 // underneath it freezes regardless of the locked flag — a teacher would

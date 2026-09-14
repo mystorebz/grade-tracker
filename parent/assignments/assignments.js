@@ -1,40 +1,56 @@
 // ── DUE DATE & LATE TRACKING ENGINE: PARENT ASSIGNMENTS ──────────────────
-// getParentAssignments (functions/index.js) now runs the full Google-
-// Classroom-style state machine server-side (resolveAssignmentState there,
-// the exact mirror of resolveDueDeadline()/statusPill() in
-// student/assignments/assignments.js) and returns the already-resolved
-// `status` label, `category` ('graded' | 'done' | 'todo' | 'missing'), and
-// `late` flag, plus the raw `dueDate`/`submittedAt` this mandate asked for.
-// This page's only job is to bucket those into sections and pick a badge
-// color — it never re-derives Missing/Late from raw timestamps itself, so
-// a parent and their child can never see contradictory statuses.
+// ARCHITECTURAL MANDATE: CLIENT-SIDE DUE DATES & CLOUD FUNCTION PURGE. This
+// page used to call a dedicated getParentAssignments Cloud Function, which
+// did both the Firestore fetch AND the due-date/late-tracking resolution
+// server-side — the user vetoed that on cloud-compute-cost grounds. That
+// function is now deleted outright. This page fetches directly from
+// Firestore instead, mirroring student/assignments/assignments.js's own
+// init() step for step:
+//   students/{studentId} -> teacherId -> getTeacherDocRef(schoolId,
+//   teacherId) -> loadTeacherSubjectsCache() -> loadAssignmentsForSubjects()
+//   (filtered to non-draft) -> loadSubmissionsForAssignments() +
+//   loadGradesIndexForStudent() in parallel -> resolveAssignmentStatus()
+//   per assignment (assets/js/submissions.js — the SAME shared function
+//   student/assignments/assignments.js now also imports, so a parent and
+//   their child can never see contradictory statuses for the same
+//   assignment; there is exactly one implementation of that logic left in
+//   the whole codebase).
+//
+// This is safe to read directly from the client because firestore.rules
+// now grants a linked parent GET/LIST on schools/{schoolId}/classes and
+// its subjects/assignments subcollections, and GET on the legacy
+// schools/{schoolId}/teachers/{teacherId} doc, scoped to schools where
+// they have a linked student (isParentLinkedToSchool(schoolId), driven by
+// a new flat `linkedSchoolIds` claim on the parent's token) — on the
+// premise that class/subject/assignment documents are curriculum
+// metadata, not private grades. The per-child submissions subcollection
+// nested under each assignment remains strictly locked
+// (isLinkedParentOf(studentId, schoolId)) so a parent can only ever read
+// their OWN child's submission, never a classmate's — exactly what
+// loadSubmissionsForAssignments() below queries.
 //
 // Theming: per this mandate, amber is reserved specifically for "Missing"
 // and "Locked · Not submitted" (both genuinely need a parent's attention);
 // a plain "Assigned" item — not yet due — stays neutral so the page
 // doesn't cry wolf before there's anything to worry about.
-//
-// Assignments live under schools/{schoolId}/classes/.../subjects/.../
-// assignments — gated by isCallerInSchool(schoolId) in firestore.rules, a
-// claim a parent's token never carries (a family can span more than one
-// school). No rules-only grant can reach this data for a parent, so — same
-// as the removed Class Stream callable, and mintParentToken/
-// linkOrCreateParent/lookupParentByEmail before it — a dedicated read-only
-// Cloud Function (getParentAssignments) does the fetch AND the status
-// resolution server-side, returning only already-resolved display fields,
-// never raw class/subject documents a parent's token isn't scoped to read.
-import { functions } from '../../assets/js/firebase-init.js';
-import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
+import { db } from '../../assets/js/firebase-init.js';
+import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectParentLayout, getActiveChild } from '../layout-parent.js';
+import { getTeacherDocRef, loadTeacherSubjectsCache } from '../../assets/js/utils.js';
+import {
+    loadAssignmentsForSubjects,
+    loadSubmissionsForAssignments,
+    loadGradesIndexForStudent,
+    resolveAssignmentStatus
+} from '../../assets/js/submissions.js';
 
 const session = requireAuth('parent', '../../student/login.html');
 const activeChild = session ? getActiveChild(session) : null;
 const studentId = activeChild?.studentId || null;
+const schoolId = activeChild?.schoolId || null;
 
 injectParentLayout('assignments', 'Assignments', "A read-only mirror of your child's assignment list");
-
-const getParentAssignmentsFn = httpsCallable(functions, 'getParentAssignments');
 
 const els = {};
 
@@ -80,13 +96,14 @@ function showFatalError(message) {
     els.asgError.classList.remove('hidden');
 }
 
-// Sections mirror the server's `category` field: 'graded' -> Graded,
-// 'done' -> Submitted (covers Done, Done Late, and Locked · Submitted),
-// and 'todo'/'missing' both land in Needs Attention (Assigned isn't urgent
-// yet, but it also isn't Submitted or Graded, so it has nowhere else
-// honest to go) — the badge color is what actually signals urgency within
-// that section: amber for Missing and Locked · Not submitted, neutral for
-// a plain Assigned that isn't due yet.
+// Sections mirror resolveAssignmentStatus()'s `category` field: 'graded' ->
+// Graded, 'done' -> Submitted (covers Done, Done Late, and Locked ·
+// Submitted), and 'todo'/'missing' both land in Needs Attention (Assigned
+// isn't urgent yet, but it also isn't Submitted or Graded, so it has
+// nowhere else honest to go) — the badge color is what actually signals
+// urgency within that section: amber for Missing and Locked · Not
+// submitted, neutral for a plain Assigned that isn't due yet.
+// --- START: classify ---
 function classify(a) {
     if (a.category === 'graded') {
         return { section: 'graded', statusClass: 'asg-status-graded' };
@@ -97,6 +114,7 @@ function classify(a) {
     const needsAttention = a.category === 'missing' || a.status === 'Locked · Not submitted';
     return { section: 'attention', statusClass: needsAttention ? 'asg-status-attention' : 'asg-status-neutral' };
 }
+// --- END: classify ---
 
 function renderCard(a, cls) {
     return `
@@ -161,14 +179,48 @@ async function init() {
     if (!session) return;
     cacheEls();
 
-    if (!studentId) {
+    if (!studentId || !schoolId) {
         showFatalError('No student is linked to your account yet — contact your school to get linked.');
         return;
     }
 
     try {
-        const result = await getParentAssignmentsFn({ studentId });
-        const assignments = result?.data?.assignments || [];
+        // Same resolution path student/assignments/assignments.js uses for
+        // itself — every query below is built from this child's own
+        // studentId/schoolId, never any other family's.
+        const studentSnap = await getDoc(doc(db, 'students', studentId));
+        if (!studentSnap.exists()) {
+            showFatalError('Student record not found.');
+            return;
+        }
+        const teacherId = studentSnap.data().teacherId;
+        if (!teacherId) {
+            els.asgLoader.classList.add('hidden');
+            els.asgContent.classList.remove('hidden');
+            renderAllEmpty("Your child doesn't have a teacher assigned yet.");
+            return;
+        }
+
+        const teacherSnap = await getDoc(getTeacherDocRef(schoolId, teacherId));
+        const legacyTeacherData = teacherSnap.exists() ? teacherSnap.data() : null;
+
+        const { subjectsCache, resolvedClasses } = await loadTeacherSubjectsCache(schoolId, teacherId, legacyTeacherData);
+
+        // Two schema generations exist side by side: legacy assignments use
+        // type/maxScore/date, the new "Add Work" model uses workType/
+        // pointsPossible/dueDate instead — normalized here exactly as
+        // student/assignments/assignments.js's normalizeAssignment() does,
+        // so every render function below works unchanged for both. 'draft'
+        // status is filtered out here, matching the student view.
+        const assignments = loadAssignmentsForSubjects(subjectsCache, resolvedClasses)
+            .filter(a => a.status !== 'draft')
+            .map(a => ({
+                ...a,
+                title: a.title || 'Untitled assignment',
+                type: a.workType || a.type || 'Assignment',
+                maxScore: a.pointsPossible ?? a.maxScore ?? 0,
+                dueDate: a.dueDate || a.date || '',
+            }));
 
         els.asgLoader.classList.add('hidden');
         els.asgContent.classList.remove('hidden');
@@ -178,7 +230,35 @@ async function init() {
             return;
         }
 
-        render(assignments);
+        const [subMap, gradeMap] = await Promise.all([
+            loadSubmissionsForAssignments(schoolId, assignments, studentId),
+            loadGradesIndexForStudent(schoolId, studentId)
+        ]);
+
+        // Same three-question resolution order as the (now-deleted)
+        // getParentAssignments Cloud Function used to run server-side —
+        // here it's the exact same shared function the student portal
+        // calls, imported from assets/js/submissions.js.
+        const resolved = assignments.map(a => {
+            const submission = subMap.get(a.id) || null;
+            const grade = gradeMap.get(a.id) || null;
+            const { status, category, late } = resolveAssignmentStatus({
+                grade, locked: !!a.locked, hasSubmission: !!submission,
+                submittedAt: submission?.submittedAt, dueDate: a.dueDate,
+            });
+            return {
+                id: a.id,
+                title: a.title,
+                type: a.type,
+                maxScore: a.maxScore,
+                dueDate: a.dueDate,
+                subjectName: a.subjectName,
+                className: a.className,
+                status, category, late,
+            };
+        });
+
+        render(resolved);
     } catch (e) {
         console.error('[Parent Assignments] init:', e);
         showFatalError('Something went wrong loading assignments. Please try again later.');

@@ -9,7 +9,8 @@ import {
     loadGradesIndexForStudent,
     saveSubmission,
     uploadSubmissionAttachment,
-    isSubmissionFrozen
+    isSubmissionFrozen,
+    resolveAssignmentStatus
 } from '../../assets/js/submissions.js';
 
 // ── 1. AUTHENTICATION & LAYOUT ──────────────────────────────────────────────
@@ -67,51 +68,27 @@ function formatDate(iso) {
 }
 
 // --- START: dueDateHelpers ---
-// ── DUE DATE & LATE TRACKING STATE MACHINE ───────────────────────────────
-// Google-Classroom-style status resolution, in this strict priority order
-// (matches the architectural mandate exactly):
-//   1. Graded overrides everything — shows the score, with a "· Late"
-//      suffix appended if the submission that earned the grade came in
-//      after the due deadline.
-//   2. Locked (teacher-manual, independent of due date) — the
-//      Submitted/Not-submitted sub-label is carried over unchanged from
-//      before this mandate: once locked, the assignment is closed and can
-//      no longer accrue "Missing" urgency, but it's still useful to know
-//      whether work was ever turned in before the door closed.
-//   3. Submitted — "Done" if turned in by the deadline, "Done Late"
-//      otherwise.
-//   4. Not submitted — "Missing" once the due deadline has passed,
-//      "Assigned" otherwise (including when no due date was ever set).
+// ARCHITECTURAL MANDATE: CLIENT-SIDE DUE DATES & CLOUD FUNCTION PURGE. The
+// resolution logic itself now lives ONLY in assets/js/submissions.js as
+// resolveAssignmentStatus() — shared with parent/assignments/assignments.js
+// — so this page just supplies its own {grade, locked, hasSubmission,
+// submittedAt, dueDate} facts and gets back the same {status, category,
+// late} shape the (now-deleted) getParentAssignments Cloud Function used to
+// return. See submissions.js's own comment for the full priority order.
 //
-// A due date with no time-of-day (every assignment saved before this
-// mandate, or one saved with the picker left at just a date) is treated as
-// due at the END of that calendar day, not compared as a raw string —
-// "due June 20" means the student has all of June 20, not that it's
-// overdue at 12:00:01 AM. A due date saved WITH a time (the new
-// datetime-local picker in teacher/subjects/subjects.js) is an exact ISO
-// instant, used as-is.
-function resolveDueDeadline(dateStr) {
-    if (!dateStr) return null;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-        const [y, m, d] = dateStr.split('-').map(Number);
-        return new Date(y, m - 1, d, 23, 59, 59, 999);
-    }
-    const d = new Date(dateStr);
-    return isNaN(d.getTime()) ? null : d;
-}
-
-function isLateSubmission(submittedAtIso, deadline) {
-    return !!(deadline && submittedAtIso && new Date(submittedAtIso) > deadline);
-}
-
-// 'todo' vs 'done' bucketing is independent of `locked` — a locked
-// assignment that was never turned in is still, honestly, not done, even
-// though it can no longer be acted on. This matches how Locked · Not
-// submitted was already grouped with the plain not-submitted case before
-// this mandate (both amber, both in the same flat list).
+// 'todo' vs 'done' bucketing for the To-Do/Done section split below treats
+// the shared category's 'graded' and 'done' as done, 'todo' and 'missing'
+// as todo — independent of `locked`, matching the pre-mandate behavior
+// exactly (a locked-but-never-submitted assignment is still, honestly, not
+// done, even though it can no longer be acted on).
 function statusCategory(assignment) {
-    if (gradesById.get(assignment.id)) return 'done';
-    return submissionsById.get(assignment.id) ? 'done' : 'todo';
+    const grade = gradesById.get(assignment.id);
+    const submission = submissionsById.get(assignment.id);
+    const { category } = resolveAssignmentStatus({
+        grade, locked: !!assignment.locked, hasSubmission: !!submission,
+        submittedAt: submission?.submittedAt, dueDate: assignment.date,
+    });
+    return (category === 'graded' || category === 'done') ? 'done' : 'todo';
 }
 // --- END: dueDateHelpers ---
 
@@ -243,31 +220,36 @@ function getVisibleAssignments() {
 }
 
 // --- START: statusPill ---
+// Thin wrapper around the shared resolveAssignmentStatus(): this page's own
+// job is only to pick a Tailwind badge color for each {status, category,
+// late} the shared function can return. Matched by exact status string
+// (a small, fixed set) rather than category alone, because category alone
+// can't distinguish e.g. "Locked · Submitted" (amber, per the pre-mandate
+// design) from a plain "Done" (indigo) even though both are category
+// 'done'.
 function statusPill(assignment) {
     const grade = gradesById.get(assignment.id);
     const submission = submissionsById.get(assignment.id);
-    const hasSubmission = !!submission;
-    const deadline = resolveDueDeadline(assignment.date);
+    const result = resolveAssignmentStatus({
+        grade, locked: !!assignment.locked, hasSubmission: !!submission,
+        submittedAt: submission?.submittedAt, dueDate: assignment.date,
+    });
 
-    if (grade) {
-        const late = isLateSubmission(submission?.submittedAt, deadline);
-        return { label: `Graded: ${grade.score}/${grade.max}${late ? ' · Late' : ''}`, classes: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+    if (result.category === 'graded') {
+        return { label: result.status, classes: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
     }
-    if (assignment.locked) {
-        return hasSubmission
-            ? { label: 'Locked · Submitted', classes: 'bg-amber-50 text-amber-700 border-amber-200' }
-            : { label: 'Locked · Not submitted', classes: 'bg-amber-50 text-amber-700 border-amber-200' };
+    if (result.status === 'Locked · Submitted' || result.status === 'Locked · Not submitted') {
+        return { label: result.status, classes: 'bg-amber-50 text-amber-700 border-amber-200' };
     }
-    if (hasSubmission) {
-        const late = isLateSubmission(submission?.submittedAt, deadline);
-        return late
-            ? { label: 'Done Late', classes: 'bg-amber-50 text-amber-700 border-amber-200' }
-            : { label: 'Done', classes: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
+    if (result.category === 'done') {
+        return result.late
+            ? { label: result.status, classes: 'bg-amber-50 text-amber-700 border-amber-200' }
+            : { label: result.status, classes: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
     }
-    const overdue = !!(deadline && new Date() > deadline);
-    return overdue
-        ? { label: 'Missing', classes: 'bg-red-50 text-red-700 border-red-200' }
-        : { label: 'Assigned', classes: 'bg-slate-100 text-slate-500 border-slate-200' };
+    if (result.category === 'missing') {
+        return { label: result.status, classes: 'bg-red-50 text-red-700 border-red-200' };
+    }
+    return { label: result.status, classes: 'bg-slate-100 text-slate-500 border-slate-200' };
 }
 // --- END: statusPill ---
 

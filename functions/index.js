@@ -518,260 +518,40 @@ exports.lookupParentByEmail = onCall({ region: 'us-central1' }, async (request) 
 // --- END: lookupParentByEmail ---
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// FUNCTION 3d: getParentAssignments
+// FUNCTION 3d: getParentAssignments — PURGED
 //
-// PHASE 3 COMPLETION MANDATE: the student audit (this same mandate's Step 1)
-// found no Missing/Overdue/Late concept anywhere in this codebase — only
-// Not submitted / Submitted / Locked(teacher-manual) / Graded, decided by
-// student/assignments/assignments.js's own statusPill() in that exact
-// priority order (graded overrides everything, then locked, then plain
-// submitted/not). This function is the read-only, parent-safe mirror of
-// that same resolution path, so the two portals can never disagree about
-// what one assignment's status is.
+// ARCHITECTURAL MANDATE: CLIENT-SIDE DUE DATES & CLOUD FUNCTION PURGE. This
+// callable (and its resolveAssignmentState/resolveDueDeadline/
+// isLateSubmission helper block, which existed solely to support it) has
+// been deleted outright: the user vetoed Cloud Functions for fetching
+// parent assignments on cost grounds. The read now happens directly from
+// the client — parent/assignments/assignments.js queries Firestore the
+// same way student/assignments/assignments.js already does, gated by new
+// isParentLinkedToSchool()/parent-branch grants added to firestore.rules
+// on schools/{schoolId}/classes (get+list), .../subjects, .../assignments,
+// and the legacy schools/{schoolId}/teachers/{teacherId} doc — all GET/LIST
+// only, all school-scoped (class/subject/assignment documents carry
+// curriculum metadata, not private grades). The per-child
+// submissions/{studentId} subcollection nested under each assignment
+// remains strictly locked to isLinkedParentOf(studentId, schoolId) — never
+// the broader school-scoped grant — so a parent can still only read their
+// OWN child's submission, never a classmate's.
 //
-// Assignments live at schools/{schoolId}/classes/{classId}/subjects/
-// {subjectId}/assignments/{assignmentId}, gated in firestore.rules by
-// isCallerInSchool(schoolId) — a claim a parent's token deliberately never
-// carries (a family can span more than one school). No rules-only grant can
-// reach this data for a parent, so — same as the Class Stream callable this
-// app already removed, and mintParentToken/linkOrCreateParent/
-// lookupParentByEmail above it — this is a dedicated, read-only Admin-SDK
-// callable rather than a client-side query.
+// The due-date/late-tracking state machine this callable used to run
+// server-side (resolveAssignmentState() et al.) now lives ONLY in
+// assets/js/submissions.js as resolveAssignmentStatus() (+ its
+// resolveDueDeadline/isLateSubmission helpers), shared by BOTH
+// student/assignments/assignments.js and parent/assignments/
+// assignments.js, so the two portals still can never disagree about one
+// assignment's status — the guarantee this callable used to provide by
+// being the single server-side source of truth is now provided by both
+// client surfaces importing the exact same function instead.
 //
-// Resolution path, reimplemented server-side against the Admin SDK from the
-// EXACT same source functions the student portal uses client-side
-// (loadTeacherSubjectsCache/resolvePostContext/loadAssignmentsForSubjects/
-// loadGradesIndexForStudent, assets/js/utils.js + submissions.js):
-//   1. students/{studentId}.teacherId -> the student's one teacher.
-//   2. that teacher's doc (teachers/{teacherId} if a real Tier-1 ID, else
-//      schools/{schoolId}/teachers/{teacherId} — same ID-shape check
-//      getTeacherDocRef() uses) -> classes[]/className -> resolved against
-//      schools/{schoolId}/classes by name to get real classIds.
-//   3. each resolved class's subjects subcollection, plus each subject's
-//      assignments subcollection (_source:'new'), PLUS any legacy subject
-//      still only embedded on the teacher doc (_source:'legacy', resolved
-//      against resolvedClasses[0] exactly as resolvePostContext() does) —
-//      filtered to non-archived subjects and non-draft assignments, same
-//      two filters the student view applies.
-//   4. per assignment: does students/{studentId}/grades (schoolId-filtered)
-//      have a record carrying this assignmentId (Graded), else is
-//      assignment.locked true (Locked), else does a submission doc exist at
-//      .../assignments/{assignmentId}/submissions/{studentId} (Submitted) —
-//      the same three-question order, so a parent and their child never see
-//      contradictory statuses for the same assignment.
-//
-// Security: the schoolId used for the parent-link check is read off the
-// STUDENT'S OWN document (currentSchoolId), never trusted from a client
-// argument — matching firestore.rules' isLinkedParentOf(), which is always
-// invoked with the target student's resolved currentSchoolId, not a
-// caller-supplied one. Only a parent whose token already carries a link to
-// this exact {studentId, schoolId} pair may read; everyone else is denied
-// before any class/subject/assignment document is touched. Response payload
-// carries only already-resolved display fields (title/type/date/status/
-// subjectName/className) — never raw class or subject documents a parent's
-// token isn't otherwise scoped to read.
-//
-// Deploy command: firebase deploy --only functions:getParentAssignments
+// Deploy: `firebase deploy --only functions` will detect this function is
+// gone from source but still live, and prompt to confirm its deletion —
+// that prompt is EXPECTED and correct to accept for this specific
+// function as part of this mandate.
 // ═══════════════════════════════════════════════════════════════════════════════
-// --- START: getParentAssignments ---
-exports.getParentAssignments = onCall({ region: 'us-central1' }, async (request) => {
-    if (!request.auth || request.auth.token.role !== 'parent') {
-        throw new HttpsError('permission-denied', 'Only an authenticated parent may view assignments here.');
-    }
-
-    const { studentId } = request.data || {};
-    if (!studentId) {
-        throw new HttpsError('invalid-argument', 'studentId is required.');
-    }
-
-    const studentSnap = await db.collection('students').doc(studentId).get();
-    if (!studentSnap.exists) {
-        throw new HttpsError('not-found', 'Student record not found.');
-    }
-    const studentData = studentSnap.data();
-    const schoolId = studentData.currentSchoolId;
-
-    const linkedStudents = Array.isArray(request.auth.token.linkedStudents) ? request.auth.token.linkedStudents : [];
-    const isLinked = linkedStudents.some(l => l.studentId === studentId && l.schoolId === schoolId);
-    if (!isLinked) {
-        throw new HttpsError('permission-denied', 'This student is not linked to your parent account.');
-    }
-
-    const teacherId = studentData.teacherId;
-    if (!teacherId) {
-        return { assignments: [] };
-    }
-
-    // Same ID-shape check getTeacherDocRef() uses client-side: a real
-    // Tier-1 teacher ID lives at the top-level teachers/ collection, a
-    // legacy one under this school's own teachers subcollection.
-    const teacherRef = /^T\d{2}-[A-Z0-9]{5}$/i.test(teacherId)
-        ? db.collection('teachers').doc(teacherId)
-        : db.collection('schools').doc(schoolId).collection('teachers').doc(teacherId);
-    const teacherSnap = await teacherRef.get();
-    const legacyTeacherData = teacherSnap.exists ? teacherSnap.data() : null;
-
-    // ── Resolve class names -> real classIds (loadSchoolClasses + resolveClassNamesToIds, reimplemented) ──
-    const classNames = (legacyTeacherData && legacyTeacherData.classes) || [(legacyTeacherData && legacyTeacherData.className) || ''];
-    const schoolClassesSnap = await db.collection('schools').doc(schoolId).collection('classes').get();
-    const classIdByName = new Map(schoolClassesSnap.docs.map(d => [d.data().name, d.id]));
-    const resolvedClasses = [];
-    classNames.filter(Boolean).forEach(name => {
-        const id = classIdByName.get(name);
-        if (id) resolvedClasses.push({ name, id });
-    });
-
-    // ── Fetch every resolved class's subjects + each subject's assignments (mirrors loadTeacherSubjectsCache) ──
-    const subjectsCache = [];
-    for (const cls of resolvedClasses) {
-        const subjectsSnap = await db.collection('schools').doc(schoolId).collection('classes').doc(cls.id).collection('subjects').get();
-        for (const subjDoc of subjectsSnap.docs) {
-            const subject = { id: subjDoc.id, classId: cls.id, className: cls.name, _source: 'new', assignments: [], ...subjDoc.data() };
-            const asgSnap = await db.collection('schools').doc(schoolId).collection('classes').doc(cls.id)
-                .collection('subjects').doc(subject.id).collection('assignments').get();
-            subject.assignments = asgSnap.docs.map(ad => ({ id: ad.id, ...ad.data() }));
-            subjectsCache.push(subject);
-        }
-    }
-    const newNames = new Set(subjectsCache.map(s => s.name));
-    ((legacyTeacherData && legacyTeacherData.subjects) || []).forEach(s => {
-        if (!newNames.has(s.name)) subjectsCache.push({ ...s, _source: 'legacy' });
-    });
-
-    // ── Flatten to assignments, resolving each subject's class context exactly as resolvePostContext() does ──
-    const assignments = [];
-    for (const subject of subjectsCache) {
-        if (subject.archived) continue;
-        let classId = subject.classId || null;
-        let className = subject.className || '';
-        if (!classId) {
-            const cls = resolvedClasses[0] || null;
-            if (!cls) continue; // no class could be resolved — skip, same as resolvePostContext()
-            classId = cls.id;
-            className = cls.name;
-        }
-        for (const a of (subject.assignments || [])) {
-            if (a.status === 'draft') continue; // not visible to the student yet — same filter the student view applies
-            assignments.push({ ...a, classId, className, subjectId: subject.id, subjectName: subject.name });
-        }
-    }
-
-    if (!assignments.length) return { assignments: [] };
-
-    // ── Grades index (one query) + per-assignment submission existence check (parallel) ──
-    const gradesSnap = await db.collection('students').doc(studentId).collection('grades')
-        .where('schoolId', '==', schoolId).get();
-    const gradesByAssignmentId = new Map();
-    gradesSnap.docs.forEach(d => {
-        const data = d.data();
-        if (data.assignmentId) gradesByAssignmentId.set(data.assignmentId, data);
-    });
-
-    const results = await Promise.all(assignments.map(async a => {
-        const grade = gradesByAssignmentId.get(a.id) || null;
-        let hasSubmission = false;
-        let submittedAt = null;
-        try {
-            const subSnap = await db.collection('schools').doc(schoolId).collection('classes').doc(a.classId)
-                .collection('subjects').doc(a.subjectId).collection('assignments').doc(a.id)
-                .collection('submissions').doc(studentId).get();
-            hasSubmission = subSnap.exists;
-            submittedAt = hasSubmission ? (subSnap.data().submittedAt || null) : null;
-        } catch (e) {
-            hasSubmission = false;
-            submittedAt = null;
-        }
-
-        const dueDate = a.dueDate || a.date || '';
-        const resolved = resolveAssignmentState({ grade, locked: !!a.locked, hasSubmission, submittedAt, dueDate });
-
-        return {
-            id: a.id,
-            title: a.title || 'Untitled assignment',
-            type: a.workType || a.type || 'Assignment',
-            maxScore: a.pointsPossible ?? a.maxScore ?? 0,
-            date: dueDate,
-            dueDate,
-            subjectName: a.subjectName,
-            className: a.className,
-            locked: !!a.locked,
-            hasSubmission,
-            submittedAt,
-            grade: grade ? { score: grade.score, max: grade.max } : null,
-            status: resolved.status,
-            category: resolved.category,
-            late: resolved.late,
-        };
-    }));
-
-    return { assignments: results };
-});
-// --- END: getParentAssignments ---
-
-// ── DUE DATE & LATE TRACKING STATE MACHINE (server-side mirror) ─────────
-// ARCHITECTURAL MANDATE: DUE DATE & LATE TRACKING ENGINE. This is the exact
-// same priority-ordered resolution as resolveDueDeadline()/statusPill() in
-// student/assignments/assignments.js — duplicated here (not imported —
-// Cloud Functions and the client bundle are separate deploy units in this
-// codebase) rather than left to the client to re-derive, so a parent and
-// their child can never see contradictory statuses for the same
-// assignment. Both implementations are covered by their own logic-harness
-// tests to keep them in lockstep.
-//   1. Graded overrides everything — "Graded: X/Y", with `late: true` when
-//      the submission that earned it came in after the due deadline.
-//   2. Locked (teacher-manual, independent of due date) — carries over the
-//      pre-mandate Locked · Submitted / Locked · Not submitted sub-label;
-//      a locked assignment is closed and can no longer accrue "Missing"
-//      urgency.
-//   3. Submitted — "Done" on time, "Done Late" otherwise.
-//   4. Not submitted — "Missing" once the due deadline has passed,
-//      "Assigned" otherwise (including when no due date was ever set).
-// `category` buckets independently of locked (a locked-but-never-submitted
-// assignment is still, honestly, not done) into 'graded' | 'done' | 'todo'
-// | 'missing' — 'missing' is split out from plain 'todo' so callers can
-// give it the amber/red "needs attention" treatment without re-deriving
-// overdue-ness themselves from raw dueDate/now.
-//
-// A due date with no time-of-day (every assignment saved before this
-// mandate, or one saved with the picker left at just a date) is treated as
-// due at the END of that calendar day, not compared as a raw string.
-// --- START: resolveAssignmentState ---
-function resolveDueDeadline(dateStr) {
-    if (!dateStr) return null;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-        const [y, m, d] = dateStr.split('-').map(Number);
-        return new Date(y, m - 1, d, 23, 59, 59, 999);
-    }
-    const d = new Date(dateStr);
-    return isNaN(d.getTime()) ? null : d;
-}
-
-function isLateSubmission(submittedAtIso, deadline) {
-    return !!(deadline && submittedAtIso && new Date(submittedAtIso) > deadline);
-}
-
-function resolveAssignmentState({ grade, locked, hasSubmission, submittedAt, dueDate }) {
-    const deadline = resolveDueDeadline(dueDate);
-
-    if (grade) {
-        const late = isLateSubmission(submittedAt, deadline);
-        return { status: `Graded: ${grade.score}/${grade.max}${late ? ' · Late' : ''}`, category: 'graded', late };
-    }
-    if (locked) {
-        return {
-            status: hasSubmission ? 'Locked · Submitted' : 'Locked · Not submitted',
-            category: hasSubmission ? 'done' : 'todo',
-            late: false,
-        };
-    }
-    if (hasSubmission) {
-        const late = isLateSubmission(submittedAt, deadline);
-        return { status: late ? 'Done Late' : 'Done', category: 'done', late };
-    }
-    const overdue = !!(deadline && new Date() > deadline);
-    return { status: overdue ? 'Missing' : 'Assigned', category: overdue ? 'missing' : 'todo', late: false };
-}
-// --- END: resolveAssignmentState ---
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FUNCTION 3c: mintParentToken
@@ -824,10 +604,24 @@ exports.mintParentToken = onCall({ region: 'us-central1' }, async (request) => {
 
     const linkedStudents = Array.isArray(parentData.linkedStudents) ? parentData.linkedStudents : [];
 
+    // ── ARCHITECTURAL MANDATE: CLIENT-SIDE DUE DATES & CLOUD FUNCTION PURGE ──
+    // A flat, deduplicated list of just the schoolIds out of linkedStudents
+    // above — nothing this parent's token doesn't already carry, just
+    // reshaped so firestore.rules can express "does this parent have ANY
+    // linked student at this schoolId" at all. Rules has no filter()/map()
+    // over arrays, and hasAny() only matches whole-element equality, so a
+    // rule can't derive this from linkedStudents (an array of
+    // {studentId,schoolId} objects) directly. This is what
+    // isParentLinkedToSchool(schoolId) in firestore.rules reads.
+    // --- START: linkedSchoolIds ---
+    const linkedSchoolIds = [...new Set(linkedStudents.map(l => l.schoolId).filter(Boolean))];
+    // --- END: linkedSchoolIds ---
+
     const token = await mintToken(normalizedId, {
         role:     'parent',
         parentId: normalizedId,
         linkedStudents,
+        linkedSchoolIds,
     });
 
     return { token };

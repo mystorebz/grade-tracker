@@ -40,6 +40,47 @@ service cloud.firestore {
              request.auth.token.linkedStudents.hasAny([{'studentId': studentId, 'schoolId': schoolId}]);
     }
 
+    // A parent role is strictly read-only, everywhere. Most write rules in
+    // this file already deny a parent by construction — they require a
+    // specific role ('teacher'/'super_admin'/'sub_admin') or a claim
+    // ('studentId'/'schoolId') a parent's token never carries, so simple
+    // omission from an allow-list already denies them (Firestore rules are
+    // default-deny). The handful of write rules below that had NO identity
+    // check at all (grades, evaluations, the top-level student doc — gated
+    // only by isSchoolActive(), matching this file's own "document-ID
+    // obscurity + active-school" pattern for a few specific paths) are the
+    // ones this guard is actually load-bearing for; it's added to those
+    // explicitly, and to every other student-scoped write rule too, so a
+    // future edit to any of those broader grants can never silently open a
+    // write path to parents by accident.
+    function isParentCaller() {
+      return request.auth != null && request.auth.token.role == 'parent';
+    }
+
+    // ── ARCHITECTURAL MANDATE: CLIENT-SIDE DUE DATES & CLOUD FUNCTION PURGE ──
+    // getParentAssignments (a Cloud Function) is deleted by this mandate; the
+    // Parent Assignments page now reads schools/{schoolId}/classes/.../
+    // subjects/.../assignments directly from the client, on the premise that
+    // assignment/subject/class documents are curriculum metadata, not
+    // private grades. isLinkedParentOf(studentId, schoolId) above can't gate
+    // this: those documents carry no studentId at all, only a schoolId, and
+    // Firestore Rules has no way to ask "does any element of linkedStudents
+    // have this schoolId" — hasAny() only matches whole-element equality,
+    // and there is no filter()/map() available here. mintParentToken
+    // (functions/index.js) now also mints a flat `linkedSchoolIds` claim —
+    // just the deduplicated schoolId out of that same linkedStudents list —
+    // specifically so this check is expressible at all. This exposes no new
+    // information: it's a reshaping of a claim the parent's token already
+    // carried, not a new grant. Deliberately SCHOOL-scoped, not per-class:
+    // the mandate's own framing ("not private grades") treats a school's
+    // whole curriculum as safe for any parent with a child there to read,
+    // not just their child's specific class.
+    function isParentLinkedToSchool(schoolId) {
+      return request.auth != null &&
+             request.auth.token.role == 'parent' &&
+             request.auth.token.linkedSchoolIds.hasAny([schoolId]);
+    }
+
     // ── 1. National Teacher Registry ──────────────────────────────────────
     match /teachers/{teacherId} {
       // GET: teacher is active at a verified school, OR currentSchoolId is
@@ -98,21 +139,26 @@ service cloud.firestore {
       allow list: if true;
 
       // CREATE: only when the school being assigned to is active.
-      allow create: if isSchoolActive(request.resource.data.currentSchoolId);
+      //         Explicit parent-write-deny (Phase 3 Step 2) — like grades and
+      //         evaluations, this rule has no identity check otherwise.
+      allow create: if isSchoolActive(request.resource.data.currentSchoolId) && !isParentCaller();
 
       // UPDATE: school is active (normal), OR student is released/archived
       //         (currentSchoolId empty — restore, claim, student settings update).
-      allow update: if resource.data.currentSchoolId == null
+      //         Explicit parent-write-deny (Phase 3 Step 2), same reasoning.
+      allow update: if (resource.data.currentSchoolId == null
                     || resource.data.currentSchoolId == ''
-                    || isSchoolActive(resource.data.currentSchoolId);
+                    || isSchoolActive(resource.data.currentSchoolId)) && !isParentCaller();
 
       // DELETE: teacher/archives.js permanentDeleteStudent hard-deletes the
       //         student doc. Must be authenticated AND the student is either
       //         at an active school or has no current school (released).
+      //         Explicit parent-write-deny (Phase 3 Step 2) on top of the
+      //         existing request.auth != null check.
       allow delete: if request.auth != null &&
                        (resource.data.currentSchoolId == null ||
                         resource.data.currentSchoolId == '' ||
-                        isSchoolActive(resource.data.currentSchoolId));
+                        isSchoolActive(resource.data.currentSchoolId)) && !isParentCaller();
 
       match /grades/{gradeId} {
         // READ: school active OR student released (history.js reads grades
@@ -128,22 +174,32 @@ service cloud.firestore {
                     || isLinkedParentOf(studentId, get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId);
 
         // WRITE: school must be active (no grade entry after suspension).
+        //        Explicit parent-write-deny (Phase 3 Step 2) — this rule has
+        //        no identity check otherwise, so it's the one this guard is
+        //        actually load-bearing for.
         allow create, update: if isSchoolActive(
           get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
-        );
+        ) && !isParentCaller();
 
         // DELETE: gradebook edit and permanentDeleteStudent both delete grades.
-        allow delete: if isSchoolActive(
+        allow delete: if (isSchoolActive(
           get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
         ) || get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId == null
-          || get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId == '';
+          || get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId == '') && !isParentCaller();
       }
 
       match /evaluations/{evalId} {
-        allow read, create, update:
+        // Explicit parent-write-deny (Phase 3 Step 2) on create/update — same
+        // "no identity check otherwise" situation as grades above. Also
+        // explicit for a linked parent's READ, same as grades/attendance.
+        allow read:
           if isSchoolActive(
             get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
-          );
+          ) || isLinkedParentOf(studentId, get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId);
+        allow create, update:
+          if isSchoolActive(
+            get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
+          ) && !isParentCaller();
         allow delete: if false;
       }
 
@@ -161,15 +217,23 @@ service cloud.firestore {
       // their school is active.
       match /submissions/{submissionId} {
         // READ: the school must be active, AND the caller is either the
-        //       owning student or a teacher/admin at that same school.
-        allow read: if isSchoolActive(
+        //       owning student or a teacher/admin at that same school —
+        //       OR (Phase 3 Step 2) a linked parent of this student, same
+        //       "explicit is better than relying on a broader grant" pattern
+        //       as grades/evaluations above. Write rules below are already
+        //       denied to a parent by construction (they require either
+        //       request.auth.token.studentId == studentId, which a parent's
+        //       token never carries, or a teacher/admin role) so no
+        //       !isParentCaller() guard is needed on create/update here.
+        allow read: if (isSchoolActive(
                         get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
                       ) &&
                       request.auth != null &&
                       (request.auth.token.studentId == studentId ||
                        (request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] &&
                         request.auth.token.schoolId ==
-                          get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId));
+                          get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId)))
+                      || isLinkedParentOf(studentId, get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId);
 
         // CREATE: only the owning student, only while their school is active.
         allow create: if isSchoolActive(
@@ -632,6 +696,29 @@ service cloud.firestore {
         allow delete: if false;
       }
 
+      // ── Legacy per-school teacher docs (this mandate) ─────────────────────
+      // getTeacherDocRef() (assets/js/utils.js) reads schools/{schoolId}/
+      // teachers/{teacherId} for any teacherId that ISN'T a modern Tier-1 ID
+      // (those live in the top-level teachers/ registry instead — section 1
+      // above, already openly GET-able). The Parent Assignments page (now a
+      // direct Firestore read, no Cloud Function) calls this same helper to
+      // resolve a legacy teacher's classes[]/subjects[] before it can reach
+      // any assignment data at all. Without this named carve-out, this path
+      // falls to the generic wildcard at the bottom of this file, which
+      // requires isCallerInSchool(schoolId) — a claim a parent's token never
+      // carries — and the read would 403 for every student still on a
+      // legacy teacher ID. GET only: nothing (parent or otherwise) lists
+      // this collection unfiltered, so list/update/delete/create stay
+      // exactly as the generic wildcard already had them.
+      match /teachers/{legacyTeacherId} {
+        allow get: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) || isParentLinkedToSchool(schoolId);
+        allow list, update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
+        allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
+                         (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
+                          existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
+                          getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
+      }
+
       // ── 3a. Classes: Per-Class Isolation (PASS B, PART 2) ─────────────────
       // schools/{schoolId}/classes/{classId} — the class document itself —
       // is carved out of the generic wildcard below and given a stricter GET
@@ -682,13 +769,17 @@ service cloud.firestore {
         // a different class, satisfies isCallerInSchool(schoolId) but fails
         // all three checks above and is correctly denied — this is the
         // isolation Pass A's school-level check didn't provide.
-        allow get: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) && (
+        // Parent branch (this mandate): a linked parent may GET any class at
+        // a school where they have a linked student — school-scoped, same
+        // reasoning as isParentLinkedToSchool()'s own comment above; a class
+        // document carries no student-specific data (name + teacherIds).
+        allow get: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId) && (
           request.auth.token.role in ['super_admin', 'sub_admin'] ||
           (request.auth.token.role == 'teacher' &&
            request.auth.token.teacherId in resource.data.teacherIds) ||
           (request.auth.token.role == 'student' &&
            get(/databases/$(database)/documents/students/$(request.auth.token.studentId)).data.classId == classId)
-        );
+        )) || isParentLinkedToSchool(schoolId);
 
         // LIST/CREATE/UPDATE/DELETE on the class doc itself: intentionally
         //       left at the same isCallerInSchool(schoolId) &&
@@ -707,7 +798,14 @@ service cloud.firestore {
         //       today — tightening them to admin-only is a reasonable
         //       future hardening step, flagged here rather than done
         //       silently since it wasn't asked for in this pass.
-        allow list: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
+        // Parent branch (this mandate): loadSchoolClasses() (assets/js/
+        // utils.js) — reused as-is by the Parent Assignments page now that
+        // it fetches directly from Firestore — does an unfiltered
+        // getDocs(collection(...)) over this whole subcollection to resolve
+        // a teacher's class NAMES to real classIds. That's a LIST, not a
+        // GET, so it needs its own grant here regardless of the GET rule
+        // above.
+        allow list: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) || isParentLinkedToSchool(schoolId);
         allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
                          (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
                           existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
@@ -792,21 +890,46 @@ service cloud.firestore {
         }
 
         match /subjects/{subjectId} {
-          allow read, update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
+          // READ (get + list, both needed — loadTeacherSubjectsCache()
+          // lists this whole subcollection per resolved class): split out
+          // from update/delete (this mandate) so the new parent branch
+          // grants read-only, never write. Subject documents are curriculum
+          // metadata (name, weighting) — the same "not private" premise the
+          // mandate applies to assignments below.
+          allow read: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) || isParentLinkedToSchool(schoolId);
+          allow update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
           allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
                            (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
                             existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
                             getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
 
           match /assignments/{assignmentId} {
-            allow read, update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
+            // READ (get + list): same split and same parent branch as
+            // subjects above — this is the actual assignment data (title,
+            // dueDate, instructions, points) the Parent Assignments page
+            // now reads directly instead of through the purged
+            // getParentAssignments Cloud Function.
+            allow read: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) || isParentLinkedToSchool(schoolId);
+            allow update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
             allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
                              (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
                               existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
                               getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
 
+            // ── submissions MUST remain strictly locked (this mandate) ──
+            // NOT the same school-scoped isParentLinkedToSchool() grant
+            // used above — that would let ANY parent at this school read
+            // EVERY child's submission, since the wildcard segment here
+            // ({studentId}) has nothing to do with which parent is asking.
+            // The doc ID at this path already IS the owning student's ID,
+            // so isLinkedParentOf(studentId, schoolId) — the same per-child
+            // check every other parent grant in this file uses (grades,
+            // evaluations, students/{studentId}/submissions) — narrows this
+            // to exactly "a parent may read their OWN linked child's
+            // submission," never a classmate's. Still no parent write.
             match /submissions/{studentId} {
-              allow read, update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
+              allow read: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) || isLinkedParentOf(studentId, schoolId);
+              allow update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
               allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
                                (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
                                 existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
@@ -1055,13 +1178,19 @@ service cloud.firestore {
         //                     teaching_assignments/attendance/
         //                     behavior_points/semesters etc. belonging to ANY
         //                     active school, not just the caller's own.
-        allow read, update, delete: if subcollection[0] != 'classes' &&
+        // 'teachers' excluded alongside 'classes' as of this mandate — the
+        // legacy per-school teacher doc now has its own narrower named
+        // block above (parent GET included); leaving it un-excluded here
+        // would grant nothing extra (this branch requires
+        // isCallerInSchool, strictly narrower than that block's parent
+        // grant) but would be redundant, confusing dead weight.
+        allow read, update, delete: if subcollection[0] != 'classes' && subcollection[0] != 'teachers' &&
                                         isCallerInSchool(schoolId) && isSchoolActive(schoolId);
 
         // CREATE: same normal-path + scoped-bootstrap-path shape as the
         //         admins block above — see that block's comment for why
         //         !exists(...) is required to close the replay hole.
-        allow create: if subcollection[0] != 'classes' && (
+        allow create: if subcollection[0] != 'classes' && subcollection[0] != 'teachers' && (
                           (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
                           (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
                            existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
