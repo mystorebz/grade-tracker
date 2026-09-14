@@ -670,43 +670,108 @@ exports.getParentAssignments = onCall({ region: 'us-central1' }, async (request)
     const results = await Promise.all(assignments.map(async a => {
         const grade = gradesByAssignmentId.get(a.id) || null;
         let hasSubmission = false;
+        let submittedAt = null;
         try {
             const subSnap = await db.collection('schools').doc(schoolId).collection('classes').doc(a.classId)
                 .collection('subjects').doc(a.subjectId).collection('assignments').doc(a.id)
                 .collection('submissions').doc(studentId).get();
             hasSubmission = subSnap.exists;
+            submittedAt = hasSubmission ? (subSnap.data().submittedAt || null) : null;
         } catch (e) {
             hasSubmission = false;
+            submittedAt = null;
         }
 
-        // Same three-question order as statusPill(): graded, then locked, then submitted.
-        let status;
-        if (grade) {
-            status = `Graded: ${grade.score}/${grade.max}`;
-        } else if (a.locked) {
-            status = hasSubmission ? 'Locked · Submitted' : 'Locked · Not submitted';
-        } else {
-            status = hasSubmission ? 'Submitted' : 'Not submitted';
-        }
+        const dueDate = a.dueDate || a.date || '';
+        const resolved = resolveAssignmentState({ grade, locked: !!a.locked, hasSubmission, submittedAt, dueDate });
 
         return {
             id: a.id,
             title: a.title || 'Untitled assignment',
             type: a.workType || a.type || 'Assignment',
             maxScore: a.pointsPossible ?? a.maxScore ?? 0,
-            date: a.dueDate || a.date || '',
+            date: dueDate,
+            dueDate,
             subjectName: a.subjectName,
             className: a.className,
             locked: !!a.locked,
             hasSubmission,
+            submittedAt,
             grade: grade ? { score: grade.score, max: grade.max } : null,
-            status,
+            status: resolved.status,
+            category: resolved.category,
+            late: resolved.late,
         };
     }));
 
     return { assignments: results };
 });
 // --- END: getParentAssignments ---
+
+// ── DUE DATE & LATE TRACKING STATE MACHINE (server-side mirror) ─────────
+// ARCHITECTURAL MANDATE: DUE DATE & LATE TRACKING ENGINE. This is the exact
+// same priority-ordered resolution as resolveDueDeadline()/statusPill() in
+// student/assignments/assignments.js — duplicated here (not imported —
+// Cloud Functions and the client bundle are separate deploy units in this
+// codebase) rather than left to the client to re-derive, so a parent and
+// their child can never see contradictory statuses for the same
+// assignment. Both implementations are covered by their own logic-harness
+// tests to keep them in lockstep.
+//   1. Graded overrides everything — "Graded: X/Y", with `late: true` when
+//      the submission that earned it came in after the due deadline.
+//   2. Locked (teacher-manual, independent of due date) — carries over the
+//      pre-mandate Locked · Submitted / Locked · Not submitted sub-label;
+//      a locked assignment is closed and can no longer accrue "Missing"
+//      urgency.
+//   3. Submitted — "Done" on time, "Done Late" otherwise.
+//   4. Not submitted — "Missing" once the due deadline has passed,
+//      "Assigned" otherwise (including when no due date was ever set).
+// `category` buckets independently of locked (a locked-but-never-submitted
+// assignment is still, honestly, not done) into 'graded' | 'done' | 'todo'
+// | 'missing' — 'missing' is split out from plain 'todo' so callers can
+// give it the amber/red "needs attention" treatment without re-deriving
+// overdue-ness themselves from raw dueDate/now.
+//
+// A due date with no time-of-day (every assignment saved before this
+// mandate, or one saved with the picker left at just a date) is treated as
+// due at the END of that calendar day, not compared as a raw string.
+// --- START: resolveAssignmentState ---
+function resolveDueDeadline(dateStr) {
+    if (!dateStr) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        return new Date(y, m - 1, d, 23, 59, 59, 999);
+    }
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? null : d;
+}
+
+function isLateSubmission(submittedAtIso, deadline) {
+    return !!(deadline && submittedAtIso && new Date(submittedAtIso) > deadline);
+}
+
+function resolveAssignmentState({ grade, locked, hasSubmission, submittedAt, dueDate }) {
+    const deadline = resolveDueDeadline(dueDate);
+
+    if (grade) {
+        const late = isLateSubmission(submittedAt, deadline);
+        return { status: `Graded: ${grade.score}/${grade.max}${late ? ' · Late' : ''}`, category: 'graded', late };
+    }
+    if (locked) {
+        return {
+            status: hasSubmission ? 'Locked · Submitted' : 'Locked · Not submitted',
+            category: hasSubmission ? 'done' : 'todo',
+            late: false,
+        };
+    }
+    if (hasSubmission) {
+        const late = isLateSubmission(submittedAt, deadline);
+        return { status: late ? 'Done Late' : 'Done', category: 'done', late };
+    }
+    const overdue = !!(deadline && new Date() > deadline);
+    return { status: overdue ? 'Missing' : 'Assigned', category: overdue ? 'missing' : 'todo', late: false };
+}
+// --- END: resolveAssignmentState ---
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FUNCTION 3c: mintParentToken

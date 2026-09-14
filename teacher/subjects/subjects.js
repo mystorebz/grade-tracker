@@ -646,7 +646,7 @@ window.renderAssignmentsTab = function() {
                 </div>
                 ${a.instructions ? `<p class="text-xs text-slate-500 font-semibold mt-0.5 truncate"><span class="text-slate-400 font-black">Instructions:</span> ${escHtml(a.instructions)}</p>` : ''}
                 ${a.description ? `<p class="text-xs text-slate-400 font-semibold mt-0.5 truncate">${escHtml(a.description)}</p>` : ''}
-                ${a.date ? `<p class="text-[11px] text-slate-400 font-bold mt-0.5"><i class="fa-regular fa-calendar mr-1"></i>Due ${escHtml(a.date)}</p>` : ''}
+                ${a.date ? `<p class="text-[11px] text-slate-400 font-bold mt-0.5"><i class="fa-regular fa-calendar mr-1"></i>Due ${escHtml(formatDueDate(a.date))}</p>` : ''}
             </div>
             <div class="flex items-center gap-1.5 flex-shrink-0">
                 <button onclick="openReviewSubmissions('${a.id}')" title="Review submissions and grade inline"
@@ -1519,6 +1519,62 @@ function awFindQuestion(id) {
     return awQuestions.find(q => q.id === id) || null;
 }
 
+// ── DUE DATE & TIME ENGINE ────────────────────────────────────────────────
+// awDueDate is now a <input type="datetime-local">, but the `date` field it
+// reads/writes is unchanged — every existing assignment, sort, and display
+// (normalizeAssignment/renderAssignmentCard/statusPill in the student and
+// parent portals) already keys off this one field, so extending its input
+// type in place is a non-breaking upgrade rather than a second, competing
+// date field nothing else would know to read.
+//
+// Storage stays an ISO 8601 string (via .toISOString()), NOT a raw
+// Firestore Timestamp object, to match every other timestamp already in
+// this schema (submittedAt/createdAt/updatedAt/lockedAt — all plain ISO
+// strings). A real Timestamp would (a) serialize as {_seconds,_nanoseconds}
+// through getParentAssignments' JSON response instead of a comparable
+// value, and (b) need its own .toDate() conversion everywhere it's
+// compared against those ISO submittedAt strings — two new special cases
+// for one field, for no behavioral benefit an ISO string doesn't already
+// give.
+//
+// A legacy date-only value ("YYYY-MM-DD", saved before this mandate) has no
+// time-of-day to show — dueDateToInputValue() below pre-fills midnight
+// rather than guessing an end-of-day time the teacher never actually set;
+// resolveDueDeadline() (student/assignments/assignments.js and
+// getParentAssignments in functions/index.js) is what treats a bare date as
+// "due end of that day" for comparison purposes, not this conversion.
+function dueDateToInputValue(stored) {
+    if (!stored) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(stored)) return stored + 'T00:00';
+    const d = new Date(stored);
+    if (isNaN(d.getTime())) return '';
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function dueDateInputToIso(inputValue) {
+    if (!inputValue) return '';
+    const d = new Date(inputValue);
+    return isNaN(d.getTime()) ? '' : d.toISOString();
+}
+
+// Display-only: a legacy date-only value ("YYYY-MM-DD") shows just the
+// date (unchanged from before this mandate); a value saved with a time
+// shows both, so a teacher can tell at a glance which of their assignments
+// have a real deadline moment vs. just a due day.
+function formatDueDate(stored) {
+    if (!stored) return '';
+    try {
+        const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(stored);
+        const d = isDateOnly
+            ? new Date(Number(stored.slice(0, 4)), Number(stored.slice(5, 7)) - 1, Number(stored.slice(8, 10)))
+            : new Date(stored);
+        return isDateOnly
+            ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+            : d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    } catch (e) { return stored; }
+}
+
 window.openAddWorkModal = function(assignmentId) {
     const sub = getSubjectByName(currentSubjectName);
     const overlay = document.getElementById('addWorkModalOverlay');
@@ -1545,7 +1601,7 @@ window.openAddWorkModal = function(assignmentId) {
 
     document.getElementById('awTitle').value = existing?.title || '';
     if (typeSel) typeSel.value = existing?.type || '';
-    document.getElementById('awDueDate').value = existing?.date || '';
+    document.getElementById('awDueDate').value = dueDateToInputValue(existing?.date);
     document.getElementById('awPoints').value = existing ? (existing.maxScore ?? '') : '';
     document.getElementById('awInstructions').value = existing?.instructions || '';
     document.getElementById('awDescription').value = existing?.description || '';
@@ -1993,7 +2049,7 @@ window.awSaveWork = async function() {
 
     const title        = document.getElementById('awTitle')?.value.trim() || '';
     const type          = document.getElementById('awType')?.value || '';
-    const date          = document.getElementById('awDueDate')?.value || '';
+    const date          = dueDateInputToIso(document.getElementById('awDueDate')?.value || '');
     const maxScore      = parseInt(document.getElementById('awPoints')?.value, 10);
     const instructions  = document.getElementById('awInstructions')?.value.trim() || '';
     const description   = document.getElementById('awDescription')?.value.trim() || '';

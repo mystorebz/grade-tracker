@@ -49,15 +49,71 @@ function normalizeAssignment(a) {
 function formatDate(iso) {
     if (!iso) return '';
     try {
-        // Date-only strings (YYYY-MM-DD, used for the due date) must be parsed
+        const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(iso);
+        // Date-only strings (YYYY-MM-DD — every due date saved before the
+        // due-date-&-time engine, or one left at just a date) must be parsed
         // as local calendar components — new Date('YYYY-MM-DD') parses as UTC
-        // midnight, which renders a day early in any timezone behind UTC.
-        const d = /^\d{4}-\d{2}-\d{2}$/.test(iso)
+        // midnight, which renders a day early in any timezone behind UTC. A
+        // full ISO datetime string (a due date saved with a time, or any
+        // submittedAt/updatedAt/createdAt timestamp) parses fine as-is and
+        // now also renders its time-of-day, not just the date.
+        const d = isDateOnly
             ? new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)))
             : new Date(iso);
-        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        return isDateOnly
+            ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+            : d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
     } catch (e) { return iso; }
 }
+
+// --- START: dueDateHelpers ---
+// ── DUE DATE & LATE TRACKING STATE MACHINE ───────────────────────────────
+// Google-Classroom-style status resolution, in this strict priority order
+// (matches the architectural mandate exactly):
+//   1. Graded overrides everything — shows the score, with a "· Late"
+//      suffix appended if the submission that earned the grade came in
+//      after the due deadline.
+//   2. Locked (teacher-manual, independent of due date) — the
+//      Submitted/Not-submitted sub-label is carried over unchanged from
+//      before this mandate: once locked, the assignment is closed and can
+//      no longer accrue "Missing" urgency, but it's still useful to know
+//      whether work was ever turned in before the door closed.
+//   3. Submitted — "Done" if turned in by the deadline, "Done Late"
+//      otherwise.
+//   4. Not submitted — "Missing" once the due deadline has passed,
+//      "Assigned" otherwise (including when no due date was ever set).
+//
+// A due date with no time-of-day (every assignment saved before this
+// mandate, or one saved with the picker left at just a date) is treated as
+// due at the END of that calendar day, not compared as a raw string —
+// "due June 20" means the student has all of June 20, not that it's
+// overdue at 12:00:01 AM. A due date saved WITH a time (the new
+// datetime-local picker in teacher/subjects/subjects.js) is an exact ISO
+// instant, used as-is.
+function resolveDueDeadline(dateStr) {
+    if (!dateStr) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        return new Date(y, m - 1, d, 23, 59, 59, 999);
+    }
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? null : d;
+}
+
+function isLateSubmission(submittedAtIso, deadline) {
+    return !!(deadline && submittedAtIso && new Date(submittedAtIso) > deadline);
+}
+
+// 'todo' vs 'done' bucketing is independent of `locked` — a locked
+// assignment that was never turned in is still, honestly, not done, even
+// though it can no longer be acted on. This matches how Locked · Not
+// submitted was already grouped with the plain not-submitted case before
+// this mandate (both amber, both in the same flat list).
+function statusCategory(assignment) {
+    if (gradesById.get(assignment.id)) return 'done';
+    return submissionsById.get(assignment.id) ? 'done' : 'todo';
+}
+// --- END: dueDateHelpers ---
 
 // ── 3. INITIALIZATION ───────────────────────────────────────────────────────
 async function init() {
@@ -130,7 +186,7 @@ async function init() {
         gradesById = gradeMap;
 
         els.assignmentsLoader.classList.add('hidden');
-        els.assignmentListCount.classList.remove('hidden');
+        els.assignmentSections.classList.remove('hidden');
         renderList();
     } catch (e) {
         console.error('[Student Assignments] init:', e);
@@ -139,7 +195,8 @@ async function init() {
 }
 
 function cacheEls() {
-    ['subjectFilter', 'assignmentsLoader', 'assignmentListCount', 'assignmentList',
+    ['subjectFilter', 'assignmentsLoader', 'assignmentsEmpty', 'assignmentSections',
+     'todoCount', 'todoList', 'doneCount', 'doneList',
      'adSubjectLabel', 'adTitle', 'adMetaRow', 'assignmentDetailBody'
     ].forEach(id => { els[id] = document.getElementById(id); });
 }
@@ -153,8 +210,9 @@ function wireEvents() {
 
 function showEmptyState(message) {
     els.assignmentsLoader.classList.add('hidden');
-    els.assignmentListCount.classList.add('hidden');
-    els.assignmentList.innerHTML = `<div class="text-center py-10 text-slate-400 text-[13px] font-bold bg-white rounded-xl border border-slate-200">${escHtml(message)}</div>`;
+    els.assignmentSections.classList.add('hidden');
+    els.assignmentsEmpty.textContent = message;
+    els.assignmentsEmpty.classList.remove('hidden');
 }
 
 // ── 4. SUBJECT FILTER ────────────────────────────────────────────────────
@@ -184,35 +242,53 @@ function getVisibleAssignments() {
     });
 }
 
+// --- START: statusPill ---
 function statusPill(assignment) {
     const grade = gradesById.get(assignment.id);
+    const submission = submissionsById.get(assignment.id);
+    const hasSubmission = !!submission;
+    const deadline = resolveDueDeadline(assignment.date);
+
     if (grade) {
-        return { label: `Graded: ${grade.score}/${grade.max}`, classes: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+        const late = isLateSubmission(submission?.submittedAt, deadline);
+        return { label: `Graded: ${grade.score}/${grade.max}${late ? ' · Late' : ''}`, classes: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
     }
-    const hasSubmission = !!submissionsById.get(assignment.id);
     if (assignment.locked) {
         return hasSubmission
             ? { label: 'Locked · Submitted', classes: 'bg-amber-50 text-amber-700 border-amber-200' }
             : { label: 'Locked · Not submitted', classes: 'bg-amber-50 text-amber-700 border-amber-200' };
     }
-    return hasSubmission
-        ? { label: 'Submitted', classes: 'bg-indigo-50 text-indigo-700 border-indigo-200' }
-        : { label: 'Not submitted', classes: 'bg-slate-100 text-slate-500 border-slate-200' };
+    if (hasSubmission) {
+        const late = isLateSubmission(submission?.submittedAt, deadline);
+        return late
+            ? { label: 'Done Late', classes: 'bg-amber-50 text-amber-700 border-amber-200' }
+            : { label: 'Done', classes: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
+    }
+    const overdue = !!(deadline && new Date() > deadline);
+    return overdue
+        ? { label: 'Missing', classes: 'bg-red-50 text-red-700 border-red-200' }
+        : { label: 'Assigned', classes: 'bg-slate-100 text-slate-500 border-slate-200' };
+}
+// --- END: statusPill ---
+
+function renderSectionEmpty(container, message) {
+    container.innerHTML = `<div class="text-center py-10 text-slate-400 text-[13px] font-bold bg-white rounded-xl border border-slate-200">${escHtml(message)}</div>`;
 }
 
 function renderList() {
-    if (!els.assignmentListCount) return;
+    if (!els.assignmentSections) return;
     const list = getVisibleAssignments();
-    els.assignmentListCount.textContent = `${list.length} assignment${list.length === 1 ? '' : 's'}`;
+    const todo = list.filter(a => statusCategory(a) === 'todo');
+    const done = list.filter(a => statusCategory(a) === 'done');
 
-    if (!list.length) {
-        els.assignmentList.innerHTML = `<div class="text-center py-10 text-slate-400 text-[13px] font-bold bg-white rounded-xl border border-slate-200">
-            No assignments${currentSubjectFilter ? ' for this subject' : ''}.
-        </div>`;
-        return;
-    }
+    els.todoCount.textContent = `${todo.length} to do`;
+    els.doneCount.textContent = `${done.length} done`;
 
-    els.assignmentList.innerHTML = list.map(renderAssignmentCard).join('');
+    if (todo.length) els.todoList.innerHTML = todo.map(renderAssignmentCard).join('');
+    else renderSectionEmpty(els.todoList, `Nothing to do${currentSubjectFilter ? ' for this subject' : ''} — you're all caught up.`);
+
+    if (done.length) els.doneList.innerHTML = done.map(renderAssignmentCard).join('');
+    else renderSectionEmpty(els.doneList, `Nothing done yet${currentSubjectFilter ? ' for this subject' : ''}.`);
 }
 
 function renderAssignmentCard(a) {
@@ -245,12 +321,17 @@ window.openAssignmentDetail = function(assignmentId) {
     els.adSubjectLabel.textContent = a.subjectName || '';
     els.adTitle.textContent = a.title || 'Assignment';
 
+    const pill = statusPill(a);
     const metaChips = [
         `<span class="text-[10px] font-black uppercase bg-indigo-50 text-indigo-600 border border-indigo-200 px-2 py-0.5 rounded-md">${escHtml(a.type)}</span>`,
         `<span class="text-[10px] font-black text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">/ ${a.maxScore} pts</span>`
     ];
     if (a.date) metaChips.push(`<span class="text-[10.5px] text-slate-400 font-semibold"><i class="fa-regular fa-calendar mr-1"></i>Due ${escHtml(formatDate(a.date))}</span>`);
-    if (a.locked) metaChips.push(`<span class="text-[10px] font-black uppercase bg-amber-50 text-amber-600 border border-amber-200 px-2 py-0.5 rounded-md flex items-center gap-1"><i class="fa-solid fa-lock text-[9px]"></i>Locked</span>`);
+    // Replaces the old locked-only chip — statusPill() already folds locked
+    // into its label (Locked · Submitted / Locked · Not submitted) when
+    // relevant, so this one badge now also surfaces Missing/Assigned/Done/
+    // Done Late here, matching the list view instead of duplicating it.
+    metaChips.push(`<span class="text-[10px] font-black uppercase border px-2 py-0.5 rounded-md ${pill.classes}">${escHtml(pill.label)}</span>`);
     els.adMetaRow.innerHTML = metaChips.join('');
 
     els.assignmentDetailBody.innerHTML = renderDetailBody(a);

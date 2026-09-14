@@ -79,6 +79,26 @@ function escHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
+// DUE DATE & TIME ENGINE (mandate): an assignment's `date` field can now
+// hold either a legacy date-only string ("YYYY-MM-DD") or a full ISO
+// datetime string (set via the new datetime-local picker in
+// teacher/subjects/subjects.js's Add Work modal). Displaying either raw
+// with escHtml() alone would show a bare ISO timestamp for the new case —
+// this formats both consistently, matching the same helper added to
+// subjects.js and student/assignments/assignments.js.
+function formatDueDate(stored) {
+    if (!stored) return '';
+    try {
+        const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(stored);
+        const d = isDateOnly
+            ? new Date(Number(stored.slice(0, 4)), Number(stored.slice(5, 7)) - 1, Number(stored.slice(8, 10)))
+            : new Date(stored);
+        return isDateOnly
+            ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+            : d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    } catch (e) { return stored; }
+}
+
 function getActiveSubjects() {
     return subjectsCache.filter(s => !s.archived);
 }
@@ -337,7 +357,7 @@ function renderAssignmentPicker() {
                 </div>
                 <div class="flex items-center gap-2 flex-wrap">
                     <span class="text-[10px] font-bold uppercase tracking-widest text-[#0ea871] bg-[#edfaf4] border border-[#c6f0db] px-2 py-0.5 rounded-sm">${escHtml(a.type)}</span>
-                    ${a.date ? `<span class="text-[10px] text-[#9ab0c6] font-semibold"><i class="fa-regular fa-calendar mr-1"></i>Due ${escHtml(a.date)}</span>` : ''}
+                    ${a.date ? `<span class="text-[10px] text-[#9ab0c6] font-semibold"><i class="fa-regular fa-calendar mr-1"></i>Due ${escHtml(formatDueDate(a.date))}</span>` : ''}
                     ${a.locked ? `<span class="text-[10px] font-bold uppercase tracking-widest text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-sm flex items-center gap-1"><i class="fa-solid fa-lock text-[9px]"></i>Locked</span>` : ''}
                     ${needsGrading ? `<span class="text-[10px] font-bold uppercase tracking-widest text-[#2563eb] bg-[#eef4ff] border border-[#c7d9fd] px-2 py-0.5 rounded-sm flex items-center gap-1"><i class="fa-solid fa-clipboard-question text-[9px]"></i>Needs Grading</span>` : ''}
                 </div>

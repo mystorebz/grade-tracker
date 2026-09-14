@@ -68,8 +68,24 @@
                     <p>Loading your assignments…</p>
                 </div>
 
-                <div id="assignmentListCount" class="hidden text-[11px] font-black text-slate-400 uppercase tracking-widest px-1"></div>
-                <div id="assignmentList" class="space-y-3 pb-8"></div>
+                <div id="assignmentsEmpty" class="hidden text-center py-10 text-slate-400 text-[13px] font-bold bg-white rounded-xl border border-slate-200"></div>
+
+                <div id="assignmentSections" class="hidden space-y-8 pb-8">
+                    <section>
+                        <div class="flex items-center gap-2 mb-3 px-1">
+                            <p class="text-[11px] font-black text-slate-500 uppercase tracking-widest m-0">To Do</p>
+                            <span id="todoCount" class="text-[10.5px] font-black bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">0 to do</span>
+                        </div>
+                        <div id="todoList" class="space-y-3"></div>
+                    </section>
+                    <section>
+                        <div class="flex items-center gap-2 mb-3 px-1">
+                            <p class="text-[11px] font-black text-slate-500 uppercase tracking-widest m-0">Done</p>
+                            <span id="doneCount" class="text-[10.5px] font-black bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">0 done</span>
+                        </div>
+                        <div id="doneList" class="space-y-3"></div>
+                    </section>
+                </div>
 
             </div>
         </div>
