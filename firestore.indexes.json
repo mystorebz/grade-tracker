@@ -122,6 +122,14 @@
         { "fieldPath": "schoolId", "order": "ASCENDING" },
         { "fieldPath": "semesterId", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "grades",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "assignmentId", "order": "ASCENDING" },
+        { "fieldPath": "schoolId", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
