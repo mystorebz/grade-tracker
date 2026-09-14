@@ -1,5 +1,6 @@
-import { db } from '../../assets/js/firebase-init.js';
-import { collection, query, where, getDocs, getDoc, doc, updateDoc, setDoc, deleteDoc, collectionGroup } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { db, storage } from '../../assets/js/firebase-init.js';
+import { collection, query, where, getDocs, getDoc, doc, updateDoc, setDoc, deleteDoc, collectionGroup, writeBatch, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { openOverlay, closeOverlay, showMsg, gradeColorClass, letterGrade, standingBadge, gradeFill, calculateWeightedAverage, loadTeacherSubjectsCache, getTeacherDocRef, resolveGradeWeights, saveGrade } from '../../assets/js/utils.js';
@@ -22,12 +23,6 @@ let isSemesterLocked = false;
 let currentSubjectName = null;
 let gradeDetailCache = {};
 let currentPanelTab = 'performance'; // NEW: tracks active tab inside the subject panel
-
-// PHASE 1 MILESTONE 3: null = composer is in "add new" mode; an assignment id
-// = composer is editing that existing assignment. Reset whenever the panel
-// tab changes or the subject panel closes, so switching away always lands
-// back on a clean "add new" composer.
-let editingAssignmentId = null;
 
 // PHASE 1 MILESTONE 5: state for the Review Submissions slide-in panel.
 // reviewAssignment carries the resolved {classId, subjectId, className,
@@ -312,7 +307,6 @@ async function loadSubjectsTab() {
 window.openSubjectPanel = async function(subjectName) {
     currentSubjectName = subjectName;
     currentPanelTab = 'performance'; // always reset to Performance on open
-    editingAssignmentId = null; // always reopen the assignments composer in "add new" mode
     document.getElementById('spPanelTitle').textContent = subjectName;
     document.getElementById('subjectPanelBody').innerHTML = '<div class="flex justify-center py-16"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-teal-500"></i></div>';
 
@@ -603,22 +597,6 @@ window.renderAssignmentsTab = function() {
     const semName = document.getElementById('activeSemester').options[document.getElementById('activeSemester').selectedIndex]?.text || '';
     document.getElementById('spPanelMeta').textContent = `${semName} · ${assignments.length} prepared task${assignments.length !== 1 ? 's' : ''}`;
 
-    // PHASE 1 MILESTONE 3: the same composer doubles as the edit form — when
-    // editingAssignmentId is set, fields are pre-filled from that assignment
-    // and the Save button commits an update instead of creating a new one.
-    // Computed before typeOptions below so the Type <select> can mark the
-    // right <option> selected (a plain value="" attribute has no effect on
-    // <select> — only a matching <option selected> does).
-    const isEditingAssignment = !!editingAssignmentId;
-    const editingAssignment = isEditingAssignment ? assignments.find(a => a.id === editingAssignmentId) : null;
-    if (isEditingAssignment && !editingAssignment) editingAssignmentId = null; // vanished (e.g. deleted elsewhere) — fall back to add mode
-
-    const typeOptions = getGradeTypes().map(t => {
-        const v = t.name || t;
-        const isSelected = editingAssignment && editingAssignment.type === v;
-        return `<option value="${escHtml(v)}" ${isSelected ? 'selected' : ''}>${escHtml(v)}</option>`;
-    }).join('');
-
     const lockedNotice = isSemesterLocked
         ? `<div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3 mb-5">
                <i class="fa-solid fa-lock text-amber-500 text-lg"></i>
@@ -626,74 +604,22 @@ window.renderAssignmentsTab = function() {
            </div>`
         : '';
 
+    // LIFT & SHIFT REFACTOR: the inline "Prepare a new assignment" composer
+    // that used to render here (title/type/points/date/instructions/
+    // description/locked fields + its own saveAssignment()) has been
+    // retired entirely — replaced by the single "+ Create Assignment /
+    // Assessment" button below, which opens the Universal Builder modal
+    // (openAddWorkModal() in the ADD WORK / UNIVERSAL ASSIGNMENT BUILDER
+    // section further down this file). That modal is now the only way to
+    // create OR edit an assignment here; editAssignment() (see the Review/
+    // actions section) opens it pre-filled instead of switching this tab
+    // into an inline edit mode.
     const formCard = `
-        <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm mb-5">
-            <div class="flex items-center justify-between mb-4">
-                <h4 class="text-xs font-black text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                    <i class="fa-solid ${editingAssignment ? 'fa-pen' : 'fa-circle-plus'} text-teal-500"></i>
-                    ${editingAssignment ? 'Edit assignment' : 'Prepare a new assignment'}
-                </h4>
-                ${editingAssignment ? `<button type="button" onclick="cancelEditAssignment()" class="text-[11px] font-black text-slate-400 hover:text-slate-600 flex items-center gap-1"><i class="fa-solid fa-xmark"></i> Cancel</button>` : ''}
-            </div>
-
-            <!-- Title -->
-            <div class="mb-3">
-                <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Title <span class="text-red-500">*</span></label>
-                <input type="text" id="asgTitle" placeholder="e.g. Chapter 5 Quiz" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm" value="${escHtml(editingAssignment?.title || '')}">
-            </div>
-
-            <!-- Type / Points / Due Date row -->
-            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
-                <div>
-                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Type <span class="text-red-500">*</span></label>
-                    <select id="asgType" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm cursor-pointer">
-                        <option value="">Select type…</option>
-                        ${typeOptions}
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Points possible <span class="text-red-500">*</span></label>
-                    <input type="number" id="asgMax" min="1" step="1" placeholder="e.g. 50" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm" value="${editingAssignment?.maxScore ?? ''}">
-                </div>
-                <div class="col-span-2 sm:col-span-1">
-                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Due Date <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
-                    <input type="date" id="asgDate" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm cursor-pointer" value="${escHtml(editingAssignment?.date || '')}">
-                </div>
-            </div>
-
-            <!-- Instructions (student-facing) -->
-            <div class="mb-3">
-                <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Instructions <span class="normal-case font-semibold text-slate-400">(optional — visible to students)</span></label>
-                <textarea id="asgInstructions" placeholder="What students should do, submit, or study for this assignment."
-                    class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm resize-none leading-relaxed"
-                    style="height: 5rem;">${escHtml(editingAssignment?.instructions || '')}</textarea>
-            </div>
-
-            <!-- Description (big, expandable — private teacher notes, never shown to students) -->
-            <div class="mb-4">
-                <div class="flex items-center justify-between mb-1.5">
-                    <label class="block text-[11px] font-black text-slate-500 uppercase tracking-wider">Description <span class="normal-case font-semibold text-slate-400">(optional — private notes, not shown to students)</span></label>
-                    <button type="button" id="asgDescExpandBtn" onclick="toggleDescExpand()" title="Expand description"
-                        class="flex items-center gap-1 text-[11px] font-black text-teal-600 hover:text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-2 py-1 rounded-lg transition">
-                        <i id="asgDescExpandIcon" class="fa-solid fa-down-left-and-up-right-to-center fa-rotate-90 text-[10px]"></i>
-                        <span id="asgDescExpandLabel">Expand</span>
-                    </button>
-                </div>
-                <textarea id="asgDesc" placeholder="Notes, instructions, topics covered, or a link to a Google Form — anything you want on record for this assignment."
-                    class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm resize-none transition-all duration-200 leading-relaxed"
-                    style="height: 7rem;">${escHtml(editingAssignment?.description || '')}</textarea>
-            </div>
-
-            <!-- Locked -->
-            <label class="flex items-center gap-2.5 mb-4 cursor-pointer select-none">
-                <input type="checkbox" id="asgLocked" class="w-4 h-4 rounded accent-teal-600 cursor-pointer" ${editingAssignment?.locked ? 'checked' : ''}>
-                <span class="text-[12.5px] font-bold text-slate-600">Locked <span class="font-normal text-slate-400">— marks this assignment as finalized. Informational only; does not restrict editing or grading.</span></span>
-            </label>
-
-            <button onclick="saveAssignment()" id="asgSaveBtn" class="w-full bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white font-black py-3 rounded-xl transition shadow-md text-sm flex items-center justify-center gap-2">
-                <i class="fa-solid ${editingAssignment ? 'fa-check' : 'fa-plus'}"></i> ${editingAssignment ? 'Save changes' : `Add to ${escHtml(currentSubjectName)}`}
+        <div class="mb-5">
+            <button type="button" onclick="openAddWorkModal()"
+                class="w-full bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white font-black py-3.5 rounded-2xl transition shadow-md text-sm flex items-center justify-center gap-2">
+                <i class="fa-solid fa-circle-plus"></i> Create Assignment / Assessment
             </button>
-            <p id="asgMsg" class="text-sm hidden font-bold p-2.5 mt-2 rounded-xl text-center"></p>
         </div>`;
 
     // Split into active (still grading) and graded (marked complete)
@@ -787,156 +713,13 @@ window.renderAssignmentsTab = function() {
     document.getElementById('subjectPanelBody').innerHTML = lockedNotice + formCard + listCard;
 };
 
-// NEW: inline expand/collapse for the description textarea (grows in place, no popup)
-window.toggleDescExpand = function() {
-    const ta = document.getElementById('asgDesc');
-    const icon = document.getElementById('asgDescExpandIcon');
-    const label = document.getElementById('asgDescExpandLabel');
-    if (!ta) return;
-    const expanded = ta.dataset.expanded === 'true';
-    if (expanded) {
-        ta.style.height = '7rem';
-        ta.dataset.expanded = 'false';
-        if (icon) icon.className = 'fa-solid fa-down-left-and-up-right-to-center fa-rotate-90 text-[10px]';
-        if (label) label.textContent = 'Expand';
-    } else {
-        ta.style.height = '20rem';
-        ta.dataset.expanded = 'true';
-        if (icon) icon.className = 'fa-solid fa-up-right-and-down-left-from-center fa-rotate-90 text-[10px]';
-        if (label) label.textContent = 'Collapse';
-        ta.focus();
-    }
-};
-
-// PHASE 1 MILESTONE 3: entry point for the composer's Save button in both
-// modes. editingAssignmentId === null means "create"; otherwise this updates
-// that existing assignment in place, preserving its id/createdAt/completed.
-window.saveAssignment = async function() {
-    const title = document.getElementById('asgTitle').value.trim();
-    const type = document.getElementById('asgType').value;
-    const maxRaw = document.getElementById('asgMax').value;
-    const date = document.getElementById('asgDate').value || '';
-    const instructions = document.getElementById('asgInstructions').value.trim();
-    const desc = document.getElementById('asgDesc').value.trim();
-    const locked = document.getElementById('asgLocked').checked;
-    const max = parseInt(maxRaw, 10);
-
-    if (!title) { showMsg('asgMsg', 'Title is required.', true); return; }
-    if (!type) { showMsg('asgMsg', 'Please choose a type.', true); return; }
-    if (isNaN(max) || max < 1) { showMsg('asgMsg', 'Max score must be a whole number of at least 1.', true); return; }
-
-    const sub = getSubjectByName(currentSubjectName);
-    if (!sub) { showMsg('asgMsg', 'Subject not found. Please refresh.', true); return; }
-
-    const btn = document.getElementById('asgSaveBtn');
-    const prevHtml = btn.innerHTML;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
-    btn.disabled = true;
-
-    const editingId = editingAssignmentId;
-
-    try {
-        const existing = getAssignmentsForSubject(currentSubjectName);
-        // Prevent duplicate titles within the same subject (case-insensitive),
-        // excluding the assignment currently being edited against itself.
-        if (existing.some(a => a.id !== editingId && (a.title || '').toLowerCase() === title.toLowerCase())) {
-            throw new Error('DUPLICATE');
-        }
-
-        const now = new Date().toISOString();
-        let savedAssignment;
-
-        if (editingId) {
-            const current = existing.find(a => a.id === editingId);
-            if (!current) throw new Error('NOT_FOUND');
-            const wasLocked = !!current.locked;
-            const patch = {
-                title, type,
-                maxScore: max,
-                description: desc,
-                instructions,
-                date,
-                locked,
-                lockedAt: locked ? (wasLocked ? (current.lockedAt || now) : now) : null,
-                updatedAt: now
-            };
-            savedAssignment = { ...current, ...patch };
-
-            if (sub._source === 'new') {
-                await updateDoc(doc(db, 'schools', session.schoolId, 'classes', sub.classId, 'subjects', sub.id, 'assignments', editingId), patch);
-                sub.assignments = (sub.assignments || []).map(a => a.id === editingId ? savedAssignment : a);
-            } else {
-                const subjects = (session.teacherData.subjects || []).map(s => {
-                    if (s.id !== sub.id) return s;
-                    return { ...s, assignments: existing.map(a => a.id === editingId ? savedAssignment : a) };
-                });
-                await updateDoc(getTeacherDocRef(session.schoolId, session.teacherId), { subjects });
-                session.teacherData.subjects = subjects;
-                setSessionData('teacher', session);
-                sub.assignments = subjects.find(s => s.id === sub.id)?.assignments || [];
-            }
-        } else {
-            savedAssignment = {
-                id: genAssignmentId(),
-                title, type,
-                maxScore: max,
-                description: desc,
-                instructions,
-                date,
-                locked,
-                lockedAt: locked ? now : null,
-                completed: false,
-                createdAt: now,
-                updatedAt: now
-            };
-
-            if (sub._source === 'new') {
-                // PHASE 0: assignments are their own documents under the subject
-                await setDoc(doc(db, 'schools', session.schoolId, 'classes', sub.classId, 'subjects', sub.id, 'assignments', savedAssignment.id), savedAssignment);
-                sub.assignments = [...(sub.assignments || []), savedAssignment];
-            } else {
-                // Legacy path, unchanged: rewrite the whole embedded subjects array
-                const subjects = (session.teacherData.subjects || []).map(s => {
-                    if (s.id !== sub.id) return s;
-                    return { ...s, assignments: [...existing, savedAssignment] };
-                });
-                await updateDoc(getTeacherDocRef(session.schoolId, session.teacherId), { subjects });
-                session.teacherData.subjects = subjects;
-                setSessionData('teacher', session);
-                sub.assignments = [...existing, savedAssignment];
-            }
-        }
-
-        editingAssignmentId = null;
-        updateAssignmentTabBadge();
-        renderAssignmentsTab(); // re-render with the cleared form + new/updated row
-    } catch (e) {
-        if (e.message === 'DUPLICATE') {
-            showMsg('asgMsg', 'An assignment with that title already exists for this subject.', true);
-        } else if (e.message === 'NOT_FOUND') {
-            showMsg('asgMsg', 'This assignment no longer exists. Please refresh.', true);
-        } else {
-            console.error('[Subjects] saveAssignment:', e);
-            showMsg('asgMsg', 'Could not save. Please try again.', true);
-        }
-        btn.innerHTML = prevHtml;
-        btn.disabled = false;
-    }
-};
-
-// PHASE 1 MILESTONE 3: switches the composer into edit mode for one
-// assignment. The composer itself (in renderAssignmentsTab) reads
-// editingAssignmentId to pre-fill its fields — this just sets that state,
-// re-renders, and scrolls the composer into view.
+// LIFT & SHIFT REFACTOR: editAssignment() used to switch this tab's own
+// inline composer into edit mode. It now opens the Universal Builder modal
+// pre-filled instead — see openAddWorkModal(assignmentId) in the ADD WORK /
+// UNIVERSAL ASSIGNMENT BUILDER section below, which is the single place
+// creation AND editing both happen now.
 window.editAssignment = function(assignmentId) {
-    editingAssignmentId = assignmentId;
-    renderAssignmentsTab();
-    document.getElementById('asgTitle')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-};
-
-window.cancelEditAssignment = function() {
-    editingAssignmentId = null;
-    renderAssignmentsTab();
+    openAddWorkModal(assignmentId);
 };
 
 window.toggleAssignmentComplete = async function(assignmentId) {
@@ -1508,6 +1291,696 @@ window.printSubjectReport = function() {
     w.document.write(html);
     w.document.close();
     setTimeout(() => w.print(), 600);
+};
+
+// ═════════════  8. ADD WORK / UNIVERSAL ASSIGNMENT BUILDER  ═════════════
+// LIFT & SHIFT REFACTOR: this engine used to live in teacher/grade_form/
+// grade_form.js as the "Add Work" modal (Phases 3-4 built its Firestore
+// persistence and legacy auto-grade shadow doc on top of it there, and it
+// was create-only — nothing ever opened it in edit mode). It has moved here
+// verbatim in its persistence logic, and generalized per the "one-size-
+// fits-all" mandate: there is no more Assessment vs. Standard split — every
+// work type gets Instructions + Description + Locked + Teacher Media
+// Attachments, plus an always-available, optional (0-N question) builder.
+// It now also REPLACES this file's own separate, older "Prepare a new
+// assignment" inline composer (formerly saveAssignment()/
+// renderAssignmentsTab()'s formCard), which wrote a simpler document shape
+// (no category/questions/answer key) — this is now the ONLY way to create
+// or edit an assignment in the Subjects hub, for both the plain and
+// question-based cases, via openAddWorkModal() / openAddWorkModal(id).
+//
+// SCHEMA DECISION — read before touching field names: the assignment
+// document shape written here is the PRE-EXISTING one every other reader in
+// this file already depends on unnormalized — title/type/maxScore/date/
+// instructions/description/locked/lockedAt/completed/createdAt/updatedAt —
+// NOT the original Add Work engine's workType/pointsPossible/dueDate/status
+// names (those never reached production data; the modal was never wired
+// into a page teachers actually used before this refactor). Only
+// `category`, `questions` (which functions/index.js's autoGradeWorkSubmission
+// reads) and `attachments` carry over from the original Add Work payload.
+// grade_form.js's own normalizer (`type: a.workType || a.type`, `maxScore:
+// a.pointsPossible ?? a.maxScore`) still falls back correctly for any
+// assignment that predates this change, so nothing existing breaks either
+// way — this is simply the schema going forward.
+//
+// `category` is no longer derived from the work TYPE label (Test/Quiz vs.
+// Assignment/Homework) — every type may now carry 0-N questions — so it's
+// derived from whether the teacher actually added any: 'assessment' when at
+// least one exists, 'standard' otherwise. That's exactly the condition
+// autoGradeWorkSubmission and isAssessmentAssignment() (grade_form.js) both
+// gate on, so auto-grading keeps working for a "Homework" with a multiple-
+// choice question exactly as it would for a "Quiz" with one. There is no
+// longer a separate "draft vs. posted" status — the old composer never had
+// one either, and inventing a third hybrid state here would work against
+// "without requiring a database migration script."
+//
+// Uploads (Phase 2.2) target schools/{schoolId}/attachments/{classId}/
+// {subjectId}/{assignmentId}/{fileName} in Firebase Storage — a NEW rule
+// added to storage.rules for this refactor (teacher/admin write, same-
+// school read, 25MB cap). assignmentId is generated up front, when the
+// modal opens (openAddWorkModal), rather than at Save time, specifically so
+// an upload made mid-composition has a real, final path to land at —
+// mirroring how uploadSubmissionAttachment (submissions.js) already uploads
+// immediately on selection rather than deferring to final submit.
+let awQuestions = [];
+let awQuestionSeq = 0;
+let awTaskAttachments = [];       // task-level "Teacher Media Attachments" — was awStandardAttachments in the original engine
+let awEditingAssignmentId = null; // null = create mode; an id = editing that existing assignment
+let awCurrentAssignmentId = null; // stable id for both create (generated on open) and edit (existing id)
+let awFileUploadTarget = null;    // { scope: 'task'|'question', questionId } — which block #awFileInput is uploading into
+
+const AW_QUESTION_TYPES = [
+    { value: 'multiple_choice',    label: 'Multiple Choice' },
+    { value: 'free_response',      label: 'Free Response' },
+    { value: 'short_answer',       label: 'Short Answer' },
+    { value: 'math',               label: 'Math / Equation' },
+    { value: 'attachment_response', label: 'Attachment / Draw / Photo Response' }
+];
+const AW_MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024; // mirrors storage.rules' cap on this path
+
+function awMakeQuestion(type = 'multiple_choice') {
+    const base = { id: `q_${++awQuestionSeq}`, type, prompt: '', points: 1, attachments: [] };
+    // correctOptionIndex is the answer-key source for multiple_choice — it
+    // never leaves this in-memory state as part of the clean question
+    // object; awSaveWork lifts it out into the separate work_answer_keys
+    // write. null until the teacher marks one (validated before save).
+    if (type === 'multiple_choice') { base.options = ['', '']; base.correctOptionIndex = null; }
+    if (type === 'free_response' || type === 'short_answer' || type === 'math') base.hint = '';
+    if (type === 'attachment_response') base.responseType = 'File Upload';
+    return base;
+}
+
+function awResetQuestionTypeFields(q, newType) {
+    delete q.options; delete q.hint; delete q.responseType; delete q.correctOptionIndex;
+    if (newType === 'multiple_choice') { q.options = ['', '']; q.correctOptionIndex = null; }
+    if (newType === 'free_response' || newType === 'short_answer' || newType === 'math') q.hint = '';
+    if (newType === 'attachment_response') q.responseType = 'File Upload';
+    q.type = newType;
+}
+
+function awFindQuestion(id) {
+    return awQuestions.find(q => q.id === id) || null;
+}
+
+window.openAddWorkModal = function(assignmentId) {
+    const sub = getSubjectByName(currentSubjectName);
+    const overlay = document.getElementById('addWorkModalOverlay');
+    if (!sub || !overlay) return;
+
+    const typeSel = document.getElementById('awType');
+    const typeOptions = getGradeTypes().map(t => {
+        const v = t.name || t;
+        return `<option value="${escHtml(v)}">${escHtml(v)}</option>`;
+    }).join('');
+    if (typeSel) typeSel.innerHTML = '<option value="">Select type…</option>' + typeOptions;
+
+    const existing = assignmentId ? getAssignmentsForSubject(currentSubjectName).find(a => a.id === assignmentId) : null;
+    awEditingAssignmentId = existing ? existing.id : null;
+    awCurrentAssignmentId = existing ? existing.id : genAssignmentId();
+
+    document.getElementById('awModalTitle').textContent = existing ? 'Edit Assignment' : 'Add Work';
+    document.getElementById('awModalSubtitle').textContent = existing
+        ? `Editing "${existing.title}" in ${currentSubjectName}`
+        : `Create a new assignment or assessment for ${currentSubjectName}`;
+    document.getElementById('awSaveBtn').innerHTML = existing
+        ? '<i class="fa-solid fa-check"></i> Save changes'
+        : `<i class="fa-solid fa-plus"></i> Add to ${escHtml(currentSubjectName)}`;
+
+    document.getElementById('awTitle').value = existing?.title || '';
+    if (typeSel) typeSel.value = existing?.type || '';
+    document.getElementById('awDueDate').value = existing?.date || '';
+    document.getElementById('awPoints').value = existing ? (existing.maxScore ?? '') : '';
+    document.getElementById('awInstructions').value = existing?.instructions || '';
+    document.getElementById('awDescription').value = existing?.description || '';
+    document.getElementById('awLocked').checked = !!(existing?.locked);
+
+    awQuestionSeq = 0;
+    // Existing multiple_choice answers can never be recovered here — the
+    // answer key lives in work_answer_keys, which is permanently read-denied
+    // to every client (firestore.rules) by design. Prompts/points/options/
+    // attachments carry over; correctOptionIndex always comes back null, and
+    // awValidate already requires re-marking it before save — awRemarkNotice
+    // below just makes that visible up front instead of a surprise at Save.
+    awQuestions = (existing?.questions || []).map(q => {
+        const copy = { ...q, attachments: Array.isArray(q.attachments) ? [...q.attachments] : [] };
+        const seqNum = parseInt(String(q.id).replace(/\D/g, ''), 10);
+        if (!isNaN(seqNum)) awQuestionSeq = Math.max(awQuestionSeq, seqNum);
+        if (copy.type === 'multiple_choice') copy.correctOptionIndex = null;
+        return copy;
+    });
+    awTaskAttachments = Array.isArray(existing?.attachments) ? [...existing.attachments] : [];
+
+    const remarkNotice = document.getElementById('awRemarkNotice');
+    if (remarkNotice) remarkNotice.classList.toggle('hidden', !awQuestions.some(q => q.type === 'multiple_choice'));
+
+    awClearBanners();
+    awRenderTaskAttachments();
+    awRenderBuilder();
+    overlay.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+};
+
+window.closeAddWorkModal = function() {
+    const overlay = document.getElementById('addWorkModalOverlay');
+    if (!overlay) return;
+    overlay.classList.add('hidden');
+    document.body.style.overflow = '';
+};
+
+// ── Task-level "Teacher Media Attachments" — its own small mount point so
+// typing in Instructions/Description (plain static fields, read directly at
+// save time like Title/Type/etc.) never gets touched by an attachment re-render.
+function awRenderTaskAttachments() {
+    const el = document.getElementById('awTaskAttachmentsContainer');
+    if (el) el.innerHTML = awRenderAttachmentBlock(awTaskAttachments, null, 'task');
+}
+
+// ── Questions builder: always rendered, 0-N question cards + Add Question ──
+function awRenderBuilder() {
+    const container = document.getElementById('addWorkBuilderContainer');
+    if (!container) return;
+    const cards = awQuestions.map((q, i) => awRenderQuestionCard(q, i)).join('');
+    const empty = awQuestions.length === 0
+        ? `<p class="text-[11px] text-slate-400 italic text-center py-3">No questions yet — this will be an instructions-only assignment unless you add one below.</p>` : '';
+    container.innerHTML = `
+        ${cards}
+        ${empty}
+        <button type="button" data-aw-action="add-question"
+            class="w-full border-2 border-dashed border-slate-200 hover:border-teal-400 text-slate-400 hover:text-teal-600 rounded-xl py-3 text-[11px] font-black uppercase tracking-widest transition">
+            <i class="fa-solid fa-plus mr-1.5"></i>Add Question
+        </button>`;
+}
+
+function awRenderQuestionCard(q, index) {
+    const typeOptions = AW_QUESTION_TYPES.map(t =>
+        `<option value="${t.value}" ${t.value === q.type ? 'selected' : ''}>${t.label}</option>`).join('');
+
+    return `
+    <div class="bg-white border border-slate-200 rounded-xl p-4 mb-3" data-question-id="${q.id}">
+        <div class="flex items-start justify-between gap-3 mb-3">
+            <div class="flex items-center gap-2 min-w-0">
+                <span class="w-6 h-6 flex-shrink-0 bg-teal-50 text-teal-600 border border-teal-200 rounded-lg flex items-center justify-center text-[10px] font-black">${index + 1}</span>
+                <select data-question-id="${q.id}" data-field="type" data-aw-change="question-type"
+                    class="form-select text-[11px] font-black text-slate-700 border border-slate-200 rounded-lg py-1 pl-2 pr-6 outline-none focus:border-teal-400 appearance-none">
+                    ${typeOptions}
+                </select>
+            </div>
+            <div class="flex items-center gap-1 flex-shrink-0">
+                <button type="button" data-question-id="${q.id}" data-aw-action="move-up" ${index === 0 ? 'disabled' : ''}
+                    class="w-7 h-7 flex items-center justify-center text-slate-300 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition" title="Move up">
+                    <i class="fa-solid fa-arrow-up text-[11px]"></i>
+                </button>
+                <button type="button" data-question-id="${q.id}" data-aw-action="move-down" ${index === awQuestions.length - 1 ? 'disabled' : ''}
+                    class="w-7 h-7 flex items-center justify-center text-slate-300 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition" title="Move down">
+                    <i class="fa-solid fa-arrow-down text-[11px]"></i>
+                </button>
+                <button type="button" data-question-id="${q.id}" data-aw-action="delete-question"
+                    class="w-7 h-7 flex items-center justify-center text-slate-300 hover:text-red-500 rounded-lg transition" title="Delete question">
+                    <i class="fa-solid fa-trash text-[11px]"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-[1fr_100px] gap-3 mb-3">
+            <div>
+                <label class="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Prompt</label>
+                <textarea data-question-id="${q.id}" data-field="prompt" data-aw-input="question-field"
+                    placeholder="Type the question…"
+                    class="form-input w-full p-2 bg-white border border-slate-200 rounded-lg text-[12.5px] text-slate-800 h-16 resize-none focus:border-teal-400 focus:ring-0 transition outline-none">${escHtml(q.prompt || '')}</textarea>
+            </div>
+            <div>
+                <label class="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Points</label>
+                <input type="number" min="0" step="any" inputmode="decimal" value="${q.points ?? 1}"
+                    data-question-id="${q.id}" data-field="points" data-aw-input="question-field"
+                    class="form-input w-full p-2 bg-white border border-slate-200 rounded-lg text-[12.5px] text-slate-800 focus:border-teal-400 focus:ring-0 transition outline-none">
+            </div>
+        </div>
+
+        ${awRenderQuestionTypeFields(q)}
+        ${awRenderAttachmentBlock(q.attachments, q.id, 'question')}
+    </div>`;
+}
+
+function awRenderQuestionTypeFields(q) {
+    if (q.type === 'multiple_choice') {
+        const options = (q.options || []).map((opt, i) => `
+            <div class="flex items-center gap-2">
+                <input type="radio" name="aw-correct-${q.id}" data-question-id="${q.id}" data-option-index="${i}" data-aw-action="set-correct"
+                    ${q.correctOptionIndex === i ? 'checked' : ''}
+                    class="w-3.5 h-3.5 accent-teal-600 cursor-pointer flex-shrink-0" title="Mark as the correct answer">
+                <span class="text-[10px] font-black text-slate-400 w-4 flex-shrink-0">${String.fromCharCode(65 + i)}</span>
+                <input type="text" value="${escHtml(opt)}" placeholder="Option ${i + 1}"
+                    data-question-id="${q.id}" data-option-index="${i}" data-aw-input="option-text"
+                    class="form-input flex-1 p-1.5 bg-white border border-slate-200 rounded-lg text-[12px] text-slate-800 focus:border-teal-400 focus:ring-0 transition outline-none">
+                <button type="button" data-question-id="${q.id}" data-option-index="${i}" data-aw-action="remove-option"
+                    ${(q.options || []).length <= 2 ? 'disabled' : ''}
+                    class="w-6 h-6 flex-shrink-0 flex items-center justify-center text-slate-300 hover:text-red-500 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition">
+                    <i class="fa-solid fa-xmark text-[11px]"></i>
+                </button>
+            </div>`).join('');
+        return `
+            <div class="mb-3 pl-1 space-y-1.5">
+                ${options}
+                <button type="button" data-question-id="${q.id}" data-aw-action="add-option"
+                    class="text-[10.5px] font-black text-teal-600 hover:text-slate-800 mt-1"><i class="fa-solid fa-plus mr-1"></i>Add option</button>
+                <p class="text-[9.5px] text-slate-400 italic m-0 pt-0.5">Select the circle next to the correct option — required before this can be saved.</p>
+            </div>`;
+    }
+
+    if (q.type === 'free_response' || q.type === 'short_answer' || q.type === 'math') {
+        const label = q.type === 'math' ? 'Formula / LaTeX guidance for students (optional)' : 'Guidance shown to students — e.g. expected length (optional)';
+        return `
+            <div class="mb-3">
+                <input type="text" value="${escHtml(q.hint || '')}" placeholder="${label}"
+                    data-question-id="${q.id}" data-field="hint" data-aw-input="question-field"
+                    class="form-input w-full p-2 bg-white border border-slate-200 rounded-lg text-[12px] text-slate-800 focus:border-teal-400 focus:ring-0 transition outline-none">
+            </div>`;
+    }
+
+    if (q.type === 'attachment_response') {
+        const opts = ['File Upload', 'Camera Photo', 'Drawing Canvas']
+            .map(o => `<option value="${o}" ${o === q.responseType ? 'selected' : ''}>${o}</option>`).join('');
+        return `
+            <div class="mb-3">
+                <label class="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Required student output</label>
+                <select data-question-id="${q.id}" data-field="responseType" data-aw-change="question-field"
+                    class="form-select w-full sm:w-64 p-2 bg-white border border-slate-200 rounded-lg text-[12px] text-slate-800 pr-8 focus:border-teal-400 focus:ring-0 transition outline-none appearance-none">
+                    ${opts}
+                </select>
+            </div>`;
+    }
+    return '';
+}
+
+// ── Shared attachment block — task-level ('task') or per-question ('question') ──
+function awRenderAttachmentBlock(attachments, questionId, scope) {
+    const qAttr = questionId ? `data-question-id="${questionId}"` : '';
+    const rows = (attachments || []).map((a, i) => `
+        <div class="flex items-center gap-2 text-[12px]">
+            <i class="fa-solid fa-paperclip text-slate-400 text-[11px]"></i>
+            <a href="${escHtml(a.url)}" target="_blank" rel="noopener" class="flex-1 truncate text-slate-800 font-semibold hover:underline">${escHtml(a.name || a.url)}</a>
+            <button type="button" ${qAttr} data-attachment-index="${i}" data-aw-scope="${scope}" data-aw-action="remove-attachment"
+                class="w-6 h-6 flex-shrink-0 flex items-center justify-center text-slate-400 hover:text-red-500 rounded-lg transition">
+                <i class="fa-solid fa-xmark text-[11px]"></i>
+            </button>
+        </div>`).join('');
+
+    return `
+        <div class="border-t border-slate-100 pt-3">
+            <label class="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5">
+                ${scope === 'task' ? 'Teacher media attachments' : 'Attach media to this question'}
+            </label>
+            <div class="space-y-1.5 mb-2">${rows}</div>
+            <div class="flex items-center gap-1.5">
+                <input type="url" placeholder="Paste a link (PDF/image/video)…" data-aw-scope="${scope}" ${qAttr}
+                    data-aw-field="attachment-url-input"
+                    class="form-input flex-1 p-1.5 bg-white border border-slate-200 rounded-lg text-[11.5px] text-slate-800 focus:border-teal-400 focus:ring-0 transition outline-none">
+                <button type="button" data-aw-scope="${scope}" ${qAttr} data-aw-action="add-attachment"
+                    class="text-[10.5px] font-black text-teal-600 hover:text-slate-800 px-2 py-1.5 whitespace-nowrap">
+                    <i class="fa-solid fa-plus mr-1"></i>Add link
+                </button>
+                <button type="button" data-aw-scope="${scope}" ${qAttr} data-aw-action="trigger-upload"
+                    class="text-[10.5px] font-black text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 px-2.5 py-1.5 rounded-lg whitespace-nowrap transition">
+                    <i class="fa-solid fa-upload mr-1"></i>Upload File
+                </button>
+            </div>
+        </div>`;
+}
+
+function awRerenderAll() {
+    awRenderTaskAttachments();
+    awRenderBuilder();
+}
+
+// ── Event delegation: two containers (task attachments + questions builder)
+// share the same action vocabulary, so one pair of listeners on their common
+// parent (#awBuilderRoot) handles both — distinguished by data-aw-scope. ──
+function initAddWorkBuilderEvents() {
+    const root = document.getElementById('awBuilderRoot');
+    if (!root) return;
+
+    root.addEventListener('input', (e) => {
+        const t = e.target;
+        if (t.dataset.awInput === 'question-field') {
+            const q = awFindQuestion(t.dataset.questionId);
+            if (!q) return;
+            q[t.dataset.field] = t.dataset.field === 'points' ? (parseFloat(t.value) || 0) : t.value;
+        } else if (t.dataset.awInput === 'option-text') {
+            const q = awFindQuestion(t.dataset.questionId);
+            if (!q || !q.options) return;
+            q.options[Number(t.dataset.optionIndex)] = t.value;
+        }
+    });
+
+    root.addEventListener('change', (e) => {
+        const t = e.target;
+        if (t.dataset.awChange === 'question-type') {
+            const q = awFindQuestion(t.dataset.questionId);
+            if (!q) return;
+            awResetQuestionTypeFields(q, t.value);
+            awRenderBuilder();
+        } else if (t.dataset.awChange === 'question-field') {
+            const q = awFindQuestion(t.dataset.questionId);
+            if (q) q[t.dataset.field] = t.value;
+        }
+    });
+
+    root.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-aw-action]');
+        if (!btn || btn.disabled) return;
+        const action = btn.dataset.awAction;
+        const qId = btn.dataset.questionId;
+
+        if (action === 'trigger-upload') {
+            awFileUploadTarget = { scope: btn.dataset.awScope, questionId: qId || null };
+            document.getElementById('awFileInput')?.click();
+            return; // no state changed yet — nothing to re-render
+        } else if (action === 'add-question') {
+            awQuestions.push(awMakeQuestion('multiple_choice'));
+        } else if (action === 'delete-question') {
+            awQuestions = awQuestions.filter(q => q.id !== qId);
+        } else if (action === 'move-up' || action === 'move-down') {
+            const i = awQuestions.findIndex(q => q.id === qId);
+            const j = action === 'move-up' ? i - 1 : i + 1;
+            if (i < 0 || j < 0 || j >= awQuestions.length) return;
+            [awQuestions[i], awQuestions[j]] = [awQuestions[j], awQuestions[i]];
+        } else if (action === 'add-option') {
+            const q = awFindQuestion(qId);
+            if (q?.options) q.options.push('');
+        } else if (action === 'remove-option') {
+            const q = awFindQuestion(qId);
+            if (q?.options && q.options.length > 2) {
+                const idx = Number(btn.dataset.optionIndex);
+                q.options.splice(idx, 1);
+                if (q.correctOptionIndex === idx) q.correctOptionIndex = null;
+                else if (typeof q.correctOptionIndex === 'number' && q.correctOptionIndex > idx) q.correctOptionIndex -= 1;
+            }
+        } else if (action === 'set-correct') {
+            const q = awFindQuestion(qId);
+            if (q) q.correctOptionIndex = Number(btn.dataset.optionIndex);
+        } else if (action === 'add-attachment') {
+            const scope = btn.dataset.awScope;
+            const input = root.querySelector(
+                scope === 'task'
+                    ? `input[data-aw-field="attachment-url-input"][data-aw-scope="task"]`
+                    : `input[data-aw-field="attachment-url-input"][data-question-id="${qId}"]`
+            );
+            const url = (input?.value || '').trim();
+            if (!url) return;
+            let name;
+            try { name = new URL(url).pathname.split('/').filter(Boolean).pop() || url; } catch { name = url; }
+            const entry = { id: `att_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, name, url };
+            if (scope === 'task') {
+                awTaskAttachments.push(entry);
+            } else {
+                const q = awFindQuestion(qId);
+                if (q) (q.attachments = q.attachments || []).push(entry);
+            }
+        } else if (action === 'remove-attachment') {
+            const scope = btn.dataset.awScope;
+            const idx = Number(btn.dataset.attachmentIndex);
+            if (scope === 'task') {
+                awTaskAttachments.splice(idx, 1);
+            } else {
+                const q = awFindQuestion(qId);
+                if (q?.attachments) q.attachments.splice(idx, 1);
+            }
+        } else {
+            return; // unrecognized action — don't re-render for nothing
+        }
+        awRerenderAll();
+    });
+
+    document.getElementById('awFileInput')?.addEventListener('change', awHandleFileSelected);
+}
+initAddWorkBuilderEvents();
+
+function sanitizeAttachmentFileName(name) {
+    return String(name || 'file').replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120);
+}
+
+// ── Real Storage upload (Phase 2.2) — mirrors uploadSubmissionAttachment's
+// pattern in submissions.js: upload immediately on selection, return
+// {id, name, url}, land it in whichever attachment array the teacher clicked
+// "Upload File" from. Path uses resolvePostContext() rather than raw
+// sub.classId, matching how the legacy auto-grade shadow doc already
+// resolves a class for a legacy subject — a subject with no resolvable
+// class can't accept an upload either, and this surfaces that clearly
+// instead of writing to a broken path. ──
+async function uploadWorkAttachment(file) {
+    const sub = getSubjectByName(currentSubjectName);
+    if (!sub) throw new Error('Subject not found. Please refresh.');
+    const ctx = resolvePostContext(sub, resolvedClasses);
+    if (!ctx) throw new Error('Could not resolve a class for this subject, so files can\'t be uploaded yet.');
+    const path = `schools/${session.schoolId}/attachments/${ctx.classId}/${ctx.subjectId}/${awCurrentAssignmentId}/${Date.now()}_${sanitizeAttachmentFileName(file.name)}`;
+    const fileRef = storageRef(storage, path);
+    await uploadBytes(fileRef, file);
+    const url = await getDownloadURL(fileRef);
+    return { id: `att_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, name: file.name, url };
+}
+
+async function awHandleFileSelected(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if (!file || !awFileUploadTarget) return;
+    if (file.size > AW_MAX_ATTACHMENT_BYTES) {
+        awShowError(`"${file.name}" is larger than 25MB and can't be uploaded.`);
+        awFileUploadTarget = null;
+        return;
+    }
+
+    const { scope, questionId } = awFileUploadTarget;
+    awFileUploadTarget = null;
+    const btnSelector = scope === 'task'
+        ? `button[data-aw-action="trigger-upload"][data-aw-scope="task"]`
+        : `button[data-aw-action="trigger-upload"][data-question-id="${questionId}"]`;
+    const btn = document.querySelector(btnSelector);
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; }
+
+    try {
+        const entry = await uploadWorkAttachment(file);
+        if (scope === 'task') {
+            awTaskAttachments.push(entry);
+        } else {
+            const q = awFindQuestion(questionId);
+            if (q) (q.attachments = q.attachments || []).push(entry);
+        }
+        awRerenderAll();
+    } catch (err) {
+        console.error('[Add Work] File upload failed:', err);
+        awShowError('Could not upload that file. Please try again.');
+        if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
+    }
+}
+
+function awClearBanners() {
+    document.getElementById('awErrorBanner')?.classList.add('hidden');
+    document.getElementById('awSavedBanner')?.classList.add('hidden');
+}
+function awShowError(message) {
+    document.getElementById('awSavedBanner')?.classList.add('hidden');
+    const text = document.getElementById('awErrorBannerText');
+    if (text) text.textContent = message;
+    document.getElementById('awErrorBanner')?.classList.remove('hidden');
+}
+function awShowSaved(message) {
+    document.getElementById('awErrorBanner')?.classList.add('hidden');
+    const text = document.getElementById('awSavedBannerText');
+    if (text) text.textContent = message;
+    document.getElementById('awSavedBanner')?.classList.remove('hidden');
+}
+
+// Pure function — no DOM writes — so it stays unit-testable the same way
+// the original engine's render/validate functions were.
+function awValidate({ title, type, maxScore, existingList, editingId }) {
+    const errors = [];
+    if (!title) errors.push('Title is required.');
+    if (!type) errors.push('Type is required.');
+    if (isNaN(maxScore) || maxScore < 1) errors.push('Points possible must be a whole number of at least 1.');
+    if (existingList.some(a => a.id !== editingId && (a.title || '').toLowerCase() === title.toLowerCase())) {
+        errors.push('An assignment with that title already exists for this subject.');
+    }
+
+    awQuestions.forEach((q, i) => {
+        const n = i + 1;
+        if (!(q.prompt || '').trim()) errors.push(`Question ${n}: a prompt is required.`);
+        if (q.type === 'multiple_choice') {
+            const filled = (q.options || []).filter(o => (o || '').trim() !== '');
+            if (filled.length < 2) errors.push(`Question ${n}: at least 2 non-empty options are required.`);
+            const ci = q.correctOptionIndex;
+            const hasMark = typeof ci === 'number' && q.options && (q.options[ci] || '').trim() !== '';
+            if (!hasMark) errors.push(`Question ${n}: select which option is correct.`);
+        }
+    });
+    return errors;
+}
+
+// Strips correctOptionIndex out of each question (into the returned
+// answerKeys map) and maps attachment_response's responseType into the
+// studentResponse shape the backend expects. Nothing here mutates
+// awQuestions — the modal's own state stays exactly as the teacher left it
+// if the save fails and they need to retry.
+function awBuildCleanQuestions() {
+    const answerKeys = {};
+    const requiresMap = { 'File Upload': 'file', 'Camera Photo': 'photo', 'Drawing Canvas': 'drawing' };
+
+    const questions = awQuestions.map(q => {
+        const clean = {
+            id: q.id,
+            type: q.type,
+            prompt: q.prompt || '',
+            points: q.points ?? 0,
+            attachments: q.attachments || []
+        };
+        if (q.type === 'multiple_choice') {
+            clean.options = [...(q.options || [])];
+            if (typeof q.correctOptionIndex === 'number') answerKeys[q.id] = q.correctOptionIndex;
+        } else if (q.type === 'free_response' || q.type === 'short_answer' || q.type === 'math') {
+            clean.hint = q.hint || '';
+        } else if (q.type === 'attachment_response') {
+            clean.responseType = q.responseType || 'File Upload';
+            clean.studentResponse = { requires: requiresMap[clean.responseType] || 'file' };
+        }
+        return clean;
+    });
+
+    return { questions, answerKeys };
+}
+
+window.awSaveWork = async function() {
+    awClearBanners();
+
+    const sub = getSubjectByName(currentSubjectName);
+    if (!sub) { awShowError('Could not resolve the selected subject.'); return; }
+
+    const title        = document.getElementById('awTitle')?.value.trim() || '';
+    const type          = document.getElementById('awType')?.value || '';
+    const date          = document.getElementById('awDueDate')?.value || '';
+    const maxScore      = parseInt(document.getElementById('awPoints')?.value, 10);
+    const instructions  = document.getElementById('awInstructions')?.value.trim() || '';
+    const description   = document.getElementById('awDescription')?.value.trim() || '';
+    const locked        = !!document.getElementById('awLocked')?.checked;
+
+    const editingId = awEditingAssignmentId;
+    const existingList = getAssignmentsForSubject(currentSubjectName);
+    const currentRecord = editingId ? existingList.find(a => a.id === editingId) : null;
+
+    const errors = awValidate({ title, type, maxScore, existingList, editingId });
+    if (errors.length) {
+        awShowError(errors[0] + (errors.length > 1 ? ` (+${errors.length - 1} more issue${errors.length > 2 ? 's' : ''})` : ''));
+        return;
+    }
+
+    const { questions: cleanQuestions, answerKeys } = awBuildCleanQuestions();
+    const isAssessment = cleanQuestions.length > 0;
+    const category = isAssessment ? 'assessment' : 'standard';
+
+    const assignmentId = awCurrentAssignmentId || editingId || genAssignmentId();
+    const nowIso = new Date().toISOString();
+    const wasLocked = !!(currentRecord?.locked);
+
+    const assignmentData = {
+        id: assignmentId,
+        title, type,
+        maxScore,
+        date,
+        instructions,
+        description,
+        locked,
+        lockedAt: locked ? (wasLocked ? (currentRecord?.lockedAt || nowIso) : nowIso) : null,
+        completed: currentRecord?.completed ?? false,
+        attachments: [...awTaskAttachments],
+        category,
+        questions: cleanQuestions,
+        teacherId: session.teacherId,
+        createdAt: currentRecord?.createdAt || nowIso,
+        updatedAt: nowIso
+    };
+
+    const hasAnswerKeys = Object.keys(answerKeys).length > 0;
+    const answerKeyData = hasAnswerKeys ? {
+        assignmentId, schoolId: session.schoolId, keys: answerKeys, createdAt: serverTimestamp()
+    } : null;
+
+    const saveBtn = document.getElementById('awSaveBtn');
+    const originalHtml = saveBtn ? saveBtn.innerHTML : '';
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…'; }
+
+    try {
+        const batch = writeBatch(db);
+        let updatedSubjects = null;
+        const nextAssignments = editingId
+            ? existingList.map(a => a.id === editingId ? assignmentData : a)
+            : [...existingList, assignmentData];
+
+        if (sub._source === 'new') {
+            const assignmentRef = doc(db, 'schools', session.schoolId, 'classes', sub.classId, 'subjects', sub.id, 'assignments', assignmentId);
+            batch.set(assignmentRef, assignmentData);
+        } else {
+            updatedSubjects = (session.teacherData.subjects || []).map(s => {
+                if (s.id !== sub.id) return s;
+                return { ...s, assignments: nextAssignments };
+            });
+
+            // Guard the Firestore 1MB document ceiling — this doc holds EVERY
+            // legacy subject's assignments, not just this one, so a rich Add
+            // Work payload (question text, attachment links) can push it over
+            // the limit in a way a plain grade record never could.
+            const approxBytes = new Blob([JSON.stringify(updatedSubjects)]).size;
+            if (approxBytes > 900000) {
+                throw new Error("This subject's legacy record is too large to hold another rich assignment (Firestore's 1MB document limit). It needs migrating to the new class/subject model before adding more work here.");
+            }
+
+            batch.update(getTeacherDocRef(session.schoolId, session.teacherId), { subjects: updatedSubjects });
+
+            // A legacy subject has no real classes/{classId}/subjects/
+            // {subjectId} document of its own, so the embedded copy above is
+            // otherwise the ONLY place this assignment's questions/points
+            // would exist. autoGradeWorkSubmission (functions/index.js) grades
+            // server-side by reading the assignment doc at the exact real
+            // subcollection path every submission is written under — a path
+            // Firestore lets exist even with no real parent `subjects/
+            // {subjectId}` document. Without this second write, that read
+            // would always come back "not found" and MC auto-grading would
+            // silently never fire for any legacy-subject assessment.
+            if (isAssessment) {
+                const shadowCtx = resolvePostContext(sub, resolvedClasses);
+                if (shadowCtx) {
+                    const shadowRef = doc(db, 'schools', session.schoolId, 'classes', shadowCtx.classId, 'subjects', shadowCtx.subjectId, 'assignments', assignmentId);
+                    batch.set(shadowRef, { ...assignmentData, _legacyShadow: true });
+                } else {
+                    console.error(`[Add Work] Could not resolve a class for subject "${sub.name}" — skipping the legacy auto-grade shadow doc for assignment ${assignmentId}.`);
+                }
+            }
+        }
+
+        if (answerKeyData) {
+            // create the first time an assessment is saved, update from then
+            // on (e.g. correcting a mis-marked answer on edit) — firestore.rules'
+            // work_answer_keys now allows both under identical conditions.
+            batch.set(doc(db, 'work_answer_keys', assignmentId), answerKeyData);
+        }
+
+        await batch.commit();
+
+        if (sub._source === 'new') {
+            sub.assignments = nextAssignments;
+        } else if (updatedSubjects) {
+            session.teacherData.subjects = updatedSubjects;
+            setSessionData('teacher', session);
+            sub.assignments = updatedSubjects.find(s => s.id === sub.id)?.assignments || [];
+        }
+
+        awShowSaved(editingId ? 'Changes saved.' : `Added to ${currentSubjectName}.`);
+        updateAssignmentTabBadge();
+        setTimeout(() => { window.closeAddWorkModal(); renderAssignmentsTab(); }, 700);
+    } catch (err) {
+        console.error('[Add Work] awSaveWork failed:', err);
+        awShowError(err?.message || 'Could not save. Please try again.');
+    } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = originalHtml; }
+    }
 };
 
 // Fire it up

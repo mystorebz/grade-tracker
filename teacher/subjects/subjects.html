@@ -218,6 +218,133 @@
         </div>
     </div>
 
+    <!-- LIFT & SHIFT REFACTOR: "Add Work" / Universal Assignment Builder.
+         Moved here from teacher/grade_form/grade_form.html (where assignment
+         CREATION never belonged) and generalized: there is no more
+         Assessment vs. Standard split — every work type gets Instructions +
+         Description + Locked + Teacher Media Attachments, plus an always-
+         available, optional (0-N question) dynamic builder. This is the
+         single path for BOTH creating a new assignment and editing an
+         existing one in this subject's Assignments tab — it replaced the
+         page's older, separate "Prepare a new assignment" inline composer.
+         No Subject picker here (unlike the original grade_form.js version):
+         this modal only ever opens from inside an already-open subject's
+         panel, so subjectId/classId context comes from currentSubjectName /
+         getSubjectByName() in subjects.js, never a dropdown. z-[65] sits
+         above #subjectPanel (z-50) and #assignmentModal (z-[60]) it opens
+         on top of, and below #reviewSubmissionsModal (z-[70]). -->
+    <div id="addWorkModalOverlay" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[65] flex items-start justify-center overflow-y-auto p-4 sm:p-8">
+        <div class="bg-white w-full max-w-3xl rounded-2xl shadow-2xl border border-slate-200 my-auto flex flex-col max-h-[calc(100vh-4rem)]">
+
+            <div class="h-1 bg-gradient-to-r from-teal-500 to-emerald-600 flex-shrink-0"></div>
+
+            <!-- Header -->
+            <div class="flex items-center justify-between gap-3 px-6 py-4 border-b border-slate-100 bg-slate-50 flex-shrink-0">
+                <div>
+                    <h2 id="awModalTitle" class="text-lg font-black text-slate-800 m-0 leading-tight">Add Work</h2>
+                    <p id="awModalSubtitle" class="text-[11px] text-slate-400 font-bold m-0 mt-0.5">Create a new assignment or assessment</p>
+                </div>
+                <button onclick="closeAddWorkModal()" class="flex-shrink-0 w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Scrollable body -->
+            <div class="flex-1 overflow-y-auto p-6 space-y-5">
+
+                <!-- Header block: Title / Type / Due Date / Points -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="sm:col-span-2">
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Title <span class="text-red-500">*</span></label>
+                        <input type="text" id="awTitle" placeholder="e.g. Unit 4 Test: Fractions" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Type <span class="text-red-500">*</span></label>
+                        <select id="awType" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm cursor-pointer">
+                            <option value="">Select type…</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Points Possible <span class="text-red-500">*</span></label>
+                        <input type="number" id="awPoints" min="1" step="1" placeholder="e.g. 50" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm">
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Due Date <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
+                        <input type="date" id="awDueDate" class="form-input w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm cursor-pointer">
+                    </div>
+                </div>
+
+                <!-- Instructions (student-facing) -->
+                <div>
+                    <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Instructions <span class="normal-case font-semibold text-slate-400">(optional — visible to students)</span></label>
+                    <textarea id="awInstructions" placeholder="What should students do, submit, or study for this assignment."
+                        class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm resize-none leading-relaxed" style="height: 5rem;"></textarea>
+                </div>
+
+                <!-- Description (private teacher notes) -->
+                <div>
+                    <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Description <span class="normal-case font-semibold text-slate-400">(optional — private notes, not shown to students)</span></label>
+                    <textarea id="awDescription" placeholder="Notes, topics covered, or anything you want on record for this assignment."
+                        class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm resize-none leading-relaxed" style="height: 5rem;"></textarea>
+                </div>
+
+                <!-- Locked -->
+                <label class="flex items-center gap-2.5 cursor-pointer select-none">
+                    <input type="checkbox" id="awLocked" class="w-4 h-4 rounded accent-teal-600 cursor-pointer">
+                    <span class="text-[12.5px] font-bold text-slate-600">Locked <span class="font-normal text-slate-400">— marks this assignment as finalized. Informational only; does not restrict editing or grading.</span></span>
+                </label>
+
+                <!-- Shared delegation root for both dynamic, list-based blocks below
+                     (task attachments + questions) — see initAddWorkBuilderEvents()
+                     in subjects.js. Static fields above (Title/Type/Due Date/Points/
+                     Instructions/Description/Locked) are read directly by id at save
+                     time and don't need to live inside this root. -->
+                <div id="awBuilderRoot" class="space-y-5">
+
+                    <!-- Teacher Media Attachments (task-level, always available) -->
+                    <div id="awTaskAttachmentsContainer"></div>
+
+                    <!-- Re-mark notice — only shown when editing an assessment that already
+                         has multiple-choice questions. The answer key lives in
+                         work_answer_keys, which no client can ever read back, so the
+                         previously-marked correct option cannot be restored here. -->
+                    <div id="awRemarkNotice" class="hidden bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2.5">
+                        <i class="fa-solid fa-triangle-exclamation text-amber-500 mt-0.5"></i>
+                        <p class="text-xs font-bold text-amber-700 m-0">This assignment's saved answer key can't be displayed here. Please re-select the correct option for each multiple-choice question below before saving.</p>
+                    </div>
+
+                    <!-- Dynamic Questions Block — always available, 0-N questions for ANY work type -->
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Questions <span class="normal-case font-semibold text-slate-400">(optional — leave empty for an instructions-only assignment)</span></label>
+                        <div id="addWorkBuilderContainer" class="space-y-3"></div>
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- Save/validation feedback -->
+            <div id="awErrorBanner" class="hidden mx-6 mb-4 bg-red-50 border border-red-200 border-l-4 border-l-red-500 rounded-xl p-3 flex-shrink-0">
+                <p id="awErrorBannerText" class="font-bold text-red-600 text-[12px] m-0"></p>
+            </div>
+            <div id="awSavedBanner" class="hidden mx-6 mb-4 bg-emerald-50 border border-emerald-200 border-l-4 border-l-emerald-500 rounded-xl p-3 flex-shrink-0">
+                <p id="awSavedBannerText" class="font-bold text-emerald-600 text-[12px] m-0"></p>
+            </div>
+
+            <!-- Action bar -->
+            <div class="flex items-center justify-end gap-2.5 px-6 py-4 border-t border-slate-100 bg-slate-50 flex-shrink-0 rounded-b-2xl">
+                <button onclick="closeAddWorkModal()" class="text-[12.5px] font-black text-slate-500 hover:text-slate-700 bg-white border border-slate-200 px-4 py-2.5 rounded-xl transition">
+                    Cancel
+                </button>
+                <button id="awSaveBtn" onclick="awSaveWork()" class="text-[12.5px] font-black text-white bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 px-5 py-2.5 rounded-xl transition shadow-md flex items-center gap-2">
+                    <i class="fa-solid fa-plus"></i> Add work
+                </button>
+            </div>
+
+            <input type="file" id="awFileInput" class="hidden">
+        </div>
+    </div>
+
     <script type="module" src="subjects.js"></script>
 </body>
 </html>

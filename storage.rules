@@ -33,6 +33,27 @@ service firebase.storage {
                       request.resource.size < 10 * 1024 * 1024;
     }
 
+    // Teacher-authored assignment/attachment media (Lift & Shift Refactor —
+    // Universal Assignment Builder, Subjects hub). Read: any authenticated
+    // user in the SAME school (so students can view/download attachments on
+    // their own assignments — there's no per-student ownership to check here
+    // the way submissions above has, since this is teacher-authored content
+    // meant for the whole class). Write: a teacher/admin of that SAME school
+    // only, capped at 25MB. Role check intentionally matches every other
+    // teacher-authored write in this app (work_answer_keys in
+    // firestore.rules, and the submissions rule above) — 'admin' is not a
+    // real role value anywhere in this app; the roles are 'teacher',
+    // 'super_admin', 'sub_admin'.
+    match /schools/{schoolId}/attachments/{classId}/{subjectId}/{assignmentId}/{fileName} {
+      allow read: if request.auth != null &&
+                     request.auth.token.schoolId == schoolId;
+
+      allow write: if request.auth != null &&
+                      request.auth.token.schoolId == schoolId &&
+                      request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] &&
+                      request.resource.size < 25 * 1024 * 1024;
+    }
+
     // ── Deny everything else ────────────────────────────────────────────
     match /{allPaths=**} {
       allow read, write: if false;

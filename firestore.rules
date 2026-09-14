@@ -1106,8 +1106,18 @@ service cloud.firestore {
     // can't be repurposed to smuggle arbitrary data past the deny-all
     // fallback.
     match /work_answer_keys/{assignmentId} {
-      allow read, update, delete: if false;
-      allow create: if request.auth != null &&
+      allow read, delete: if false;
+      // LIFT & SHIFT REFACTOR (Subjects Hub Universal Builder): update is now
+      // allowed under the IDENTICAL conditions as create — same role/schoolId/
+      // isSchoolActive/shape gate, just also evaluated when the doc already
+      // exists. This is what lets a teacher re-save an edited assessment
+      // (editAssignment() now reopens the Universal Builder, which can
+      // re-mark which option is correct) without the whole save batch being
+      // rejected because its work_answer_keys write looks like an update
+      // rather than a create. No new access is granted beyond what create
+      // already allowed — a teacher could always write a key for their own
+      // assignment; now they can also correct one.
+      allow create, update: if request.auth != null &&
                        request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] &&
                        request.auth.token.schoolId == request.resource.data.schoolId &&
                        isSchoolActive(request.resource.data.schoolId) &&
