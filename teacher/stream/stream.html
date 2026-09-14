@@ -55,46 +55,32 @@
 
                 <!-- Composer -->
                 <div class="bg-white rounded-xl shadow-sm border border-[#dce3ed] overflow-hidden">
-                    <div class="p-4 border-b border-[#f0f4f8] bg-[#f8fafb] flex items-center gap-3">
-                        <div class="w-8 h-8 rounded bg-[#eef4ff] text-[#2563eb] border border-[#c7d9fd] flex items-center justify-center">
-                            <i class="fa-solid fa-pen-to-square text-sm"></i>
+                    <div class="p-4 border-b border-[#f0f4f8] bg-[#f8fafb] flex items-center justify-between gap-3 flex-wrap">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded bg-[#eef4ff] text-[#2563eb] border border-[#c7d9fd] flex items-center justify-center">
+                                <i class="fa-solid fa-pen-to-square text-sm"></i>
+                            </div>
+                            <div>
+                                <h3 id="composerTitle" class="text-[13px] font-bold text-[#0d1f35] m-0 leading-tight">New Post</h3>
+                                <p class="text-[10.5px] text-[#6b84a0] m-0">Visible to this subject's class</p>
+                            </div>
                         </div>
-                        <div>
-                            <h3 id="composerTitle" class="text-[13px] font-bold text-[#0d1f35] m-0 leading-tight">New Post</h3>
-                            <p class="text-[10.5px] text-[#6b84a0] m-0">Visible to this subject's class</p>
-                        </div>
+                        <button type="button" id="streamLessonBtn" class="bg-white hover:bg-[#eef4ff] text-[#2563eb] border border-[#c7d9fd] font-bold py-2 px-3.5 rounded transition text-[12.5px] flex items-center gap-2 flex-shrink-0">
+                            <i class="fa-solid fa-tower-broadcast text-[11px]"></i> Stream a Lesson
+                        </button>
                     </div>
 
                     <div class="p-5 space-y-4">
                         <div id="composerMsg" class="hidden"></div>
 
-                        <div class="flex items-center gap-2 bg-[#f4f7fb] border border-[#dce3ed] rounded-lg p-1 w-fit">
-                            <button type="button" id="typeAnnouncementBtn" data-toggle-group="type" class="px-3 py-1.5 rounded text-[12px] font-bold transition">
-                                <i class="fa-solid fa-bullhorn text-[11px] mr-1"></i>Announcement
-                            </button>
-                            <button type="button" id="typeLessonPlanBtn" data-toggle-group="type" class="px-3 py-1.5 rounded text-[12px] font-bold transition">
-                                <i class="fa-solid fa-calendar-days text-[11px] mr-1"></i>Lesson Plan
-                            </button>
-                        </div>
-
                         <div>
-                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Title <span id="titleRequiredMark" class="hidden text-[#e31b4a]">*</span></label>
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Title</label>
                             <input type="text" id="postTitle" placeholder="e.g. Reminder about Friday's quiz" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">
-                        </div>
-
-                        <div id="lessonDateField" class="hidden">
-                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Lesson Date</label>
-                            <input type="date" id="postLessonDate" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">
                         </div>
 
                         <div>
                             <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Details</label>
-                            <textarea id="postBody" rows="4" placeholder="Write your announcement or lesson plan details..." class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb] resize-none"></textarea>
-                        </div>
-
-                        <div id="objectivesField" class="hidden">
-                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Objectives</label>
-                            <textarea id="postObjectives" rows="2" placeholder="What should students be able to do after this lesson?" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb] resize-none"></textarea>
+                            <textarea id="postBody" rows="4" placeholder="Write your announcement..." class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb] resize-none"></textarea>
                         </div>
 
                         <div id="pinnedField" class="flex items-center gap-2">
@@ -120,6 +106,29 @@
             </div>
         </div>
     </main>
+
+    <!-- Stream a Lesson modal: pick a published lesson from this subject's
+         Lessons library (Subjects Hub) to either present live or re-share as
+         an announcement. Lessons themselves are authored in the Subjects
+         Hub's Lessons tab / Lesson Builder, not here — this is a broadcast
+         trigger only. -->
+    <div id="streamLessonModalOverlay" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-lg w-full max-w-lg max-h-[80vh] flex flex-col">
+            <div class="p-4 border-b border-[#f0f4f8] flex items-center justify-between flex-shrink-0">
+                <div>
+                    <h3 class="text-[14px] font-bold text-[#0d1f35] m-0">Stream a Lesson</h3>
+                    <p class="text-[10.5px] text-[#6b84a0] m-0">Published lessons for this subject</p>
+                </div>
+                <button type="button" id="closeStreamLessonModalBtn" class="text-[#6b84a0] hover:text-[#0d1f35] w-7 h-7 rounded flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="p-4 overflow-y-auto flex-1">
+                <div id="streamLessonModalMsg" class="hidden"></div>
+                <div id="streamLessonList" class="space-y-2"></div>
+            </div>
+        </div>
+    </div>
 
     <script type="module" src="stream.js"></script>
 </body>

@@ -5,6 +5,7 @@ import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { openOverlay, closeOverlay, showMsg, gradeColorClass, letterGrade, standingBadge, gradeFill, calculateWeightedAverage, loadTeacherSubjectsCache, getTeacherDocRef, resolveGradeWeights, saveGrade } from '../../assets/js/utils.js';
 import { resolvePostContext } from '../../assets/js/posts.js';
+import { loadLessonsForSubject } from '../../assets/js/lessons.js';
 import { loadSubmissionsForAssignment } from '../../assets/js/submissions.js';
 
 // ── 1. AUTHENTICATION & LAYOUT ──────────────────────────────────────────────
@@ -360,9 +361,10 @@ window.switchPanelTab = function(tab) {
 
     const perfBtn = document.getElementById('spTabPerformance');
     const asgBtn = document.getElementById('spTabAssignments');
+    const lessonsBtn = document.getElementById('spTabLessons');
     const filters = document.getElementById('spFilterBar');
 
-    [perfBtn, asgBtn].forEach(b => {
+    [perfBtn, asgBtn, lessonsBtn].forEach(b => {
         if (!b) return;
         b.classList.remove('sp-tab-active');
     });
@@ -371,6 +373,10 @@ window.switchPanelTab = function(tab) {
         perfBtn?.classList.add('sp-tab-active');
         if (filters) filters.classList.remove('hidden');
         renderSubjectPanelData();
+    } else if (tab === 'lessons') {
+        lessonsBtn?.classList.add('sp-tab-active');
+        if (filters) filters.classList.add('hidden'); // filters only apply to performance view
+        renderLessonsTab();
     } else {
         asgBtn?.classList.add('sp-tab-active');
         if (filters) filters.classList.add('hidden'); // filters only apply to performance view
@@ -711,6 +717,124 @@ window.renderAssignmentsTab = function() {
     const listCard = emptyState + activeCard + gradedCard;
 
     document.getElementById('subjectPanelBody').innerHTML = lockedNotice + formCard + listCard;
+};
+
+// ── 5c. LESSONS TAB (AUTHORING ENTRY POINT INTO THE LESSON BUILDER) ────────
+// ARCHITECTURAL REALIGNMENT MANDATE: authoring lives here in the Subjects
+// Hub, not in Class Stream (teacher/stream/stream.js's "Stream a Lesson"
+// modal is the broadcast-only counterpart to this tab). This is a
+// lightweight, read-only list — it reuses lessons.js's own
+// loadLessonsForSubject() rather than re-implementing the query, and Edit
+// navigates away to the real editor (teacher/lessons/builder.html) instead
+// of re-building any editing UI here.
+//
+// Unlike renderAssignmentsTab() (synchronous — assignments are already in
+// the in-memory subject cache), this is async: lessons live in their own
+// Firestore subcollection and aren't preloaded with the rest of the subject
+// panel data.
+function formatLessonDate(iso) {
+    if (!iso) return '';
+    try { return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); }
+    catch (e) { return iso; }
+}
+
+window.renderLessonsTab = async function renderLessonsTab() {
+    if (currentPanelTab !== 'lessons') return;
+
+    const sub = getSubjectByName(currentSubjectName);
+    const context = sub ? resolvePostContext(sub, resolvedClasses) : null;
+
+    document.getElementById('spPanelMeta').textContent = `${currentSubjectName || ''} · Lessons`;
+
+    if (!context) {
+        document.getElementById('subjectPanelBody').innerHTML = `
+            <div class="bg-white border-2 border-dashed border-slate-200 rounded-2xl py-14 px-6 text-center">
+                <p class="font-black text-slate-600 text-sm mb-1">Couldn't resolve this subject to a class</p>
+                <p class="text-xs text-slate-400 font-semibold max-w-xs mx-auto">Try reopening the Subjects page, or check your class assignment in Settings.</p>
+            </div>`;
+        return;
+    }
+
+    document.getElementById('subjectPanelBody').innerHTML = '<div class="flex justify-center py-16"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-teal-500"></i></div>';
+
+    let lessons = [];
+    try {
+        lessons = await loadLessonsForSubject(session.schoolId, context);
+    } catch (e) {
+        console.error('[Subjects] loadLessonsForSubject failed:', e);
+        document.getElementById('subjectPanelBody').innerHTML = `
+            <div class="bg-white border-2 border-dashed border-red-200 rounded-2xl py-14 px-6 text-center">
+                <p class="font-black text-red-600 text-sm mb-1">Couldn't load lessons</p>
+                <p class="text-xs text-slate-400 font-semibold max-w-xs mx-auto">Something went wrong loading this subject's lessons. Please try again.</p>
+            </div>`;
+        return;
+    }
+
+    // Bail out if the teacher switched tabs/subjects while this was loading —
+    // same async-race guard renderAssignmentsTab's synchronous cousin doesn't
+    // need, but this function does since it awaits a network round-trip.
+    if (currentPanelTab !== 'lessons' || getSubjectByName(currentSubjectName) !== sub) return;
+
+    const builderUrl = (lessonId) => {
+        const params = new URLSearchParams({
+            subjectId: context.subjectId,
+            classId: context.classId,
+            subjectName: context.subjectName || ''
+        });
+        if (lessonId) params.set('lessonId', lessonId);
+        return `../lessons/builder.html?${params.toString()}`;
+    };
+
+    const createCard = `
+        <div class="mb-5">
+            <button type="button" onclick="window.location.href='${builderUrl()}'"
+                class="w-full bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white font-black py-3.5 rounded-2xl transition shadow-md text-sm flex items-center justify-center gap-2">
+                <i class="fa-solid fa-circle-plus"></i> Create New Lesson
+            </button>
+        </div>`;
+
+    if (!lessons.length) {
+        document.getElementById('subjectPanelBody').innerHTML = createCard + `
+            <div class="bg-white border-2 border-dashed border-slate-200 rounded-2xl py-14 px-6 text-center">
+                <div class="w-12 h-12 mx-auto mb-4 bg-teal-50 text-teal-500 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-chalkboard-user"></i></div>
+                <p class="font-black text-slate-600 text-sm mb-1">No lessons yet</p>
+                <p class="text-xs text-slate-400 font-semibold max-w-xs mx-auto">Build an interactive lesson above. Publishing it announces it to Class Stream automatically, and you can also share or present it live from there any time.</p>
+            </div>`;
+        return;
+    }
+
+    const rows = lessons.map(l => {
+        const isPublished = l.status === 'published';
+        const statusBadge = isPublished
+            ? `<span class="text-[10px] font-black uppercase bg-emerald-50 text-emerald-600 border border-emerald-200 px-2 py-0.5 rounded-md">Published</span>`
+            : `<span class="text-[10px] font-black uppercase bg-slate-100 text-slate-500 border border-slate-200 px-2 py-0.5 rounded-md">Draft</span>`;
+        return `
+        <div class="px-5 py-3.5 flex items-center justify-between gap-3 hover:bg-slate-50 transition">
+            <div class="min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <p class="font-black text-slate-700 text-sm truncate">${escHtml(l.title) || 'Untitled Lesson'}</p>
+                    ${statusBadge}
+                    <span class="text-[10px] font-black text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">${l.format === 'document' ? 'Document' : 'Slides'}</span>
+                </div>
+                <p class="text-[11px] text-slate-400 font-bold mt-0.5"><i class="fa-regular fa-clock mr-1"></i>Updated ${escHtml(formatLessonDate(l.updatedAt))}</p>
+            </div>
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+                <button onclick="window.location.href='${builderUrl(l.id)}'" title="Edit lesson"
+                    class="flex items-center gap-1 text-[11px] font-black text-slate-500 hover:text-teal-700 bg-slate-100 hover:bg-teal-50 border border-slate-200 hover:border-teal-200 px-2.5 py-1.5 rounded-lg transition">
+                    <i class="fa-solid fa-pen text-[10px]"></i> Edit
+                </button>
+            </div>
+        </div>`;
+    }).join('');
+
+    document.getElementById('subjectPanelBody').innerHTML = createCard + `
+        <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+            <div class="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                <h4 class="font-black text-slate-700 text-sm uppercase tracking-wider"><i class="fa-solid fa-chalkboard-user text-teal-500 mr-1.5"></i> Lessons</h4>
+                <span class="text-xs text-slate-400 font-bold">${lessons.length} total</span>
+            </div>
+            <div class="divide-y divide-slate-100">${rows}</div>
+        </div>`;
 };
 
 // LIFT & SHIFT REFACTOR: editAssignment() used to switch this tab's own

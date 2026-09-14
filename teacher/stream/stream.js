@@ -2,7 +2,8 @@
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { showMsg, loadTeacherSubjectsCache } from '../../assets/js/utils.js';
-import { resolvePostContext, loadPostsForSubject, createPost, updatePost, deletePost } from '../../assets/js/posts.js';
+import { resolvePostContext, loadPostsForSubject, createPost, updatePost, deletePost, createLessonLinkedPost } from '../../assets/js/posts.js';
+import { loadLessonsForSubject } from '../../assets/js/lessons.js';
 
 // ── 1. AUTHENTICATION & LAYOUT ──────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
@@ -17,8 +18,8 @@ let currentSubject = null;    // the subject object currently selected in the pi
 let currentPostContext = null; // resolvePostContext(currentSubject, resolvedClasses)
 let postsCache = [];          // every post for currentSubject, newest-first
 let currentView = 'stream';   // 'stream' | 'lessonPlans'
-let composerType = 'announcement'; // 'announcement' | 'lesson_plan'
 let editingPostId = null;     // postId being edited, or null for a new post
+let lessonsCache = [];        // this subject's lessons (for the "Stream a Lesson" modal), loaded lazily on first open
 
 const els = {};
 
@@ -87,12 +88,12 @@ async function init() {
 
 function cacheEls() {
     ['subjectSelect', 'viewStreamBtn', 'viewLessonPlansBtn',
-     'typeAnnouncementBtn', 'typeLessonPlanBtn',
-     'composerTitle', 'composerMsg', 'titleRequiredMark',
-     'postTitle', 'postBody', 'postObjectives', 'postLessonDate', 'postPinned',
-     'lessonDateField', 'objectivesField', 'pinnedField',
+     'composerTitle', 'composerMsg',
+     'postTitle', 'postBody', 'postPinned', 'pinnedField',
      'savePostBtn', 'savePostBtnLabel', 'cancelEditBtn',
-     'postListCount', 'postList'
+     'postListCount', 'postList',
+     'streamLessonBtn', 'streamLessonModalOverlay', 'closeStreamLessonModalBtn',
+     'streamLessonModalMsg', 'streamLessonList'
     ].forEach(id => { els[id] = document.getElementById(id); });
 }
 
@@ -102,13 +103,17 @@ function wireEvents() {
     els.viewStreamBtn.addEventListener('click', () => setView('stream'));
     els.viewLessonPlansBtn.addEventListener('click', () => setView('lessonPlans'));
 
-    els.typeAnnouncementBtn.addEventListener('click', () => setComposerType('announcement'));
-    els.typeLessonPlanBtn.addEventListener('click', () => setComposerType('lesson_plan'));
-
     els.savePostBtn.addEventListener('click', savePost);
     els.cancelEditBtn.addEventListener('click', resetComposer);
 
     els.postList.addEventListener('click', onPostListClick);
+
+    els.streamLessonBtn.addEventListener('click', openStreamLessonModal);
+    els.closeStreamLessonModalBtn.addEventListener('click', closeStreamLessonModal);
+    els.streamLessonModalOverlay.addEventListener('click', (e) => {
+        if (e.target === els.streamLessonModalOverlay) closeStreamLessonModal();
+    });
+    els.streamLessonList.addEventListener('click', onStreamLessonListClick);
 }
 
 // ── 5. SUBJECT SELECTION ────────────────────────────────────────────────────
@@ -125,6 +130,7 @@ async function onSubjectChange() {
     const subjectId = els.subjectSelect.value;
     currentSubject = subjectsCache.find(s => s.id === subjectId) || null;
     resetComposer();
+    lessonsCache = []; // invalidate — re-fetched lazily next time the modal opens for this subject
 
     if (!currentSubject) {
         currentPostContext = null;
@@ -157,6 +163,9 @@ function setComposerEnabled(enabled, message) {
     els.savePostBtn.disabled = !enabled;
     els.savePostBtn.classList.toggle('opacity-50', !enabled);
     els.savePostBtn.classList.toggle('cursor-not-allowed', !enabled);
+    els.streamLessonBtn.disabled = !enabled;
+    els.streamLessonBtn.classList.toggle('opacity-50', !enabled);
+    els.streamLessonBtn.classList.toggle('cursor-not-allowed', !enabled);
     if (!enabled && message) {
         showMsg('composerMsg', message, true);
     }
@@ -170,17 +179,15 @@ function setView(view) {
 }
 
 // ── 7. COMPOSER ──────────────────────────────────────────────────────────
-function setComposerType(type) {
-    composerType = type;
-    setToggleActive(type === 'announcement' ? els.typeAnnouncementBtn : els.typeLessonPlanBtn, [els.typeAnnouncementBtn, els.typeLessonPlanBtn]);
-
-    const isLessonPlan = type === 'lesson_plan';
-    els.lessonDateField.classList.toggle('hidden', !isLessonPlan);
-    els.objectivesField.classList.toggle('hidden', !isLessonPlan);
-    els.pinnedField.classList.toggle('hidden', isLessonPlan);
-    els.titleRequiredMark.classList.toggle('hidden', !isLessonPlan);
-}
-
+// The composer only ever creates/edits plain announcement posts now — lesson
+// authoring lives in the Subjects Hub's Lessons tab, and broadcasting a
+// lesson happens through the "Stream a Lesson" modal (section 7b) instead of
+// this form. Editing is still allowed for legacy type:'lesson_plan' posts'
+// pinned/body/title via this composer is intentionally NOT offered (see the
+// edit-button guard in renderPostCard) — updatePost() nulls out
+// lessonDate/objectives for any patch whose type isn't 'lesson_plan', so
+// letting this always-'announcement' composer edit one of those posts would
+// silently destroy its lesson-plan-specific fields.
 function resetComposer() {
     editingPostId = null;
     els.composerTitle.textContent = 'New Post';
@@ -188,10 +195,7 @@ function resetComposer() {
     els.cancelEditBtn.classList.add('hidden');
     els.postTitle.value = '';
     els.postBody.value = '';
-    els.postObjectives.value = '';
-    els.postLessonDate.value = '';
     els.postPinned.checked = false;
-    setComposerType('announcement');
     if (els.composerMsg) els.composerMsg.classList.add('hidden');
 }
 
@@ -200,11 +204,8 @@ function beginEditPost(post) {
     els.composerTitle.textContent = 'Edit Post';
     els.savePostBtnLabel.textContent = 'Save Changes';
     els.cancelEditBtn.classList.remove('hidden');
-    setComposerType(post.type);
     els.postTitle.value = post.title || '';
     els.postBody.value = post.body || '';
-    els.postObjectives.value = post.objectives || '';
-    els.postLessonDate.value = post.lessonDate || '';
     els.postPinned.checked = !!post.pinned;
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -212,25 +213,18 @@ function beginEditPost(post) {
 async function savePost() {
     if (!currentPostContext) return;
 
-    const isLessonPlan = composerType === 'lesson_plan';
     const title = els.postTitle.value.trim();
     const body = els.postBody.value.trim();
 
-    if (isLessonPlan && !title) {
-        showMsg('composerMsg', 'Lesson plans need a title.', true);
-        return;
-    }
     if (!title && !body) {
         showMsg('composerMsg', 'Write something before posting.', true);
         return;
     }
 
     const postData = {
-        type: composerType,
+        type: 'announcement',
         title,
         body,
-        lessonDate: els.postLessonDate.value || null,
-        objectives: els.postObjectives.value.trim(),
         pinned: els.postPinned.checked
     };
 
@@ -256,6 +250,110 @@ async function savePost() {
         els.savePostBtnLabel.textContent = prevLabel;
     } finally {
         els.savePostBtn.disabled = false;
+    }
+}
+
+// ── 7b. "STREAM A LESSON" MODAL ──────────────────────────────────────────
+// Broadcasting trigger only — lessons themselves are authored in the
+// Subjects Hub's Lessons tab (teacher/subjects/subjects.js's
+// renderLessonsTab()) via the Lesson Builder. This modal lists this
+// subject's PUBLISHED lessons (a draft can't be presented live — see
+// lessons/live.js's own status gate — and re-sharing a draft to the stream
+// makes little sense either, so drafts are filtered out here rather than
+// shown disabled) and offers two actions per lesson:
+//   - "Start Live Session": navigates to the existing, already-URL-param-
+//     aware live.js/live.html presenter — no new live-session logic here.
+//   - "Share to Stream": posts.js's createLessonLinkedPost(), a manual
+//     re-share for a lesson that was already auto-announced once when first
+//     published (lessons.js's publishLesson() does that automatically) —
+//     useful as a reminder post without requiring the teacher to unpublish/
+//     republish the lesson itself.
+async function openStreamLessonModal() {
+    if (!currentPostContext) return;
+    els.streamLessonModalOverlay.classList.remove('hidden');
+    els.streamLessonModalMsg.classList.add('hidden');
+    els.streamLessonList.innerHTML = '<div class="text-center py-8 text-[#9ab0c6] text-[13px] font-bold"><i class="fa-solid fa-spinner fa-spin text-[#2563eb] text-xl mb-2 block"></i>Loading lessons…</div>';
+
+    try {
+        lessonsCache = await loadLessonsForSubject(session.schoolId, currentPostContext);
+    } catch (e) {
+        console.error('[Stream] loadLessonsForSubject:', e);
+        lessonsCache = [];
+        showMsg('streamLessonModalMsg', 'Could not load lessons for this subject. Please try again.', true);
+    }
+    renderStreamLessonList();
+}
+
+function closeStreamLessonModal() {
+    els.streamLessonModalOverlay.classList.add('hidden');
+}
+
+function renderStreamLessonList() {
+    const published = lessonsCache.filter(l => l.status === 'published');
+
+    if (!published.length) {
+        els.streamLessonList.innerHTML = `<div class="text-center py-8 text-[#9ab0c6] text-[13px] font-bold">
+            No published lessons yet for this subject. Publish a lesson from the Subjects Hub's Lessons tab first.
+        </div>`;
+        return;
+    }
+
+    els.streamLessonList.innerHTML = published.map(lesson => `
+        <div class="flex items-center justify-between gap-3 border border-[#dce3ed] rounded-lg p-3" data-lesson-id="${escHtml(lesson.id)}">
+            <div class="min-w-0">
+                <p class="font-bold text-[#0d1f35] text-[13px] m-0 truncate">${escHtml(lesson.title) || 'Untitled Lesson'}</p>
+                <p class="text-[10.5px] text-[#9ab0c6] font-semibold m-0">${lesson.format === 'document' ? 'Document' : 'Slides'} · Updated ${escHtml(formatDate(lesson.updatedAt))}</p>
+            </div>
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+                <button data-action="live" class="bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-1.5 px-3 rounded transition text-[11.5px] flex items-center gap-1.5">
+                    <i class="fa-solid fa-tower-broadcast text-[10px]"></i>Start Live Session
+                </button>
+                <button data-action="share" class="bg-white hover:bg-[#eef4ff] text-[#2563eb] border border-[#c7d9fd] font-bold py-1.5 px-3 rounded transition text-[11.5px] flex items-center gap-1.5">
+                    <i class="fa-solid fa-share text-[10px]"></i>Share to Stream
+                </button>
+            </div>
+        </div>`).join('');
+}
+
+async function onStreamLessonListClick(e) {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const row = e.target.closest('[data-lesson-id]');
+    const lessonId = row && row.dataset.lessonId;
+    const lesson = lessonsCache.find(l => l.id === lessonId);
+    if (!lesson || !currentPostContext) return;
+
+    if (btn.dataset.action === 'live') {
+        const params = new URLSearchParams({
+            lessonId: lesson.id,
+            classId: currentPostContext.classId,
+            subjectId: currentPostContext.subjectId,
+            subjectName: currentPostContext.subjectName || ''
+        });
+        window.location.href = `../lessons/live.html?${params.toString()}`;
+        return;
+    }
+
+    if (btn.dataset.action === 'share') {
+        btn.disabled = true;
+        const prevHtml = btn.innerHTML;
+        btn.innerHTML = 'Sharing…';
+        try {
+            const authorContext = { authorId: session.teacherId, authorName: session.teacherData.name };
+            const newPost = await createLessonLinkedPost(session.schoolId, currentPostContext, authorContext, {
+                lessonId: lesson.id,
+                lessonTitle: lesson.title
+            });
+            postsCache.unshift(newPost);
+            closeStreamLessonModal();
+            setView('stream');
+            showMsg('composerMsg', `Shared "${lesson.title || 'Untitled Lesson'}" to the stream.`, false);
+        } catch (err) {
+            console.error('[Stream] createLessonLinkedPost:', err);
+            btn.disabled = false;
+            btn.innerHTML = prevHtml;
+            showMsg('streamLessonModalMsg', 'Failed to share this lesson. Please try again.', true);
+        }
     }
 }
 
@@ -316,9 +414,10 @@ function renderPostCard(post) {
                 </div>
             </div>
             <div class="flex items-center gap-1 flex-shrink-0">
+                ${isLessonPlan ? '' : `
                 <button data-action="edit" class="text-[#6b84a0] hover:text-[#2563eb] hover:bg-[#eef4ff] h-7 w-7 rounded flex items-center justify-center transition" title="Edit">
                     <i class="fa-solid fa-pen text-xs"></i>
-                </button>
+                </button>`}
                 <button data-action="delete" class="text-[#6b84a0] hover:text-[#e31b4a] hover:bg-[#fff0f3] h-7 w-7 rounded flex items-center justify-center transition" title="Delete">
                     <i class="fa-solid fa-trash text-xs"></i>
                 </button>
@@ -336,6 +435,7 @@ async function onPostListClick(e) {
     if (!post) return;
 
     if (btn.dataset.action === 'edit') {
+        if (post.type === 'lesson_plan') return; // defense-in-depth: renderPostCard already omits this button for legacy lesson-plan posts
         beginEditPost(post);
     } else if (btn.dataset.action === 'delete') {
         if (!confirm(`Delete "${post.title || (post.type === 'lesson_plan' ? 'this lesson plan' : 'this announcement')}"? This cannot be undone.`)) return;

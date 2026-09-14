@@ -102,7 +102,29 @@ async function init() {
     resolvedClasses = result.resolvedClasses;
 
     renderSubjectOptions();
+
+    // Deep-link support: teacher/subjects/subjects.js's Lessons tab (and the
+    // "+ Create New Lesson" button there) links here with
+    // ?subjectId=&classId=&subjectName=&lessonId= — the same querystring
+    // shape lessons/live.js already reads. classId/subjectName are accepted
+    // but not read below: onSubjectChange() re-resolves the full postContext
+    // itself from resolvedClasses once subjectId is selected, so they'd be
+    // redundant here. Only pre-selects the subject and, once its lessons have
+    // loaded, opens one specific lesson — it never auto-opens the "new
+    // lesson" format-choice modal, so landing here from Subjects never pops
+    // up an unexpected modal on load.
+    const deepLinkParams = new URLSearchParams(window.location.search);
+    const urlSubjectId = deepLinkParams.get('subjectId');
+    const urlLessonId = deepLinkParams.get('lessonId');
+    if (urlSubjectId && [...els.subjectSelect.options].some(o => o.value === urlSubjectId)) {
+        els.subjectSelect.value = urlSubjectId;
+    }
+
     await onSubjectChange();
+
+    if (urlLessonId && lessonsCache.some(l => l.id === urlLessonId)) {
+        await openBuilder(urlLessonId);
+    }
 }
 
 function cacheEls() {

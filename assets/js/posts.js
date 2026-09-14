@@ -185,3 +185,28 @@ export async function deletePost(schoolId, postContext, postId) {
     const { classId, subjectId } = postContext;
     await deleteDoc(doc(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'posts', postId));
 }
+
+// ── LESSON-LINKED POST: "Share to Stream" from the Class Stream's lesson
+// picker ─────────────────────────────────────────────────────────────────
+// Mirrors lessons.js's own publishLesson() exactly (create the announcement,
+// then patch linkedLessonId on afterward — that field isn't part of
+// createPost()'s known schema, so it's patched on rather than widening that
+// shared function's signature for these two callers). Kept as a distinct
+// function rather than exported from lessons.js because it's a Stream
+// action, not a lesson-state transition: unlike publishLesson(), this never
+// touches the lesson doc itself, and can be called again for an
+// already-published lesson (a teacher re-sharing a reminder), which is why
+// its copy says "Lesson shared" rather than "New Lesson:" — avoiding the
+// false implication that the lesson itself is new every time this runs.
+export async function createLessonLinkedPost(schoolId, postContext, authorContext, { lessonId, lessonTitle }) {
+    const post = await createPost(schoolId, postContext, authorContext, {
+        type: 'announcement',
+        title: `Lesson shared: ${lessonTitle || 'Untitled Lesson'}`,
+        body: 'Your teacher shared a lesson. Tap to view it.',
+        pinned: false
+    });
+    const { classId, subjectId } = postContext;
+    await updateDoc(doc(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'posts', post.id),
+        { linkedLessonId: lessonId });
+    return { ...post, linkedLessonId: lessonId };
+}
