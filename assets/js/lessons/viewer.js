@@ -67,6 +67,23 @@ let unsubLiveResponses = null;     // subscribeToLiveResponses()'s unsubscribe �
 let liveResponsesForCurrentBlock = []; // collaborative_board's shared wall for whichever block is on screen
 let mySubmittedBlockIds = new Set(); // interactive_prompt/collaborative_board block ids this student has already answered this session (so a re-render doesn't blow away an in-progress unsent draft)
 
+// ── LIVE SESSION LOCKDOWN: single source of truth for "is this session
+// still accepting submissions right now" ─────────────────────────────────
+// liveSessionId is set once at page load (init(), below) and NEVER cleared
+// afterward — it stays truthy for the rest of the page's life even after
+// the teacher ends the session, since it also doubles as "this lesson HAD a
+// session, so keep showing read-only session UI (the ended banner, a
+// collaborative board's frozen wall)" rather than reverting to the plain
+// "never live" slide state. Checking liveSessionId alone therefore is NOT
+// enough to gate whether new input should be accepted — every place that
+// decides whether to render/wire a LIVE, WRITABLE form (the submit button,
+// the answer textarea, the multiple-choice buttons) must check this
+// instead, which additionally requires a live session snapshot to exist
+// AND that snapshot's endedAt to still be unset.
+function isSessionLive() {
+    return !!(liveSessionId && liveSessionData && !liveSessionData.endedAt);
+}
+
 const els = {};
 
 function escHtml(str) {
@@ -360,7 +377,7 @@ function currentSlide() {
 // set), manual navigation is freely allowed again — the lesson behaves like
 // any other non-live lesson from that point on.
 function manualGoToSlide(index) {
-    if (liveSessionId && liveSessionData && !liveSessionData.endedAt) {
+    if (isSessionLive()) {
         showLiveBanner('Your teacher is presenting live — navigation follows their position.');
         return;
     }
@@ -390,11 +407,15 @@ function renderSlideCanvas() {
     if (slide.type === 'media') mountLazyMediaFrame(slide, els.lvSlideCanvas.querySelector('[data-lazy-media]'));
 
     // ── PHASE 3: live-response wiring for the two interactive block types.
-    // Only meaningful during an active live session — outside one, these
-    // blocks render their static prompt text with no submission form at
-    // all, since there is no live_sessions document to write a response
-    // into (see the two render functions' own "no live session" branch).
-    if (liveSessionId && (slide.type === 'interactive_prompt' || slide.type === 'collaborative_board')) {
+    // Only meaningful while the session is ACTIVELY live — isSessionLive()
+    // (not the bare liveSessionId, which stays truthy after the session
+    // ends) gates this so a submit button is never wired once the session
+    // is over. The two render functions below only emit a submit button/
+    // textarea/choice buttons in the first place when isSessionLive() is
+    // true, so this stays in sync with what's actually on screen — outside
+    // that, these blocks render either their read-only "session ended"
+    // state or their static "no live session" prompt text.
+    if (isSessionLive() && (slide.type === 'interactive_prompt' || slide.type === 'collaborative_board')) {
         wireLiveBlockForm(slide);
     }
     // The live responses LISTENER (as opposed to the submission FORM above)
@@ -408,6 +429,15 @@ function renderSlideCanvas() {
     // "Did I already submit this prompt" is tracked locally instead, via
     // mySubmittedBlockIds.add() right inside submitLiveResponse() itself —
     // it doesn't need a listener at all.
+    //
+    // Deliberately gated on the bare liveSessionId here, NOT isSessionLive()
+    // — this is a READ-ONLY listener (the LIST rule doesn't care whether the
+    // session has ended), and the whole point of the Live Session Lockdown
+    // is that a student can still review the board's frozen wall of
+    // everyone's cards after the session ends, even though they can no
+    // longer add a new one. renderCollaborativeBoardHtml() keeps rendering
+    // the #lvBoardWall container in its "session ended" branch specifically
+    // so this listener always has somewhere to render into.
     if (liveSessionId && slide.type === 'collaborative_board') {
         registerBlockResponsesListener(slide.id, slide.type);
     } else if (unsubLiveResponses) {
@@ -463,17 +493,27 @@ function renderAssignmentSlideHtml(slide) {
 // ── PHASE 3: LIVE SESSION ENGINE — interactive block rendering ──────────
 // Both block types render their prompt text unconditionally (a teacher
 // paging through the deck outside a live session, or a student opening the
-// lesson later for review, should still see what was asked) — only the
-// submission form itself is gated on liveSessionId actually being set, in
-// renderSlideCanvas() above.
+// lesson later for review, should still see what was asked). The
+// submission form itself has THREE possible states, not two:
+//   1. isSessionLive() — the writable form (textarea/choices/submit button),
+//      wired by wireLiveBlockForm() in renderSlideCanvas() above.
+//   2. liveSessionId set but the session has ENDED (liveSessionData.endedAt)
+//      — LIVE SESSION LOCKDOWN: no writable form at all, just a locked
+//      notice (plus the existing "you already answered" confirmation, which
+//      still applies — reviewing that you submitted is not the same as
+//      being able to submit again).
+//   3. liveSessionId never set at all (no session has ever run for this
+//      lesson) — the original static "only live during an active session"
+//      copy.
 function renderInteractivePromptHtml(slide) {
     const alreadySubmitted = mySubmittedBlockIds.has(slide.id);
+    const sessionEnded = !!(liveSessionId && liveSessionData && liveSessionData.endedAt);
     return `
     <div class="lv-slide-card">
         <span class="lv-live-badge"><i class="fa-solid fa-bolt"></i> Live Prompt</span>
         ${slide.heading ? `<h2 class="text-lg md:text-xl font-black text-slate-800 mt-3 mb-3">${escHtml(slide.heading)}</h2>` : ''}
         <p class="text-[14px] text-slate-700 font-semibold leading-relaxed mb-4">${escHtml(slide.promptText) || 'No prompt text set.'}</p>
-        ${liveSessionId ? `
+        ${isSessionLive() ? `
             <div id="lvLiveFormWrap">
                 ${slide.promptKind === 'multiple_choice' && (slide.choices || []).length
                     ? `<div class="space-y-2 mb-3">${slide.choices.map((c, i) => `
@@ -483,25 +523,45 @@ function renderInteractivePromptHtml(slide) {
                 <p id="lvLiveMsg" class="text-[12px] font-bold mt-2 hidden"></p>
                 ${alreadySubmitted ? `<p class="text-[11.5px] font-bold text-emerald-600 mt-2"><i class="fa-solid fa-circle-check"></i> Your answer was submitted.</p>` : ''}
             </div>`
-            : `<p class="text-[12px] font-semibold text-slate-400">This prompt is only live during an active session.</p>`}
+            : sessionEnded
+                ? `<div class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5">
+                       <i class="fa-solid fa-lock text-slate-400 text-xs"></i>
+                       <p class="text-[12px] font-semibold text-slate-500 m-0">This live session has ended — answers are read-only.</p>
+                   </div>
+                   ${alreadySubmitted ? `<p class="text-[11.5px] font-bold text-emerald-600 mt-2"><i class="fa-solid fa-circle-check"></i> Your answer was submitted.</p>` : ''}`
+                : `<p class="text-[12px] font-semibold text-slate-400">This prompt is only live during an active session.</p>`}
     </div>`;
 }
 
 function renderCollaborativeBoardHtml(slide) {
     const alreadySubmitted = mySubmittedBlockIds.has(slide.id);
+    const sessionEnded = !!(liveSessionId && liveSessionData && liveSessionData.endedAt);
+    // LIVE SESSION LOCKDOWN: the write form (textarea + Add/Update button)
+    // only ever renders while isSessionLive() — but #lvBoardWall itself
+    // still renders in the "ended" branch too, deliberately, so the read-
+    // only registerBlockResponsesListener() wired in renderSlideCanvas()
+    // (gated on the bare liveSessionId, not isSessionLive() — see that
+    // function's own comment) has somewhere to keep showing everyone's
+    // already-submitted cards for review.
     return `
     <div class="lv-slide-card">
         <span class="lv-live-badge lv-live-badge-board"><i class="fa-solid fa-people-group"></i> Collaborative Board</span>
         ${slide.heading ? `<h2 class="text-lg md:text-xl font-black text-slate-800 mt-3 mb-3">${escHtml(slide.heading)}</h2>` : ''}
         ${slide.instructions ? `<p class="text-[13.5px] text-slate-600 leading-relaxed whitespace-pre-wrap mb-4">${escHtml(slide.instructions)}</p>` : ''}
-        ${liveSessionId ? `
+        ${isSessionLive() ? `
             <div id="lvLiveFormWrap" class="mb-4">
                 <textarea id="lvLiveAnswerText" placeholder="Add your card…" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm resize-none leading-relaxed mb-3" style="height:4.5rem;"></textarea>
                 <button id="lvLiveSubmitBtn" class="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-black py-2.5 px-5 rounded-xl transition shadow-md text-sm"><i class="fa-solid fa-plus mr-1"></i> ${alreadySubmitted ? 'Update My Card' : 'Add My Card'}</button>
                 <p id="lvLiveMsg" class="text-[12px] font-bold mt-2 hidden"></p>
             </div>
             <div id="lvBoardWall" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5"></div>`
-            : `<p class="text-[12px] font-semibold text-slate-400">This board is only live during an active session.</p>`}
+            : sessionEnded
+                ? `<div class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 mb-4">
+                       <i class="fa-solid fa-lock text-slate-400 text-xs"></i>
+                       <p class="text-[12px] font-semibold text-slate-500 m-0">This live session has ended — the board is read-only.</p>
+                   </div>
+                   <div id="lvBoardWall" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5"></div>`
+                : `<p class="text-[12px] font-semibold text-slate-400">This board is only live during an active session.</p>`}
     </div>`;
 }
 
@@ -592,11 +652,22 @@ function registerBlockResponsesListener(blockId, blockType) {
 // formats.
 function joinLiveSession() {
     unsubLiveSession = subscribeToLiveSession(session.schoolId, postContext, lesson.id, liveSessionId, (data) => {
+        const wasLive = isSessionLive();
         liveSessionData = data;
 
         if (data.endedAt) {
-            showLiveBanner('This live session has ended.');
+            showLiveBanner('🔴 Live Session Ended - Read Only', /* ended */ true);
             if (unsubLiveResponses) { unsubLiveResponses(); unsubLiveResponses = null; }
+            // LIVE SESSION LOCKDOWN: re-render the slide that's on screen
+            // RIGHT NOW so it locks immediately, the moment the teacher ends
+            // the session — without this, a student already looking at an
+            // interactive_prompt/collaborative_board slide would keep seeing
+            // its live, writable form indefinitely (isSessionLive() only
+            // gets re-checked inside renderSlideCanvas(), which nothing else
+            // would otherwise call again until the student next navigates).
+            // Skipped for Document format, which has no slide canvas to
+            // re-render — the banner above is the only UI that format needs.
+            if (wasLive && lesson.format !== 'document') renderSlideCanvas();
             return;
         }
 
@@ -610,7 +681,7 @@ function joinLiveSession() {
     showLiveBanner('Following your teacher live.');
 }
 
-function showLiveBanner(text) {
+function showLiveBanner(text, ended = false) {
     if (!els.lvLiveBanner) return;
     // Text goes into the inner <span>, not the banner element itself — the
     // banner also carries a static font-awesome icon as a sibling node,
@@ -619,6 +690,13 @@ function showLiveBanner(text) {
     const label = els.lvLiveBanner.querySelector('span') || els.lvLiveBanner;
     label.textContent = text;
     els.lvLiveBanner.classList.remove('hidden');
+    // Visually distinguish "still live, following the teacher" (green, the
+    // original styling) from "session ended — read only" (rose) — this
+    // banner is meant to be a persistent, impossible-to-miss lock notice
+    // once the session ends, not just the same friendly "you're connected"
+    // indicator with different words.
+    els.lvLiveBanner.classList.toggle('text-emerald-300', !ended);
+    els.lvLiveBanner.classList.toggle('text-rose-300', ended);
 }
 
 // Lazy iframe mount: called only when a media slide's canvas node has just

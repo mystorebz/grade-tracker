@@ -924,12 +924,27 @@ service cloud.firestore {
                                  resource.data.blockType == 'collaborative_board'
                                );
 
+                // LIVE SESSION LOCKDOWN: a student may only create/update a
+                // response while the ENCLOSING live_sessions/{sessionId} doc
+                // is still active (endedAt == null). This is a per-document
+                // create/update rule, not a list — per this match block's
+                // own comment above ("GET/CREATE/UPDATE above are
+                // unaffected... a single lookup for a specific resource, not
+                // a query Firestore has to prove ahead of time"), a get()
+                // call here is safe and costs nothing extra for query
+                // provability. Without this, the viewer.js UI lock (see
+                // isSessionLive() in assets/js/lessons/viewer.js) is only a
+                // convenience — a student could still write a late response
+                // straight through the SDK/console after the teacher ends
+                // the session, bypassing the disabled button entirely. This
+                // is what actually prevents that write, not just the UI.
                 allow create, update: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) &&
                                           request.auth.token.role == 'student' &&
                                           request.resource.data.studentId == request.auth.token.studentId &&
                                           request.resource.data.blockId is string &&
                                           request.resource.data.blockType in ['interactive_prompt', 'collaborative_board'] &&
-                                          responseId == request.resource.data.studentId + '_' + request.resource.data.blockId;
+                                          responseId == request.resource.data.studentId + '_' + request.resource.data.blockId &&
+                                          get(/databases/$(database)/documents/schools/$(schoolId)/classes/$(classId)/subjects/$(subjectId)/lessons/$(lessonId)/live_sessions/$(sessionId)).data.endedAt == null;
               }
             }
           }
