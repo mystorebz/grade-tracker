@@ -46,26 +46,40 @@ export function requireAuth(role, redirectUrl = '../index.html') {
         return null;
     }
 
-    // ── 1. FIREBASE AUTH EXPIRE CHECK ─────────────────────────────────────────
-    if (auth.currentUser === null) {
+    // ── 1. FIREBASE AUTH EXPIRE + IDENTITY DRIFT CHECK (session-bleed guard) ──
+    // BUG FIX (permission-error mandate): Firebase Auth's persisted-session
+    // restore is asynchronous, so on a fresh page load — a real navigation,
+    // not a client-side route change, which is how every one of these pages
+    // is reached — auth.currentUser is still null at this exact synchronous
+    // line even when a session is about to be restored a moment later. The
+    // previous version only ran the role-aware drift check below (formerly
+    // its own separate "1b" block) when auth.currentUser was ALREADY
+    // non-null at this precise instant, so on nearly every real page load
+    // that check silently never ran at all — only this plain "is anyone
+    // signed in at all" branch ever fired, and it never looked at role.
+    // A browser profile signed in as the WRONG role (e.g. a parent test
+    // session bleeding into a teacher-only tab — see checkAuthDrift()'s own
+    // comment below for the full scenario) then sailed straight through
+    // requireAuth() with no warning and no redirect, and the first anyone
+    // found out was a generic "Missing or insufficient permissions" the
+    // moment the page touched Firestore — exactly what Add Work's
+    // awSaveWork() surfaces when it tries to save.
+    // onAuthStateChanged's callback fires with the CURRENT auth state
+    // immediately upon subscribing, not just on future changes — so
+    // registering it unconditionally instead of gating it on
+    // auth.currentUser's synchronous value now catches the drift whether
+    // Firebase's session restore had already finished or not.
+    if (auth.currentUser) {
+        checkAuthDrift(role, redirectUrl);
+    } else {
         onAuthStateChanged(auth, (user) => {
             if (!user) {
                 console.warn(`[ConnectUs] Firebase Auth session expired for ${role}`);
                 logout(redirectUrl);
+            } else {
+                checkAuthDrift(role, redirectUrl);
             }
         });
-    }
-
-    // ── 1b. AUTH IDENTITY DRIFT CHECK (session-bleed guard) ───────────────────
-    // See awaitAuthReady() below for the full explanation and the blocking
-    // version of this same check. This fire-and-forget copy stays here too
-    // for pages that call requireAuth() without awaiting anything after it —
-    // it still recovers a drifted session, just not necessarily before that
-    // page's first Firestore call already got rejected. Pages that can be
-    // updated to call `await awaitAuthReady(role)` right after requireAuth()
-    // (builder.js does) get the race-free version instead.
-    if (auth.currentUser) {
-        checkAuthDrift(role, redirectUrl);
     }
 
     // ── 2. THE GHOSTBUSTER: REAL-TIME DATABASE KILL SWITCH ────────────────────
