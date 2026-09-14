@@ -194,7 +194,10 @@
             </div>
             <div id="tab-overview" class="tab-pane flex-1 overflow-y-auto p-6 bg-[#f4f7fb]">
                 <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-                    <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Identity Details</h4>
+                    <div class="flex items-center justify-between mb-4">
+                        <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest m-0">Identity Details</h4>
+                        <button onclick="window.openEditStudentModal()" class="flex items-center gap-1.5 text-[11px] font-bold text-blue-600 hover:text-blue-700 transition"><i class="fa-solid fa-pen"></i> Edit Profile</button>
+                    </div>
                     <div id="sInfoGrid" class="space-y-3"></div>
                 </div>
             </div>
@@ -222,14 +225,64 @@
             </div>
             <div id="tab-parent" class="tab-pane hidden flex-1 overflow-y-auto p-6 bg-[#f4f7fb]">
                 <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm max-w-lg">
-                    <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Link a Parent Account</h4>
-                    <p class="text-xs text-slate-500 mb-4">Search by the parent's email to link an existing Parent Portal account, or create a new one.</p>
-                    <div class="flex gap-2">
-                        <input type="email" id="mpEmailInput" placeholder="parent@email.com" class="flex-1 p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400">
-                        <button onclick="window.searchParentByEmail()" id="mpSearchBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-lg text-xs transition whitespace-nowrap">Search</button>
+                    <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Manage Parent</h4>
+
+                    <!-- UI CORRECTION MANDATE: checks (via getLinkedParentForStudent)
+                         whether a parent is already linked BEFORE showing the
+                         search-to-link form — mpLoading while in flight, then exactly
+                         one of mpLinkedView (editable contact card) or mpSearchView
+                         (the pre-existing search/create flow) is shown. -->
+                    <div id="mpLoading" class="text-xs text-slate-400 font-semibold mt-3"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i>Checking for a linked parent…</div>
+
+                    <div id="mpLinkedView" class="hidden mt-2">
+                        <p class="text-xs text-slate-500 mb-4">A parent account is already linked to this student. Update their contact info below.</p>
+                        <div class="space-y-2.5">
+                            <div class="flex gap-2">
+                                <input type="text" id="mpEditFirstName" placeholder="First Name" class="flex-1 p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400">
+                                <input type="text" id="mpEditLastName" placeholder="Last Name" class="flex-1 p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400">
+                            </div>
+                            <input type="email" id="mpEditEmail" placeholder="Email" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400">
+                            <input type="tel" id="mpEditPhone" placeholder="Phone" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400">
+                        </div>
+                        <button onclick="window.saveParentContact()" id="mpSaveContactBtn" class="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-lg text-xs transition"><i class="fa-solid fa-floppy-disk mr-1"></i>Save Changes</button>
+                        <p id="mpEditMsg" class="hidden text-xs font-bold mt-2"></p>
                     </div>
-                    <div id="mpResult"></div>
+
+                    <div id="mpSearchView" class="hidden mt-2">
+                        <p class="text-xs text-slate-500 mb-4">No parent is linked yet. Search by email to link an existing Parent Portal account, or create a new one.</p>
+                        <div class="flex gap-2">
+                            <input type="email" id="mpEmailInput" placeholder="parent@email.com" class="flex-1 p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400">
+                            <button onclick="window.searchParentByEmail()" id="mpSearchBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-lg text-xs transition whitespace-nowrap">Search</button>
+                        </div>
+                        <div id="mpResult"></div>
+                    </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── EDIT PROFILE MODAL ──────────────────────────────────────────── -->
+    <div id="editStudentModal" class="overlay fixed inset-0 bg-[#0d1f35]/60 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0 transition-opacity">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full m-4 overflow-hidden" id="editStudentModalInner">
+            <div class="px-6 py-4 border-b border-[#f0f4f8] bg-blue-50 flex justify-between items-center">
+                <h3 class="font-bold text-blue-800 text-sm">Edit Profile</h3>
+                <button onclick="window.closeEditStudentModal()"><i class="fa-solid fa-xmark text-slate-400 hover:text-red-500"></i></button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Student Full Name</label>
+                    <input type="text" id="esName" class="w-full p-2.5 border border-slate-300 rounded-lg text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Date of Birth</label>
+                    <input type="date" id="esDob" class="w-full p-2.5 border border-slate-300 rounded-lg text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Email Address</label>
+                    <input type="email" id="esEmail" class="w-full p-2.5 border border-slate-300 rounded-lg text-sm">
+                </div>
+                <p id="esMsg" class="hidden text-xs font-bold"></p>
+                <button id="saveEditStudentBtn" onclick="window.saveEditStudent()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition text-sm">Save Changes</button>
             </div>
         </div>
     </div>

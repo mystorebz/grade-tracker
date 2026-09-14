@@ -22,6 +22,14 @@ const linkOrCreateParentFn  = httpsCallable(functions, 'linkOrCreateParent');
 // comment in functions/index.js for why linkOrCreateParent alone can't
 // serve this (it always performs the link-or-create action immediately).
 const lookupParentByEmailFn = httpsCallable(functions, 'lookupParentByEmail');
+// UI CORRECTION MANDATE: STUDENT PROFILE & PARENT MANAGEMENT — lets the
+// Manage Parent tab show an already-linked parent's info instead of always
+// starting from the search form, and lets an admin correct that parent's
+// contact info in place. Both are Admin-SDK-only Cloud Functions (see their
+// own header comments in functions/index.js) because parents/{parentId} has
+// no client read/write access beyond a parent reading their own document.
+const getLinkedParentForStudentFn = httpsCallable(functions, 'getLinkedParentForStudent');
+const updateParentContactFn       = httpsCallable(functions, 'updateParentContact');
 
 // ── 2. STATE ──────────────────────────────────────────────────────────────
 let allStudentsCache       = [];
@@ -32,6 +40,7 @@ let activeSemesterObj      = null; // the active semester record (for startDate/
 let schoolClasses          = [];
 let schoolClassDocs        = [];   // PASS B: [{id, name}] — same fetch as schoolClasses, keeps the real class-doc ID
 let currentStudentId       = null;
+let currentLinkedParentId  = null; // set by refreshManageParentTab(); null when no parent is linked
 let currentStudentClass    = '';   // the open student's CURRENT class — Academic tab is scoped to this
 let currentStudentGradesCache = [];
 let currentStudentEvalsCache  = [];   // evaluations for the open student (Class History breakdown)
@@ -444,6 +453,97 @@ window.toggleSEnrollDropdown = function () {
     document.getElementById('sEnrollDropdown')?.classList.toggle('hidden');
 };
 
+// UI CORRECTION MANDATE: extracted out of openStudentPanel() so
+// saveEditStudent() can re-render this same grid after a save without
+// duplicating the row list. Also fixes a pre-existing mislabel: this row
+// was called "Parent Email" but has always displayed student.email (the
+// STUDENT'S own email — set at creation for the credential slip, same
+// field teacher/roster/roster.js's own Identity Details grid correctly
+// labels "Email"). The parent's actual email lives on their own separate
+// parents/{parentId} document and is shown in the Manage Parent tab, not
+// here — leaving the old label in place would have made the new,
+// independently-editable "Email" field in the Edit Profile modal
+// ambiguous about which email it actually changes.
+function renderIdentityGrid(student) {
+    const infoGrid = document.getElementById('sInfoGrid');
+    if (!infoGrid) return;
+    infoGrid.innerHTML = [
+        ['Name',             student?.name        || '—'],
+        ['Date of Birth',    student?.dob         || '—'],
+        ['Email',            student?.email       || '—'],
+        ['Current Class',    student?.className   || 'Unassigned'],
+        ['Assigned Teacher', student?.teacherName || 'Unassigned'],
+        ['Parent/Guardian',  student?.parentName  || '—'],
+        ['Parent Phone',     student?.parentPhone || '—'],
+        ['Enrolled At',      student?.createdAt ? new Date(student.createdAt).toLocaleDateString() : '—']
+    ].map(([label, value]) => `
+        <div class="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
+            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">${label}</span>
+            <span class="text-sm font-semibold text-slate-700">${escHtml(value)}</span>
+        </div>
+    `).join('');
+}
+
+// ── EDIT PROFILE (Name / DOB / Email — Admin may edit all three) ─────────
+window.openEditStudentModal = function () {
+    const student = allStudentsCache.find(s => s.id === currentStudentId);
+    document.getElementById('esName').value  = student?.name  || '';
+    document.getElementById('esDob').value   = student?.dob   || '';
+    document.getElementById('esEmail').value = student?.email || '';
+    document.getElementById('esMsg').classList.add('hidden');
+    openOverlay('editStudentModal', 'editStudentModalInner');
+};
+
+window.closeEditStudentModal = function () {
+    closeOverlay('editStudentModal', 'editStudentModalInner');
+};
+
+window.saveEditStudent = async function () {
+    const btn   = document.getElementById('saveEditStudentBtn');
+    const name  = document.getElementById('esName').value.trim();
+    const dob   = document.getElementById('esDob').value;
+    const email = document.getElementById('esEmail').value.trim();
+
+    if (!name) {
+        document.getElementById('esMsg').textContent = 'Name is required.';
+        document.getElementById('esMsg').className = 'text-xs font-bold text-rose-600';
+        document.getElementById('esMsg').classList.remove('hidden');
+        return;
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        document.getElementById('esMsg').textContent = 'Enter a valid email address, or leave it blank.';
+        document.getElementById('esMsg').className = 'text-xs font-bold text-rose-600';
+        document.getElementById('esMsg').classList.remove('hidden');
+        return;
+    }
+
+    btn.textContent = 'Saving…'; btn.disabled = true;
+
+    try {
+        await updateDoc(doc(db, 'students', currentStudentId), { name, dob, email });
+
+        const idx = allStudentsCache.findIndex(s => s.id === currentStudentId);
+        if (idx !== -1) {
+            allStudentsCache[idx].name  = name;
+            allStudentsCache[idx].dob   = dob;
+            allStudentsCache[idx].email = email;
+        }
+
+        document.getElementById('sPanelName').textContent = name;
+        renderIdentityGrid(allStudentsCache[idx]);
+
+        window.closeEditStudentModal();
+        await loadData();
+    } catch (e) {
+        console.error('[Students] saveEditStudent:', e);
+        document.getElementById('esMsg').textContent = 'Error saving. Please try again.';
+        document.getElementById('esMsg').className = 'text-xs font-bold text-rose-600';
+        document.getElementById('esMsg').classList.remove('hidden');
+    }
+
+    btn.textContent = 'Save Changes'; btn.disabled = false;
+};
+
 window.openStudentPanel = async function (studentId) {
     currentStudentId = studentId;
     const student    = allStudentsCache.find(s => s.id === studentId);
@@ -453,36 +553,17 @@ window.openStudentPanel = async function (studentId) {
     document.getElementById('sPanelId').textContent   = student?.id   || '—';
     document.getElementById('sEnrollDropdown')?.classList.add('hidden');
 
-    const infoGrid = document.getElementById('sInfoGrid');
-    if (infoGrid) {
-        infoGrid.innerHTML = [
-            ['Name',             student?.name        || '—'],
-            ['Date of Birth',    student?.dob         || '—'],
-            ['Current Class',    student?.className   || 'Unassigned'],
-            ['Assigned Teacher', student?.teacherName || 'Unassigned'],
-            ['Parent/Guardian',  student?.parentName  || '—'],
-            ['Parent Phone',     student?.parentPhone || '—'],
-            ['Parent Email',     student?.email       || '—'],
-            ['Enrolled At',      student?.createdAt ? new Date(student.createdAt).toLocaleDateString() : '—']
-        ].map(([label, value]) => `
-            <div class="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
-                <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">${label}</span>
-                <span class="text-sm font-semibold text-slate-700">${escHtml(value)}</span>
-            </div>
-        `).join('');
-    }
+    renderIdentityGrid(student);
 
     window.switchStudentTab('overview');
     document.getElementById('sPanelLoader')?.classList.remove('hidden');
     openOverlay('studentPanel', 'studentPanelInner', true);
 
-    // Manage Parent tab state is per-student — reset it every time the panel
-    // opens (for this or any other student) so a previous student's search
-    // result/email never lingers into the next one.
-    const mpEmailInput = document.getElementById('mpEmailInput');
-    if (mpEmailInput) mpEmailInput.value = '';
-    const mpResult = document.getElementById('mpResult');
-    if (mpResult) mpResult.innerHTML = '';
+    // Manage Parent tab now checks for an already-linked parent on every
+    // panel open, before the admin even clicks the tab — see
+    // refreshManageParentTab() below. Replaces the old always-reset-to-
+    // empty-search-form behavior.
+    refreshManageParentTab(studentId);
 
     try {
         if (student?.teacherId) {
@@ -1160,12 +1241,89 @@ window.renderClassHistory = function (student) {
 };
 
 // ── MANAGE PARENT — dual-role email lookup UI (Phase 3) ──────────────────
+// UI CORRECTION MANDATE: checks whether a parent is already linked to the
+// student whose panel just opened, BEFORE the admin ever sees a form.
+// mpLoading shows while the check is in flight; exactly one of
+// mpLinkedView (editable contact card, wired to updateParentContact) or
+// mpSearchView (the pre-existing search-then-link/create flow, unchanged)
+// is shown once it resolves. Failures fall back to the search view rather
+// than leaving the tab stuck on a spinner — worst case the admin just
+// re-links a parent who was already linked, which linkOrCreateParent
+// handles idempotently (Case B: append to existing parent) anyway.
+async function refreshManageParentTab(studentId) {
+    currentLinkedParentId = null;
+
+    document.getElementById('mpLoading').classList.remove('hidden');
+    document.getElementById('mpLinkedView').classList.add('hidden');
+    document.getElementById('mpSearchView').classList.add('hidden');
+    document.getElementById('mpEmailInput').value = '';
+    document.getElementById('mpResult').innerHTML = '';
+    document.getElementById('mpEditMsg').classList.add('hidden');
+
+    try {
+        const res = await getLinkedParentForStudentFn({ studentId, schoolId: session.schoolId });
+        if (res.data.linked) {
+            currentLinkedParentId = res.data.parentId;
+            const [first, ...rest] = String(res.data.name || '').trim().split(/\s+/);
+            document.getElementById('mpEditFirstName').value = first || '';
+            document.getElementById('mpEditLastName').value  = rest.join(' ');
+            document.getElementById('mpEditEmail').value     = res.data.email || '';
+            document.getElementById('mpEditPhone').value     = res.data.phone || '';
+            document.getElementById('mpLoading').classList.add('hidden');
+            document.getElementById('mpLinkedView').classList.remove('hidden');
+        } else {
+            document.getElementById('mpLoading').classList.add('hidden');
+            document.getElementById('mpSearchView').classList.remove('hidden');
+        }
+    } catch (e) {
+        console.error('[Manage Parent] refreshManageParentTab:', e);
+        document.getElementById('mpLoading').classList.add('hidden');
+        document.getElementById('mpSearchView').classList.remove('hidden');
+    }
+}
+
+window.saveParentContact = async function () {
+    const first = document.getElementById('mpEditFirstName').value.trim();
+    const last  = document.getElementById('mpEditLastName').value.trim();
+    const email = document.getElementById('mpEditEmail').value.trim();
+    const phone = document.getElementById('mpEditPhone').value.trim();
+    const msgEl = document.getElementById('mpEditMsg');
+
+    if (!first || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        msgEl.textContent = 'First name and a valid email are required.';
+        msgEl.className = 'text-xs font-bold mt-2 text-rose-600';
+        msgEl.classList.remove('hidden');
+        return;
+    }
+
+    const btn = document.getElementById('mpSaveContactBtn');
+    btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Saving…';
+
+    try {
+        await updateParentContactFn({
+            parentId: currentLinkedParentId, schoolId: session.schoolId,
+            name: `${first} ${last}`.trim(), email, phone
+        });
+        msgEl.textContent = 'Contact info updated.';
+        msgEl.className = 'text-xs font-bold mt-2 text-emerald-600';
+        msgEl.classList.remove('hidden');
+    } catch (e) {
+        console.error('[Manage Parent] saveParentContact:', e);
+        msgEl.textContent = e?.message || 'Failed to save. Please try again.';
+        msgEl.className = 'text-xs font-bold mt-2 text-rose-600';
+        msgEl.classList.remove('hidden');
+    }
+
+    btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-1"></i>Save Changes';
+};
+
 // Search -> Found (show name, "Link to Student" button) OR Not Found (show
-// a First/Last/Email creation form). Both branches ultimately call the
-// SAME linkOrCreateParentFn Cloud Function this file already imports for
-// student-creation-time auto-linking — this tab is just a second, explicit
-// entry point into it, scoped to whichever student's panel is currently
-// open (currentStudentId).
+// a First/Last/Email/Phone creation form). Both branches ultimately call
+// the SAME linkOrCreateParentFn Cloud Function this file already imports
+// for student-creation-time auto-linking — this tab is just a second,
+// explicit entry point into it, scoped to whichever student's panel is
+// currently open (currentStudentId). Only reached when
+// refreshManageParentTab() found no existing link.
 window.searchParentByEmail = async function () {
     const emailInput = document.getElementById('mpEmailInput');
     const resultEl    = document.getElementById('mpResult');
@@ -1216,6 +1374,7 @@ function renderParentNotFound(email) {
                 <input type="text" id="mpFirstName" placeholder="First Name" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400">
                 <input type="text" id="mpLastName" placeholder="Last Name" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400">
                 <input type="email" id="mpNewEmail" value="${escHtml(email)}" placeholder="Email" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400">
+                <input type="tel" id="mpNewPhone" placeholder="Phone (optional)" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400">
             </div>
             <button onclick="window.createAndLinkParent()" id="mpCreateBtn" class="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-lg text-xs transition"><i class="fa-solid fa-plus mr-1"></i>Create &amp; Link Parent</button>
             <p id="mpCreateMsg" class="hidden text-xs font-bold mt-2"></p>
@@ -1240,6 +1399,7 @@ window.createAndLinkParent = async function () {
     const first  = document.getElementById('mpFirstName').value.trim();
     const last   = document.getElementById('mpLastName').value.trim();
     const email  = document.getElementById('mpNewEmail').value.trim();
+    const phone  = document.getElementById('mpNewPhone').value.trim();
     const msgEl  = document.getElementById('mpCreateMsg');
 
     if (!first || !last || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -1253,7 +1413,7 @@ window.createAndLinkParent = async function () {
     btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Creating…';
 
     try {
-        await linkOrCreateParentFn({ studentId: currentStudentId, schoolId: session.schoolId, parentName: `${first} ${last}`, parentEmail: email });
+        await linkOrCreateParentFn({ studentId: currentStudentId, schoolId: session.schoolId, parentName: `${first} ${last}`, parentEmail: email, parentPhone: phone });
         document.getElementById('mpResult').innerHTML = '<p class="text-xs font-bold text-emerald-600 mt-3"><i class="fa-solid fa-circle-check mr-1"></i>Parent account created and linked. A welcome email with login credentials has been sent.</p>';
     } catch (e) {
         console.error('[Manage Parent] create failed:', e);

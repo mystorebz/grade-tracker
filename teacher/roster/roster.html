@@ -406,23 +406,21 @@
                 <div id="sViewMode" class="hidden" style="flex:1;display:flex;overflow:hidden;">
                     <div style="width:280px;flex-shrink:0;background:#fff;border-right:1px solid #dce3ed;overflow-y:auto;display:flex;flex-direction:column;">
                         <div style="padding:20px 20px 0;">
-                            <span style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#6b84a0;display:block;margin-bottom:12px;">Profile</span>
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                                <span style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#6b84a0;">Profile</span>
+                                <button onclick="window.openEditStudentModal()" style="font-size:10.5px;font-weight:700;color:#0ea871;background:none;border:none;cursor:pointer;font-family:inherit;padding:2px 0;display:flex;align-items:center;gap:4px;"><i class="fa-solid fa-pen" style="font-size:9.5px;"></i> Edit Profile</button>
+                            </div>
                             <div id="sInfoGrid" style="border-top:1px solid #f0f4f8;"></div>
                         </div>
                         <div style="margin:12px 16px 0;padding:14px;background:#f8fafb;border:1px solid #c5d0db;border-radius:4px;">
+                            <!-- UI CORRECTION MANDATE: Class Assignment is now read-only text —
+                                 class changes only happen during an official Promotion (see the
+                                 "Promote / Advance" action at the bottom of this sidebar). The
+                                 <select>/Save Class button and their JS (checkClassChange/
+                                 saveStudentClass) are removed, not just hidden. -->
                             <label class="field-label">Class Assignment</label>
-                            <select id="editSClass" class="form-input" onchange="window.checkClassChange()" style="margin-bottom:8px;"></select>
-                            <div id="editSClassReasonWrap" class="hidden" style="margin-bottom:8px;">
-                                <label class="field-label" style="color:#e31b4a;">Reason for Class Change *</label>
-                                <input type="text" id="editSClassReason" placeholder="Required" class="form-input" style="border-color:#fecaca;">
-                            </div>
-                            <button id="saveClassBtn" onclick="window.saveStudentClass()" style="width:100%;padding:7px;background:#0ea871;border:none;border-radius:3px;color:#fff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;">Save Class</button>
-                            <p id="editClassMsg" class="hidden" style="font-size:11px;font-weight:600;padding:6px;border-radius:3px;text-align:center;margin-top:6px;"></p>
-                        </div>
-                        <div style="margin:12px 16px 0;padding:14px;background:#f0f4ff;border:1px solid #c7d2fe;border-radius:4px;">
-                            <p style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#4f46e5;margin:0 0 6px;"><i class="fa-solid fa-key" style="margin-right:4px;"></i>Parent Login PIN</p>
-                            <p style="font-size:11px;color:#6b84a0;margin:0 0 10px;line-height:1.5;">Send the parent a secure reset link to set or recover their PIN.</p>
-                            <button id="pinResetEmailBtn" onclick="window.sendPinResetEmail()" style="width:100%;padding:7px;background:#4f46e5;border:none;border-radius:3px;color:#fff;font-size:11.5px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;"><i class="fa-solid fa-envelope"></i> Send PIN Reset Email</button>
+                            <p id="sClassReadonly" style="margin:0;font-size:13px;font-weight:700;color:#0d1f35;">—</p>
+                            <p style="font-size:10.5px;color:#9ab0c6;margin:8px 0 0;line-height:1.4;">Class changes only happen during an official Promotion. Use "Promote / Advance" below to move this student.</p>
                         </div>
                         <div style="margin:auto 16px 16px;padding-top:12px;border-top:1px solid #f0f4f8;margin-top:16px;display:flex;flex-direction:column;gap:8px;">
                             <button onclick="window.promoteCurrentStudent()" style="width:100%;padding:9px;background:#f8fafb;border:1px solid #c5d0db;border-radius:3px;color:#374f6b;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;"><i class="fa-solid fa-arrow-up-right-dots"></i> Promote / Advance</button>
@@ -483,12 +481,32 @@
                             <div style="padding:14px 20px;border-bottom:1px solid #dce3ed;background:#fff;flex-shrink:0;">
                                 <div style="display:flex;align-items:center;gap:8px;">
                                     <i class="fa-solid fa-user-group" style="font-size:12px;color:#0d1f35;"></i>
-                                    <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#374f6b;">Link a Parent Account</span>
+                                    <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#374f6b;">Manage Parent</span>
                                 </div>
                             </div>
                             <div style="flex:1;overflow-y:auto;padding:20px;">
-                                <div style="max-width:420px;">
-                                    <p style="font-size:12px;color:#6b84a0;margin:0 0 14px;">Search by the parent's email to link an existing Parent Portal account, or create a new one.</p>
+                                <!-- UI CORRECTION MANDATE: this tab now checks (via
+                                     getLinkedParentForStudent) whether a parent is already linked
+                                     BEFORE showing the search-to-link form — mpLoading while that
+                                     check is in flight, then exactly one of mpLinkedView (editable
+                                     contact card) or mpSearchView (the pre-existing search/create
+                                     flow) is shown. -->
+                                <div id="mpLoading" style="max-width:420px;font-size:12px;color:#9ab0c6;font-weight:600;"><i class="fa-solid fa-circle-notch fa-spin" style="margin-right:6px;"></i>Checking for a linked parent…</div>
+                                <div id="mpLinkedView" class="hidden" style="max-width:420px;">
+                                    <p style="font-size:12px;color:#6b84a0;margin:0 0 14px;">A parent account is already linked to this student. Update their contact info below.</p>
+                                    <div style="display:flex;flex-direction:column;gap:8px;">
+                                        <div style="display:flex;gap:8px;">
+                                            <input type="text" id="mpEditFirstName" placeholder="First Name" class="form-input" style="flex:1;">
+                                            <input type="text" id="mpEditLastName" placeholder="Last Name" class="form-input" style="flex:1;">
+                                        </div>
+                                        <input type="email" id="mpEditEmail" placeholder="Email" class="form-input">
+                                        <input type="tel" id="mpEditPhone" placeholder="Phone" class="form-input">
+                                    </div>
+                                    <button onclick="window.saveParentContact()" id="mpSaveContactBtn" class="btn-sharp btn-sharp-primary" style="width:100%;justify-content:center;margin-top:10px;"><i class="fa-solid fa-floppy-disk" style="font-size:11px;"></i> Save Changes</button>
+                                    <p id="mpEditMsg" class="hidden" style="font-size:11px;font-weight:700;margin-top:8px;"></p>
+                                </div>
+                                <div id="mpSearchView" class="hidden" style="max-width:420px;">
+                                    <p style="font-size:12px;color:#6b84a0;margin:0 0 14px;">No parent is linked yet. Search by email to link an existing Parent Portal account, or create a new one.</p>
                                     <div style="display:flex;gap:8px;">
                                         <input type="email" id="mpEmailInput" placeholder="parent@email.com" class="form-input" style="flex:1;">
                                         <button onclick="window.searchParentByEmail()" id="mpSearchBtn" class="btn-sharp btn-sharp-primary" style="white-space:nowrap;">Search</button>
@@ -499,6 +517,30 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="editStudentModal" class="modal-overlay hidden opacity-0" style="z-index:65;">
+        <div class="modal-box" id="editStudentModalInner" style="width:100%;max-width:440px;">
+            <div class="modal-stripe"></div>
+            <div class="modal-header">
+                <div class="modal-header-left">
+                    <div class="modal-icon" style="background:#edfaf4;color:#0ea871;border:1px solid #a7f3d0;"><i class="fa-solid fa-user-pen"></i></div>
+                    <span class="modal-title">Edit Profile</span>
+                </div>
+                <button onclick="window.closeEditStudentModal()" class="modal-close"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+                <div><label class="field-label">Student Full Name</label><input type="text" id="esName" class="form-input"></div>
+                <div><label class="field-label">Date of Birth</label><input type="date" id="esDob" class="form-input"></div>
+                <div>
+                    <label class="field-label">Email Address</label>
+                    <input type="email" id="esEmail" class="form-input" disabled style="background:#f0f4f8;color:#9ab0c6;cursor:not-allowed;">
+                    <p style="font-size:10.5px;color:#9ab0c6;margin:6px 0 0;">Only an admin can change a student's email address.</p>
+                </div>
+                <button id="saveEditStudentBtn" onclick="window.saveEditStudent()" style="width:100%;padding:11px;background:#0ea871;border:none;border-radius:3px;color:#fff;font-size:13.5px;font-weight:700;font-family:inherit;cursor:pointer;">Save Changes</button>
+                <p id="esMsg" class="hidden" style="font-size:12px;font-weight:600;padding:10px 14px;border-radius:3px;text-align:center;"></p>
             </div>
         </div>
     </div>

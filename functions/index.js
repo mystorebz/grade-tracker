@@ -518,6 +518,185 @@ exports.lookupParentByEmail = onCall({ region: 'us-central1' }, async (request) 
 // --- END: lookupParentByEmail ---
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// FUNCTION 3b-3: getLinkedParentForStudent
+//
+// UI CORRECTION MANDATE: STUDENT PROFILE & PARENT MANAGEMENT — the "Manage
+// Parent" tab (teacher/roster/roster.js, admin/students/students.js) used
+// to always render its search-by-email form, with no way to tell whether a
+// parent was already linked to the student whose panel is open. This is
+// the read side of that gap: given a studentId, find whichever parent (if
+// any) already has this exact {studentId, schoolId} in their
+// linkedStudents array, so the tab can show that parent's info instead of
+// asking the teacher/admin to search for someone already linked.
+//
+// parents/{parentId} has NO client read access beyond a parent reading
+// their own document (firestore.rules: "allow list, create, update,
+// delete: if false" on that collection, and get is scoped to
+// auth.uid==parentId) — same reasoning as linkOrCreateParent/
+// lookupParentByEmail above: a teacher/admin has no rules-expressible way
+// to reach this data directly, so it's Admin-SDK-only, gated by role and
+// same-school checks here in the function body instead.
+//
+// A student could in principle have more than one linked parent (two
+// guardians, each with their own account) — linkedStudents lives on the
+// PARENT side, so nothing in this data model prevents that. This returns
+// only the FIRST match. Multi-guardian editing through this one-parent UI
+// is a known simplification, not an oversight — surfacing every linked
+// guardian would need a materially different UI than the single-parent
+// contact card this mandate asks for.
+//
+// Deploy command: firebase deploy --only functions:getLinkedParentForStudent
+// ═══════════════════════════════════════════════════════════════════════════════
+// --- START: getLinkedParentForStudent ---
+exports.getLinkedParentForStudent = onCall({ region: 'us-central1' }, async (request) => {
+    if (!request.auth || !['teacher', 'super_admin', 'sub_admin'].includes(request.auth.token.role)) {
+        throw new HttpsError('permission-denied', 'Only an authenticated teacher or admin may look up a linked parent.');
+    }
+
+    const { studentId, schoolId } = request.data || {};
+    if (!studentId || !schoolId) {
+        throw new HttpsError('invalid-argument', 'studentId and schoolId are required.');
+    }
+    if (request.auth.token.schoolId !== schoolId) {
+        throw new HttpsError('permission-denied', 'You may only look up parents for your own school.');
+    }
+
+    // Same defensive existence+school check linkOrCreateParent uses — never
+    // trust a bare studentId without confirming it belongs to the caller's
+    // own school first.
+    const studentSnap = await db.collection('students').doc(String(studentId).trim().toUpperCase()).get();
+    if (!studentSnap.exists || studentSnap.data().currentSchoolId !== schoolId) {
+        throw new HttpsError('not-found', 'Student not found at the specified school.');
+    }
+    const resolvedStudentId = studentSnap.id;
+
+    const snap = await db.collection('parents')
+        .where('linkedStudents', 'array-contains', { studentId: resolvedStudentId, schoolId })
+        .limit(1)
+        .get();
+
+    if (snap.empty) return { linked: false };
+
+    const doc = snap.docs[0];
+    const data = doc.data();
+    return {
+        linked: true,
+        parentId: doc.id,
+        name: data.name || '',
+        email: data.email || '',
+        phone: data.phone || '',
+    };
+});
+// --- END: getLinkedParentForStudent ---
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FUNCTION 3b-4: updateParentContact
+//
+// UI CORRECTION MANDATE: STUDENT PROFILE & PARENT MANAGEMENT — the write
+// side of getLinkedParentForStudent above: lets a teacher/admin correct an
+// already-linked parent's name/email/phone (a returned phone number, a
+// misspelled name, an updated address-of-record email) without needing the
+// parent to do it themselves through the Parent Portal (which doesn't
+// expose profile editing either).
+//
+// Authority check is deliberately NOT "is this parentId associated with
+// the caller's schoolId in some general sense" but "does this exact
+// parent record have a linkedStudents entry AT the caller's own
+// schoolId" — mirrors linkOrCreateParent's own school-scoping exactly, so
+// a teacher/admin can only edit a parent who actually has a child at
+// their school, never an arbitrary parentId guessed or reused from
+// another school's roster.
+//
+// Email changes ALSO repoint the parent_emails/{schoolId}_{email} dedup
+// index linkOrCreateParent/lookupParentByEmail rely on — done inside a
+// transaction (create the new-email index doc, delete the old one) so a
+// future "link by email" search for this parent's OLD address correctly
+// reports "not found" instead of stale data, and a search for the NEW
+// address finds them. If the new email is already claimed by a DIFFERENT
+// parent at this school, the whole update is rejected rather than
+// silently stealing that index slot — same tx.create()-style race safety
+// linkOrCreateParent's own transaction uses. Per that function's own
+// documented policy, only the new-style scoped key is touched here; the
+// legacy global parent_emails/{email} key is never written or read by
+// this function.
+//
+// Deploy command: firebase deploy --only functions:updateParentContact
+// ═══════════════════════════════════════════════════════════════════════════════
+// --- START: updateParentContact ---
+exports.updateParentContact = onCall({ region: 'us-central1' }, async (request) => {
+    if (!request.auth || !['teacher', 'super_admin', 'sub_admin'].includes(request.auth.token.role)) {
+        throw new HttpsError('permission-denied', 'Only an authenticated teacher or admin may update parent contact info.');
+    }
+
+    const { parentId, schoolId, name, email, phone } = request.data || {};
+    if (!parentId || !schoolId) {
+        throw new HttpsError('invalid-argument', 'parentId and schoolId are required.');
+    }
+    if (request.auth.token.schoolId !== schoolId) {
+        throw new HttpsError('permission-denied', 'You may only update parents for your own school.');
+    }
+
+    const parentRef = db.collection('parents').doc(parentId);
+    const parentSnap = await parentRef.get();
+    if (!parentSnap.exists) {
+        throw new HttpsError('not-found', 'Parent record not found.');
+    }
+    const parentData = parentSnap.data();
+
+    const linkedStudents = Array.isArray(parentData.linkedStudents) ? parentData.linkedStudents : [];
+    const hasLinkAtSchool = linkedStudents.some(l => l.schoolId === schoolId);
+    if (!hasLinkAtSchool) {
+        throw new HttpsError('permission-denied', 'This parent has no linked student at your school.');
+    }
+
+    const updates = { updatedAt: new Date().toISOString() };
+    if (typeof name === 'string' && name.trim()) {
+        updates.name = name.trim();
+    }
+    if (typeof phone === 'string') {
+        updates.phone = phone.trim();
+    }
+
+    let normalizedNewEmail = null;
+    if (typeof email === 'string' && email.trim()) {
+        normalizedNewEmail = normalizeParentEmail(email);
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedNewEmail)) {
+            throw new HttpsError('invalid-argument', 'A valid email is required.');
+        }
+        updates.email = normalizedNewEmail;
+    }
+
+    const oldEmail = parentData.email || '';
+    if (normalizedNewEmail && normalizedNewEmail !== oldEmail) {
+        // Email is actually changing — repoint the dedup index inside a
+        // transaction so a concurrent link attempt can never observe a
+        // half-migrated state (new index missing, or two index docs
+        // pointing at this same parent at once).
+        const newIndexRef = db.collection('parent_emails').doc(`${schoolId}_${normalizedNewEmail}`);
+        const oldIndexRef = db.collection('parent_emails').doc(`${schoolId}_${oldEmail}`);
+
+        await db.runTransaction(async (tx) => {
+            const [newIdxSnap, oldIdxSnap] = await Promise.all([tx.get(newIndexRef), tx.get(oldIndexRef)]);
+
+            if (newIdxSnap.exists && newIdxSnap.data().parentId !== parentId) {
+                throw new HttpsError('already-exists', 'Another parent account at your school already uses this email.');
+            }
+
+            tx.set(newIndexRef, { parentId, createdAt: new Date().toISOString() });
+            if (oldIdxSnap.exists && oldIdxSnap.data().parentId === parentId) {
+                tx.delete(oldIndexRef);
+            }
+            tx.update(parentRef, updates);
+        });
+    } else {
+        await parentRef.update(updates);
+    }
+
+    return { success: true };
+});
+// --- END: updateParentContact ---
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // FUNCTION 3d: getParentAssignments — PURGED
 //
 // ARCHITECTURAL MANDATE: CLIENT-SIDE DUE DATES & CLOUD FUNCTION PURGE. This
