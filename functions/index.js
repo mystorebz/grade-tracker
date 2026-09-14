@@ -518,6 +518,197 @@ exports.lookupParentByEmail = onCall({ region: 'us-central1' }, async (request) 
 // --- END: lookupParentByEmail ---
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// FUNCTION 3d: getParentAssignments
+//
+// PHASE 3 COMPLETION MANDATE: the student audit (this same mandate's Step 1)
+// found no Missing/Overdue/Late concept anywhere in this codebase — only
+// Not submitted / Submitted / Locked(teacher-manual) / Graded, decided by
+// student/assignments/assignments.js's own statusPill() in that exact
+// priority order (graded overrides everything, then locked, then plain
+// submitted/not). This function is the read-only, parent-safe mirror of
+// that same resolution path, so the two portals can never disagree about
+// what one assignment's status is.
+//
+// Assignments live at schools/{schoolId}/classes/{classId}/subjects/
+// {subjectId}/assignments/{assignmentId}, gated in firestore.rules by
+// isCallerInSchool(schoolId) — a claim a parent's token deliberately never
+// carries (a family can span more than one school). No rules-only grant can
+// reach this data for a parent, so — same as the Class Stream callable this
+// app already removed, and mintParentToken/linkOrCreateParent/
+// lookupParentByEmail above it — this is a dedicated, read-only Admin-SDK
+// callable rather than a client-side query.
+//
+// Resolution path, reimplemented server-side against the Admin SDK from the
+// EXACT same source functions the student portal uses client-side
+// (loadTeacherSubjectsCache/resolvePostContext/loadAssignmentsForSubjects/
+// loadGradesIndexForStudent, assets/js/utils.js + submissions.js):
+//   1. students/{studentId}.teacherId -> the student's one teacher.
+//   2. that teacher's doc (teachers/{teacherId} if a real Tier-1 ID, else
+//      schools/{schoolId}/teachers/{teacherId} — same ID-shape check
+//      getTeacherDocRef() uses) -> classes[]/className -> resolved against
+//      schools/{schoolId}/classes by name to get real classIds.
+//   3. each resolved class's subjects subcollection, plus each subject's
+//      assignments subcollection (_source:'new'), PLUS any legacy subject
+//      still only embedded on the teacher doc (_source:'legacy', resolved
+//      against resolvedClasses[0] exactly as resolvePostContext() does) —
+//      filtered to non-archived subjects and non-draft assignments, same
+//      two filters the student view applies.
+//   4. per assignment: does students/{studentId}/grades (schoolId-filtered)
+//      have a record carrying this assignmentId (Graded), else is
+//      assignment.locked true (Locked), else does a submission doc exist at
+//      .../assignments/{assignmentId}/submissions/{studentId} (Submitted) —
+//      the same three-question order, so a parent and their child never see
+//      contradictory statuses for the same assignment.
+//
+// Security: the schoolId used for the parent-link check is read off the
+// STUDENT'S OWN document (currentSchoolId), never trusted from a client
+// argument — matching firestore.rules' isLinkedParentOf(), which is always
+// invoked with the target student's resolved currentSchoolId, not a
+// caller-supplied one. Only a parent whose token already carries a link to
+// this exact {studentId, schoolId} pair may read; everyone else is denied
+// before any class/subject/assignment document is touched. Response payload
+// carries only already-resolved display fields (title/type/date/status/
+// subjectName/className) — never raw class or subject documents a parent's
+// token isn't otherwise scoped to read.
+//
+// Deploy command: firebase deploy --only functions:getParentAssignments
+// ═══════════════════════════════════════════════════════════════════════════════
+// --- START: getParentAssignments ---
+exports.getParentAssignments = onCall({ region: 'us-central1' }, async (request) => {
+    if (!request.auth || request.auth.token.role !== 'parent') {
+        throw new HttpsError('permission-denied', 'Only an authenticated parent may view assignments here.');
+    }
+
+    const { studentId } = request.data || {};
+    if (!studentId) {
+        throw new HttpsError('invalid-argument', 'studentId is required.');
+    }
+
+    const studentSnap = await db.collection('students').doc(studentId).get();
+    if (!studentSnap.exists) {
+        throw new HttpsError('not-found', 'Student record not found.');
+    }
+    const studentData = studentSnap.data();
+    const schoolId = studentData.currentSchoolId;
+
+    const linkedStudents = Array.isArray(request.auth.token.linkedStudents) ? request.auth.token.linkedStudents : [];
+    const isLinked = linkedStudents.some(l => l.studentId === studentId && l.schoolId === schoolId);
+    if (!isLinked) {
+        throw new HttpsError('permission-denied', 'This student is not linked to your parent account.');
+    }
+
+    const teacherId = studentData.teacherId;
+    if (!teacherId) {
+        return { assignments: [] };
+    }
+
+    // Same ID-shape check getTeacherDocRef() uses client-side: a real
+    // Tier-1 teacher ID lives at the top-level teachers/ collection, a
+    // legacy one under this school's own teachers subcollection.
+    const teacherRef = /^T\d{2}-[A-Z0-9]{5}$/i.test(teacherId)
+        ? db.collection('teachers').doc(teacherId)
+        : db.collection('schools').doc(schoolId).collection('teachers').doc(teacherId);
+    const teacherSnap = await teacherRef.get();
+    const legacyTeacherData = teacherSnap.exists ? teacherSnap.data() : null;
+
+    // ── Resolve class names -> real classIds (loadSchoolClasses + resolveClassNamesToIds, reimplemented) ──
+    const classNames = (legacyTeacherData && legacyTeacherData.classes) || [(legacyTeacherData && legacyTeacherData.className) || ''];
+    const schoolClassesSnap = await db.collection('schools').doc(schoolId).collection('classes').get();
+    const classIdByName = new Map(schoolClassesSnap.docs.map(d => [d.data().name, d.id]));
+    const resolvedClasses = [];
+    classNames.filter(Boolean).forEach(name => {
+        const id = classIdByName.get(name);
+        if (id) resolvedClasses.push({ name, id });
+    });
+
+    // ── Fetch every resolved class's subjects + each subject's assignments (mirrors loadTeacherSubjectsCache) ──
+    const subjectsCache = [];
+    for (const cls of resolvedClasses) {
+        const subjectsSnap = await db.collection('schools').doc(schoolId).collection('classes').doc(cls.id).collection('subjects').get();
+        for (const subjDoc of subjectsSnap.docs) {
+            const subject = { id: subjDoc.id, classId: cls.id, className: cls.name, _source: 'new', assignments: [], ...subjDoc.data() };
+            const asgSnap = await db.collection('schools').doc(schoolId).collection('classes').doc(cls.id)
+                .collection('subjects').doc(subject.id).collection('assignments').get();
+            subject.assignments = asgSnap.docs.map(ad => ({ id: ad.id, ...ad.data() }));
+            subjectsCache.push(subject);
+        }
+    }
+    const newNames = new Set(subjectsCache.map(s => s.name));
+    ((legacyTeacherData && legacyTeacherData.subjects) || []).forEach(s => {
+        if (!newNames.has(s.name)) subjectsCache.push({ ...s, _source: 'legacy' });
+    });
+
+    // ── Flatten to assignments, resolving each subject's class context exactly as resolvePostContext() does ──
+    const assignments = [];
+    for (const subject of subjectsCache) {
+        if (subject.archived) continue;
+        let classId = subject.classId || null;
+        let className = subject.className || '';
+        if (!classId) {
+            const cls = resolvedClasses[0] || null;
+            if (!cls) continue; // no class could be resolved — skip, same as resolvePostContext()
+            classId = cls.id;
+            className = cls.name;
+        }
+        for (const a of (subject.assignments || [])) {
+            if (a.status === 'draft') continue; // not visible to the student yet — same filter the student view applies
+            assignments.push({ ...a, classId, className, subjectId: subject.id, subjectName: subject.name });
+        }
+    }
+
+    if (!assignments.length) return { assignments: [] };
+
+    // ── Grades index (one query) + per-assignment submission existence check (parallel) ──
+    const gradesSnap = await db.collection('students').doc(studentId).collection('grades')
+        .where('schoolId', '==', schoolId).get();
+    const gradesByAssignmentId = new Map();
+    gradesSnap.docs.forEach(d => {
+        const data = d.data();
+        if (data.assignmentId) gradesByAssignmentId.set(data.assignmentId, data);
+    });
+
+    const results = await Promise.all(assignments.map(async a => {
+        const grade = gradesByAssignmentId.get(a.id) || null;
+        let hasSubmission = false;
+        try {
+            const subSnap = await db.collection('schools').doc(schoolId).collection('classes').doc(a.classId)
+                .collection('subjects').doc(a.subjectId).collection('assignments').doc(a.id)
+                .collection('submissions').doc(studentId).get();
+            hasSubmission = subSnap.exists;
+        } catch (e) {
+            hasSubmission = false;
+        }
+
+        // Same three-question order as statusPill(): graded, then locked, then submitted.
+        let status;
+        if (grade) {
+            status = `Graded: ${grade.score}/${grade.max}`;
+        } else if (a.locked) {
+            status = hasSubmission ? 'Locked · Submitted' : 'Locked · Not submitted';
+        } else {
+            status = hasSubmission ? 'Submitted' : 'Not submitted';
+        }
+
+        return {
+            id: a.id,
+            title: a.title || 'Untitled assignment',
+            type: a.workType || a.type || 'Assignment',
+            maxScore: a.pointsPossible ?? a.maxScore ?? 0,
+            date: a.dueDate || a.date || '',
+            subjectName: a.subjectName,
+            className: a.className,
+            locked: !!a.locked,
+            hasSubmission,
+            grade: grade ? { score: grade.score, max: grade.max } : null,
+            status,
+        };
+    }));
+
+    return { assignments: results };
+});
+// --- END: getParentAssignments ---
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // FUNCTION 3c: mintParentToken
 //
 // Authenticates a parent using their Parent ID and PIN — same shape as

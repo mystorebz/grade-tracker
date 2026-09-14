@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assignments | ConnectUs</title>
+
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/student.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'DM Sans', sans-serif; background: #f0f2f8; }
+        .hidden { display: none !important; }
+
+        .page-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 20px; gap: 14px; }
+        .page-loader i { font-size: 32px; color: #6366f1; }
+        .page-loader p { font-size: 13.5px; color: #94a3b8; font-weight: 600; margin: 0; }
+
+        .asg-summary { font-size: 13px; color: #6b84a0; font-weight: 700; margin: 0 0 20px; }
+
+        .asg-section { margin-bottom: 28px; }
+        .asg-section:last-child { margin-bottom: 0; }
+        .asg-section-title { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 800; color: #7f1d3d; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 12px; padding-bottom: 6px; border-bottom: 1px solid #e2e8f0; }
+        .asg-section-title .cnt { background: #7f1d3d; color: #fff; font-size: 10.5px; font-weight: 800; padding: 1px 8px; border-radius: 999px; }
+
+        .asg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: 12px; }
+        .asg-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+        .asg-card .a-title { font-weight: 800; font-size: 13.5px; color: #0d1f35; margin: 0 0 6px; }
+        .asg-card .a-tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+        .asg-card .a-tag { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: #f1f5f9; color: #64748b; }
+        .asg-card .a-due { font-size: 11px; color: #94a3b8; font-weight: 600; margin: 0 0 10px; }
+        .asg-card .a-status { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; padding: 4px 10px; border-radius: 7px; border: 1px solid; }
+        .asg-status-graded { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+        .asg-status-submitted { background: #eef2ff; color: #4338ca; border-color: #c7d2fe; }
+        .asg-status-attention { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+
+        .asg-empty-section { text-align: center; padding: 20px; color: #94a3b8; font-size: 12px; font-weight: 700; background: #f8fafc; border: 1px dashed #e2e8f0; border-radius: 10px; }
+        .asg-fatal { text-align: center; padding: 60px 20px; color: #64748b; font-size: 13px; font-weight: 600; background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; max-width: 480px; margin: 40px auto 0; }
+        .asg-fatal i { font-size: 30px; color: #cbd5e1; margin-bottom: 14px; display: block; }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden">
+
+    <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
+
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <div class="flex-1 overflow-y-auto">
+            <div class="max-w-5xl mx-auto p-6 md:p-8">
+
+                <div id="asgLoader" class="page-loader">
+                    <i class="fa-solid fa-circle-notch fa-spin"></i>
+                    <p>Loading assignments…</p>
+                </div>
+
+                <div id="asgError" class="hidden asg-fatal"></div>
+
+                <div id="asgContent" class="hidden">
+                    <p id="asgSummary" class="asg-summary"></p>
+
+                    <section class="asg-section">
+                        <p class="asg-section-title"><i class="fa-solid fa-triangle-exclamation"></i> Needs Attention <span class="cnt" id="cntAttention">0</span></p>
+                        <div id="listAttention" class="asg-grid"></div>
+                    </section>
+
+                    <section class="asg-section">
+                        <p class="asg-section-title"><i class="fa-solid fa-paper-plane"></i> Submitted <span class="cnt" id="cntSubmitted">0</span></p>
+                        <div id="listSubmitted" class="asg-grid"></div>
+                    </section>
+
+                    <section class="asg-section">
+                        <p class="asg-section-title"><i class="fa-solid fa-check-double"></i> Graded <span class="cnt" id="cntGraded">0</span></p>
+                        <div id="listGraded" class="asg-grid"></div>
+                    </section>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <script type="module" src="assignments.js"></script>
+</body>
+</html>
