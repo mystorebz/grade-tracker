@@ -250,6 +250,63 @@ export async function loadLessonsForSubject(schoolId, postContext) {
     return lessons;
 }
 
+// ── READ: every PUBLISHED lesson for one subject (student-safe) ──────────
+// NOT a convenience wrapper around loadLessonsForSubject() — the
+// where('status','==','published') filter here is load-bearing for
+// permissions, not just a data preference. firestore.rules' own read rule
+// for lessons is:
+//   isCallerInSchool(schoolId) && isSchoolActive(schoolId) &&
+//   (role in ['teacher','super_admin','sub_admin'] || resource.data.status == 'published')
+// For a teacher/admin caller the role branch is true independent of any
+// document's own data, so loadLessonsForSubject()'s plain unfiltered
+// getDocs() already resolves that OR uniformly true and lists fine (as
+// teacher/lessons/builder.js's already-established, working list proves).
+// For a STUDENT caller the role branch is false for every document, so the
+// rule's truth value collapses entirely onto resource.data.status —  a
+// genuinely per-document condition. Per Firestore's query-rule model (the
+// same "list requires the query to itself prove the rule, or Firestore
+// denies the whole request" rule this codebase already hit and fixed for
+// the grades collection-group query and exam_submissions), an unfiltered
+// list would be REJECTED OUTRIGHT for a student the moment even one draft
+// lesson exists alongside a published one in that subject — not just have
+// the draft silently omitted. This filter is what makes the query
+// provable: every document Firestore could return already satisfies
+// resource.data.status == 'published', matching the rule's own branch
+// exactly.
+export async function loadPublishedLessonsForSubject(schoolId, postContext) {
+    const { classId, subjectId } = postContext;
+    const snap = await getDocs(query(
+        collection(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'lessons'),
+        where('status', '==', 'published')
+    ));
+    const lessons = snap.docs.map(d => {
+        const data = d.data();
+        return { id: d.id, ...data, format: normalizeFormat(data) };
+    });
+    lessons.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+    return lessons;
+}
+
+// ── READ: every published lesson across MULTIPLE subjects (student hub) ──
+// Mirrors posts.js's own loadPostsForSubjects() exactly: one read per
+// subject in parallel, a per-subject try/catch so one bad subject can't
+// blank the whole merged list, and a newest-first merge by updatedAt.
+// Built on loadPublishedLessonsForSubject() above, NOT the plain
+// loadLessonsForSubject() the teacher builder uses — see that function's
+// own comment for why an unfiltered read is actually unsafe (denied
+// outright, not merely showing extra drafts) for a student caller.
+export async function loadLessonsForSubjects(schoolId, postContexts) {
+    const perSubject = await Promise.all(
+        postContexts.map(ctx => loadPublishedLessonsForSubject(schoolId, ctx).catch(e => {
+            console.error(`[loadLessonsForSubjects] failed for subject ${ctx.subjectId}:`, e);
+            return [];
+        }))
+    );
+    const lessons = perSubject.flat();
+    lessons.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+    return lessons;
+}
+
 // ── WRITE: create a new lesson (always starts as a draft) ────────────────
 // authorContext: { authorId, authorName } — same shape posts.js's
 // createPost() already takes. format: 'slides' | 'document' — defaults to
