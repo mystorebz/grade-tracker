@@ -1,5 +1,6 @@
-import { db } from '../../assets/js/firebase-init.js';
+import { db, functions } from '../../assets/js/firebase-init.js';
 import { collection, query, where, getDocs, getDoc, doc, updateDoc, addDoc, setDoc, arrayUnion, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { openOverlay, closeOverlay, showMsg, gradeColorClass, standingBadge, standingText, gradeFill, letterGrade, downloadCSV, calculateWeightedAverage, resolveGradeWeights } from '../../assets/js/utils.js';
@@ -10,6 +11,12 @@ const session = requireAuth('teacher', '../login.html');
 if (session) {
     injectTeacherLayout('students', 'My Roster', 'Manage students · PINs · academic standing', true);
 }
+
+// Parent email deduplication is handled exclusively server-side by the
+// linkOrCreateParent Cloud Function (transactional find-or-create against
+// parent_emails/{normalizedEmail}) — this client never writes to
+// registered_emails for parent accounts.
+const linkOrCreateParentFn = httpsCallable(functions, 'linkOrCreateParent');
 
 // ── 2. STATE ─────────────────────────────────────────────────────────────
 let allStudentsCache          = [];
@@ -505,13 +512,6 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
 
     try {
         const targetEmail = email ? email.toLowerCase() : null;
-        if (targetEmail) {
-            const regSnap = await getDoc(doc(db, 'registered_emails', targetEmail));
-            if (regSnap.exists()) {
-                showMsg('addStudentMsg', 'This email address is already in use by another account.', true);
-                btn.textContent = 'Create New Student Identity'; btn.disabled = false; return;
-            }
-        }
 
         const countSnap = await getDocs(query(
             collection(db, 'students'),
@@ -534,12 +534,15 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
         const rawPin    = Math.floor(1000 + Math.random() * 9000).toString();
         const hashedPin = await sha256Trim(rawPin);
 
+        const parentName  = document.getElementById('sParentName').value.trim();
+        const parentPhone = document.getElementById('sParentPhone').value.trim();
+
         const studentRef = doc(db, 'students', newId);
         batch.set(studentRef, {
             studentIdNum: newId, name, email,
             dob:          document.getElementById('sDob').value,
-            parentName:   document.getElementById('sParentName').value.trim(),
-            parentPhone:  document.getElementById('sParentPhone').value.trim(),
+            parentName,
+            parentPhone,
             pin:          hashedPin,
             _tempPlaintextPin: rawPin,
             teacherId:    session.teacherId,
@@ -552,17 +555,35 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
             createdAt:    new Date().toISOString()
         });
 
+        await batch.commit();
+
+        // Parent linking is a best-effort follow-up to student creation, not
+        // part of its atomic write: linkOrCreateParent needs to read the
+        // student doc to validate it (schoolId match), so it can only run
+        // AFTER the student exists. A failure here does not roll back the
+        // student — the record is complete and useful on its own, and the
+        // parent can be linked again later. Mirrors how onStudentCreated
+        // already treats the welcome email as a secondary, best-effort step
+        // after the core write.
+        let parentLinkWarning = null;
         if (targetEmail) {
-            const emailRef = doc(db, 'registered_emails', targetEmail);
-            batch.set(emailRef, {
-                email: targetEmail, name, role: 'student',
-                referenceId: newId, createdAt: new Date().toISOString()
-            });
+            try {
+                await linkOrCreateParentFn({
+                    studentId: newId,
+                    schoolId: session.schoolId,
+                    parentName,
+                    parentEmail: email,
+                    parentPhone
+                });
+            } catch (linkErr) {
+                console.error('[Roster] linkOrCreateParent failed:', linkErr);
+                parentLinkWarning = 'The student was created, but linking the parent account failed. Please try again later.';
+            }
         }
 
-        await batch.commit();
         window.closeAddStudentModal();
         await loadStudents();
+        if (parentLinkWarning) alert(parentLinkWarning);
     } catch (e) {
         console.error('[Roster] saveStudent:', e);
         showMsg('addStudentMsg', 'Error saving student. Please try again.', true);

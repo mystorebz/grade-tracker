@@ -1,5 +1,6 @@
-import { db } from '../../assets/js/firebase-init.js';
+import { db, functions } from '../../assets/js/firebase-init.js';
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where, arrayUnion, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"; // ── FIX: added writeBatch
+import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectAdminLayout } from '../../assets/js/layout-admin.js';
 import { openOverlay, closeOverlay, letterGrade, calculateWeightedAverage, resolveGradeWeights, loadSchoolWeightingIndex, getWeightingFromIndex } from '../../assets/js/utils.js';
@@ -8,6 +9,12 @@ import { sha256Trim } from '../../assets/js/crypto-utils.js';
 // ── 1. INIT & AUTH ────────────────────────────────────────────────────────
 const session = requireAuth('admin', '../login.html');
 injectAdminLayout('students', 'School Directory', 'All enrolled students and their academic records', true, false);
+
+// Parent email deduplication is handled exclusively server-side by the
+// linkOrCreateParent Cloud Function (transactional find-or-create against
+// parent_emails/{normalizedEmail}) — this client never writes to
+// registered_emails for parent accounts.
+const linkOrCreateParentFn = httpsCallable(functions, 'linkOrCreateParent');
 
 // ── 2. STATE ──────────────────────────────────────────────────────────────
 let allStudentsCache       = [];
@@ -327,16 +334,6 @@ document.getElementById('saveAddStudentBtn')?.addEventListener('click', async ()
 
     try {
         const targetEmail = email ? email.toLowerCase() : null;
-        if (targetEmail) {
-            const regSnap = await getDoc(doc(db, 'registered_emails', targetEmail));
-            if (regSnap.exists()) {
-                msgEl.textContent = 'This email is already registered to another account in our system.';
-                msgEl.classList.remove('hidden');
-                btn.disabled = false;
-                btn.innerHTML = `<i class="fa-solid fa-user-plus mr-2"></i> Create New Student Identity`;
-                return;
-            }
-        }
 
         let studentId;
         let attempts = 0;
@@ -386,20 +383,35 @@ document.getElementById('saveAddStudentBtn')?.addEventListener('click', async ()
             createdAt:            new Date().toISOString()
         });
 
+        await batch.commit();
+
+        // Parent linking is a best-effort follow-up to student creation, not
+        // part of its atomic write: linkOrCreateParent needs to read the
+        // student doc to validate it (schoolId match), so it can only run
+        // AFTER the student exists. A failure here does not roll back the
+        // student — the record is complete and useful on its own, and the
+        // parent can be linked again later. Mirrors how onStudentCreated
+        // already treats the welcome email as a secondary, best-effort step
+        // after the core write.
+        let parentLinkWarning = null;
         if (targetEmail) {
-            const emailRef = doc(db, 'registered_emails', targetEmail);
-            batch.set(emailRef, {
-                email: targetEmail,
-                name: `${firstName} ${lastName}`.trim(),
-                role: 'student',
-                referenceId: studentId,
-                createdAt: new Date().toISOString()
-            });
+            try {
+                await linkOrCreateParentFn({
+                    studentId,
+                    schoolId: session.schoolId,
+                    parentName,
+                    parentEmail: email,
+                    parentPhone
+                });
+            } catch (linkErr) {
+                console.error('[Create Student] linkOrCreateParent failed:', linkErr);
+                parentLinkWarning = 'The student was created, but linking the parent account failed. Please try again later.';
+            }
         }
 
-        await batch.commit();
         window.closeAddStudentModal();
         await loadData();
+        if (parentLinkWarning) alert(parentLinkWarning);
 
     } catch (e) {
         console.error('[Create Student]', e);
@@ -929,6 +941,11 @@ document.getElementById('confirmArchiveBtn')?.addEventListener('click', async ()
         });
 
         // ── FIX: free the email so this student can be re-enrolled elsewhere ──
+        // New students no longer write to registered_emails (parent email
+        // dedup now lives exclusively in linkOrCreateParent's parent_emails
+        // index), so this delete is a no-op for them. It's left in place as
+        // harmless cleanup for any pre-existing registered_emails entries
+        // from before this fix.
         if (studentToArchive?.email) {
             batch.delete(doc(db, 'registered_emails', studentToArchive.email.toLowerCase().trim()));
         }

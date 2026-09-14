@@ -407,7 +407,49 @@ service cloud.firestore {
                      );
     }
 
-    // ── 2f. National Parent Registry (Phase 3 Step 1) ───────────────────────
+    // ── 2f. COLLECTION-GROUP RULE — grades ──────────────────────────────────
+    // Same structural need as the exam_submissions and live_sessions/responses
+    // collection-group rules above (2d, 2e): the nested match /grades/{gradeId}
+    // rule under match /students/{studentId} (section 2, above) only ever
+    // governs the single, fully-specified document path students/{studentId}/
+    // grades/{gradeId} — it is NEVER consulted for a collectionGroup('grades')
+    // query, regardless of what its condition says. Firestore requires
+    // collection-group queries to be matched by a rule declared with a
+    // recursive-wildcard prefix — match /{path=**}/grades/{gradeId} — per
+    // Firebase's own docs (see section 2d's comment for the full citation).
+    // Without a block in exactly this shape, teacher/subjects/subjects.js's
+    // openReviewSubmissions() — which queries collectionGroup(db, 'grades')
+    // .where('assignmentId', '==', assignmentId) to show every student's
+    // auto-graded score for one assignment at once — is rejected outright
+    // with "Missing or insufficient permissions" on the whole query, even
+    // against an EMPTY result set: a structural reachability problem, not a
+    // condition ever being evaluated and found false.
+    //
+    // schoolId is already denormalized onto every grade doc by saveGrade()
+    // (assets/js/utils.js) — commitGrade() (grade_form.js) always stamps it
+    // from session.schoolId — so this rule never needs a get() lookup (a list
+    // rule that calls get()/exists() anywhere in its evaluation can't be
+    // proven safe for a list/collection-group query and gets rejected
+    // outright, same reasoning as 2d/2e).
+    //
+    // KNOWN, DELIBERATE SCOPE LIMIT vs. the nested single-doc grades rule
+    // above: that rule also checks the STUDENT's own currentSchoolId/
+    // isSchoolActive (guarding a released/transferred student's grade
+    // history). Grade docs do not currently carry a denormalized
+    // isSchoolActive flag the way exam_submissions docs do (stamped by
+    // startExamAttempt), so this list rule cannot enforce that same check
+    // without a get() — it only verifies the requesting teacher/admin's own
+    // token.schoolId matches the grade doc's stamped schoolId. Narrower than
+    // the exam_submissions precedent; flagged as a follow-up if stricter
+    // enforcement is wanted (denormalize isSchoolActive onto grade docs at
+    // write time, same as exam_submissions).
+    match /{path=**}/grades/{gradeId} {
+      allow list: if request.auth != null &&
+                     request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] &&
+                     resource.data.schoolId == request.auth.token.schoolId;
+    }
+
+    // ── 2g. National Parent Registry (Phase 3 Step 1) ───────────────────────
     // A parent can have children at more than one school, so — unlike
     // teachers/students — there is no single schoolId to scope this
     // collection by. Everything sensitive here (email lookup/dedup, PIN
@@ -430,7 +472,7 @@ service cloud.firestore {
       allow list, create, update, delete: if false;
     }
 
-    // ── 2g. Parent email → Parent ID index (Phase 3 Step 1) ─────────────────
+    // ── 2h. Parent email → Parent ID index (Phase 3 Step 1) ─────────────────
     // Purely an internal, Admin-SDK-only index used by linkOrCreateParent's
     // Firestore transaction to make "find-or-create a parent by email"
     // race-free (two concurrent creations for the same brand-new email must
