@@ -864,7 +864,20 @@ window.openReviewSubmissions = async function(assignmentId) {
     try {
         const [submissionsMap, gradesSnap] = await Promise.all([
             loadSubmissionsForAssignment(session.schoolId, reviewAssignment),
-            getDocs(query(collectionGroup(db, 'grades'), where('assignmentId', '==', assignmentId)))
+            // firestore.rules' collection-group rule for grades can only prove
+            // resource.data.schoolId == request.auth.token.schoolId when the
+            // query itself carries a matching where('schoolId', ...) clause —
+            // Firestore can't verify a list/collection-group query's security
+            // per-document, only from the query's own filters (same reason
+            // live.js's collectionGroup('exam_submissions') query includes its
+            // own where('schoolId', ...) alongside where('examId', ...)).
+            // Without this, the query is rejected outright as unprovable,
+            // regardless of whether every matching doc would actually pass.
+            getDocs(query(
+                collectionGroup(db, 'grades'),
+                where('schoolId', '==', session.schoolId),
+                where('assignmentId', '==', assignmentId)
+            ))
         ]);
         reviewSubmissions = submissionsMap;
         // Grade docs live at students/{studentId}/grades/{gradeId} and don't
