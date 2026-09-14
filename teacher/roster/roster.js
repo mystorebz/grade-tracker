@@ -14,9 +14,16 @@ if (session) {
 
 // Parent email deduplication is handled exclusively server-side by the
 // linkOrCreateParent Cloud Function (transactional find-or-create against
-// parent_emails/{normalizedEmail}) — this client never writes to
-// registered_emails for parent accounts.
-const linkOrCreateParentFn = httpsCallable(functions, 'linkOrCreateParent');
+// the school-scoped parent_emails/{schoolId}_{normalizedEmail} index) —
+// this client never writes to registered_emails for parent accounts.
+const linkOrCreateParentFn  = httpsCallable(functions, 'linkOrCreateParent');
+// Read-only preview in front of linkOrCreateParent — lets the "Manage
+// Parent" tab below show a teacher WHO they're about to link before
+// committing to it, so a typo'd email gets caught rather than silently
+// linking a student to the wrong family. See that function's own header
+// comment in functions/index.js for why linkOrCreateParent alone can't
+// serve this (it always performs the link-or-create action immediately).
+const lookupParentByEmailFn = httpsCallable(functions, 'lookupParentByEmail');
 
 // ── 2. STATE ─────────────────────────────────────────────────────────────
 let allStudentsCache          = [];
@@ -594,22 +601,19 @@ document.getElementById('saveStudentBtn').addEventListener('click', async () => 
 
 // ── 10. STUDENT PANEL & TABS ──────────────────────────────────────────────
 window.switchStudentTab = function(tabName) {
-    const btnG = document.getElementById('tabBtnGrades');
-    const btnE = document.getElementById('tabBtnEvaluations');
-    const conG = document.getElementById('tabContentGrades');
-    const conE = document.getElementById('tabContentEvaluations');
-
-    if (tabName === 'grades') {
-        btnG.style.borderBottomColor = '#0ea871'; btnG.style.color = '#0d1f35';
-        btnE.style.borderBottomColor = 'transparent'; btnE.style.color = '#6b84a0';
-        conG.classList.remove('hidden'); conG.style.display = 'flex';
-        conE.classList.add('hidden');   conE.style.display = 'none';
-    } else {
-        btnE.style.borderBottomColor = '#0ea871'; btnE.style.color = '#0d1f35';
-        btnG.style.borderBottomColor = 'transparent'; btnG.style.color = '#6b84a0';
-        conE.classList.remove('hidden'); conE.style.display = 'flex';
-        conG.classList.add('hidden');    conG.style.display = 'none';
-    }
+    const tabs = {
+        grades:      { btn: document.getElementById('tabBtnGrades'),      con: document.getElementById('tabContentGrades') },
+        evaluations: { btn: document.getElementById('tabBtnEvaluations'), con: document.getElementById('tabContentEvaluations') },
+        parent:      { btn: document.getElementById('tabBtnParent'),      con: document.getElementById('tabContentParent') },
+    };
+    Object.entries(tabs).forEach(([name, { btn, con }]) => {
+        if (!btn || !con) return;
+        const active = name === tabName;
+        btn.style.borderBottomColor = active ? '#0ea871' : 'transparent';
+        btn.style.color = active ? '#0d1f35' : '#6b84a0';
+        con.classList.toggle('hidden', !active);
+        con.style.display = active ? 'flex' : 'none';
+    });
 };
 
 window.openStudentPanel = async function(studentId) {
@@ -621,6 +625,14 @@ window.openStudentPanel = async function(studentId) {
         [student?.className, student?.parentPhone].filter(Boolean).join(' · ') || '—';
 
     window.switchStudentTab('grades');
+
+    // Manage Parent tab state is per-student — reset it every time the panel
+    // opens (for this or any other student) so a previous student's search
+    // result/email never lingers into the next one.
+    const mpEmailInput = document.getElementById('mpEmailInput');
+    if (mpEmailInput) mpEmailInput.value = '';
+    const mpResult = document.getElementById('mpResult');
+    if (mpResult) mpResult.innerHTML = '';
 
     document.getElementById('sPanelLoader').style.display = 'flex';
     document.getElementById('sViewMode').classList.add('hidden');
@@ -1723,6 +1735,111 @@ function escHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
 }
+
+// ── 18. MANAGE PARENT — dual-role email lookup UI (Phase 3) ──────────────
+// Search -> Found (show name, "Link to Student" button) OR Not Found (show
+// a First/Last/Email creation form). Both branches ultimately call the
+// SAME linkOrCreateParentFn Cloud Function this file already imports for
+// student-creation-time auto-linking — this tab is just a second, explicit
+// entry point into it, scoped to whichever student's panel is currently
+// open (currentStudentId).
+window.searchParentByEmail = async function () {
+    const emailInput = document.getElementById('mpEmailInput');
+    const resultEl    = document.getElementById('mpResult');
+    const email       = emailInput.value.trim();
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        resultEl.innerHTML = '<p style="font-size:11.5px;font-weight:700;color:#dc2626;margin-top:10px;">Enter a valid email address to search.</p>';
+        return;
+    }
+
+    const btn = document.getElementById('mpSearchBtn');
+    btn.disabled = true; btn.textContent = 'Searching…';
+    resultEl.innerHTML = '<p style="font-size:11.5px;font-weight:700;color:#9ab0c6;margin-top:10px;"><i class="fa-solid fa-circle-notch fa-spin" style="margin-right:4px;"></i>Searching…</p>';
+
+    try {
+        const res = await lookupParentByEmailFn({ schoolId: session.schoolId, parentEmail: email });
+        if (res.data.found) {
+            renderParentFound(res.data, email);
+        } else {
+            renderParentNotFound(email);
+        }
+    } catch (e) {
+        console.error('[Manage Parent] search failed:', e);
+        resultEl.innerHTML = '<p style="font-size:11.5px;font-weight:700;color:#dc2626;margin-top:10px;">Search failed. Please try again.</p>';
+    }
+
+    btn.disabled = false; btn.textContent = 'Search';
+};
+
+function renderParentFound(data, email) {
+    const resultEl = document.getElementById('mpResult');
+    resultEl.innerHTML = `
+        <div style="margin-top:16px;padding:14px 16px;background:#edf7f1;border:1px solid #a7f3d0;border-radius:4px;">
+            <p style="font-size:10.5px;font-weight:700;color:#065f46;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 4px;"><i class="fa-solid fa-circle-check" style="margin-right:4px;"></i>Parent Found</p>
+            <p style="font-size:13.5px;font-weight:700;color:#0d1f35;margin:0;">${escHtml(data.name || 'Parent/Guardian')}</p>
+            <p style="font-size:11.5px;color:#6b84a0;margin:2px 0 10px;">${escHtml(email)}</p>
+            ${data.alreadyLinkedHere ? '<p style="font-size:11px;font-weight:700;color:#b45309;margin:0 0 10px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>This parent already has at least one child linked at this school.</p>' : ''}
+            <button onclick="window.linkFoundParent('${escHtml(email)}')" id="mpLinkBtn" class="btn-sharp btn-sharp-primary" style="width:100%;justify-content:center;"><i class="fa-solid fa-link" style="font-size:11px;"></i> Link to This Student</button>
+        </div>`;
+}
+
+function renderParentNotFound(email) {
+    const resultEl = document.getElementById('mpResult');
+    resultEl.innerHTML = `
+        <div style="margin-top:16px;padding:14px 16px;background:#f8fafb;border:1px solid #dce3ed;border-radius:4px;">
+            <p style="font-size:10.5px;font-weight:700;color:#6b84a0;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 10px;"><i class="fa-solid fa-user-plus" style="margin-right:4px;"></i>No Parent Found — Create New</p>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+                <input type="text" id="mpFirstName" placeholder="First Name" class="form-input">
+                <input type="text" id="mpLastName" placeholder="Last Name" class="form-input">
+                <input type="email" id="mpNewEmail" value="${escHtml(email)}" placeholder="Email" class="form-input">
+            </div>
+            <button onclick="window.createAndLinkParent()" id="mpCreateBtn" class="btn-sharp btn-sharp-primary" style="width:100%;justify-content:center;margin-top:10px;"><i class="fa-solid fa-plus" style="font-size:11px;"></i> Create &amp; Link Parent</button>
+            <p id="mpCreateMsg" class="hidden" style="font-size:11px;font-weight:700;margin-top:8px;"></p>
+        </div>`;
+}
+
+window.linkFoundParent = async function (email) {
+    const btn = document.getElementById('mpLinkBtn');
+    btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Linking…';
+
+    try {
+        await linkOrCreateParentFn({ studentId: currentStudentId, schoolId: session.schoolId, parentEmail: email });
+        document.getElementById('mpResult').innerHTML = '<p style="font-size:11.5px;font-weight:700;color:#059669;margin-top:10px;"><i class="fa-solid fa-circle-check" style="margin-right:4px;"></i>Linked successfully.</p>';
+    } catch (e) {
+        console.error('[Manage Parent] link failed:', e);
+        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-link" style="font-size:11px;"></i> Link to This Student';
+        alert('Failed to link parent. Please try again.');
+    }
+};
+
+window.createAndLinkParent = async function () {
+    const first  = document.getElementById('mpFirstName').value.trim();
+    const last   = document.getElementById('mpLastName').value.trim();
+    const email  = document.getElementById('mpNewEmail').value.trim();
+    const msgEl  = document.getElementById('mpCreateMsg');
+
+    if (!first || !last || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        msgEl.textContent = 'First name, last name, and a valid email are all required.';
+        msgEl.style.color = '#dc2626';
+        msgEl.classList.remove('hidden');
+        return;
+    }
+
+    const btn = document.getElementById('mpCreateBtn');
+    btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating…';
+
+    try {
+        await linkOrCreateParentFn({ studentId: currentStudentId, schoolId: session.schoolId, parentName: `${first} ${last}`, parentEmail: email });
+        document.getElementById('mpResult').innerHTML = '<p style="font-size:11.5px;font-weight:700;color:#059669;margin-top:10px;"><i class="fa-solid fa-circle-check" style="margin-right:4px;"></i>Parent account created and linked. A welcome email with login credentials has been sent.</p>';
+    } catch (e) {
+        console.error('[Manage Parent] create failed:', e);
+        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-plus" style="font-size:11px;"></i> Create &amp; Link Parent';
+        msgEl.textContent = 'Failed to create parent account. Please try again.';
+        msgEl.style.color = '#dc2626';
+        msgEl.classList.remove('hidden');
+    }
+};
 
 // ── FIRE ──────────────────────────────────────────────────────────────────
 init();

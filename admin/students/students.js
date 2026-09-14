@@ -12,9 +12,16 @@ injectAdminLayout('students', 'School Directory', 'All enrolled students and the
 
 // Parent email deduplication is handled exclusively server-side by the
 // linkOrCreateParent Cloud Function (transactional find-or-create against
-// parent_emails/{normalizedEmail}) — this client never writes to
-// registered_emails for parent accounts.
-const linkOrCreateParentFn = httpsCallable(functions, 'linkOrCreateParent');
+// the school-scoped parent_emails/{schoolId}_{normalizedEmail} index) —
+// this client never writes to registered_emails for parent accounts.
+const linkOrCreateParentFn  = httpsCallable(functions, 'linkOrCreateParent');
+// Read-only preview in front of linkOrCreateParent — lets the "Manage
+// Parent" tab below show a teacher/admin WHO they're about to link before
+// committing to it, so a typo'd email gets caught rather than silently
+// linking a student to the wrong family. See that function's own header
+// comment in functions/index.js for why linkOrCreateParent alone can't
+// serve this (it always performs the link-or-create action immediately).
+const lookupParentByEmailFn = httpsCallable(functions, 'lookupParentByEmail');
 
 // ── 2. STATE ──────────────────────────────────────────────────────────────
 let allStudentsCache       = [];
@@ -468,6 +475,14 @@ window.openStudentPanel = async function (studentId) {
     window.switchStudentTab('overview');
     document.getElementById('sPanelLoader')?.classList.remove('hidden');
     openOverlay('studentPanel', 'studentPanelInner', true);
+
+    // Manage Parent tab state is per-student — reset it every time the panel
+    // opens (for this or any other student) so a previous student's search
+    // result/email never lingers into the next one.
+    const mpEmailInput = document.getElementById('mpEmailInput');
+    if (mpEmailInput) mpEmailInput.value = '';
+    const mpResult = document.getElementById('mpResult');
+    if (mpResult) mpResult.innerHTML = '';
 
     try {
         if (student?.teacherId) {
@@ -1142,6 +1157,111 @@ window.renderClassHistory = function (student) {
             </div>
         </div>`;
     }).join('') + renderUnclassifiedEvaluations(semName);
+};
+
+// ── MANAGE PARENT — dual-role email lookup UI (Phase 3) ──────────────────
+// Search -> Found (show name, "Link to Student" button) OR Not Found (show
+// a First/Last/Email creation form). Both branches ultimately call the
+// SAME linkOrCreateParentFn Cloud Function this file already imports for
+// student-creation-time auto-linking — this tab is just a second, explicit
+// entry point into it, scoped to whichever student's panel is currently
+// open (currentStudentId).
+window.searchParentByEmail = async function () {
+    const emailInput = document.getElementById('mpEmailInput');
+    const resultEl    = document.getElementById('mpResult');
+    const email       = emailInput.value.trim();
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        resultEl.innerHTML = '<p class="text-xs font-bold text-rose-600 mt-3">Enter a valid email address to search.</p>';
+        return;
+    }
+
+    const btn = document.getElementById('mpSearchBtn');
+    btn.disabled = true; btn.textContent = 'Searching…';
+    resultEl.innerHTML = '<p class="text-xs text-slate-400 font-bold mt-3"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i>Searching…</p>';
+
+    try {
+        const res = await lookupParentByEmailFn({ schoolId: session.schoolId, parentEmail: email });
+        if (res.data.found) {
+            renderParentFound(res.data, email);
+        } else {
+            renderParentNotFound(email);
+        }
+    } catch (e) {
+        console.error('[Manage Parent] search failed:', e);
+        resultEl.innerHTML = '<p class="text-xs font-bold text-rose-600 mt-3">Search failed. Please try again.</p>';
+    }
+
+    btn.disabled = false; btn.textContent = 'Search';
+};
+
+function renderParentFound(data, email) {
+    const resultEl = document.getElementById('mpResult');
+    resultEl.innerHTML = `
+        <div class="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
+            <p class="text-xs font-black text-emerald-700 uppercase tracking-wide mb-1"><i class="fa-solid fa-circle-check mr-1"></i>Parent Found</p>
+            <p class="text-sm font-bold text-slate-800">${escHtml(data.name || 'Parent/Guardian')}</p>
+            <p class="text-xs text-slate-500 mb-3">${escHtml(email)}</p>
+            ${data.alreadyLinkedHere ? '<p class="text-xs font-bold text-amber-600 mb-3"><i class="fa-solid fa-triangle-exclamation mr-1"></i>This parent already has at least one child linked at this school.</p>' : ''}
+            <button onclick="window.linkFoundParent('${escHtml(email)}')" id="mpLinkBtn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-lg text-xs transition"><i class="fa-solid fa-link mr-1"></i>Link to This Student</button>
+        </div>`;
+}
+
+function renderParentNotFound(email) {
+    const resultEl = document.getElementById('mpResult');
+    resultEl.innerHTML = `
+        <div class="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-lg">
+            <p class="text-xs font-black text-slate-500 uppercase tracking-wide mb-3"><i class="fa-solid fa-user-plus mr-1"></i>No Parent Found — Create New</p>
+            <div class="space-y-2.5">
+                <input type="text" id="mpFirstName" placeholder="First Name" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400">
+                <input type="text" id="mpLastName" placeholder="Last Name" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400">
+                <input type="email" id="mpNewEmail" value="${escHtml(email)}" placeholder="Email" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400">
+            </div>
+            <button onclick="window.createAndLinkParent()" id="mpCreateBtn" class="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-lg text-xs transition"><i class="fa-solid fa-plus mr-1"></i>Create &amp; Link Parent</button>
+            <p id="mpCreateMsg" class="hidden text-xs font-bold mt-2"></p>
+        </div>`;
+}
+
+window.linkFoundParent = async function (email) {
+    const btn = document.getElementById('mpLinkBtn');
+    btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Linking…';
+
+    try {
+        await linkOrCreateParentFn({ studentId: currentStudentId, schoolId: session.schoolId, parentEmail: email });
+        document.getElementById('mpResult').innerHTML = '<p class="text-xs font-bold text-emerald-600 mt-3"><i class="fa-solid fa-circle-check mr-1"></i>Linked successfully.</p>';
+    } catch (e) {
+        console.error('[Manage Parent] link failed:', e);
+        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-link mr-1"></i>Link to This Student';
+        alert('Failed to link parent. Please try again.');
+    }
+};
+
+window.createAndLinkParent = async function () {
+    const first  = document.getElementById('mpFirstName').value.trim();
+    const last   = document.getElementById('mpLastName').value.trim();
+    const email  = document.getElementById('mpNewEmail').value.trim();
+    const msgEl  = document.getElementById('mpCreateMsg');
+
+    if (!first || !last || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        msgEl.textContent = 'First name, last name, and a valid email are all required.';
+        msgEl.className = 'text-xs font-bold mt-2 text-rose-600';
+        msgEl.classList.remove('hidden');
+        return;
+    }
+
+    const btn = document.getElementById('mpCreateBtn');
+    btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Creating…';
+
+    try {
+        await linkOrCreateParentFn({ studentId: currentStudentId, schoolId: session.schoolId, parentName: `${first} ${last}`, parentEmail: email });
+        document.getElementById('mpResult').innerHTML = '<p class="text-xs font-bold text-emerald-600 mt-3"><i class="fa-solid fa-circle-check mr-1"></i>Parent account created and linked. A welcome email with login credentials has been sent.</p>';
+    } catch (e) {
+        console.error('[Manage Parent] create failed:', e);
+        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-plus mr-1"></i>Create &amp; Link Parent';
+        msgEl.textContent = 'Failed to create parent account. Please try again.';
+        msgEl.className = 'text-xs font-bold mt-2 text-rose-600';
+        msgEl.classList.remove('hidden');
+    }
 };
 
 // ── INITIALIZE ────────────────────────────────────────────────────────────

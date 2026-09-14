@@ -299,17 +299,49 @@ function normalizeParentEmail(email) {
 // rules for parents/{parentId} and parent_emails/{email} can stay locked to
 // "no direct client access at all" (see firestore.rules section 2f/2g).
 //
-// Race-free by construction: parent_emails/{normalizedEmail} is read INSIDE
-// the transaction before branching, so two callers hitting this for the same
+// PHASE 3 (Student Audit / Reports / Manage Parent mandate) — dedup index
+// re-keyed from the original global parent_emails/{normalizedEmail} to a
+// school-scoped parent_emails/{schoolId}_{normalizedEmail}, per explicit
+// instruction ("Parents are tied to the school paying the subscription.
+// Deduplication is strictly scoped by schoolId."). REAL ARCHITECTURAL
+// TRADE-OFF worth being explicit about: under the OLD global key, a family
+// with children at two different ConnectUs schools got ONE parent account
+// (one Parent ID/PIN) they could use at both — isLinkedParentOf's own
+// comment in firestore.rules is built entirely around that assumption
+// ("a parent's token never carries a schoolId claim of its own... a family
+// can span more than one school"). Under this school-scoped key, the SAME
+// email at a second school now mints a SEPARATE parent account with its own
+// ID/PIN — multi-school families get multiple logins instead of one. That
+// is the intended trade-off per the B2B tenant model this mandate
+// describes (each school's parent roster belongs to that school's
+// subscription), not an oversight, but it is a real behavior change worth
+// knowing about.
+//
+// BACKWARD COMPATIBILITY: a parent record created before this change is
+// indexed only under the OLD global key. Naively switching straight to the
+// new key would make that record unreachable by this lookup — a re-link
+// attempt would fall to "new email" and mint a SECOND Parent ID/PIN for the
+// same person, orphaning their real credentials. To avoid that, the new key
+// is checked first (the fast path once a school has been migrated), and
+// only falling through to the old global key when the new one doesn't
+// exist. A hit on the old key is treated exactly like Case B (append the
+// link to that existing parent) AND lazily backfills the new school-scoped
+// index doc pointing at the same parentId, so the next lookup for this
+// school+email takes the fast path. Only a genuinely brand-new email skips
+// the old key entirely and writes only the new-style index — this file
+// never writes another old-style doc going forward.
+//
+// Race-free by construction: both index reads happen INSIDE the
+// transaction before branching, so two callers hitting this for the same
 // brand-new email at the same moment can never both take the "create a new
 // Parent ID" path — Firestore's transaction commit protocol aborts and
-// retries whichever one loses the race, and on retry it re-reads
-// parent_emails and correctly finds the other's freshly created doc, falling
-// through to the "append to existing parent" path instead. tx.create() (vs.
-// tx.set()) on both new docs is a second, explicit layer of the same
-// guarantee — it fails loudly on its own if a caller somehow reached the
-// "new email" branch for a doc that already exists, rather than silently
-// overwriting another family's parent record.
+// retries whichever one loses the race, and on retry it re-reads the index
+// and correctly finds the other's freshly created doc, falling through to
+// the "append to existing parent" path instead. tx.create() (vs. tx.set())
+// on both new docs is a second, explicit layer of the same guarantee — it
+// fails loudly on its own if a caller somehow reached the "new email"
+// branch for a doc that already exists, rather than silently overwriting
+// another family's parent record.
 //
 // Deploy command: firebase deploy --only functions:linkOrCreateParent
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -351,14 +383,17 @@ exports.linkOrCreateParent = onCall({ region: 'us-central1' }, async (request) =
     const linkEntry = { studentId: resolvedStudentId, schoolId };
     const nowIso = new Date().toISOString();
 
-    const parentEmailRef = db.collection('parent_emails').doc(normalizedEmail);
+    const scopedEmailRef = db.collection('parent_emails').doc(`${schoolId}_${normalizedEmail}`);
+    const legacyEmailRef = db.collection('parent_emails').doc(normalizedEmail);
 
     const result = await db.runTransaction(async (tx) => {
-        const emailSnap = await tx.get(parentEmailRef);
+        const [scopedSnap, legacySnap] = await Promise.all([tx.get(scopedEmailRef), tx.get(legacyEmailRef)]);
+        const existingSnap = scopedSnap.exists ? scopedSnap : (legacySnap.exists ? legacySnap : null);
 
-        // ── Case B: existing email — append to that parent's linkedStudents.
-        if (emailSnap.exists) {
-            const existingParentId = emailSnap.data().parentId;
+        // ── Case B: existing email (new-style or legacy key) — append to
+        //            that parent's linkedStudents.
+        if (existingSnap) {
+            const existingParentId = existingSnap.data().parentId;
             const parentRef = db.collection('parents').doc(existingParentId);
             const parentSnap = await tx.get(parentRef);
 
@@ -375,16 +410,27 @@ exports.linkOrCreateParent = onCall({ region: 'us-central1' }, async (request) =
                 updatedAt: nowIso,
             });
 
+            // Lazy migration: a hit via the legacy global key backfills the
+            // new school-scoped index doc so future lookups for this
+            // school+email take the fast (new-key) path. tx.set() (not
+            // tx.create()) here on purpose — a concurrent retry of this same
+            // transaction could reach this line twice.
+            if (!scopedSnap.exists) {
+                tx.set(scopedEmailRef, { parentId: existingParentId, createdAt: nowIso, migratedFromLegacyKey: true });
+            }
+
             return { parentId: existingParentId, created: false };
         }
 
-        // ── Case A: new email — mint a Parent ID + temporary PIN.
+        // ── Case A: genuinely new email — mint a Parent ID + temporary PIN.
+        //            Only the new school-scoped index is written; this
+        //            function never writes another legacy-keyed doc.
         const parentId  = generateParentId();
         const rawPin    = Math.floor(1000 + Math.random() * 9000).toString(); // same 4-digit convention as student/teacher creation
         const pinHashed = sha256Trim(rawPin);
         const parentRef = db.collection('parents').doc(parentId);
 
-        tx.create(parentEmailRef, { parentId, createdAt: nowIso });
+        tx.create(scopedEmailRef, { parentId, createdAt: nowIso });
         tx.create(parentRef, {
             parentId,
             name:  (parentName || '').trim(),
@@ -392,8 +438,8 @@ exports.linkOrCreateParent = onCall({ region: 'us-central1' }, async (request) =
             phone: (parentPhone || '').trim(),
             pin:   pinHashed,
             // Short-lived plain-text PIN, same pattern as students/teachers —
-            // a parent-welcome-email trigger (a later step) would read this
-            // once and scrub it, mirroring onStudentCreated/onTeacherCreated.
+            // read once and scrubbed by onParentCreated (below), mirroring
+            // onStudentCreated/onTeacherCreated.
             _tempPlaintextPin: rawPin,
             linkedStudents: [linkEntry],
             archived: false,
@@ -407,6 +453,69 @@ exports.linkOrCreateParent = onCall({ region: 'us-central1' }, async (request) =
     return result;
 });
 // --- END: linkOrCreateParent ---
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FUNCTION 3b-2: lookupParentByEmail
+//
+// PHASE 3 (Manage Parent lookup UI) — a read-only preview step in front of
+// linkOrCreateParent. The "Manage Parent" UI (teacher/roster/roster.js,
+// admin/students/students.js) needs to show a teacher/admin WHO they're
+// about to link before committing to it ("Found: Display Name + Link to
+// Student button" / "Not Found: Display creation form") — linkOrCreateParent
+// itself can't serve that on its own since it always performs the
+// link-or-create action immediately with no side-effect-free preview. This
+// exists purely so a typo'd email can be caught before linking a student to
+// the wrong family's parent account, not to add any new write path —
+// parents/{parentId} and parent_emails/{...} stay exactly as locked down to
+// "no direct client access" as before (firestore.rules 2f/2g); this is
+// still Admin-SDK-only, same as linkOrCreateParent.
+//
+// Checks the same new-key-then-legacy-key order linkOrCreateParent's own
+// transaction does, so a family already onboarded under the old global key
+// is found here too rather than reported as "not found" and then
+// accidentally duplicated by the creation form.
+//
+// Deploy command: firebase deploy --only functions:lookupParentByEmail
+// ═══════════════════════════════════════════════════════════════════════════════
+// --- START: lookupParentByEmail ---
+exports.lookupParentByEmail = onCall({ region: 'us-central1' }, async (request) => {
+    if (!request.auth || !['teacher', 'super_admin', 'sub_admin'].includes(request.auth.token.role)) {
+        throw new HttpsError('permission-denied', 'Only an authenticated teacher or admin may look up a parent record.');
+    }
+
+    const { schoolId, parentEmail } = request.data || {};
+    if (!schoolId || !parentEmail) {
+        throw new HttpsError('invalid-argument', 'schoolId and parentEmail are required.');
+    }
+    if (request.auth.token.schoolId !== schoolId) {
+        throw new HttpsError('permission-denied', 'You may only look up parents for your own school.');
+    }
+
+    const normalizedEmail = normalizeParentEmail(parentEmail);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+        throw new HttpsError('invalid-argument', 'A valid parentEmail is required.');
+    }
+
+    const [scopedSnap, legacySnap] = await Promise.all([
+        db.collection('parent_emails').doc(`${schoolId}_${normalizedEmail}`).get(),
+        db.collection('parent_emails').doc(normalizedEmail).get(),
+    ]);
+    const indexSnap = scopedSnap.exists ? scopedSnap : (legacySnap.exists ? legacySnap : null);
+    if (!indexSnap) return { found: false };
+
+    const parentId = indexSnap.data().parentId;
+    const parentSnap = await db.collection('parents').doc(parentId).get();
+    if (!parentSnap.exists) return { found: false };
+
+    const parentData = parentSnap.data();
+    return {
+        found: true,
+        parentId,
+        name: parentData.name || '',
+        alreadyLinkedHere: (parentData.linkedStudents || []).some(l => l.schoolId === schoolId),
+    };
+});
+// --- END: lookupParentByEmail ---
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FUNCTION 3c: mintParentToken
@@ -468,150 +577,6 @@ exports.mintParentToken = onCall({ region: 'us-central1' }, async (request) => {
     return { token };
 });
 // --- END: mintParentToken ---
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// FUNCTION 3d: getParentClassStream
-//
-// PHASE 3 STEP 4b — parent read of Class Stream. Grades/attendance parent
-// access (Step 4) could be granted with a pure firestore.rules addition
-// because both live at a per-student path (students/{studentId}/...), so a
-// single get() on the student doc lets the rule check linkedStudents
-// directly. Class Stream has no such path — posts live at
-// schools/{schoolId}/classes/{classId}/subjects/{subjectId}/posts, gated by
-// isCallerInSchool() (a schoolId token claim) — and a parent's token
-// deliberately carries no schoolId claim (one family can span more than one
-// school). Proving "does any of this parent's linked children belong to
-// this class" in firestore.rules would mean an existential check over a
-// variable-length array, which the rules language has no loop construct
-// for. Rather than force that, or denormalize classId onto the parent's own
-// record/token to work around it (the very thing this mandate said not to
-// do — no database restructuring, no growing the custom token), this
-// re-resolves the SAME chain the client already walks for itself —
-// teacherId -> subjects -> classId -> posts, exactly
-// loadTeacherSubjectsCache() / resolvePostContext() / loadPostsForSubjects()
-// in assets/js/utils.js + assets/js/posts.js — server-side via the Admin
-// SDK, which has no such restriction, and does the membership check in
-// plain code instead. Same shape as onAttendanceSaved's existing
-// server-side fan-out for attendance, applied to a different collection
-// that structurally can't be fanned out the same way (posts are shared
-// across every student in a class, not a per-student document).
-//
-// Does NOT touch linkOrCreateParent, mintParentToken, or the parents/
-// linkedStudents data model — no new field, no schema change, no growth of
-// what's minted into the custom token.
-//
-// Deploy command: firebase deploy --only functions:getParentClassStream
-// ═══════════════════════════════════════════════════════════════════════════════
-// --- START: getParentClassStream ---
-exports.getParentClassStream = onCall({ region: 'us-central1' }, async (request) => {
-
-    // ── 1. Caller must be an authenticated parent ────────────────────────
-    if (!request.auth || request.auth.token.role !== 'parent') {
-        throw new HttpsError('permission-denied', 'Parents only.');
-    }
-
-    const { studentId, schoolId } = request.data || {};
-    if (!studentId || !schoolId) {
-        throw new HttpsError('invalid-argument', 'studentId and schoolId are required.');
-    }
-
-    // ── 2. Caller must actually be linked to this exact student at this
-    //      exact school — same {studentId, schoolId} shape isLinkedParentOf()
-    //      checks in firestore.rules, just evaluated in plain JS against the
-    //      token's own linkedStudents claim. Admin SDK calls bypass
-    //      firestore.rules entirely, so this check is the ONLY thing
-    //      standing between "any parent" and "this parent's own children"
-    //      for this function — there is no rules layer behind it to fall
-    //      back on if this check were ever skipped.
-    const linkedStudents = Array.isArray(request.auth.token.linkedStudents) ? request.auth.token.linkedStudents : [];
-    const isLinked = linkedStudents.some(l => l.studentId === studentId && l.schoolId === schoolId);
-    if (!isLinked) {
-        throw new HttpsError('permission-denied', 'This student is not linked to your account.');
-    }
-
-    const studentSnap = await db.collection('students').doc(studentId).get();
-    if (!studentSnap.exists) {
-        return { posts: [] };
-    }
-    const studentData = studentSnap.data();
-    const teacherId = studentData.teacherId;
-    if (!teacherId) {
-        return { posts: [] };
-    }
-
-    const teacherSnap = await db.collection('teachers').doc(teacherId).get();
-    const legacyTeacherData = teacherSnap.exists ? teacherSnap.data() : null;
-
-    // ── 3. Resolve this teacher's classes — mirrors loadTeacherSubjectsCache's
-    //      own class-name resolution exactly (same fallback to className for
-    //      a not-yet-migrated single-class teacher).
-    const classNames = (legacyTeacherData && legacyTeacherData.classes) ||
-        [(legacyTeacherData && legacyTeacherData.className) || ''];
-
-    const classesSnap = await db.collection('schools').doc(schoolId).collection('classes').get();
-    const schoolClasses = classesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const byName = new Map(schoolClasses.map(c => [c.name, c.id]));
-    const resolvedClasses = classNames
-        .filter(Boolean)
-        .map(name => byName.has(name) ? { name, id: byName.get(name) } : null)
-        .filter(Boolean);
-
-    // ── 4. Resolve subjects for each resolved class (new-model), plus any
-    //      legacy-embedded subject whose name isn't already represented —
-    //      same merge rule as loadTeacherSubjectsCache().
-    let subjectsCache = [];
-    for (const cls of resolvedClasses) {
-        const subjSnap = await db.collection('schools').doc(schoolId)
-            .collection('classes').doc(cls.id).collection('subjects').get();
-        subjSnap.docs.forEach(d => {
-            subjectsCache.push({ id: d.id, classId: cls.id, className: cls.name, _source: 'new', ...d.data() });
-        });
-    }
-    const newNames = new Set(subjectsCache.map(s => s.name));
-    ((legacyTeacherData && legacyTeacherData.subjects) || []).forEach(s => {
-        if (!newNames.has(s.name)) subjectsCache.push({ ...s, _source: 'legacy' });
-    });
-
-    const activeSubjects = subjectsCache.filter(s => !s.archived);
-
-    // ── 5. Build postContexts exactly like resolvePostContext() (posts.js) ──
-    const postContexts = activeSubjects.map(subject => {
-        let classId = subject.classId || null;
-        let className = subject.className || '';
-        if (!classId) {
-            const cls = resolvedClasses[0] || null;
-            if (!cls) return null;
-            classId = cls.id;
-            className = cls.name;
-        }
-        return { classId, className, subjectId: subject.id, subjectName: subject.name };
-    }).filter(Boolean);
-
-    // ── 6. Fetch + merge posts, same shape as loadPostsForSubjects() ────────
-    const perSubject = await Promise.all(postContexts.map(async ctx => {
-        try {
-            const snap = await db.collection('schools').doc(schoolId)
-                .collection('classes').doc(ctx.classId)
-                .collection('subjects').doc(ctx.subjectId)
-                .collection('posts').get();
-            return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        } catch (e) {
-            console.error(`[getParentClassStream] failed for subject ${ctx.subjectId}:`, e);
-            return [];
-        }
-    }));
-
-    let posts = perSubject.flat();
-    posts.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-
-    // Pinned-first, same default ordering as the student Stream view.
-    const pinned = posts.filter(p => p.pinned);
-    const rest = posts.filter(p => !p.pinned);
-    posts = [...pinned, ...rest];
-
-    return { posts };
-});
-// --- END: getParentClassStream ---
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FUNCTION 4: mintHQToken
@@ -1198,6 +1163,93 @@ exports.onStudentCreated = onDocumentCreated({ document: "students/{studentId}",
     return null;
 });
 // --- END: onStudentCreated ---
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FUNCTION: onParentCreated
+//
+// PHASE 3 STEP 4 — the "parent-welcome-email trigger" linkOrCreateParent's
+// own Case A comment already forward-referenced (it sets _tempPlaintextPin
+// exactly like onStudentCreated/onTeacherCreated do, expecting a matching
+// trigger to read-and-scrub it — this is that trigger, previously missing).
+// Fires only on a brand-new parent record (linkOrCreateParent's Case A);
+// Case B (existing email, just appending a linkedStudents entry) never
+// creates a new parents/{parentId} doc, so it never fires this.
+//
+// Same shape as onStudentCreated/onTeacherCreated: send the ID + temporary
+// PIN + the unified login URL, then scrub the plain-text PIN. Parents log
+// in at the SAME gateway students do (student/login.js's own
+// handleParentLogin branch, keyed off a leading "P"), not a separate URL.
+// ═══════════════════════════════════════════════════════════════════════════════
+// --- START: onParentCreated ---
+exports.onParentCreated = onDocumentCreated({ document: "parents/{parentId}", secrets: [GMAIL_APP_PASSWORD] }, async (event) => {
+    const data     = event.data.data();
+    const parentId = event.params.parentId;
+
+    if (!data || !data.email) return null;
+
+    const firstName = (data.name || '').split(' ')[0] || 'there';
+    // The real PIN is never stored in plain text in `pin` — it lives only in
+    // this short-lived side-channel field, which is deleted below
+    // immediately after the email is queued, same as every other role.
+    const pin       = data._tempPlaintextPin || 'See your school administrator';
+    const loginLink = 'https://connectusonline.org/student/login.html';
+
+    const body = `
+      <h2 style="margin:0 0 8px;font-size:26px;font-weight:900;color:#0f172a;text-align:center;">Welcome to ConnectUs!</h2>
+      <p style="margin:0 0 28px;font-size:15px;color:#64748b;text-align:center;line-height:1.6;">A Parent Portal account has been created for you on the ConnectUs platform.</p>
+
+      <p style="margin:0 0 20px;font-size:15px;color:#334155;line-height:1.7;">Hello <strong>${firstName}</strong>,<br><br>
+      Your child's school has linked your account so you can view grades, attendance, and evaluations for your children. Your credentials are listed below — use your <strong>Parent ID</strong> to log in.</p>
+
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:28px;">
+        <tr><td colspan="2" style="padding:14px 16px;background-color:#0f172a;">
+          <p style="margin:0;font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.15em;">Your Credentials</p>
+        </td></tr>
+        ${credentialRow('Parent ID', parentId, true)}
+        ${credentialRow('Full Name', data.name || 'Parent/Guardian')}
+        ${credentialRow('Temporary PIN', pin, true)}
+      </table>
+
+      <div style="text-align:center;margin-bottom:28px;">
+        <a href="${loginLink}" style="display:inline-block;background:linear-gradient(135deg,#7f1d3d,#b91c4c);color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;padding:16px 36px;border-radius:12px;letter-spacing:0.04em;box-shadow:0 4px 14px rgba(127,29,61,0.35);">
+          Log In to Parent Portal &rarr;
+        </a>
+      </div>
+
+      <div style="background-color:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:16px 20px;margin-bottom:20px;">
+        <p style="margin:0;font-size:13px;font-weight:700;color:#92400e;line-height:1.6;">
+          <strong>Important:</strong> Your PIN above is temporary. Your Parent ID is what you use to log in to the portal alongside your PIN — keep both safe. If your family has children at more than one ConnectUs school, each school issues its own separate Parent ID.
+        </p>
+      </div>
+
+      <p style="margin:0;font-size:14px;color:#64748b;line-height:1.7;">For support, contact us at <a href="mailto:info@connectusonline.org" style="color:#7f1d3d;font-weight:700;">info@connectusonline.org</a>.</p>
+      <p style="margin:20px 0 0;font-size:15px;color:#0f172a;">Warm regards,<br><strong style="color:#7f1d3d;">The ConnectUs Team</strong></p>`;
+
+    const html = buildEmailWrapper('#7f1d3d,#b91c4c,#f59e0b', LOGO_URL, body);
+
+    try {
+        await sendMail({
+            to: data.email,
+            subject: `Welcome to ConnectUs — Your Parent Portal Account is Ready`,
+            html
+        });
+        console.log(`Parent welcome email sent for: ${parentId}`);
+    } catch (error) {
+        console.error(`Failed to send parent welcome email for ${parentId}:`, error);
+    }
+
+    if (data._tempPlaintextPin !== undefined) {
+        try {
+            await event.data.ref.update({ _tempPlaintextPin: FieldValue.delete() });
+        } catch (cleanupError) {
+            console.error(`Failed to scrub _tempPlaintextPin for parent ${parentId}:`, cleanupError);
+        }
+    }
+
+    return null;
+});
+// --- END: onParentCreated ---
 
 
 // --- REMOVED: onStudentUpdated (Claim) ---
