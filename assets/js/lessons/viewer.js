@@ -14,7 +14,7 @@ import { db } from '../../../assets/js/firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../../assets/js/auth.js';
 import { injectStudentLayout } from '../../../assets/js/layout-student.js';
-import { loadTeacherSubjectsCache, getTeacherDocRef, openOverlay, closeOverlay, showMsg } from '../../../assets/js/utils.js';
+import { loadTeacherSubjectsCache, getTeacherDocRef, openOverlay, closeOverlay, showMsg, loadSchoolHeaderInfo } from '../../../assets/js/utils.js';
 import { resolvePostContext } from '../../../assets/js/posts.js';
 import {
     loadSubmission,
@@ -147,6 +147,19 @@ async function init() {
 
     cacheEls();
     wireEvents();
+
+    // Fire-and-forget header fill-in, same pattern as student/stream/stream.js
+    // and student/lessons/lessons.js (injectStudentLayout only has the
+    // student's own cached session data — the school name/active semester
+    // need their own fetch). Missing this call is why #displaySchoolName and
+    // #activeSemesterDisplay were stuck on their static "Loading..."
+    // placeholders on this page specifically.
+    loadSchoolHeaderInfo(session.schoolId).then(({ schoolName, semesterName }) => {
+        const schoolEl = document.getElementById('displaySchoolName');
+        const semEl = document.getElementById('activeSemesterDisplay');
+        if (schoolEl) schoolEl.textContent = schoolName;
+        if (semEl) semEl.textContent = semesterName;
+    });
 
     if (!urlLessonId || !urlClassId || !urlSubjectId) {
         showError("This lesson link looks incomplete — try opening it again from Class Stream.");
