@@ -470,6 +470,150 @@ exports.mintParentToken = onCall({ region: 'us-central1' }, async (request) => {
 // --- END: mintParentToken ---
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// FUNCTION 3d: getParentClassStream
+//
+// PHASE 3 STEP 4b — parent read of Class Stream. Grades/attendance parent
+// access (Step 4) could be granted with a pure firestore.rules addition
+// because both live at a per-student path (students/{studentId}/...), so a
+// single get() on the student doc lets the rule check linkedStudents
+// directly. Class Stream has no such path — posts live at
+// schools/{schoolId}/classes/{classId}/subjects/{subjectId}/posts, gated by
+// isCallerInSchool() (a schoolId token claim) — and a parent's token
+// deliberately carries no schoolId claim (one family can span more than one
+// school). Proving "does any of this parent's linked children belong to
+// this class" in firestore.rules would mean an existential check over a
+// variable-length array, which the rules language has no loop construct
+// for. Rather than force that, or denormalize classId onto the parent's own
+// record/token to work around it (the very thing this mandate said not to
+// do — no database restructuring, no growing the custom token), this
+// re-resolves the SAME chain the client already walks for itself —
+// teacherId -> subjects -> classId -> posts, exactly
+// loadTeacherSubjectsCache() / resolvePostContext() / loadPostsForSubjects()
+// in assets/js/utils.js + assets/js/posts.js — server-side via the Admin
+// SDK, which has no such restriction, and does the membership check in
+// plain code instead. Same shape as onAttendanceSaved's existing
+// server-side fan-out for attendance, applied to a different collection
+// that structurally can't be fanned out the same way (posts are shared
+// across every student in a class, not a per-student document).
+//
+// Does NOT touch linkOrCreateParent, mintParentToken, or the parents/
+// linkedStudents data model — no new field, no schema change, no growth of
+// what's minted into the custom token.
+//
+// Deploy command: firebase deploy --only functions:getParentClassStream
+// ═══════════════════════════════════════════════════════════════════════════════
+// --- START: getParentClassStream ---
+exports.getParentClassStream = onCall({ region: 'us-central1' }, async (request) => {
+
+    // ── 1. Caller must be an authenticated parent ────────────────────────
+    if (!request.auth || request.auth.token.role !== 'parent') {
+        throw new HttpsError('permission-denied', 'Parents only.');
+    }
+
+    const { studentId, schoolId } = request.data || {};
+    if (!studentId || !schoolId) {
+        throw new HttpsError('invalid-argument', 'studentId and schoolId are required.');
+    }
+
+    // ── 2. Caller must actually be linked to this exact student at this
+    //      exact school — same {studentId, schoolId} shape isLinkedParentOf()
+    //      checks in firestore.rules, just evaluated in plain JS against the
+    //      token's own linkedStudents claim. Admin SDK calls bypass
+    //      firestore.rules entirely, so this check is the ONLY thing
+    //      standing between "any parent" and "this parent's own children"
+    //      for this function — there is no rules layer behind it to fall
+    //      back on if this check were ever skipped.
+    const linkedStudents = Array.isArray(request.auth.token.linkedStudents) ? request.auth.token.linkedStudents : [];
+    const isLinked = linkedStudents.some(l => l.studentId === studentId && l.schoolId === schoolId);
+    if (!isLinked) {
+        throw new HttpsError('permission-denied', 'This student is not linked to your account.');
+    }
+
+    const studentSnap = await db.collection('students').doc(studentId).get();
+    if (!studentSnap.exists) {
+        return { posts: [] };
+    }
+    const studentData = studentSnap.data();
+    const teacherId = studentData.teacherId;
+    if (!teacherId) {
+        return { posts: [] };
+    }
+
+    const teacherSnap = await db.collection('teachers').doc(teacherId).get();
+    const legacyTeacherData = teacherSnap.exists ? teacherSnap.data() : null;
+
+    // ── 3. Resolve this teacher's classes — mirrors loadTeacherSubjectsCache's
+    //      own class-name resolution exactly (same fallback to className for
+    //      a not-yet-migrated single-class teacher).
+    const classNames = (legacyTeacherData && legacyTeacherData.classes) ||
+        [(legacyTeacherData && legacyTeacherData.className) || ''];
+
+    const classesSnap = await db.collection('schools').doc(schoolId).collection('classes').get();
+    const schoolClasses = classesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const byName = new Map(schoolClasses.map(c => [c.name, c.id]));
+    const resolvedClasses = classNames
+        .filter(Boolean)
+        .map(name => byName.has(name) ? { name, id: byName.get(name) } : null)
+        .filter(Boolean);
+
+    // ── 4. Resolve subjects for each resolved class (new-model), plus any
+    //      legacy-embedded subject whose name isn't already represented —
+    //      same merge rule as loadTeacherSubjectsCache().
+    let subjectsCache = [];
+    for (const cls of resolvedClasses) {
+        const subjSnap = await db.collection('schools').doc(schoolId)
+            .collection('classes').doc(cls.id).collection('subjects').get();
+        subjSnap.docs.forEach(d => {
+            subjectsCache.push({ id: d.id, classId: cls.id, className: cls.name, _source: 'new', ...d.data() });
+        });
+    }
+    const newNames = new Set(subjectsCache.map(s => s.name));
+    ((legacyTeacherData && legacyTeacherData.subjects) || []).forEach(s => {
+        if (!newNames.has(s.name)) subjectsCache.push({ ...s, _source: 'legacy' });
+    });
+
+    const activeSubjects = subjectsCache.filter(s => !s.archived);
+
+    // ── 5. Build postContexts exactly like resolvePostContext() (posts.js) ──
+    const postContexts = activeSubjects.map(subject => {
+        let classId = subject.classId || null;
+        let className = subject.className || '';
+        if (!classId) {
+            const cls = resolvedClasses[0] || null;
+            if (!cls) return null;
+            classId = cls.id;
+            className = cls.name;
+        }
+        return { classId, className, subjectId: subject.id, subjectName: subject.name };
+    }).filter(Boolean);
+
+    // ── 6. Fetch + merge posts, same shape as loadPostsForSubjects() ────────
+    const perSubject = await Promise.all(postContexts.map(async ctx => {
+        try {
+            const snap = await db.collection('schools').doc(schoolId)
+                .collection('classes').doc(ctx.classId)
+                .collection('subjects').doc(ctx.subjectId)
+                .collection('posts').get();
+            return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (e) {
+            console.error(`[getParentClassStream] failed for subject ${ctx.subjectId}:`, e);
+            return [];
+        }
+    }));
+
+    let posts = perSubject.flat();
+    posts.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+    // Pinned-first, same default ordering as the student Stream view.
+    const pinned = posts.filter(p => p.pinned);
+    const rest = posts.filter(p => !p.pinned);
+    posts = [...pinned, ...rest];
+
+    return { posts };
+});
+// --- END: getParentClassStream ---
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // FUNCTION 4: mintHQToken
 // ═══════════════════════════════════════════════════════════════════════════════
 exports.mintHQToken = onCall({ region: 'us-central1' }, async (request) => {

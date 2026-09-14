@@ -21,6 +21,25 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.schoolId == schoolId;
     }
 
+    // ── PHASE 3 STEP 4: PARENT-OF-STUDENT CHECK ─────────────────────────────
+    // mintParentToken (functions/index.js) mints a token carrying
+    // { role: 'parent', parentId, linkedStudents } — linkedStudents is a list
+    // of { studentId, schoolId } maps, exactly the shape written by
+    // linkOrCreateParent's linkEntry. hasAny() checks that list for an exact
+    // match against the ONE {studentId, schoolId} pair this rule is being
+    // evaluated for, which is why every call site below passes the target
+    // student's own resolved currentSchoolId (via get()), never the parent's
+    // own claim data. A parent's token never carries a `schoolId` claim of
+    // its own (a family can span more than one school), so isCallerInSchool()
+    // above always evaluates false for a parent caller — this is the
+    // deliberate, separate check that grants parents exactly (and only)
+    // their own linked children's data, everywhere isCallerInSchool doesn't.
+    function isLinkedParentOf(studentId, schoolId) {
+      return request.auth != null &&
+             request.auth.token.role == 'parent' &&
+             request.auth.token.linkedStudents.hasAny([{'studentId': studentId, 'schoolId': schoolId}]);
+    }
+
     // ── 1. National Teacher Registry ──────────────────────────────────────
     match /teachers/{teacherId} {
       // GET: teacher is active at a verified school, OR currentSchoolId is
@@ -63,10 +82,16 @@ service cloud.firestore {
     match /students/{studentId} {
       // GET: student is at an active school, OR released/archived
       //      (currentSchoolId empty) — needed by student login (unauthenticated)
-      //      and teacher claim search.
+      //      and teacher claim search. Also explicitly true for a linked
+      //      parent (Phase 3 Step 4) — written out even though the grant
+      //      above already covers it for any active-school student, same
+      //      "explicit is better than relying on a broader grant that could
+      //      later be tightened" reasoning this file already applies to
+      //      parents/{parentId} and parent_emails/{email} above.
       allow get: if resource.data.currentSchoolId == null
                  || resource.data.currentSchoolId == ''
-                 || isSchoolActive(resource.data.currentSchoolId);
+                 || isSchoolActive(resource.data.currentSchoolId)
+                 || isLinkedParentOf(studentId, resource.data.currentSchoolId);
 
       // LIST: open — needed by admin portal, teacher portal (roster, gradebook,
       //       reports, home, subjects), and HQ dashboard.
@@ -92,11 +117,15 @@ service cloud.firestore {
       match /grades/{gradeId} {
         // READ: school active OR student released (history.js reads grades
         //       for released students whose currentSchoolId is now empty).
+        //       Also explicit for a linked parent (Phase 3 Step 4) — same
+        //       "written out even though the broader grant already covers
+        //       it" reasoning as the get() rule on students/{studentId} above.
         allow read: if get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId == null
                     || get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId == ''
                     || isSchoolActive(
                          get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
-                       );
+                       )
+                    || isLinkedParentOf(studentId, get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId);
 
         // WRITE: school must be active (no grade entry after suspension).
         allow create, update: if isSchoolActive(
@@ -300,12 +329,21 @@ service cloud.firestore {
       // that without ever exposing a classmate's status alongside it.
       match /attendance/{attDate} {
         allow read: if request.auth != null &&
-                       request.auth.token.studentId == studentId &&
-                       (get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId == null ||
-                        get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId == '' ||
-                        isSchoolActive(
-                          get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
-                        ));
+                       (
+                         (request.auth.token.studentId == studentId &&
+                          (get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId == null ||
+                           get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId == '' ||
+                           isSchoolActive(
+                             get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
+                           )))
+                         // Phase 3 Step 4: a linked parent reads their child's
+                         // own fanned-out attendance the same way the child
+                         // does — unlike the grant above, this one is load-
+                         // bearing (this rule, unlike students/{studentId} and
+                         // grades/{gradeId} above, has no pre-existing broad
+                         // grant a parent would otherwise fall through to).
+                         || isLinkedParentOf(studentId, get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId)
+                       );
 
         allow write: if false;
       }

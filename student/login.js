@@ -10,6 +10,7 @@ import { setSessionData } from '../assets/js/auth.js';
 // ── Functions instance ────────────────────────────────────────────────────────
 const functions        = getFunctions();
 const mintStudentToken = httpsCallable(functions, 'mintStudentToken');
+const mintParentToken  = httpsCallable(functions, 'mintParentToken');
 
 // ── Elements ──────────────────────────────────────────────────────────────────
 const loginBtn = document.getElementById('loginBtn');
@@ -41,8 +42,19 @@ async function handleLogin() {
     const pin   = document.getElementById('loginPin').value.trim();
 
     if (!rawId || !pin) {
-        showError('Please enter your Student ID and PIN.');
+        showError('Please enter your Student or Parent ID and PIN.');
         return;
+    }
+
+    // ── PHASE 3 STEP 2: UNIFIED LOGIN GATEWAY ──────────────────────────────
+    // This is the exact same portal parents log in through — there is no
+    // separate parent login page. Parent IDs are minted as P##-XXXXX
+    // (generateParentId(), functions/index.js) — disjoint from every other
+    // ID prefix issued by this app (S## students, T## teachers, HQ- platform
+    // admins) — so a leading 'P' unambiguously routes to the parent flow
+    // before anything below assumes this is a student ID.
+    if (rawId.startsWith('P')) {
+        return handleParentLogin(rawId, pin);
     }
 
     if (!/^S\d{2}-[A-Z0-9]{5}$/.test(rawId)) {
@@ -161,6 +173,59 @@ async function handleLogin() {
     } catch (e) {
         console.error('[Student Login]', e);
         showError('Connection error. Please try again.');
+        setLoading(false);
+    }
+}
+
+// ── PHASE 3 STEP 2: PARENT LOGIN ─────────────────────────────────────────
+// Mirrors the student flow's own mint → signInWithCustomToken → read claims
+// → setSessionData → redirect shape exactly (same as mintTeacherToken/
+// mintStudentToken elsewhere in this app), just against mintParentToken and
+// a parent session instead. No enrollment-status gate or security-questions
+// gate here — those are student-only concepts; a parent record has neither
+// field, and mintParentToken's own `archived` check is the parent
+// equivalent of the enrollment gate above.
+async function handleParentLogin(rawId, pin) {
+    if (!/^P\d{2}-[A-Z0-9]{5}$/.test(rawId)) {
+        showError('Invalid Parent ID format. It should look like P26-XXXXX.');
+        return;
+    }
+
+    setLoading(true);
+
+    try {
+        const result         = await mintParentToken({ parentId: rawId, pin });
+        const userCredential = await signInWithCustomToken(auth, result.data.token);
+        const idTokenResult  = await userCredential.user.getIdTokenResult();
+        const claims         = idTokenResult.claims;
+
+        // ── Save session using verified claims ─────────────────────────────
+        // linkedStudents is a session-time convenience snapshot straight off
+        // the token (see mintParentToken's own comment in functions/index.js
+        // on why it's not treated as the source of truth) — good enough to
+        // populate the dashboard's child cards without an extra round trip;
+        // the dashboard re-reads parents/{parentId} itself for anything that
+        // needs to be live (a newly-linked sibling, a name change).
+        setSessionData('parent', {
+            parentId:       claims.parentId || rawId,
+            linkedStudents: Array.isArray(claims.linkedStudents) ? claims.linkedStudents : []
+        });
+
+        window.location.replace('../parent/dashboard/dashboard.html');
+    } catch (authError) {
+        console.error('[Parent Login] Server rejected credentials:', authError);
+
+        if (authError?.code === 'functions/permission-denied') {
+            showError('This parent account has been archived. Contact your school administrator.');
+        } else if (authError?.code === 'functions/unauthenticated') {
+            showError('Incorrect PIN. Please check and try again.');
+        } else if (authError?.code === 'functions/not-found') {
+            showError('Parent ID not found. Check the ID provided by your school.');
+        } else if (authError?.code === 'functions/invalid-argument') {
+            showError('Please enter your Parent ID and PIN.');
+        } else {
+            showError('Connection error. Please try again.');
+        }
         setLoading(false);
     }
 }

@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student View | ConnectUs</title>
+
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'DM Sans', sans-serif; background: #f0f2f8; margin: 0; }
+        .hidden { display: none !important; }
+
+        .pv-topbar {
+            background: linear-gradient(120deg, #1e1b4b 0%, #3730a3 55%, #4f46e5 100%);
+            padding: 20px 40px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .pv-back { color: rgba(255,255,255,0.7); font-size: 12.5px; font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+        .pv-back:hover { color: #fff; }
+        .pv-topbar h1 { font-size: 20px; font-weight: 800; color: #fff; margin: 0 0 2px; letter-spacing: -0.4px; }
+        .pv-topbar p  { font-size: 12.5px; color: rgba(255,255,255,0.65); margin: 0; font-weight: 500; }
+        .pv-readonly-badge {
+            background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.18); color: #fff;
+            font-weight: 800; font-size: 11px; padding: 7px 12px; border-radius: 999px;
+            display: inline-flex; align-items: center; gap: 6px; text-transform: uppercase; letter-spacing: 0.4px;
+        }
+
+        .pv-tabs { display: flex; gap: 6px; padding: 0 40px; background: #fff; border-bottom: 1px solid #e2e8f0; }
+        .pv-tab {
+            border: none; background: none; padding: 14px 16px; font-size: 13px; font-weight: 800; color: #94a3b8;
+            cursor: pointer; border-bottom: 2.5px solid transparent; display: inline-flex; align-items: center; gap: 8px;
+        }
+        .pv-tab.pv-active { color: #4f46e5; border-bottom-color: #4f46e5; }
+
+        .page-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 20px; gap: 14px; }
+        .page-loader i { font-size: 32px; color: #6366f1; }
+        .page-loader p { font-size: 13.5px; color: #94a3b8; font-weight: 600; margin: 0; }
+
+        /* ── Grades tab ────────────────────────────────────────────────────── */
+        .pv-grade-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px,1fr)); gap: 16px; }
+        .pv-grade-tile { background: #fff; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+        .pv-grade-tile .g-subject { font-weight: 800; font-size: 13.5px; color: #1e293b; margin: 0; }
+        .pv-grade-tile .g-avg { font-size: 26px; font-weight: 800; margin: 0; }
+        .pv-grade-tile .g-count { font-size: 11px; color: #94a3b8; font-weight: 700; margin: 0; }
+
+        /* ── Attendance tab ────────────────────────────────────────────────── */
+        .pv-month-nav { display: flex; align-items: center; gap: 12px; }
+        .pv-month-btn { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; width: 32px; height: 32px; cursor: pointer; color: #64748b; }
+        .pv-month-btn:hover { background: #f1f5f9; }
+        .pv-att-summary { display: flex; flex-wrap: wrap; gap: 10px; }
+
+        /* ── Class Stream tab ──────────────────────────────────────────────── */
+        .pv-post-card { background: #fff; border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); border: 1px solid #e2e8f0; padding: 16px; }
+
+        @media (max-width: 767px) {
+            .pv-topbar, .pv-tabs { padding-left: 20px; padding-right: 20px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="pv-topbar">
+        <div>
+            <a href="../dashboard/dashboard.html" class="pv-back"><i class="fa-solid fa-arrow-left"></i> All Children</a>
+            <h1 id="studentNameDisplay">Loading…</h1>
+            <p id="studentMetaDisplay"></p>
+        </div>
+        <span class="pv-readonly-badge"><i class="fa-solid fa-eye"></i> Read-Only View</span>
+    </div>
+
+    <div class="pv-tabs">
+        <button id="tabGradesBtn" class="pv-tab pv-active"><i class="fa-solid fa-chart-simple"></i> Grades</button>
+        <button id="tabAttendanceBtn" class="pv-tab"><i class="fa-solid fa-calendar-check"></i> Attendance</button>
+        <button id="tabStreamBtn" class="pv-tab"><i class="fa-solid fa-bullhorn"></i> Class Stream</button>
+    </div>
+
+    <div class="max-w-6xl mx-auto p-6 md:p-8">
+
+        <div id="viewLoader" class="page-loader">
+            <i class="fa-solid fa-circle-notch fa-spin"></i>
+            <p>Loading…</p>
+        </div>
+
+        <div id="viewError" class="hidden text-center py-10 text-slate-400 text-[13px] font-bold bg-white rounded-xl border border-slate-200"></div>
+
+        <!-- ── GRADES PANEL ─────────────────────────────────────────────── -->
+        <div id="gradesPanel" class="hidden space-y-4">
+            <div id="gradesEmpty" class="hidden text-center py-10 text-slate-400 text-[13px] font-bold bg-white rounded-xl border border-slate-200">
+                No grades recorded for the current grading period yet.
+            </div>
+            <div id="gradesOverallRow" class="hidden text-[11px] font-black text-slate-400 uppercase tracking-widest px-1"></div>
+            <div id="gradesGrid" class="pv-grade-grid pb-8"></div>
+        </div>
+
+        <!-- ── ATTENDANCE PANEL ─────────────────────────────────────────── -->
+        <div id="attendancePanel" class="hidden space-y-4">
+            <div class="flex items-center justify-between flex-wrap gap-3">
+                <div class="pv-month-nav">
+                    <button id="prevMonthBtn" class="pv-month-btn"><i class="fa-solid fa-chevron-left"></i></button>
+                    <span id="monthLabel" class="font-black text-slate-700 text-sm"></span>
+                    <button id="nextMonthBtn" class="pv-month-btn"><i class="fa-solid fa-chevron-right"></i></button>
+                </div>
+            </div>
+            <div id="attSummary" class="pv-att-summary"></div>
+            <div id="attEmpty" class="hidden text-center py-10 text-slate-400 text-[13px] font-bold bg-white rounded-xl border border-slate-200"></div>
+            <div id="attList" class="space-y-2 pb-8"></div>
+        </div>
+
+        <!-- ── CLASS STREAM PANEL ───────────────────────────────────────── -->
+        <div id="streamPanel" class="hidden space-y-4">
+            <div id="streamNotice" class="text-center py-10 text-slate-400 text-[13px] font-bold bg-white rounded-xl border border-slate-200"></div>
+            <div id="streamList" class="space-y-3 pb-8"></div>
+        </div>
+
+    </div>
+
+    <script type="module" src="view.js"></script>
+</body>
+</html>

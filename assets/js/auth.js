@@ -10,6 +10,11 @@ function isValidSession(role, data) {
     if (role === 'teacher') return !!(data.schoolId && data.teacherId && data.teacherData);
     if (role === 'admin')   return !!(data.schoolId && data.adminId);
     if (role === 'student') return !!(data.schoolId && data.studentId);
+    // Phase 3 — parent has no single schoolId of its own (linkedStudents can
+    // span more than one school); linkedStudents must exist but is allowed
+    // to be an empty array (a parent record with no students linked yet is
+    // still a valid, logged-in session — just an empty dashboard).
+    if (role === 'parent')  return !!(data.parentId && Array.isArray(data.linkedStudents));
     return !!data;
 }
 
@@ -234,7 +239,7 @@ export async function logout(redirectUrl = '../index.html') {
         console.error('[ConnectUs] Firebase signOut error:', e);
     }
     // Clear all ConnectUs localStorage keys
-    ['teacher', 'admin', 'student'].forEach(role => {
+    ['teacher', 'admin', 'student', 'parent'].forEach(role => {
         localStorage.removeItem(SESSION_KEY(role));
     });
     Object.keys(localStorage)
