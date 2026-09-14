@@ -10,75 +10,80 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/student.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'DM Sans', sans-serif; background: #f0f2f8; margin: 0; }
+        body { font-family: 'DM Sans', sans-serif; background: #f0f2f8; }
         .hidden { display: none !important; }
-
-        .pd-topbar {
-            background: linear-gradient(120deg, #1e1b4b 0%, #3730a3 55%, #4f46e5 100%);
-            padding: 24px 40px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 16px;
-            flex-wrap: wrap;
-        }
-        .pd-topbar h1 { font-size: 22px; font-weight: 800; color: #fff; margin: 0 0 4px; letter-spacing: -0.4px; }
-        .pd-topbar p  { font-size: 13px; color: rgba(255,255,255,0.65); margin: 0; font-weight: 500; }
-        .pd-logout {
-            background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.18); color: #fff;
-            font-weight: 700; font-size: 12.5px; padding: 9px 16px; border-radius: 10px; cursor: pointer;
-            display: inline-flex; align-items: center; gap: 8px; transition: background 0.12s;
-        }
-        .pd-logout:hover { background: rgba(255,255,255,0.18); }
 
         .page-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 20px; gap: 14px; }
         .page-loader i { font-size: 32px; color: #6366f1; }
         .page-loader p { font-size: 13.5px; color: #94a3b8; font-weight: 600; margin: 0; }
 
-        .pd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
-        .pd-card {
-            background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 22px;
-            display: flex; flex-direction: column; gap: 14px; text-decoration: none;
-            transition: transform 0.12s, box-shadow 0.12s, border-color 0.12s;
+        .pd-section-title { font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+
+        /* ── Alerts ────────────────────────────────────────────────────────── */
+        .pd-alert-card {
+            display: flex; align-items: flex-start; gap: 12px;
+            background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 14px 16px;
         }
-        .pd-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(30,27,75,0.08); border-color: #c7d2fe; }
-        .pd-avatar {
-            width: 48px; height: 48px; border-radius: 14px; background: #eef2ff; color: #4f46e5;
-            display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 18px; flex-shrink: 0;
+        .pd-alert-icon { width: 34px; height: 34px; border-radius: 10px; background: #fef3c7; color: #b45309; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .pd-alert-text { font-size: 13px; font-weight: 700; color: #78350f; margin: 0; }
+        .pd-alert-meta { font-size: 11.5px; color: #92400e; font-weight: 600; margin: 2px 0 0; opacity: 0.85; }
+
+        /* ── Live feed ─────────────────────────────────────────────────────── */
+        .pd-feed-card {
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+            background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 16px;
         }
-        .pd-card-name { font-weight: 800; font-size: 15px; color: #1e293b; margin: 0; }
-        .pd-card-meta { font-size: 12px; color: #64748b; font-weight: 600; margin: 2px 0 0; }
-        .pd-card-cta { font-size: 12px; font-weight: 800; color: #4f46e5; display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; }
+        .pd-feed-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+        .pd-feed-icon { width: 36px; height: 36px; border-radius: 10px; background: #eef2ff; color: #4f46e5; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .pd-feed-title { font-size: 13px; font-weight: 800; color: #1e293b; margin: 0; }
+        .pd-feed-meta { font-size: 11.5px; color: #64748b; font-weight: 600; margin: 2px 0 0; }
+        .pd-feed-score { font-size: 15px; font-weight: 800; flex-shrink: 0; }
+
+        .pd-empty { text-align: center; padding: 24px 10px; color: #94a3b8; font-size: 12.5px; font-weight: 700; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; }
 
         @media (max-width: 767px) {
-            .pd-topbar { padding: 18px 20px; }
+            .pd-feed-card { flex-wrap: wrap; }
         }
     </style>
 </head>
-<body>
+<body class="flex h-screen overflow-hidden">
 
-    <div class="pd-topbar">
-        <div>
-            <h1>Parent Dashboard</h1>
-            <p id="parentIdDisplay">Loading…</p>
+    <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
+
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <div class="flex-1 overflow-y-auto">
+            <div class="max-w-5xl mx-auto p-6 md:p-8 space-y-8">
+
+                <div id="dashLoader" class="page-loader">
+                    <i class="fa-solid fa-circle-notch fa-spin"></i>
+                    <p>Loading your children…</p>
+                </div>
+
+                <div id="dashError" class="hidden text-center py-10 text-slate-400 text-[13px] font-bold bg-white rounded-xl border border-slate-200"></div>
+
+                <div id="dashContent" class="hidden space-y-8">
+
+                    <section>
+                        <p class="pd-section-title"><i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b"></i> Alerts</p>
+                        <div id="alertsList" class="space-y-2.5"></div>
+                    </section>
+
+                    <section>
+                        <p class="pd-section-title"><i class="fa-solid fa-bolt" style="color:#7f1d3d"></i> Live Feed — Recently Graded</p>
+                        <div id="feedList" class="space-y-2.5"></div>
+                    </section>
+
+                </div>
+
+            </div>
         </div>
-        <button id="logoutBtn" class="pd-logout"><i class="fa-solid fa-arrow-right-from-bracket"></i> Log Out</button>
-    </div>
-
-    <div class="max-w-6xl mx-auto p-6 md:p-8 space-y-5">
-
-        <div id="dashLoader" class="page-loader">
-            <i class="fa-solid fa-circle-notch fa-spin"></i>
-            <p>Loading your children…</p>
-        </div>
-
-        <div id="childCount" class="hidden text-[11px] font-black text-slate-400 uppercase tracking-widest px-1"></div>
-        <div id="childGrid" class="pd-grid pb-8"></div>
-
-    </div>
+    </main>
 
     <script type="module" src="dashboard.js"></script>
 </body>

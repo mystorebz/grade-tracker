@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evaluations | ConnectUs</title>
+
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/student.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'DM Sans', sans-serif; background: #f0f2f8; }
+        .hidden { display: none !important; }
+
+        .page-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 20px; gap: 14px; }
+        .page-loader i { font-size: 32px; color: #6366f1; }
+        .page-loader p { font-size: 13.5px; color: #94a3b8; font-weight: 600; margin: 0; }
+
+        .ev-card { background: #fff; border: 1px solid #dce3ed; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+        .ev-badge { font-size: 10px; font-weight: 800; padding: 4px 10px; border-radius: 99px; text-transform: uppercase; letter-spacing: 0.05em; display: inline-block; }
+        .ev-meta { font-size: 11.5px; color: #6b84a0; margin: 0; font-weight: 600; }
+        .ev-title { font-size: 15px; font-weight: 800; color: #0d1f35; margin: 6px 0 0; }
+        .ev-highlight { padding: 8px 12px; background: #f8fafb; border-radius: 8px; font-size: 12px; font-weight: 700; color: #0d1f35; }
+        .ev-ratings { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px,1fr)); gap: 8px; }
+        .ev-rating-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #f8fafc; border: 1px solid #eef2f7; border-radius: 8px; padding: 8px 10px; }
+        .ev-rating-label { font-size: 11px; font-weight: 700; color: #475569; }
+        .ev-rating-stars { color: #f59e0b; font-size: 12px; letter-spacing: 1px; white-space: nowrap; }
+        .ev-written { font-size: 12.5px; color: #374f6b; line-height: 1.5; }
+        .ev-written strong { color: #0d1f35; }
+
+        @media print {
+            #layout-sidebar-container, #layout-topbar-container { display: none !important; }
+            body { background: #fff !important; }
+        }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden">
+
+    <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
+
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <div class="flex-1 overflow-y-auto">
+            <div class="max-w-5xl mx-auto p-6 md:p-8">
+
+                <div id="viewLoader" class="page-loader">
+                    <i class="fa-solid fa-circle-notch fa-spin"></i>
+                    <p>Loading…</p>
+                </div>
+
+                <div id="viewError" class="hidden text-center py-10 text-slate-400 text-[13px] font-bold bg-white rounded-xl border border-slate-200"></div>
+
+                <div id="evalEmpty" class="hidden text-center py-10 text-slate-400 text-[13px] font-bold bg-white rounded-xl border border-slate-200">
+                    No evaluations have been filed for this student yet.
+                </div>
+
+                <div id="evalList" class="space-y-4 pb-8"></div>
+
+            </div>
+        </div>
+    </main>
+
+    <script type="module" src="evaluations.js"></script>
+</body>
+</html>
