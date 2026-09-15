@@ -3,7 +3,7 @@ import { collection, query, where, getDocs, getDoc, doc, updateDoc, setDoc, dele
 import { ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
-import { openOverlay, closeOverlay, showMsg, gradeColorClass, letterGrade, standingBadge, gradeFill, calculateWeightedAverage, loadTeacherSubjectsCache, getTeacherDocRef, resolveGradeWeights, saveGrade } from '../../assets/js/utils.js';
+import { openOverlay, closeOverlay, showMsg, gradeColorClass, letterGrade, standingBadge, gradeFill, calculateWeightedAverage, loadTeacherSubjectsCache, getTeacherDocRef, resolveGradeWeights } from '../../assets/js/utils.js';
 import { resolvePostContext } from '../../assets/js/posts.js';
 import { loadLessonsForSubject } from '../../assets/js/lessons.js';
 import { loadSubmissionsForAssignment } from '../../assets/js/submissions.js';
@@ -1050,19 +1050,32 @@ function renderReviewBody() {
     wrap.innerHTML = summary + lockedNotice + `<div class="space-y-3">${rows}</div>`;
 }
 
+// PHASE 1 (Grading Workflow Streamline): the inline Score/Notes inputs that
+// used to live in this row were a SECOND place a grade could be entered,
+// duplicating the Enter Grade form and risking the two falling out of sync
+// (a score typed here never got the per-question breakdown Enter Grade now
+// owns). Mandate: this row becomes read-only — it shows a student's
+// submitted-vs-graded state and offers two actions, "View Answers" (a
+// read-only look at exactly what the student submitted, including the
+// per-question responses[] an assessment submission carries, which this row
+// never rendered at all before) and "Grade" (routes straight into
+// grade_form.html, deep-linked to this exact subject/assignment/student via
+// URL params, mirroring the ?subjectId=&classId=&subjectName= pattern the
+// Lesson Builder link above already uses). Actually recording a grade is
+// now Enter Grade's job alone — see saveGrade()'s own single-source-of-truth
+// comment in utils.js.
 function renderReviewRow(s) {
     const submission = reviewSubmissions.get(s.id) || null;
     const grade = reviewGrades.get(s.id) || null;
     const hasHistory = grade && Array.isArray(grade.historyLogs) && grade.historyLogs.length > 0;
 
-    const submissionBlock = submission
-        ? `<div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600 space-y-1.5">
-               ${submission.responseText ? `<p class="whitespace-pre-wrap leading-relaxed">${escHtml(submission.responseText)}</p>` : ''}
-               ${submission.linkUrl ? `<a href="${escHtml(submission.linkUrl)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-teal-600 font-bold hover:underline break-all"><i class="fa-solid fa-link text-[10px] flex-shrink-0"></i> ${escHtml(submission.linkUrl)}</a>` : ''}
-               ${!submission.responseText && !submission.linkUrl ? `<p class="italic text-slate-400">Submitted with no text or link.</p>` : ''}
-               <p class="text-[10px] text-slate-400 font-bold pt-0.5">Submitted ${submission.submittedAt ? new Date(submission.submittedAt).toLocaleString() : '—'}</p>
-           </div>`
+    const submissionSummary = submission
+        ? `<p class="text-[10px] text-slate-400 font-bold pt-0.5">Submitted ${submission.submittedAt ? new Date(submission.submittedAt).toLocaleString() : '—'}</p>`
         : `<p class="text-xs italic text-slate-400 font-semibold bg-slate-50 border border-dashed border-slate-200 rounded-xl p-3">Not submitted yet.</p>`;
+
+    const gradeBadge = grade
+        ? `<span class="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 font-black text-sm px-3 py-2 rounded-lg"><i class="fa-solid fa-circle-check text-[11px]"></i>${grade.score}/${grade.max}</span>`
+        : `<span class="inline-flex items-center gap-1.5 bg-slate-50 border border-dashed border-slate-200 text-slate-400 font-black text-xs px-3 py-2 rounded-lg uppercase tracking-wide">Not graded</span>`;
 
     const historyBlock = hasHistory
         ? `<details class="mt-2">
@@ -1078,87 +1091,125 @@ function renderReviewRow(s) {
         <div class="sm:w-56 flex-shrink-0">
             <p class="font-black text-slate-700 text-sm">${escHtml(s.name)}</p>
             <p class="text-[11px] text-slate-400 font-bold mb-2 font-mono">${escHtml(s.id)}</p>
-            ${submissionBlock}
+            ${submissionSummary}
         </div>
-        <div class="flex-1 flex items-start gap-3 flex-wrap">
-            <div>
-                <label class="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Score</label>
-                <div class="flex items-center gap-1.5">
-                    <input type="number" id="revScore_${s.id}" min="0" max="${reviewAssignment.maxScore}" step="1"
-                        value="${grade ? grade.score : ''}"
-                        class="form-input w-20 p-2 bg-white border border-slate-200 rounded-lg text-sm text-center font-bold">
-                    <span class="text-xs text-slate-400 font-bold">/ ${reviewAssignment.maxScore}</span>
-                </div>
-            </div>
-            <div class="flex-1 min-w-[140px]">
-                <label class="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Notes <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
-                <input type="text" id="revNotes_${s.id}" value="${escHtml(grade?.notes || '')}" placeholder="Feedback for this student"
-                    class="form-input w-full p-2 bg-white border border-slate-200 rounded-lg text-sm">
-            </div>
-            <div class="flex flex-col items-stretch gap-1">
-                <label class="block text-[10px] font-black text-transparent uppercase tracking-wider mb-1 select-none">·</label>
-                <button id="revSaveBtn_${s.id}" onclick="saveInlineGrade('${s.id}')"
-                    class="flex items-center gap-1.5 ${grade ? 'bg-slate-100 hover:bg-teal-50 text-slate-600 hover:text-teal-700 border-slate-200' : 'bg-teal-600 hover:bg-teal-700 text-white border-teal-600'} font-black px-3.5 py-2 rounded-lg text-xs border transition">
-                    <i class="fa-solid ${grade ? 'fa-rotate' : 'fa-check'} text-[10px]"></i> ${grade ? 'Update' : 'Save'}
-                </button>
-            </div>
+        <div class="flex-1 flex items-center gap-3 flex-wrap">
+            ${gradeBadge}
+            <button type="button" onclick="openViewAnswers('${s.id}')" ${submission ? '' : 'disabled'}
+                class="flex items-center gap-1.5 font-black px-3.5 py-2 rounded-lg text-xs border transition ${submission ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200' : 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'}">
+                <i class="fa-solid fa-eye text-[10px]"></i> View Answers
+            </button>
+            <button type="button" onclick="routeToGrade('${s.id}')"
+                class="flex items-center gap-1.5 bg-teal-600 hover:bg-teal-700 text-white font-black px-3.5 py-2 rounded-lg text-xs border border-teal-600 transition">
+                <i class="fa-solid fa-pen-to-square text-[10px]"></i> ${grade ? 'Regrade' : 'Grade'}
+            </button>
         </div>
         ${historyBlock}
     </div>`;
 }
 
-window.saveInlineGrade = async function(studentId) {
+// ── VIEW ANSWERS (read-only) ─────────────────────────────────────────────
+// Renders exactly what the student submitted — for an assessment (real
+// questions[]), a per-question breakdown identical in shape to grade_form.js's
+// own renderSubmissionPanel() (same MC option/auto-grade-badge markup, same
+// text/attachment handling), so a teacher never has to leave this page to
+// see WHAT was answered before deciding whether to open Enter Grade at all.
+// For standard-work/legacy submissions, just the response text/link this row
+// used to render inline.
+window.openViewAnswers = function(studentId) {
+    const submission = reviewSubmissions.get(studentId);
+    if (!submission || !reviewAssignment) return;
+    const student = reviewRoster.find(r => r.id === studentId);
+
+    document.getElementById('viewAnswersTitle').textContent = student ? student.name : 'Student Answers';
+    document.getElementById('viewAnswersMeta').textContent = `${reviewAssignment.title} · Submitted ${submission.submittedAt ? new Date(submission.submittedAt).toLocaleString() : '—'}`;
+    document.getElementById('viewAnswersBody').innerHTML = renderViewAnswersBody(submission);
+
+    openOverlay('viewAnswersModal', 'viewAnswersModalInner');
+};
+
+window.closeViewAnswers = function() { closeOverlay('viewAnswersModal', 'viewAnswersModalInner'); };
+
+function renderViewAnswersBody(submission) {
+    const isAssessment = Array.isArray(reviewAssignment.questions) && reviewAssignment.questions.length > 0;
+
+    if (!isAssessment) {
+        return `
+        <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
+            ${submission.responseText ? `<p class="text-[13px] text-slate-700 whitespace-pre-wrap">${escHtml(submission.responseText)}</p>` : ''}
+            ${submission.linkUrl ? `<p class="text-[12.5px]"><a href="${escHtml(submission.linkUrl)}" target="_blank" rel="noopener" class="text-teal-600 font-bold hover:underline break-all"><i class="fa-solid fa-link mr-1"></i>${escHtml(submission.linkUrl)}</a></p>` : ''}
+            ${!submission.responseText && !submission.linkUrl ? `<p class="italic text-slate-400 text-sm">Submitted with no text or link.</p>` : ''}
+        </div>`;
+    }
+
+    const responsesByQid = new Map((submission.responses || []).map(r => [r.questionId, r]));
+    const autoGrade = submission.objectiveAutoGrade || null;
+
+    const cards = reviewAssignment.questions.map((q, i) => {
+        const r = responsesByQid.get(q.id) || null;
+        let body = '';
+
+        if (q.type === 'multiple_choice') {
+            const selectedIndex = r && r.responseText !== '' && r.responseText != null ? Number(r.responseText) : null;
+            const optionsHtml = (q.options || []).map((opt, oi) => `
+                <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-sm text-[12px] ${selectedIndex === oi ? 'bg-teal-50 border border-teal-200 font-bold text-slate-800' : 'text-slate-500'}">
+                    <span class="w-4 h-4 flex-shrink-0 rounded-full border ${selectedIndex === oi ? 'border-teal-600 bg-teal-600 text-white' : 'border-slate-300'} flex items-center justify-center text-[9px] font-bold">${selectedIndex === oi ? '<i class="fa-solid fa-check"></i>' : String.fromCharCode(65 + oi)}</span>
+                    <span>${escHtml(opt)}</span>
+                </div>`).join('');
+            const graded = !!autoGrade && Object.prototype.hasOwnProperty.call(autoGrade.perQuestion || {}, q.id);
+            const badge = selectedIndex === null
+                ? `<span class="text-[10px] font-bold uppercase tracking-widest text-slate-400 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-sm">Not answered</span>`
+                : !graded
+                    ? `<span class="text-[10px] font-bold uppercase tracking-widest text-slate-400 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-sm">Not yet auto-graded</span>`
+                    : autoGrade.perQuestion[q.id]
+                        ? `<span class="text-[10px] font-bold uppercase tracking-widest text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-sm"><i class="fa-solid fa-check text-[9px] mr-1"></i>Correct</span>`
+                        : `<span class="text-[10px] font-bold uppercase tracking-widest text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-sm"><i class="fa-solid fa-xmark text-[9px] mr-1"></i>Incorrect</span>`;
+            body = `<div class="space-y-1 mt-2">${optionsHtml}</div><div class="mt-2">${badge}</div>`;
+        } else if (q.type === 'free_response' || q.type === 'short_answer' || q.type === 'math') {
+            const text = r && r.responseText ? r.responseText : '';
+            body = text
+                ? `<p class="text-[12.5px] text-slate-700 whitespace-pre-wrap bg-slate-50 border border-slate-200 rounded-sm p-2.5 mt-2">${escHtml(text)}</p>`
+                : `<p class="text-[11px] text-slate-400 italic mt-2">No answer provided.</p>`;
+        } else if (q.type === 'attachment_response') {
+            const url = r && r.attachmentUrl ? r.attachmentUrl : null;
+            if (!url) {
+                body = `<p class="text-[11px] text-slate-400 italic mt-2">No file/drawing submitted.</p>`;
+            } else if (/^data:image\//i.test(url) || /\.(png|jpe?g|gif|webp)(\?|$)/i.test(url)) {
+                body = `<a href="${escHtml(url)}" target="_blank" rel="noopener noreferrer" class="block mt-2"><img src="${escHtml(url)}" class="max-h-48 rounded-sm border border-slate-200" alt="Student submission"></a>`;
+            } else {
+                body = `<a href="${escHtml(url)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-[12px] font-bold text-teal-600 mt-2"><i class="fa-solid fa-paperclip text-[10px]"></i>View submitted file</a>`;
+            }
+        }
+
+        return `
+        <div class="border border-slate-200 rounded-sm p-3 bg-white">
+            <div class="flex items-start justify-between gap-2">
+                <p class="text-[12px] font-bold text-slate-800 m-0">Q${i + 1}. ${escHtml(q.prompt)}</p>
+                <span class="text-[10px] font-bold text-slate-400 flex-shrink-0">${q.points ?? 0} pt${(q.points ?? 0) === 1 ? '' : 's'}</span>
+            </div>
+            ${body}
+        </div>`;
+    }).join('');
+
+    return `<div class="space-y-3">${cards}</div>`;
+}
+
+// ── ROUTE TO GRADE ────────────────────────────────────────────────────────
+// Deep-links straight into the Enter Grade form for this exact
+// subject/assignment/student — the same URLSearchParams pattern the Lesson
+// Builder link above uses (subjectId/classId/subjectName), just consumed by
+// grade_form.js's own bootstrap instead of builder.js's. grade_form.js
+// resolves subjectId back to this teacher's own cached subject list (it
+// already has the same loadTeacherSubjectsCache() data this page does), so
+// no extra context needs to travel in the URL beyond the three ids.
+window.routeToGrade = function(studentId) {
     if (!reviewAssignment) return;
-    if (isSemesterLocked) { alert('This period is locked. Grades are read-only.'); return; }
-
-    const scoreEl = document.getElementById(`revScore_${studentId}`);
-    const notesEl = document.getElementById(`revNotes_${studentId}`);
-    const btn      = document.getElementById(`revSaveBtn_${studentId}`);
-    const max      = reviewAssignment.maxScore;
-    const score    = scoreEl ? parseFloat(scoreEl.value) : NaN;
-
-    if (isNaN(score) || score < 0 || score > max) {
-        alert(`Please enter a valid score between 0 and ${max}.`);
-        return;
-    }
-
-    const wasRegrade = reviewGrades.has(studentId);
-    const originalBtnHtml = btn ? btn.innerHTML : '';
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-[10px]"></i>'; }
-
-    try {
-        const semId = document.getElementById('activeSemester')?.value || '';
-        const fields = {
-            schoolId:   session.schoolId,
-            teacherId:  session.teacherId,
-            semesterId: semId,
-            className:  reviewAssignment.className,
-            subject:    reviewAssignment.subjectName,
-            type:       reviewAssignment.type,
-            date:       reviewAssignment.date || new Date().toISOString().split('T')[0],
-            title:      reviewAssignment.title,
-            score,
-            max,
-            notes: notesEl ? notesEl.value.trim() : '',
-        };
-
-        const result = await saveGrade(studentId, reviewAssignment.id, fields);
-
-        // Reflect the write locally without a re-fetch: on a create, start a
-        // fresh historyLogs; on an update, carry forward + append, mirroring
-        // exactly what saveGrade() itself just did server-side.
-        const priorHistory = wasRegrade ? (reviewGrades.get(studentId)?.historyLogs || []) : [];
-        const historyLogs = wasRegrade
-            ? [...priorHistory, { timestamp: new Date().toISOString(), oldScore: reviewGrades.get(studentId)?.score, newScore: score }]
-            : [];
-        reviewGrades.set(studentId, { id: result.id, studentId, ...fields, assignmentId: reviewAssignment.id, historyLogs });
-
-        renderReviewBody();
-    } catch (e) {
-        console.error('[Subjects] saveInlineGrade:', e);
-        alert('Could not save this grade. Please try again.');
-        if (btn) { btn.disabled = false; btn.innerHTML = originalBtnHtml; }
-    }
+    const params = new URLSearchParams({
+        subjectId: reviewAssignment.subjectId || '',
+        assignmentId: reviewAssignment.id || '',
+        studentId: studentId || ''
+    });
+    window.location.href = `../grade_form/grade_form.html?${params.toString()}`;
 };
 
 // ── 6. ASSIGNMENT DETAIL MODAL ──────────────────────────────────────────────

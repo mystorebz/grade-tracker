@@ -221,6 +221,27 @@
         </div>
     </div>
 
+    <!-- PHASE 1 (Grading Workflow Streamline): read-only "View Answers"
+         modal, opened from a row inside #reviewSubmissionsModal — a centered
+         modal (not another slide-in) at z-[75] so it visibly sits on top of
+         the review panel it was opened from. This is the ONLY place a
+         student's per-question responses[] are shown on this page; actually
+         recording a grade always happens on grade_form.html via the "Grade"
+         button next to it. -->
+    <div id="viewAnswersModal" class="overlay hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[75] flex items-center justify-center p-4 opacity-0">
+        <div id="viewAnswersModalInner" class="bg-white w-full max-w-2xl max-h-[85vh] rounded-2xl shadow-2xl border border-slate-200 flex flex-col transform scale-95 transition-transform duration-200">
+            <div class="h-1 bg-gradient-to-r from-teal-500 via-emerald-400 to-cyan-500 flex-shrink-0 rounded-t-2xl"></div>
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center flex-shrink-0">
+                <div>
+                    <h3 id="viewAnswersTitle" class="font-black text-lg text-slate-800 m-0">Student Answers</h3>
+                    <p id="viewAnswersMeta" class="text-[11.5px] text-teal-600 font-bold mt-0.5 m-0">Read-only</p>
+                </div>
+                <button onclick="closeViewAnswers()" class="text-slate-400 hover:text-red-500 h-8 w-8 rounded-full flex items-center justify-center hover:bg-red-50 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-6" id="viewAnswersBody"></div>
+        </div>
+    </div>
+
     <!-- LIFT & SHIFT REFACTOR: "Add Work" / Universal Assignment Builder.
          Moved here from teacher/grade_form/grade_form.html (where assignment
          CREATION never belonged) and generalized: there is no more

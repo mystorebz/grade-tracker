@@ -145,6 +145,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         maxInput.addEventListener('keydown', blockInvalidNumberKeys);
     }
 
+    // PHASE 2 (Granular Scoring & Revisions): #gfResponseViewer's contents are
+    // fully replaced on every renderSubmissionPanel() call, so its per-question
+    // score/revision controls are wired via ONE delegated listener on the
+    // stable container instead of re-binding after every render — the same
+    // "attach once, let new children inherit it" approach the rest of this
+    // file already uses for anything rendered from a template string.
+    const responseViewer = document.getElementById('gfResponseViewer');
+    if (responseViewer) {
+        responseViewer.addEventListener('input', (e) => {
+            if (e.target.matches('.pq-score-input')) {
+                sanitizePQScore(e.target);
+                recomputeTotalScore();
+            }
+        });
+        responseViewer.addEventListener('keydown', (e) => {
+            if (e.target.matches('.pq-score-input')) blockInvalidNumberKeys(e);
+        });
+        responseViewer.addEventListener('change', (e) => {
+            if (e.target.matches('.pq-revision-toggle')) {
+                const qid = e.target.dataset.questionId;
+                const wrap = document.getElementById(`pqRevisionPrompt_${qid}`);
+                if (wrap) wrap.classList.toggle('hidden', !e.target.checked);
+            }
+        });
+    }
+
     const commitBtn = document.getElementById('saveGradeBtn');
     if (commitBtn) commitBtn.addEventListener('click', commitGrade);
 
@@ -191,7 +217,54 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     populateSubjectPicker();
     renderState(); // initial render: picker visible, grading panel hidden
+
+    applyDeepLinkFromUrl();
 });
+
+// ── 3b. DEEP LINK: ?subjectId=&assignmentId=&studentId= ─────────────────────
+// PHASE 1 (Grading Workflow Streamline): the "Grade" button on the Subjects
+// page's Review Submissions panel routes here instead of grading inline —
+// this is the receiving half of that link. Same URLSearchParams convention
+// subjects.js's own Lesson Builder link already uses (subjectId/classId/
+// subjectName), just three different keys, parsed once subjectsCache is
+// loaded so subjectId can be resolved back to the subject NAME the rest of
+// this file's picker flow is keyed on (selectSubject/getSubjectByName both
+// take a name, not an id — see this file's own getSubjectByName()).
+// Deliberately silent (console.warn only) on a stale/bad param: the teacher
+// still lands on a working picker, just not pre-selected, rather than an
+// error banner over what is otherwise a fully functional page.
+function applyDeepLinkFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const subjectId = params.get('subjectId');
+    const assignmentId = params.get('assignmentId');
+    const studentId = params.get('studentId');
+    if (!subjectId) return;
+
+    const sub = getActiveSubjects().find(s => s.id === subjectId);
+    if (!sub) {
+        console.warn('[Grade Form] Deep link subjectId not found in this teacher\'s subjects:', subjectId);
+        return;
+    }
+
+    window.selectSubject(sub.name);
+
+    if (assignmentId) {
+        const assignments = Array.isArray(sub.assignments) ? sub.assignments : [];
+        if (!assignments.some(a => a.id === assignmentId)) {
+            console.warn('[Grade Form] Deep link assignmentId not found on subject:', assignmentId);
+            return;
+        }
+        window.selectAssignment(assignmentId);
+
+        // selectAssignment() -> renderState() -> selectFirstUngradedStudent()
+        // already auto-picked SOME student (whoever's first-ungraded) as a
+        // side effect — pickStudent() below re-asserts the actual student
+        // this link was for. refreshSubmissionPanel() (called by both) is
+        // request-token-guarded (see that function's own comment), so the
+        // earlier, now-superseded fetch can never clobber this one.
+        if (studentId) window.pickStudent(studentId);
+    }
+}
 
 // ── 4. LOAD SEMESTERS ─────────────────────────────────────────────────────
 async function loadSemesters() {
@@ -507,6 +580,7 @@ function renderState() {
     populateStudentOptions();
 
     updateGradingHeader();
+    applyScoreLockState();
     renderRoster();
     selectFirstUngradedStudent();
 
@@ -624,6 +698,128 @@ function optionLabel(i) {
     return String.fromCharCode(65 + i); // 0 -> A, 1 -> B, ...
 }
 
+// ── PHASE 2: GRANULAR SCORING & REVISION REQUESTS ────────────────────────
+// The grade doc's new perQuestion map is additive and lives entirely inside
+// this file's own read/build/commit cycle — saveGrade() itself needed no
+// changes, since it already merges whatever top-level fields it's handed
+// (see its own comment in utils.js). Schema per question:
+//   perQuestion[q.id] = {
+//     score: number, note: string,
+//     revision?: { requested: boolean, prompt: string,
+//                  originalResponse: {responseText, attachmentUrl},
+//                  studentSubmission: {responseText, attachmentUrl}|null,
+//                  submittedAt: ISOString|null }
+//   }
+// `revision` is only ever present once a revision has been requested at
+// least once for that question; its absence means "never flagged."
+
+// Looks up whatever grade this teacher already recorded for this exact
+// student + assignment this term, so re-opening an already-graded student
+// (e.g. via Phase 1's "Regrade" button) prefills the per-question controls
+// instead of making the teacher re-grade every question from scratch. Reads
+// the same allGradesThisTerm cache isStudentGraded()/loadAllGradesThisTerm()
+// already maintain — no extra fetch.
+function findExistingGradeFor(studentId, assignmentId) {
+    if (!studentId || !assignmentId) return null;
+    return allGradesThisTerm.find(g => g.studentId === studentId && g.assignmentId === assignmentId) || null;
+}
+
+// Clamp one per-question score input to [0, its own question's points] —
+// the same clamp-and-hint shape sanitizeScore() applies to the overall
+// #agScore field, just scoped to a single question via its own data-max
+// instead of reading #agMax.
+function sanitizePQScore(el) {
+    if (el.value === '') return; // blank is allowed — treated as 0 in the running tally, never coerced to 0 in the field itself
+    let v = parseFloat(el.value);
+    if (isNaN(v)) return;
+    const max = parseFloat(el.dataset.max);
+    if (v < 0) v = 0;
+    if (!isNaN(max) && v > max) v = max;
+    el.value = v;
+}
+
+// Sums every visible per-question score input into the read-only #agScore
+// field — the single write path that field's value can come from once an
+// assessment is selected (see applyScoreLockState()). A blank per-question
+// input counts as 0 toward the sum rather than blocking it, so a
+// partially-graded assessment still shows an honest running total instead
+// of NaN.
+function recomputeTotalScore() {
+    if (!isAssessmentAssignment(selectedAssignment)) return;
+    const scoreEl = document.getElementById('agScore');
+    if (!scoreEl) return;
+    let sum = 0;
+    document.querySelectorAll('#gfResponseViewer .pq-score-input').forEach(el => {
+        const v = parseFloat(el.value);
+        if (!isNaN(v)) sum += v;
+    });
+    scoreEl.value = sum;
+    updatePreview();
+}
+
+// Toggles #agScore between teacher-editable (manual entry / legacy
+// assignments — unchanged from before Phase 2) and read-only/auto-tallied
+// (real Add Work assessments, where a per-question breakdown now exists to
+// derive it from). Driven off selectedAssignment alone, so it's correct the
+// instant an assignment is chosen, before any submission has even loaded.
+function applyScoreLockState() {
+    const scoreEl = document.getElementById('agScore');
+    const hintEl  = document.getElementById('agScoreAutoHint');
+    if (!scoreEl) return;
+    const auto = isAssessmentAssignment(selectedAssignment);
+    scoreEl.readOnly = auto;
+    scoreEl.classList.toggle('gf-locked', auto);
+    if (hintEl) hintEl.classList.toggle('hidden', !auto);
+}
+
+// Renders one question's grading controls: a capped numeric score input, an
+// optional feedback note, and a "Request Revision" toggle that reveals a
+// prompt field for what the student needs to fix. Prefilled from this
+// student's existing grade for this assignment (existingPQ), if any — see
+// findExistingGradeFor(). Once a revision has been requested AND the
+// student has resubmitted (submittedAt set), an info line reminds the
+// teacher to look at the (now-updated) response above before re-grading;
+// the toggle/prompt stay interactive either way so the teacher can resolve
+// it (uncheck) or ask for another pass (leave checked, edit the prompt).
+function renderQuestionGradingControls(q, existingPQ) {
+    const scoreVal = existingPQ && typeof existingPQ.score === 'number' ? existingPQ.score : '';
+    const noteVal = existingPQ?.note || '';
+    const revisionOpen = !!existingPQ?.revision?.requested;
+    const revisionPrompt = existingPQ?.revision?.prompt || '';
+    const revisionPending = revisionOpen && !!existingPQ.revision.submittedAt;
+    const qid = escHtml(q.id);
+
+    return `
+    <div class="mt-3 pt-3 border-t border-[#eef1f5] space-y-2">
+        <div class="flex items-end gap-3 flex-wrap">
+            <div>
+                <label class="block text-[9px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Score</label>
+                <div class="flex items-center gap-1.5">
+                    <input type="number" class="pq-score-input form-input w-16 p-1.5 bg-white border border-[#dce3ed] rounded-sm text-[13px] text-center font-bold"
+                        data-question-id="${qid}" data-max="${q.points ?? 0}" min="0" max="${q.points ?? 0}" step="any" inputmode="decimal"
+                        placeholder="0" value="${scoreVal}">
+                    <span class="text-[10px] text-[#9ab0c6] font-bold">/ ${q.points ?? 0}</span>
+                </div>
+            </div>
+            <div class="flex-1 min-w-[160px]">
+                <label class="block text-[9px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1">Feedback <span class="normal-case font-semibold text-[#c5d0db]">(optional)</span></label>
+                <input type="text" class="pq-note-input form-input w-full p-1.5 bg-white border border-[#dce3ed] rounded-sm text-[12px]"
+                    data-question-id="${qid}" placeholder="Note for this answer" value="${escHtml(noteVal)}">
+            </div>
+            <label class="flex items-center gap-1.5 text-[10px] font-bold text-[#e37a0a] cursor-pointer select-none pb-1.5">
+                <input type="checkbox" class="pq-revision-toggle w-3.5 h-3.5 accent-[#e37a0a]" data-question-id="${qid}" ${revisionOpen ? 'checked' : ''}>
+                Request Revision
+            </label>
+        </div>
+        ${revisionPending ? `<p class="text-[10px] font-bold text-[#2563eb] bg-[#eef4ff] border border-[#c7d9fd] rounded-sm px-2 py-1 m-0"><i class="fa-solid fa-inbox mr-1"></i>Student resubmitted this question — review their new answer above before re-grading.</p>` : ''}
+        <div id="pqRevisionPrompt_${qid}" class="pq-revision-prompt ${revisionOpen ? '' : 'hidden'}">
+            <label class="block text-[9px] font-bold text-[#e37a0a] uppercase tracking-widest mb-1">Instructions for the student</label>
+            <textarea class="pq-revision-prompt-input form-input w-full p-2 bg-[#fff8ed] border border-[#fde9c8] rounded-sm text-[12px] resize-none" rows="2"
+                data-question-id="${qid}" placeholder="What should they fix or redo?">${escHtml(revisionPrompt)}</textarea>
+        </div>
+    </div>`;
+}
+
 // Fetches (or clears) the submission for whatever student + assignment is
 // currently selected. This is the single funnel every call site below uses
 // so the panel, the auto-grade prefill, and the actual fetch can never fall
@@ -696,8 +892,14 @@ function renderSubmissionPanel() {
     const autoGrade = currentSubmission.objectiveAutoGrade || null;
     const hasObjective = (selectedAssignment.questions || []).some(q => q.type === 'multiple_choice');
 
+    // PHASE 2: this student's existing grade for this assignment (if any) —
+    // prefills every question's score/note/revision controls below so
+    // reopening an already-graded submission (Regrade) doesn't start blank.
+    const gradeStudentId = document.getElementById('agStudent')?.value || '';
+    const existingGrade = findExistingGradeFor(gradeStudentId, selectedAssignment.id);
+
     const autoSummary = autoGrade
-        ? `<p class="text-[11px] font-bold text-[#2563eb] bg-[#eef4ff] border border-[#c7d9fd] rounded-sm px-2.5 py-1.5 mb-2"><i class="fa-solid fa-robot mr-1.5"></i>Auto-graded ${autoGrade.correctCount}/${autoGrade.totalObjective} objective question(s) — ${autoGrade.points}/${autoGrade.maxObjectivePoints} pt(s). Score below pre-filled; review the rest before committing.</p>`
+        ? `<p class="text-[11px] font-bold text-[#2563eb] bg-[#eef4ff] border border-[#c7d9fd] rounded-sm px-2.5 py-1.5 mb-2"><i class="fa-solid fa-robot mr-1.5"></i>Auto-graded ${autoGrade.correctCount}/${autoGrade.totalObjective} objective question(s) — ${autoGrade.points}/${autoGrade.maxObjectivePoints} pt(s). Those questions' scores below are pre-filled; grade the rest and the total will update automatically.</p>`
         : hasObjective
             ? `<p class="text-[11px] font-bold text-[#9ab0c6] bg-[#f8fafb] border border-[#dce3ed] rounded-sm px-2.5 py-1.5 mb-2"><i class="fa-solid fa-clock mr-1.5"></i>Auto-grading hasn't run for this submission yet.</p>`
             : '';
@@ -742,6 +944,8 @@ function renderSubmissionPanel() {
             }
         }
 
+        const existingPQ = existingGrade?.perQuestion?.[q.id] || null;
+
         return `
         <div class="border border-[#dce3ed] rounded-sm p-3 bg-white">
             <div class="flex items-start justify-between gap-2">
@@ -749,6 +953,7 @@ function renderSubmissionPanel() {
                 <span class="text-[10px] font-bold text-[#9ab0c6] flex-shrink-0">${q.points ?? 0} pt${(q.points ?? 0) === 1 ? '' : 's'}</span>
             </div>
             ${body}
+            ${renderQuestionGradingControls(q, existingPQ)}
         </div>`;
     }).join('');
 
@@ -763,25 +968,39 @@ function renderSubmissionPanel() {
         ${statusNote}
         ${autoSummary}
         <div class="space-y-2 max-h-[26rem] overflow-y-auto pr-1">${cards}</div>`;
+
+    // Reflect whatever the cards above just prefilled (from existingGrade,
+    // if this student was already graded) in the read-only total right
+    // away — applyAutoGradePrefill() (called right after this by
+    // refreshSubmissionPanel) will only ever ADD to blank fields on top of
+    // this, never override it.
+    recomputeTotalScore();
 }
 
-// Pre-fills the score from the server-computed objective auto-grade only —
-// never from anything read/derived client-side, the same isolation
-// principle work_answer_keys enforces everywhere else (autoGradeWorkSubmission
-// in functions/index.js is the only thing that ever sees the correct
-// answers). Only touches the score field while it's still blank, so it can
-// never overwrite a value the teacher already typed for this student.
+// PHASE 2: pre-fills each multiple_choice question's OWN score input from
+// the server-computed objective auto-grade — never the overall #agScore
+// directly anymore, since that field is now purely derived (see
+// recomputeTotalScore()). Same isolation principle work_answer_keys
+// enforces everywhere else (autoGradeWorkSubmission in functions/index.js is
+// the only thing that ever sees the correct answers) and the same
+// don't-clobber rule as before: only touches a per-question input that's
+// still blank, so it can never overwrite a value already prefilled from an
+// existing grade (renderQuestionGradingControls) or one the teacher already
+// typed this session.
 function applyAutoGradePrefill() {
     if (!isAssessmentAssignment(selectedAssignment) || !currentSubmission) return;
     const auto = currentSubmission.objectiveAutoGrade;
-    if (!auto) return;
+    if (!auto || !auto.perQuestion) { recomputeTotalScore(); return; }
 
-    const scoreEl = document.getElementById('agScore');
-    if (!scoreEl || scoreEl.value !== '') return;
+    selectedAssignment.questions.forEach(q => {
+        if (q.type !== 'multiple_choice') return;
+        if (!Object.prototype.hasOwnProperty.call(auto.perQuestion, q.id)) return;
+        const scoreEl = document.querySelector(`#gfResponseViewer .pq-score-input[data-question-id="${q.id}"]`);
+        if (!scoreEl || scoreEl.value !== '') return;
+        scoreEl.value = auto.perQuestion[q.id] ? (q.points ?? 0) : 0;
+    });
 
-    scoreEl.value = auto.points;
-    sanitizeScore();
-    updatePreview();
+    recomputeTotalScore();
 }
 
 window.pickStudent = function(studentId) {
@@ -1080,42 +1299,115 @@ async function commitGrade() {
             max,
             notes,
         };
+
         // PHASE 1 MILESTONE 5: assignmentId is the re-grade key — saveGrade()
         // updates the existing grade doc (appending to historyLogs) instead of
         // creating a duplicate whenever one already exists for this student +
         // assignment. A manual entry with no matched/created template (sub not
         // found) has no assignmentId and is always a fresh create, same as before.
         const assignmentId = (selectedAssignment && !selectedAssignment.manual && selectedAssignment.id) || null;
+
+        // PHASE 2: build the per-question payload only for real assessments —
+        // manual/legacy grades never had questions to break down and keep
+        // working exactly as before (fields.perQuestion simply isn't sent,
+        // and saveGrade()'s updateDoc/addDoc never touches a field it isn't
+        // given). anyOpenRevision drives the submission status flip below:
+        // any question still awaiting a fresh answer flips the WHOLE
+        // submission to 'revision_requested' rather than 'graded' — a
+        // partially-graded assessment with one flagged question is not
+        // done yet, even though every other question already has a score.
+        let anyOpenRevision = false;
+        const existingGradeForPayload = isAssessmentAssignment(selectedAssignment)
+            ? findExistingGradeFor(studentId, assignmentId)
+            : null;
+        if (isAssessmentAssignment(selectedAssignment)) {
+            const perQuestion = {};
+            selectedAssignment.questions.forEach(q => {
+                const scoreEl  = document.querySelector(`#gfResponseViewer .pq-score-input[data-question-id="${q.id}"]`);
+                const noteEl   = document.querySelector(`#gfResponseViewer .pq-note-input[data-question-id="${q.id}"]`);
+                const toggleEl = document.querySelector(`#gfResponseViewer .pq-revision-toggle[data-question-id="${q.id}"]`);
+                const promptEl = document.querySelector(`#gfResponseViewer .pq-revision-prompt-input[data-question-id="${q.id}"]`);
+
+                const pqScore = scoreEl && scoreEl.value !== '' ? (parseFloat(scoreEl.value) || 0) : 0;
+                const pqNote  = noteEl ? noteEl.value.trim() : '';
+                const requested = !!(toggleEl && toggleEl.checked);
+                const existingPQ = existingGradeForPayload?.perQuestion?.[q.id] || null;
+
+                const entry = { score: pqScore, note: pqNote };
+
+                if (requested) {
+                    anyOpenRevision = true;
+                    // Snapshot the original answer from the SAVED SUBMISSION
+                    // (currentSubmission, fetched via loadSubmission — never
+                    // the DOM, which only ever shows a read-only viewer of
+                    // it) — and only the first time this question is
+                    // flagged. If it was already open from an earlier
+                    // commit, keep that first snapshot rather than
+                    // re-snapshotting whatever the submission holds NOW
+                    // (which, once the student has resubmitted, would
+                    // wrongly treat their new answer as "the original").
+                    const preservedRevision = existingPQ?.revision;
+                    const liveResponse = (currentSubmission?.responses || []).find(r => r.questionId === q.id) || null;
+                    entry.revision = {
+                        requested: true,
+                        prompt: promptEl ? promptEl.value.trim() : '',
+                        originalResponse: preservedRevision?.originalResponse || {
+                            responseText: liveResponse?.responseText ?? '',
+                            attachmentUrl: liveResponse?.attachmentUrl ?? null,
+                        },
+                        studentSubmission: preservedRevision?.studentSubmission || null,
+                        submittedAt: preservedRevision?.submittedAt || null,
+                    };
+                } else if (existingPQ?.revision) {
+                    // PHASE 3 CORRECTION: an unchecked box means "not open
+                    // anymore," never "erase what happened." Dropping the
+                    // revision object entirely here (this file's original
+                    // Phase 2 behavior) would have destroyed the original
+                    // answer/prompt/resubmission trail the moment a teacher
+                    // resolved it — exactly the history Phase 3's read-only
+                    // "exam hand-back" view for fully-locked questions needs
+                    // to keep showing. Carry the whole record forward,
+                    // just flipped to requested:false.
+                    entry.revision = { ...existingPQ.revision, requested: false };
+                }
+                // else: no revision object at all — this question has never
+                // had one requested.
+
+                perQuestion[q.id] = entry;
+            });
+            fields.perQuestion = perQuestion;
+        }
+
         const result = await saveGrade(studentId, assignmentId, fields);
 
-        // PHASE 4: lock the submission's status to "graded" once its grade is
-        // committed — separate from, and never blocking, the grade write
-        // above (that saveGrade() call is already the one source of truth
-        // for the student's score). Gated on currentSubmission actually
-        // matching this exact student+assignment pairing (via
-        // currentSubmissionRequestToken) so a fetch still in flight, or one
-        // left over from a student the teacher already moved away from,
-        // can never mark the wrong submission graded.
+        // PHASE 4 (extended by PHASE 2): the submission's status now has a
+        // third destination alongside 'graded' — 'revision_requested' when
+        // this commit leaves at least one question still awaiting a fresh
+        // answer. Same non-fatal, non-blocking treatment as before: the
+        // grade write above is already the source of truth for the score,
+        // this is just the flag that reopens the assignment for the student
+        // (see isSubmissionFrozen()'s carve-out in submissions.js) and
+        // routes it back into the teacher's own review queue once answered.
         if (assignmentId && isAssessmentAssignment(selectedAssignment) && currentSubmission &&
             currentSubmissionRequestToken === `${assignmentId}:${studentId}`) {
             try {
                 const gradedSub = getSubjectByName(subject);
                 const gradedCtx = gradedSub ? resolvePostContext(gradedSub, resolvedClassesCache) : null;
                 if (gradedCtx) {
+                    const newStatus = anyOpenRevision ? 'revision_requested' : 'graded';
                     await updateDoc(
                         doc(db, 'schools', session.schoolId, 'classes', gradedCtx.classId, 'subjects', gradedCtx.subjectId, 'assignments', assignmentId, 'submissions', studentId),
-                        { status: 'graded' }
+                        { status: newStatus }
                     );
-                    currentSubmission.status = 'graded'; // keep the in-memory copy consistent if the panel re-renders before a fresh fetch
+                    currentSubmission.status = newStatus; // keep the in-memory copy consistent if the panel re-renders before a fresh fetch
                 }
             } catch (e) {
                 // Non-fatal: the grade itself already committed successfully
                 // above. Failing to also flip the submission's status just
-                // means it may still read "submitted" instead of "graded"
-                // until the next successful commit — logged rather than
-                // shown as a save error, since the actual grade record is
-                // fine.
-                console.error('[Grade Form] Failed to update submission status to graded:', e);
+                // means it may still read its previous status until the
+                // next successful commit — logged rather than shown as a
+                // save error, since the actual grade record is fine.
+                console.error('[Grade Form] Failed to update submission status:', e);
             }
         }
 

@@ -236,9 +236,35 @@ export function isLateSubmission(submittedAtIso, deadline) {
     return !!(deadline && submittedAtIso && new Date(submittedAtIso) > deadline);
 }
 
+// ── PHASE 3: QUESTION-LEVEL REVISION HELPERS (shared) ────────────────────
+// A grade doc's perQuestion[qid].revision (added in Phase 2's Enter Grade
+// work) goes through exactly three states per question: never flagged (no
+// `revision` key at all), OPEN — requested but the student hasn't answered
+// it yet (`requested: true`, no `submittedAt`) — and PENDING RE-REVIEW —
+// the student answered, awaiting the teacher (`requested: true` AND
+// `submittedAt` set). Both of these small predicates only ever look at
+// "open" (the one state that actually unlocks something for the student),
+// so the student and parent portals — and isSubmissionFrozen() right below
+// — can never disagree about which questions are actionable.
+export function isQuestionOpenForRevision(grade, questionId) {
+    const pq = grade?.perQuestion?.[questionId];
+    return !!(pq && pq.revision && pq.revision.requested && !pq.revision.submittedAt);
+}
+
+export function hasOpenRevision(grade) {
+    if (!grade || !grade.perQuestion) return false;
+    return Object.keys(grade.perQuestion).some(qid => isQuestionOpenForRevision(grade, qid));
+}
+
 export function resolveAssignmentStatus({ grade, locked, hasSubmission, submittedAt, dueDate }) {
     const deadline = resolveDueDeadline(dueDate);
 
+    // A grade with at least one question still open for revision outranks
+    // "graded" — the assignment isn't actually done, even though a (partial,
+    // possibly stale) score already exists on the grade doc.
+    if (grade && hasOpenRevision(grade)) {
+        return { status: 'Revision Requested', category: 'revision', late: false };
+    }
     if (grade) {
         const late = isLateSubmission(submittedAt, deadline);
         return { status: `Graded: ${grade.score}/${grade.max}${late ? ' · Late' : ''}`, category: 'graded', late };
@@ -266,6 +292,16 @@ export function resolveAssignmentStatus({ grade, locked, hasSubmission, submitte
 // student silently edit graded work. Kept as one small shared predicate so
 // the list view's status pill and the detail panel's form-vs-readonly
 // decision can never disagree with each other.
+//
+// PHASE 3 CARVE-OUT: a grade with an open revision request un-freezes the
+// assignment as a whole — the student needs to be able to interact with it
+// again — but that does NOT mean every question is editable again. Callers
+// still lock each individual question unless THAT question is open (see
+// isQuestionOpenForRevision() above); this predicate only answers "can the
+// student touch this assignment at all right now."
 export function isSubmissionFrozen(assignment, gradesIndex) {
-    return !!assignment.locked || gradesIndex.has(assignment.id);
+    if (assignment.locked) return true;
+    const grade = gradesIndex.get(assignment.id);
+    if (!grade) return false;
+    return !hasOpenRevision(grade);
 }
