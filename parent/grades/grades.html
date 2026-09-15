@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Current Grades | Family Portal</title>
+
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/student.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <!--
+        ARCHITECTURAL MANDATE: Dashboard Analytics & Parent Portal "Mirror"
+        Sync. This page's body markup is a literal mirror of
+        student/grades/grades.html — same ids, same structure — so it can be
+        driven by the exact same assets/js/render-grades.js shared module
+        (readOnly: true here). Do not diverge this markup from the student
+        page without updating both.
+    -->
+    <style>
+        body { font-family: 'DM Sans', sans-serif; background: #f0f2f8; }
+
+        /* Required hidden class for JS toggles */
+        .hidden { display: none !important; }
+
+        /* ── Page header ── */
+        .gb-topbar {
+            background: linear-gradient(120deg, #1e1b4b 0%, #3730a3 55%, #4f46e5 100%);
+            padding: 32px 40px;
+            display: flex;
+            align-items: center;
+            gap: 32px;
+            flex-wrap: wrap;
+        }
+        .gb-avg-ring {
+            width: 100px; height: 100px;
+            border-radius: 50%;
+            border: 3px solid rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.08);
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+        .gb-avg-ring .num { font-size: 30px; font-weight: 800; color: #fff; line-height: 1; font-family: 'DM Mono', monospace; }
+        .gb-avg-ring .unit { font-size: 11px; color: rgba(255,255,255,0.5); font-weight: 600; margin-top: 2px; }
+        .gb-info { flex: 1; min-width: 0; }
+        .gb-info h1 { font-size: 24px; font-weight: 800; color: #fff; margin: 0 0 4px; letter-spacing: -0.4px; }
+        .gb-info p  { font-size: 13px; color: rgba(255,255,255,0.55); margin: 0; font-weight: 500; }
+        .gb-standing { margin-top: 8px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 99px; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2); font-size: 12px; font-weight: 700; color: #fff; }
+        .gb-print-btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); border-radius: 8px; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; transition: background 0.15s; font-family: inherit; white-space: nowrap; }
+        .gb-print-btn:hover { background: rgba(255,255,255,0.22); }
+
+        /* ── Modal Overlay Only (Inner HTML is JS injected) ── */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.7); backdrop-filter: blur(6px); z-index: 60; display: flex; align-items: center; justify-content: center; padding: 20px; }
+
+        /* ── Loader ── */
+        .page-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 20px; gap: 14px; }
+        .page-loader i { font-size: 32px; color: #6366f1; }
+        .page-loader p { font-size: 13.5px; color: #94a3b8; font-weight: 600; margin: 0; }
+
+        /* ── Mobile: fix topbar layout on small screens ── */
+        @media (max-width: 767px) {
+            .gb-topbar {
+                padding: 20px;
+                gap: 16px;
+            }
+            .gb-avg-ring {
+                width: 80px;
+                height: 80px;
+            }
+            .gb-avg-ring .num { font-size: 24px; }
+            .gb-info h1 { font-size: 20px; }
+            .gb-print-btn {
+                flex-basis: 100%;
+                justify-content: center;
+            }
+        }
+
+        @media print {
+            #layout-sidebar-container, #layout-topbar-container { display: none !important; }
+            body { background: #fff !important; }
+            .gb-print-btn { display: none !important; }
+            .modal-overlay { display: none !important; }
+        }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden">
+
+    <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
+
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+
+        <div class="flex-1 overflow-y-auto">
+
+            <div class="gb-topbar" id="gbTopbar" style="display:none;">
+                <div class="gb-avg-ring">
+                    <span id="gbAvg" class="num">--</span>
+                    <span class="unit">OVERALL</span>
+                </div>
+                <div class="gb-info">
+                    <h1>Current Grades</h1>
+                    <p id="gbTerm">Loading…</p>
+                    <div id="gbStanding" class="gb-standing" style="display:none;"></div>
+                </div>
+                <button class="gb-print-btn" onclick="window.printGradebook()">
+                    <i class="fa-solid fa-print"></i> Print Gradebook
+                </button>
+            </div>
+
+            <div id="gradesLoader" class="page-loader">
+                <i class="fa-solid fa-circle-notch fa-spin"></i>
+                <p>Loading grades…</p>
+            </div>
+
+            <div id="noCurrentGradesMsg" class="hidden page-loader">
+                <i class="fa-solid fa-folder-open" style="color:#c7d2fe;"></i>
+                <p>No grades recorded for this period yet.</p>
+            </div>
+
+            <div id="gradesTable" class="hidden" style="margin: 0; padding: 24px 40px;">
+                <div id="subjectRows"></div>
+        </div>
+
+        </div>
+    </main>
+
+    <div id="typeModal" class="modal-overlay hidden"></div>
+
+    <script type="module" src="grades.js"></script>
+</body>
+</html>

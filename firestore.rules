@@ -679,7 +679,19 @@ service cloud.firestore {
       // recursive wildcard were. Fixed the same way Pass B fixed /classes:
       // named single-segment matches instead of relying on the wildcard.
       match /semesters/{semesterId} {
-        allow read, update: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
+        // READ: teacher/admin at the school, OR (this mandate: Parent Portal
+        // Mirror Strategy) a linked parent — student/grades.js, history.js
+        // and reports.js are now shared verbatim with the parent portal via
+        // assets/js/render-grades.js/render-history.js/render-reports.js,
+        // and every one of them reads this collection (the active period's
+        // name, and the full list for History's term dropdown / the Report
+        // Builder's period checkboxes). Same "curriculum metadata, not
+        // private student data" reasoning as isParentLinkedToSchool()'s
+        // existing grants on classes/subjects/assignments/teachers above —
+        // a semester is a school-wide term definition (name, order, dates),
+        // never a specific child's data. update stays teacher/admin only.
+        allow read: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) || isParentLinkedToSchool(schoolId);
+        allow update: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
         allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
                          (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
                           existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
@@ -688,7 +700,20 @@ service cloud.firestore {
       }
 
       match /teaching_assignments/{teachingAssignmentId} {
-        allow read, update: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
+        // READ: same parent grant as /semesters directly above, and for the
+        // same reason — resolveGradeWeights() (assets/js/utils.js), called
+        // by every one of the now-shared Grades/History/Reports/Assignments
+        // modules, queries this collection first before falling back to a
+        // teacher's legacy gradeTypes/customGradeTypes fields. Without this
+        // grant that query silently 403's and every parent page falls back
+        // to legacy weighting (or none), which can render a DIFFERENT
+        // average than the student portal shows for the identical grades —
+        // exactly the inconsistency this mandate's single-source-of-truth
+        // rendering is meant to prevent. A weighting rule (e.g. "Quiz: 20%")
+        // is rubric metadata, not a specific child's private data. update
+        // stays teacher/admin only.
+        allow read: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) || isParentLinkedToSchool(schoolId);
+        allow update: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
         allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
                          (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
                           existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&

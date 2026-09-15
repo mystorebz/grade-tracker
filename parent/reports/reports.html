@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reports | ConnectUs</title>
+    <title>Reports | Family Portal</title>
 
     <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
@@ -11,103 +11,149 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="../../assets/css/global.css">
     <link rel="stylesheet" href="../../assets/css/student.css">
+
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'DM Sans', sans-serif; background: #f0f2f8; }
-        .hidden { display: none !important; }
-
-        .page-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 20px; gap: 14px; }
-        .page-loader i { font-size: 32px; color: #6366f1; }
-        .page-loader p { font-size: 13.5px; color: #94a3b8; font-weight: 600; margin: 0; }
-
-        /* ── Report sheet ──────────────────────────────────────────────────── */
-        .rpt-sheet { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 32px; }
-        .rpt-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; border-bottom: 2px solid #7f1d3d; padding-bottom: 18px; margin-bottom: 24px; }
-        .rpt-head h1 { font-size: 20px; font-weight: 800; color: #0d1f35; margin: 0 0 4px; }
-        .rpt-head p { font-size: 12.5px; color: #6b84a0; margin: 2px 0 0; font-weight: 600; }
-        .rpt-print-btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; background: #7f1d3d; color: #fff; border: none; border-radius: 10px; font-size: 13px; font-weight: 800; cursor: pointer; transition: background 0.12s; }
-        .rpt-print-btn:hover { background: #5c1230; }
-
-        .rpt-section { margin-bottom: 28px; }
-        .rpt-section:last-child { margin-bottom: 0; }
-        .rpt-section-title { font-size: 12px; font-weight: 800; color: #7f1d3d; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 12px; padding-bottom: 6px; border-bottom: 1px solid #f0e4e9; }
-
-        .rpt-grade-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px,1fr)); gap: 12px; }
-        .rpt-grade-tile { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; }
-        .rpt-grade-tile .g-subject { font-weight: 800; font-size: 12.5px; color: #1e293b; margin: 0 0 4px; }
-        .rpt-grade-tile .g-avg { font-size: 20px; font-weight: 800; margin: 0; }
-
-        .rpt-history-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-        .rpt-history-table th { text-align: left; font-size: 10.5px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; padding: 8px 10px; border-bottom: 2px solid #e2e8f0; }
-        .rpt-history-table td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; font-weight: 600; color: #374f6b; }
-        .rpt-history-table tr.rpt-overall-row td { font-weight: 800; color: #0d1f35; background: #f8fafc; }
-
-        .rpt-att-summary { display: flex; flex-wrap: wrap; gap: 10px; }
-        .rpt-att-chip { display: flex; align-items: center; gap: 8px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 14px; }
-        .rpt-att-chip .n { font-size: 18px; font-weight: 800; color: #1e293b; }
-        .rpt-att-chip .l { font-size: 10.5px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
-
-        .rpt-eval-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; }
-        .rpt-eval-card .e-type { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: #7f1d3d; margin: 0 0 3px; }
-        .rpt-eval-card .e-meta { font-size: 11px; color: #6b84a0; font-weight: 600; margin: 0; }
-
-        .rpt-empty { text-align: center; padding: 18px; color: #94a3b8; font-size: 12px; font-weight: 700; }
-
-        @media print {
-            #layout-sidebar-container, #layout-topbar-container, .no-print { display: none !important; }
-            body { background: #fff !important; }
-            .rpt-sheet { border: none; border-radius: 0; padding: 0; }
-            .rpt-section { page-break-inside: avoid; }
-        }
-    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!--
+        ARCHITECTURAL MANDATE: Dashboard Analytics & Parent Portal "Mirror"
+        Sync. This page's body markup is a literal mirror of
+        student/reports/reports.html — same ids, same structure — replacing
+        the prior single auto-generated combined print sheet outright (per
+        this mandate: no separate Report Builder for Parent). Driven by the
+        exact same assets/js/render-reports.js shared module (a filterable,
+        exportable report builder locked to read-only viewing by nature —
+        the only actions here are Build and Print, both already safe to
+        expose to a parent unchanged). Do not diverge this markup from the
+        student page without updating both.
+    -->
 </head>
-<body class="flex h-screen overflow-hidden">
+<body class="flex w-full h-screen overflow-hidden bg-[#f5f3ff]">
 
     <div id="layout-sidebar-container" class="flex-shrink-0 z-20 h-full"></div>
 
-    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden min-w-0">
+
         <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
 
-        <div class="flex-1 overflow-y-auto">
-            <div class="max-w-4xl mx-auto p-6 md:p-8">
+        <div class="flex-1 overflow-y-auto p-8 md:p-10">
+            <div class="w-full space-y-8">
 
-                <div id="reportLoader" class="page-loader">
-                    <i class="fa-solid fa-circle-notch fa-spin"></i>
-                    <p>Building report…</p>
-                </div>
-
-                <div id="reportError" class="hidden text-center py-10 text-slate-400 text-[13px] font-bold bg-white rounded-xl border border-slate-200"></div>
-
-                <div id="reportSheet" class="rpt-sheet hidden">
-                    <div class="rpt-head">
+                <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="p-6 md:p-8 border-b border-slate-100 bg-gradient-to-r from-white to-indigo-50/40 flex items-center gap-4">
+                        <div class="w-14 h-14 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center text-2xl"><i class="fa-solid fa-file-contract"></i></div>
                         <div>
-                            <h1 id="rptStudentName">Student</h1>
-                            <p id="rptStudentMeta"></p>
-                            <p id="rptGeneratedAt"></p>
+                            <h3 class="font-black text-2xl text-slate-800">Academic Progress Reports</h3>
+                            <p class="text-base text-slate-500 font-semibold mt-1">Generate custom live progress reports based on the current gradebook data.</p>
                         </div>
-                        <button id="printBtn" class="rpt-print-btn no-print"><i class="fa-solid fa-print"></i> Generate Report</button>
                     </div>
 
-                    <section class="rpt-section">
-                        <p class="rpt-section-title">Current Grades</p>
-                        <div id="rptCurrentGrades"></div>
-                    </section>
+                    <div class="p-6 md:p-8 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div class="bg-slate-50 border border-slate-200 rounded-2xl p-6 text-center shadow-sm">
+                            <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Cumulative Average</p>
+                            <p id="cumulativeGpa" class="text-5xl font-black text-slate-800"><i class="fa-solid fa-spinner fa-spin text-slate-300 text-3xl"></i></p>
+                        </div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-2xl p-6 text-center shadow-sm">
+                            <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Total Assignments</p>
+                            <p id="totalAssignments" class="text-5xl font-black text-indigo-600"><i class="fa-solid fa-spinner fa-spin text-indigo-200 text-3xl"></i></p>
+                        </div>
+                    </div>
+                </div>
 
-                    <section class="rpt-section">
-                        <p class="rpt-section-title">Academic History</p>
-                        <div id="rptHistory"></div>
-                    </section>
+                <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden relative">
+                    <div class="h-[4px] bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
 
-                    <section class="rpt-section">
-                        <p class="rpt-section-title">Attendance</p>
-                        <div id="rptAttendance"></div>
-                    </section>
+                    <div class="p-6 md:p-8 border-b border-slate-100 bg-slate-50">
+                        <h4 class="font-black text-slate-800 uppercase tracking-widest text-lg mb-1 flex items-center gap-2">
+                            <i class="fa-solid fa-filter text-indigo-500"></i> Custom Report Builder
+                        </h4>
+                        <p class="text-sm text-slate-500 font-semibold">Select specific parameters to generate a targeted academic profile.</p>
+                    </div>
 
-                    <section class="rpt-section">
-                        <p class="rpt-section-title">Evaluations</p>
-                        <div id="rptEvaluations"></div>
-                    </section>
+                    <div class="p-6 md:p-8">
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+                            <div class="flex flex-col">
+                                <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
+                                    <label class="text-sm font-black text-slate-700 uppercase tracking-widest flex items-center gap-2"><i class="fa-solid fa-calendar-days text-indigo-500"></i> Periods</label>
+                                    <button onclick="toggleAllCheckboxes('rb-semester-grid', true)" class="text-xs font-black text-indigo-600 hover:underline">Select All</button>
+                                </div>
+                                <div id="rb-semester-grid" class="flex flex-col gap-3 max-h-60 overflow-y-auto pr-2">
+                                    <div class="text-sm text-slate-400 font-bold italic"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading periods...</div>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-col">
+                                <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
+                                    <label class="text-sm font-black text-slate-700 uppercase tracking-widest flex items-center gap-2"><i class="fa-solid fa-layer-group text-emerald-500"></i> Subjects</label>
+                                    <button onclick="toggleAllCheckboxes('rb-subject-grid', true)" class="text-xs font-black text-indigo-600 hover:underline">Select All</button>
+                                </div>
+                                <div id="rb-subject-grid" class="flex flex-col gap-3 max-h-60 overflow-y-auto pr-2">
+                                    <div class="text-sm text-slate-400 font-bold italic"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading subjects...</div>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-col">
+                                <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
+                                    <label class="text-sm font-black text-slate-700 uppercase tracking-widest flex items-center gap-2"><i class="fa-solid fa-tags text-amber-500"></i> Types</label>
+                                    <button onclick="toggleAllCheckboxes('rb-type-grid', true)" class="text-xs font-black text-indigo-600 hover:underline">Select All</button>
+                                </div>
+                                <div id="rb-type-grid" class="flex flex-col gap-3 max-h-60 overflow-y-auto pr-2">
+                                    <div class="text-sm text-slate-400 font-bold italic"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading types...</div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <div class="mt-8 flex items-center justify-between border-t border-slate-100 pt-6">
+                            <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3 max-w-lg">
+                                <i class="fa-solid fa-circle-info text-amber-500 text-lg"></i>
+                                <p class="text-xs md:text-sm text-amber-800 font-semibold leading-snug m-0">
+                                    Documents are generated from the live gradebook. For an officially sealed copy or final transcript, contact administration.
+                                </p>
+                            </div>
+
+                            <button id="buildReportBtn" class="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-black px-8 py-4 rounded-xl shadow-md transition shadow-indigo-500/20 flex items-center gap-3 text-base">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> Build Report
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="reportResultsArea" class="hidden opacity-0 transition-opacity duration-500 space-y-8">
+
+                    <div class="flex flex-wrap gap-5 items-center justify-between bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-200">
+                        <div>
+                            <h2 class="text-xl md:text-2xl font-black text-slate-800 m-0">Custom Report Results</h2>
+                            <p id="reportOutputMeta" class="text-sm font-bold text-indigo-600 uppercase tracking-widest mt-2 m-0">—</p>
+                        </div>
+                        <div>
+                            <button id="printCustomReportBtn" class="flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-black px-6 py-3.5 rounded-xl border border-indigo-200 hover:border-indigo-300 transition text-sm">
+                                <i class="fa-solid fa-print text-lg"></i> Print Custom Report
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-base text-slate-700">
+                                <thead class="bg-slate-50 text-slate-500 text-xs md:text-sm uppercase tracking-widest font-black border-b-2 border-slate-200">
+                                    <tr>
+                                        <th class="px-8 py-5">Date</th>
+                                        <th class="px-8 py-5">Subject</th>
+                                        <th class="px-8 py-5">Assignment</th>
+                                        <th class="px-8 py-5">Type</th>
+                                        <th class="px-8 py-5 text-center">Score</th>
+                                        <th class="px-8 py-5 text-center">%</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="reportTableBody" class="divide-y divide-slate-100">
+                                    </tbody>
+                            </table>
+                        </div>
+                    </div>
+
                 </div>
 
             </div>

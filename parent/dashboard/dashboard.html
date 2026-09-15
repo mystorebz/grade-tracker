@@ -13,6 +13,17 @@
     <link rel="stylesheet" href="../../assets/css/student.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <!--
+        ARCHITECTURAL MANDATE: Dashboard Analytics & Parent Portal "Mirror"
+        Sync, Phase 2 (Parent Analytics Dashboard). The old empty space
+        above the Alerts/Live Feed is now three KPI widgets scoped to the
+        sidebar's active child — Current Overall Average, Missing Work, and
+        a Subject Breakdown — computed the same way render-grades.js and
+        render-assignments.js already compute them for that child. The
+        pre-existing "Recently Graded" live feed (merged across ALL linked
+        children, unchanged) is repositioned beneath the KPIs as a
+        secondary Activity Log, alongside the pre-existing Alerts section.
+    -->
     <style>
         body { font-family: 'DM Sans', sans-serif; background: #f0f2f8; }
         .hidden { display: none !important; }
@@ -22,6 +33,29 @@
         .page-loader p { font-size: 13.5px; color: #94a3b8; font-weight: 600; margin: 0; }
 
         .pd-section-title { font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+
+        /* ── Phase 2: KPI widgets ─────────────────────────────────────────── */
+        .kpi-card {
+            background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 20px;
+            display: flex; flex-direction: column; gap: 6px;
+        }
+        .kpi-label { font-size: 10.5px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; }
+        .kpi-value { font-size: 34px; font-weight: 900; line-height: 1; margin: 0; font-family: 'DM Mono', monospace; }
+        .kpi-sub { font-size: 11.5px; color: #94a3b8; font-weight: 600; margin: 0; }
+
+        .missing-badge {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 800;
+            width: fit-content;
+        }
+
+        .sb-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid #f1f5f9; }
+        .sb-row:last-child { border-bottom: none; }
+        .sb-name { font-size: 13px; font-weight: 700; color: #1e293b; }
+        .sb-count { font-size: 10.5px; color: #94a3b8; font-weight: 600; margin-left: 6px; }
+        .sb-bar-track { flex: 1; height: 6px; background: #f1f5f9; border-radius: 999px; overflow: hidden; margin: 0 10px; }
+        .sb-bar-fill { height: 100%; border-radius: 999px; }
+        .sb-pct { font-size: 13px; font-weight: 800; font-family: 'DM Mono', monospace; flex-shrink: 0; width: 44px; text-align: right; }
 
         /* ── Alerts ────────────────────────────────────────────────────────── */
         .pd-alert-card {
@@ -60,26 +94,72 @@
         <div class="flex-1 overflow-y-auto">
             <div class="max-w-5xl mx-auto p-6 md:p-8 space-y-8">
 
-                <div id="dashLoader" class="page-loader">
-                    <i class="fa-solid fa-circle-notch fa-spin"></i>
-                    <p>Loading your children…</p>
-                </div>
+                <!-- ══════════════════════════════════════════════════════════
+                     PHASE 2: KPI WIDGETS — scoped to the active child
+                     (sidebar Student Selector), primary content on this page.
+                     ══════════════════════════════════════════════════════════ -->
+                <section>
+                    <div id="kpiLoader" class="page-loader">
+                        <i class="fa-solid fa-circle-notch fa-spin"></i>
+                        <p>Loading your child's overview…</p>
+                    </div>
 
-                <div id="dashError" class="hidden text-center py-10 text-slate-400 text-[13px] font-bold bg-white rounded-xl border border-slate-200"></div>
+                    <div id="kpiError" class="hidden text-center py-10 text-slate-400 text-[13px] font-bold bg-white rounded-xl border border-slate-200"></div>
 
-                <div id="dashContent" class="hidden space-y-8">
+                    <div id="kpiSection" class="hidden space-y-5">
+                        <p class="pd-section-title"><i class="fa-solid fa-chart-line" style="color:#7f1d3d"></i> <span id="kpiSectionLabel">Overview</span></p>
 
-                    <section>
-                        <p class="pd-section-title"><i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b"></i> Alerts</p>
-                        <div id="alertsList" class="space-y-2.5"></div>
-                    </section>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div class="kpi-card">
+                                <p class="kpi-label">Current Overall Average</p>
+                                <p id="kpiOverallAvg" class="kpi-value">—</p>
+                                <p id="kpiOverallSub" class="kpi-sub">No grades recorded yet this period.</p>
+                            </div>
+                            <div class="kpi-card">
+                                <p class="kpi-label">Missing Work</p>
+                                <p id="kpiMissingBadge" class="missing-badge" style="background:#f1f5f9;color:#64748b;">
+                                    <i class="fa-solid fa-circle-check"></i> <span id="kpiMissingText">—</span>
+                                </p>
+                                <p class="kpi-sub">Assignments past due with nothing submitted.</p>
+                            </div>
+                        </div>
 
-                    <section>
-                        <p class="pd-section-title"><i class="fa-solid fa-bolt" style="color:#7f1d3d"></i> Live Feed — Recently Graded</p>
-                        <div id="feedList" class="space-y-2.5"></div>
-                    </section>
+                        <div class="kpi-card">
+                            <p class="kpi-label" style="margin-bottom:10px;">Subject Breakdown</p>
+                            <div id="subjectBreakdownList"></div>
+                        </div>
+                    </div>
+                </section>
 
-                </div>
+                <!-- ══════════════════════════════════════════════════════════
+                     Activity Log — secondary content, beneath the analytics.
+                     Alerts + Live Feed are merged across ALL linked children
+                     (unchanged from before); only their position moved.
+                     ══════════════════════════════════════════════════════════ -->
+                <section>
+                    <p class="pd-section-title" style="margin-bottom:16px;"><i class="fa-solid fa-list-ul" style="color:#64748b"></i> Activity Log</p>
+
+                    <div id="dashLoader" class="page-loader">
+                        <i class="fa-solid fa-circle-notch fa-spin"></i>
+                        <p>Loading your children…</p>
+                    </div>
+
+                    <div id="dashError" class="hidden text-center py-10 text-slate-400 text-[13px] font-bold bg-white rounded-xl border border-slate-200"></div>
+
+                    <div id="dashContent" class="hidden space-y-8">
+
+                        <section>
+                            <p class="pd-section-title"><i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b"></i> Alerts</p>
+                            <div id="alertsList" class="space-y-2.5"></div>
+                        </section>
+
+                        <section>
+                            <p class="pd-section-title"><i class="fa-solid fa-bolt" style="color:#7f1d3d"></i> Recently Graded</p>
+                            <div id="feedList" class="space-y-2.5"></div>
+                        </section>
+
+                    </div>
+                </section>
 
             </div>
         </div>

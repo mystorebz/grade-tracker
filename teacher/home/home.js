@@ -26,6 +26,19 @@ let resolvedGradeTypes = null;
 const DEFAULT_GRADE_TYPES = ['Test', 'Quiz', 'Assignment', 'Homework', 'Project', 'Midterm Exam', 'Final Exam'];
 function getGradeTypes() { return resolvedGradeTypes || DEFAULT_GRADE_TYPES; }
 
+// PHASE 3 (Teacher Command Center): At-Risk Flagging widget threshold, per
+// the mandate ("<70% average") — intentionally distinct from the
+// pre-existing 65% cutoff used by the risk distribution bucket and the
+// "Needs Attention" stat/panel elsewhere on this page, which are untouched.
+const AT_RISK_FLAG_THRESHOLD = 70;
+
+// Assignment Bottlenecks widget: how many of the lowest-average assignments
+// to surface, and the minimum number of graded submissions an assignment
+// needs before its average is meaningful enough to flag (a single low
+// grade on a brand-new assignment shouldn't read as a "bottleneck").
+const BOTTLENECK_LIMIT = 6;
+const BOTTLENECK_MIN_SAMPLE = 2;
+
 // ── 3. INIT ───────────────────────────────────────────────────────────────────
 async function init() {
     if (!session) return;
@@ -163,6 +176,12 @@ async function fetchMetrics() {
         });
 
         const riskStudents = [];
+        // PHASE 3 (Intervention Alerts): the At-Risk Flagging widget uses a
+        // deliberately wider <70% net than the pre-existing <65% "risk"
+        // distribution bucket / "Needs Attention" panel further down this
+        // page (both unchanged) — computed here from the SAME per-student
+        // weighted averages so the two never disagree with each other.
+        const atRiskFlagged = [];
         const distribution = { excelling: 0, good: 0, track: 0, attention: 0, risk: 0 };
 
         Object.entries(stuG).forEach(([sid, gradesArray]) => {
@@ -176,6 +195,9 @@ async function fetchMetrics() {
                     else {
                         distribution.risk++;
                         riskStudents.push({ sid, name: studentMap[sid] || 'Unknown', avg });
+                    }
+                    if (avg < AT_RISK_FLAG_THRESHOLD) {
+                        atRiskFlagged.push({ sid, name: studentMap[sid] || 'Unknown', avg });
                     }
                 }
             }
@@ -233,7 +255,7 @@ async function fetchMetrics() {
             } catch(e) {}
         }));
 
-        renderClassroomAnalytics(distribution, allGrades, allEvals);
+        renderClassroomAnalytics(distribution, allGrades, allEvals, atRiskFlagged);
 
     } catch (e) {
         console.error('[Overview] fetchMetrics:', e);
@@ -242,7 +264,23 @@ async function fetchMetrics() {
 }
 
 // ── 6. CLASSROOM ANALYTICS ENGINE ─────────────────────────────────────────────
-function renderClassroomAnalytics(dist, grades, evals) {
+function renderClassroomAnalytics(dist, grades, evals, atRiskFlagged) {
+    // 0. Render Intervention Alerts (Phase 3: At-Risk Flagging + Assignment
+    // Bottlenecks) — first, since this is the new top-of-page content.
+    if (atRiskFlagged.length) {
+        document.getElementById('ccAtRiskFlagList').innerHTML =
+            atRiskFlagged.slice().sort((a, b) => a.avg - b.avg).map(s => renderRiskItem(s)).join('');
+    } else {
+        renderEmptyAtRiskFlag();
+    }
+
+    const bottlenecks = computeAssignmentBottlenecks(grades);
+    if (bottlenecks.length) {
+        document.getElementById('assignmentBottlenecksList').innerHTML = bottlenecks.map(renderBottleneckItem).join('');
+    } else {
+        renderEmptyBottlenecks();
+    }
+
     // 1. Render Distribution
     document.getElementById('dist-excelling').textContent = dist.excelling;
     document.getElementById('dist-good').textContent = dist.good;
@@ -448,6 +486,78 @@ function renderEmptyRisk() {
                     padding:40px 20px;gap:8px;color:#9ab0c6;">
             <i class="fa-solid fa-circle-check" style="font-size:22px;color:#0ea871;"></i>
             <p style="font-size:12.5px;margin:0;font-weight:400;text-align:center;">All students on track!</p>
+        </div>`;
+}
+
+// ── PHASE 3: INTERVENTION ALERTS — AT-RISK FLAGGING (<70%) ────────────────
+// Reuses renderRiskItem() as-is (it only needs {sid, name, avg}) — one
+// shared row renderer for both this widget and the pre-existing <65%
+// "Needs Attention" panel further down the page.
+function renderEmptyAtRiskFlag() {
+    document.getElementById('ccAtRiskFlagList').innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+                    padding:32px 20px;gap:8px;color:#9ab0c6;">
+            <i class="fa-solid fa-circle-check" style="font-size:20px;color:#0ea871;"></i>
+            <p style="font-size:12px;margin:0;font-weight:400;text-align:center;">No students below 70% this period.</p>
+        </div>`;
+}
+
+// ── PHASE 3: ASSIGNMENT BOTTLENECKS ───────────────────────────────────────
+// Groups all logged grades by assignment TITLE (not type — "Assessment
+// Type Analysis" above already covers grouping by type) and surfaces the
+// lowest-average individual assignments, so a teacher can spot a specific
+// assignment the whole class struggled with rather than only a broad
+// category trend.
+function computeAssignmentBottlenecks(grades) {
+    const byTitle = {};
+    grades.forEach(g => {
+        if (!g.max) return;
+        const key = g.title || 'Untitled Assignment';
+        if (!byTitle[key]) byTitle[key] = { title: key, subject: g.subject || 'Uncategorized', type: g.type || '—', pcts: [] };
+        byTitle[key].pcts.push((g.score / g.max) * 100);
+    });
+
+    return Object.values(byTitle)
+        .filter(a => a.pcts.length >= BOTTLENECK_MIN_SAMPLE)
+        .map(a => ({
+            title: a.title,
+            subject: a.subject,
+            type: a.type,
+            count: a.pcts.length,
+            avg: Math.round(a.pcts.reduce((s, p) => s + p, 0) / a.pcts.length),
+        }))
+        .sort((a, b) => a.avg - b.avg)
+        .slice(0, BOTTLENECK_LIMIT);
+}
+
+function bottleneckBadgeStyle(avg) {
+    if (avg >= 90) return 'background:#dcfce7;color:#166534;border:1px solid #bbf7d0;';
+    if (avg >= 80) return 'background:#dbeafe;color:#1e40af;border:1px solid #bfdbfe;';
+    if (avg >= 70) return 'background:#ccfbf1;color:#115e59;border:1px solid #99f6e4;';
+    if (avg >= 65) return 'background:#fef3c7;color:#92400e;border:1px solid #fde68a;';
+    return 'background:#fee2e2;color:#991b1b;border:1px solid #fecaca;';
+}
+
+function renderBottleneckItem(a) {
+    return `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;
+                background:#fff;border:1px solid #e2e8f0;border-radius:0px;padding:10px 12px;">
+      <div style="min-width:0;">
+        <p style="font-size:13px;font-weight:600;color:#0d1f35;margin:0;
+                  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(a.title)}</p>
+        <p style="font-size:11px;color:#9ab0c6;font-weight:400;margin:0;
+                  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(a.subject)} · ${escHtml(a.type)} · ${a.count} graded</p>
+      </div>
+      <span style="${bottleneckBadgeStyle(a.avg)}padding:3px 10px;border-radius:0px;font-size:12px;font-weight:700;font-family:'DM Mono',monospace;flex-shrink:0;">${a.avg}%</span>
+    </div>`;
+}
+
+function renderEmptyBottlenecks() {
+    document.getElementById('assignmentBottlenecksList').innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+                    padding:32px 20px;gap:8px;color:#9ab0c6;">
+            <i class="fa-solid fa-circle-check" style="font-size:20px;color:#0ea871;"></i>
+            <p style="font-size:12px;margin:0;font-weight:400;text-align:center;">Not enough graded submissions yet to flag a bottleneck.</p>
         </div>`;
 }
 

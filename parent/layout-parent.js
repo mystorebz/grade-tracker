@@ -111,7 +111,7 @@ export async function fillParentHeader(session) {
 
 /**
  * Injects the Parent Portal sidebar and topbar.
- * @param {string} activePageId - 'dashboard' | 'assignments' | 'grades' | 'attendance' | 'evaluations' | 'reports'
+ * @param {string} activePageId - 'dashboard' | 'assignments' | 'grades' | 'history' | 'attendance' | 'evaluations' | 'reports'
  * @param {string} pageTitle - topbar title
  * @param {string} pageSub - topbar subtitle
  */
@@ -163,8 +163,9 @@ export function injectParentLayout(activePageId, pageTitle, pageSub) {
 
           <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-3 mt-6 mb-2">Selected Student</p>
           <a href="../assignments/assignments.html" id="nav-assignments" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-clipboard-list w-5 text-base opacity-70"></i> Assignments</a>
-          <a href="../view/view.html?tab=grades" id="nav-grades" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-book-open w-5 text-base opacity-70"></i> Current Grades</a>
-          <a href="../view/view.html?tab=attendance" id="nav-attendance" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-calendar-check w-5 text-base opacity-70"></i> Attendance</a>
+          <a href="../grades/grades.html" id="nav-grades" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-book-open w-5 text-base opacity-70"></i> Current Grades</a>
+          <a href="../history/history.html" id="nav-history" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-clock-rotate-left w-5 text-base opacity-70"></i> Academic History</a>
+          <a href="../attendance/attendance.html" id="nav-attendance" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-calendar-check w-5 text-base opacity-70"></i> Attendance</a>
           <a href="../evaluations/evaluations.html" id="nav-evaluations" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-star-half-stroke w-5 text-base opacity-70"></i> Evaluations</a>
           <a href="../reports/reports.html" id="nav-reports" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-file-lines w-5 text-base opacity-70"></i> Reports</a>
         </nav>
