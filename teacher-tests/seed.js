@@ -244,6 +244,40 @@ const POST_UNPINNED_MID_TITLE = 'E2E Middle Announcement';
 const POST_LESSON_PLAN_ID = 'post-e2e-stream-lesson';
 const POST_LESSON_PLAN_TITLE = 'E2E Lesson Plan Fixture';
 
+// ── Phase 9 (Lesson Builder & Live Lessons) sandbox ──────────────────────
+const TEACHER_LESSON_ID = 'T26-TCH09';
+const TEACHER_LESSON_PIN = '1234';
+const CLASS_LESSON_NAME = 'E2E Lesson Homeroom';
+const CLASS_LESSON_ID = 'cls-e2e-lesson-1';
+const SUBJECT_LESSON_ID = 'sub-e2e-lesson-1';
+const SUBJECT_LESSON_NAME = 'E2E Lesson Science';
+// 9.3 fixture — a 3-slide draft dedicated to reorder/delete testing.
+const LESSON_SLIDES_ID = 'lsn-e2e-slides-1';
+const SLIDE_REORDER_A_ID = 'slide-e2e-reorder-a';
+const SLIDE_REORDER_B_ID = 'slide-e2e-reorder-b';
+const SLIDE_REORDER_C_ID = 'slide-e2e-reorder-c';
+// 9.14/9.17 fixture — already-published so its card exposes "Go Live", and
+// carrying a live-only interactive_prompt block for the Live Responses test.
+const LESSON_LIVE_ID = 'lsn-e2e-live-1';
+const SLIDE_LIVE_TITLE_ID = 'slide-e2e-live-title';
+const SLIDE_LIVE_PROMPT_ID = 'slide-e2e-live-prompt';
+
+// ── Phase 10 (Exams: grading + live monitor) sandbox ─────────────────────
+const TEACHER_EXAM_ID = 'T26-TCH10';
+const TEACHER_EXAM_PIN = '1234';
+const CLASS_EXAM_NAME = 'E2E Exam Homeroom';
+const CLASS_EXAM_ID = 'cls-e2e-exam-1';
+const SUBJECT_EXAM_ID = 'sub-e2e-exam-1';
+const SUBJECT_EXAM_NAME = 'E2E Exam Science';
+const EXAM_ID = 'exam-e2e-1';
+const QUESTION_EXAM_MC_ID = 'q-mc-1';
+const QUESTION_EXAM_FR_ID = 'q-fr-1';
+const STUDENT_EXAM_SUBMITTED_ID = 'S26-EXA01';
+const STUDENT_EXAM_INPROGRESS_ID = 'S26-EXA02';
+const STUDENT_EXAM_PIN = '1234';
+const EXAM_SUBMISSION_SUBMITTED_ID = 'sub-e2e-exam-submitted-1';
+const EXAM_SUBMISSION_INPROGRESS_ID = 'sub-e2e-exam-inprogress-1';
+
 // Matches sha256Trim in functions/index.js and assets/js/crypto-utils.js
 // exactly: trim whitespace only, preserve case, SHA-256, lowercase hex.
 function sha256Trim(text) {
@@ -255,8 +289,20 @@ function ensureApp() {
     if (appInitialized) return;
     process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
     process.env.FIREBASE_AUTH_EMULATOR_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST || '127.0.0.1:9099';
+    // Phase 9/10: admin.database() (setExamPresence/writeLiveResponse's
+    // sibling for RTDB, used by the Live Exam Monitor tests) needs a
+    // databaseURL to resolve a namespace even once FIREBASE_DATABASE_
+    // EMULATOR_HOST is set — that env var only redirects WHERE the request
+    // goes, not which namespace it targets. "<projectId>-default-rtdb" is
+    // the default namespace the Firebase emulator suite assigns, matching
+    // assets/js/firebase-init.js's own connectDatabaseEmulator(rtdb,
+    // '127.0.0.1', 9000) call on the client side.
+    process.env.FIREBASE_DATABASE_EMULATOR_HOST = process.env.FIREBASE_DATABASE_EMULATOR_HOST || '127.0.0.1:9000';
     if (admin.apps.length === 0) {
-        admin.initializeApp({ projectId: 'school-grade-tracker' });
+        admin.initializeApp({
+            projectId: 'school-grade-tracker',
+            databaseURL: 'http://127.0.0.1:9000?ns=school-grade-tracker-default-rtdb',
+        });
     }
     appInitialized = true;
 }
@@ -890,6 +936,236 @@ async function seed() {
         updatedAt: new Date(streamNow - 1 * 3600 * 1000).toISOString(),
     });
 
+    // ── Phase 9 (Lesson Builder & Live Lessons) sandbox ──────────────────
+    await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(CLASS_LESSON_ID)
+        .set({ name: CLASS_LESSON_NAME, order: 7 });
+
+    await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(CLASS_LESSON_ID)
+        .collection('subjects').doc(SUBJECT_LESSON_ID)
+        .set({
+            name: SUBJECT_LESSON_NAME,
+            description: '',
+            schoolId: SCHOOL_ID,
+            classId: CLASS_LESSON_ID,
+            archived: false,
+            archivedAt: null,
+            createdAt: new Date().toISOString(),
+        });
+
+    await db.collection('teachers').doc(TEACHER_LESSON_ID).set(baseTeacher({
+        pin: sha256Trim(TEACHER_LESSON_PIN),
+        name: 'E2E Lesson Teacher',
+        classes: [CLASS_LESSON_NAME],
+        securityQuestionsSet: true,
+        requiresPinReset: false,
+        profileComplete: true,
+    }));
+
+    const lessonsRef = db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(CLASS_LESSON_ID)
+        .collection('subjects').doc(SUBJECT_LESSON_ID)
+        .collection('lessons');
+
+    // Idempotent reseed — 9.1's "New Lesson" flow creates real lessons of its
+    // own through the actual UI every run, so this subject's lesson list
+    // (and the two fixtures below) must start from a known, empty-except-
+    // fixtures state every time, exactly like Phase 8's own posts reseed.
+    // Each lesson may also carry its own private/notes doc and a
+    // live_sessions subtree — Firestore doesn't cascade-delete
+    // subcollections, so both are cleared explicitly here (same reasoning
+    // as lessons.js's own deleteLesson(), which does this one doc at a
+    // time for exactly this reason).
+    const staleLessons = await lessonsRef.get();
+    if (!staleLessons.empty) {
+        const batch = db.batch();
+        for (const d of staleLessons.docs) {
+            const privateSnap = await d.ref.collection('private').doc('notes').get();
+            if (privateSnap.exists) batch.delete(privateSnap.ref);
+            const sessionsSnap = await d.ref.collection('live_sessions').get();
+            for (const s of sessionsSnap.docs) {
+                const responsesSnap = await s.ref.collection('responses').get();
+                responsesSnap.docs.forEach(r => batch.delete(r.ref));
+                batch.delete(s.ref);
+            }
+            batch.delete(d.ref);
+        }
+        await batch.commit();
+    }
+
+    const lessonNow = new Date().toISOString();
+
+    // 9.3 fixture: a 3-slide Slides-format DRAFT lesson dedicated to
+    // reorder/delete testing — pre-seeded (rather than built slide-by-slide
+    // through the Add Slide menu) so its drag-reorder and delete-down-to-
+    // one assertions aren't entangled with the separate "does Add Slide
+    // work" concern 9.1 already covers on its own.
+    await lessonsRef.doc(LESSON_SLIDES_ID).set({
+        title: 'E2E Slides Reorder Lesson',
+        format: 'slides',
+        status: 'draft',
+        schoolId: SCHOOL_ID, classId: CLASS_LESSON_ID, className: CLASS_LESSON_NAME,
+        subjectId: SUBJECT_LESSON_ID, subjectName: SUBJECT_LESSON_NAME,
+        authorId: TEACHER_LESSON_ID, authorName: 'E2E Lesson Teacher',
+        slides: [
+            { id: SLIDE_REORDER_A_ID, type: 'title', heading: 'Slide A', subheading: '', objective: '' },
+            { id: SLIDE_REORDER_B_ID, type: 'content', heading: 'Slide B', body: 'Body B', bullets: [] },
+            { id: SLIDE_REORDER_C_ID, type: 'content', heading: 'Slide C', body: 'Body C', bullets: [] },
+        ],
+        createdAt: lessonNow, updatedAt: lessonNow, publishedAt: null,
+    });
+
+    // 9.14/9.17 fixture: an already-PUBLISHED Slides lesson whose second
+    // block is an interactive_prompt — published so its lesson-list card
+    // exposes the "Go Live" broadcast button (builder.js's renderLessonCard
+    // only renders that button when status === 'published'), and carrying a
+    // live-only interactive block so a live session immediately has
+    // something for 9.17's Live Responses panel to react to.
+    await lessonsRef.doc(LESSON_LIVE_ID).set({
+        title: 'E2E Live Session Lesson',
+        format: 'slides',
+        status: 'published',
+        schoolId: SCHOOL_ID, classId: CLASS_LESSON_ID, className: CLASS_LESSON_NAME,
+        subjectId: SUBJECT_LESSON_ID, subjectName: SUBJECT_LESSON_NAME,
+        authorId: TEACHER_LESSON_ID, authorName: 'E2E Lesson Teacher',
+        slides: [
+            { id: SLIDE_LIVE_TITLE_ID, type: 'title', heading: 'Welcome', subheading: 'E2E Live Session', objective: '' },
+            { id: SLIDE_LIVE_PROMPT_ID, type: 'interactive_prompt', heading: 'Quick Check', promptText: 'What is your favorite element?', promptKind: 'short_answer', choices: [] },
+        ],
+        createdAt: lessonNow, updatedAt: lessonNow, publishedAt: lessonNow,
+    });
+
+    // ── Phase 10 (Exams: grading + live monitor) sandbox ─────────────────
+    await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(CLASS_EXAM_ID)
+        .set({ name: CLASS_EXAM_NAME, order: 8 });
+
+    await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(CLASS_EXAM_ID)
+        .collection('subjects').doc(SUBJECT_EXAM_ID)
+        .set({
+            name: SUBJECT_EXAM_NAME,
+            description: '',
+            schoolId: SCHOOL_ID,
+            classId: CLASS_EXAM_ID,
+            archived: false,
+            archivedAt: null,
+            createdAt: new Date().toISOString(),
+        });
+
+    await db.collection('teachers').doc(TEACHER_EXAM_ID).set(baseTeacher({
+        pin: sha256Trim(TEACHER_EXAM_PIN),
+        name: 'E2E Exam Teacher',
+        classes: [CLASS_EXAM_NAME],
+        securityQuestionsSet: true,
+        requiresPinReset: false,
+        profileComplete: true,
+    }));
+
+    await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(CLASS_EXAM_ID)
+        .collection('subjects').doc(SUBJECT_EXAM_ID)
+        .collection('exams').doc(EXAM_ID)
+        .set({
+            title: 'E2E Grading Exam',
+            isLive: true,
+            timeLimitSeconds: 1800,
+            questions: [
+                { id: QUESTION_EXAM_MC_ID, type: 'multiple_choice', prompt: 'What is 2 + 2?', points: 5, options: ['3', '4', '5', '6'] },
+                { id: QUESTION_EXAM_FR_ID, type: 'free_response', prompt: 'Explain photosynthesis in one sentence.', points: 10 },
+            ],
+        });
+
+    // exam_answer_keys is `allow read, write: if false` for every client —
+    // only the Admin SDK (this script) or autoGradeObjectiveAnswers ever
+    // touches it. Not read by grade.js/live.js at all (this suite's own
+    // fixtures hand-seed each submission's post-auto-grade shape directly,
+    // bypassing that trigger — see the submission docs below), but kept
+    // here so this exam's fixture is a complete, self-consistent record,
+    // matching the convention already established by exam-tests/seed.js.
+    await db.collection('exam_answer_keys').doc(EXAM_ID).set({
+        answers: { [QUESTION_EXAM_MC_ID]: { correctValue: '4' } },
+    });
+
+    await db.collection('students').doc(STUDENT_EXAM_SUBMITTED_ID).set({
+        pin: sha256Trim(STUDENT_EXAM_PIN),
+        currentSchoolId: SCHOOL_ID,
+        name: 'E2E Exam Student Submitted', firstName: 'E2E', lastName: 'ExamSubmitted',
+        classId: CLASS_EXAM_ID, enrollmentStatus: 'Active', securityQuestionsSet: true,
+    });
+    await db.collection('students').doc(STUDENT_EXAM_INPROGRESS_ID).set({
+        pin: sha256Trim(STUDENT_EXAM_PIN),
+        currentSchoolId: SCHOOL_ID,
+        name: 'E2E Exam Student In Progress', firstName: 'E2E', lastName: 'ExamInProgress',
+        classId: CLASS_EXAM_ID, enrollmentStatus: 'Active', securityQuestionsSet: true,
+    });
+
+    // Idempotent reseed — clear any submission docs a previous run's
+    // UI-driven grading (10.4) left behind, keyed by these two fixed
+    // student/submission ids, same reasoning as exam-tests/seed.js's own
+    // stale-submission clear.
+    for (const sid of [STUDENT_EXAM_SUBMITTED_ID, STUDENT_EXAM_INPROGRESS_ID]) {
+        const stale = await db.collection('students').doc(sid).collection('exam_submissions')
+            .where('examId', '==', EXAM_ID).get();
+        if (!stale.empty) {
+            const staleBatch = db.batch();
+            stale.docs.forEach(d => staleBatch.delete(d.ref));
+            await staleBatch.commit();
+        }
+    }
+
+    const examStartedAt = new Date(Date.now() - 10 * 60000).toISOString();
+    const examDeadline = new Date(Date.now() + 20 * 60000).toISOString();
+
+    // Already SUBMITTED, already auto-graded (q1's 5 points banked), q2
+    // still awaiting manual grading — the exact steady-state grade.html's
+    // roster/detail panel is built around. Shape matches functions/
+    // index.js's startExamAttempt + autoGradeObjectiveAnswers output
+    // exactly (read directly from that file, not guessed), even though
+    // this fixture bypasses both by writing the post-auto-grade state
+    // directly via the Admin SDK.
+    await db.collection('students').doc(STUDENT_EXAM_SUBMITTED_ID)
+        .collection('exam_submissions').doc(EXAM_SUBMISSION_SUBMITTED_ID)
+        .set({
+            examId: EXAM_ID, studentId: STUDENT_EXAM_SUBMITTED_ID, schoolId: SCHOOL_ID,
+            classId: CLASS_EXAM_ID, subjectId: SUBJECT_EXAM_ID,
+            isSchoolActive: true,
+            status: 'submitted',
+            startedAt: examStartedAt, serverDeadline: examDeadline,
+            submittedAt: new Date().toISOString(), autoSubmitReason: null,
+            answers: {
+                [QUESTION_EXAM_MC_ID]: { value: '4' },
+                [QUESTION_EXAM_FR_ID]: { value: 'Plants convert sunlight into chemical energy.' },
+            },
+            score: 5, gradedAt: null, gradedBy: null,
+            pendingManualPoints: 10, pendingManualQuestionIds: [QUESTION_EXAM_FR_ID], manualGrades: {},
+            proctoring: { tabFocusEvents: [], disconnectEvents: [] },
+        });
+
+    // Still IN_PROGRESS — must never appear in grade.html's roster at all
+    // (10.2's terminal-status filter), and is the student whose live
+    // presence 10.9/10.10 exercise, since "currently taking the exam" is
+    // the realistic case a teacher actually watches on the live monitor.
+    await db.collection('students').doc(STUDENT_EXAM_INPROGRESS_ID)
+        .collection('exam_submissions').doc(EXAM_SUBMISSION_INPROGRESS_ID)
+        .set({
+            examId: EXAM_ID, studentId: STUDENT_EXAM_INPROGRESS_ID, schoolId: SCHOOL_ID,
+            classId: CLASS_EXAM_ID, subjectId: SUBJECT_EXAM_ID,
+            isSchoolActive: true,
+            status: 'in_progress',
+            startedAt: examStartedAt, serverDeadline: examDeadline,
+            submittedAt: null, autoSubmitReason: null,
+            answers: {}, score: null, gradedAt: null, gradedBy: null,
+            proctoring: { tabFocusEvents: [], disconnectEvents: [] },
+        });
+
+    // RTDB presence — cleared to a known-empty state for this exam so
+    // 10.9/10.10 start from "no signal yet" and can prove every chip update
+    // they assert is really coming from the write the test itself makes
+    // next, not stale data left behind by a previous run.
+    await admin.database().ref(`examPresence/${EXAM_ID}`).remove();
+
     console.log('Seed complete:');
     console.log(`  School:              ${SCHOOL_ID} (active semester: ${SEMESTER_ID})`);
     console.log(`  Complete teacher:    ${TEACHER_ID} / PIN ${TEACHER_PIN}`);
@@ -908,6 +1184,11 @@ async function seed() {
     console.log(`  Attendance teacher: ${TEACHER_ATTENDANCE_ID} / PIN ${TEACHER_ATTENDANCE_PIN} (classes: ${CLASS_ATT_A_NAME} [${STUDENT_ATT_A1_ID}, ${STUDENT_ATT_A2_ID}, ${STUDENT_ATT_A3_ID}], ${CLASS_ATT_B_NAME} [${STUDENT_ATT_B1_ID}])`);
     console.log(`  Stream teacher: ${TEACHER_STREAM_ID} / PIN ${TEACHER_STREAM_PIN} (subject: ${SUBJECT_STREAM_NAME})`);
     console.log(`  Stream posts (newest first, ignoring pin): ${POST_UNPINNED_NEW_ID}, ${POST_LESSON_PLAN_ID} (lesson_plan), ${POST_UNPINNED_MID_ID}; pinned (sorts first in Stream view): ${POST_PINNED_ID}`);
+    console.log(`  Lesson teacher: ${TEACHER_LESSON_ID} / PIN ${TEACHER_LESSON_PIN} (subject: ${SUBJECT_LESSON_NAME})`);
+    console.log(`  Lesson fixtures: ${LESSON_SLIDES_ID} (3-slide draft, reorder/delete target), ${LESSON_LIVE_ID} (published, title + interactive_prompt "${SLIDE_LIVE_PROMPT_ID}")`);
+    console.log(`  Exam teacher: ${TEACHER_EXAM_ID} / PIN ${TEACHER_EXAM_PIN} (subject: ${SUBJECT_EXAM_NAME})`);
+    console.log(`  Exam: ${EXAM_ID} — q-mc-1 multiple_choice (auto-graded, excluded from grading UI), q-fr-1 free_response (10 pt max, manually graded)`);
+    console.log(`  Exam submissions: ${STUDENT_EXAM_SUBMITTED_ID} (submitted, q-fr-1 pending), ${STUDENT_EXAM_INPROGRESS_ID} (in_progress, hidden from grading roster); RTDB presence cleared`);
 }
 
 /**
@@ -1162,6 +1443,119 @@ async function findPostByTitle(classId, subjectId, title) {
     return snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
 }
 
+/**
+ * Returns a lesson's full main document (title/status/format/slides), or
+ * null. Used to confirm Save Draft / Publish / slide-reorder actually
+ * persisted to Firestore, not just to the in-memory lessonDraft the builder
+ * keeps client-side — the same "reload and re-verify" discipline this
+ * suite's other getXDoc() helpers already follow.
+ */
+async function getLessonDoc(classId, subjectId, lessonId) {
+    ensureApp();
+    const db = admin.firestore();
+    const snap = await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(classId)
+        .collection('subjects').doc(subjectId)
+        .collection('lessons').doc(lessonId)
+        .get();
+    return snap.exists ? snap.data() : null;
+}
+
+/**
+ * The live_sessions/current doc for one lesson — 'current' is the ONLY
+ * session id lessons.js's startLiveSession()/endLiveSession() ever use (a
+ * fixed id, not a random one — see that function's own race-guard comment
+ * on why), so no lookup is needed to find "the" session.
+ */
+async function getLiveSessionDoc(classId, subjectId, lessonId) {
+    ensureApp();
+    const db = admin.firestore();
+    const snap = await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(classId)
+        .collection('subjects').doc(subjectId)
+        .collection('lessons').doc(lessonId)
+        .collection('live_sessions').doc('current')
+        .get();
+    return snap.exists ? snap.data() : null;
+}
+
+/**
+ * Writes one student's live-session response directly via the Admin SDK,
+ * mirroring lessons.js's saveLiveResponse() exactly (same "{studentId}_
+ * {blockId}" doc id, same field shape). This is 9.17's stand-in for a real
+ * connected student's browser submitting an interactive_prompt answer —
+ * it exercises the teacher dashboard's live.js onSnapshot push the same way
+ * a genuine student write would, without needing a second real browser
+ * context in this suite.
+ */
+async function writeLiveResponse(classId, subjectId, lessonId, studentId, studentName, blockId, blockType, answerText) {
+    ensureApp();
+    const db = admin.firestore();
+    const record = {
+        schoolId: SCHOOL_ID,
+        studentId,
+        studentName: studentName || '',
+        blockId,
+        blockType,
+        answerText: (answerText || '').trim(),
+        submittedAt: new Date().toISOString(),
+    };
+    await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(classId)
+        .collection('subjects').doc(subjectId)
+        .collection('lessons').doc(lessonId)
+        .collection('live_sessions').doc('current')
+        .collection('responses').doc(`${studentId}_${blockId}`)
+        .set(record);
+    return record;
+}
+
+/**
+ * Finds one student's exam_submissions doc for a given exam. Submissions
+ * live at students/{studentId}/exam_submissions/{id} — NOT nested under the
+ * exam's own class/subject/exam tree — confirmed against this repo's own
+ * exam-tests/seed.js and functions/index.js's startExamAttempt, which both
+ * write to exactly this path. grade.js/live.js's own
+ * collectionGroup('exam_submissions') queries match at any nesting depth,
+ * so this is purely a lookup convenience for the tests, not a claim about
+ * how firestore.rules scopes the path.
+ */
+async function findExamSubmission(studentId, examId) {
+    ensureApp();
+    const db = admin.firestore();
+    const snap = await db.collection('students').doc(studentId)
+        .collection('exam_submissions')
+        .where('examId', '==', examId)
+        .limit(1)
+        .get();
+    return snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
+}
+
+/**
+ * Overwrites one student's Realtime Database presence node for one exam —
+ * examPresence/{examId}/{studentId}, exactly the path/shape teacher/exams/
+ * live.js's registerRTDBListener() reads (see that file's own state-shape
+ * comment: connectionState, tabFocused, clientReportedProgress.
+ * questionsAnswered). student/exams/take.js — the real writer of this data
+ * — was not available to cross-reference in this environment, so this
+ * shape is taken directly from live.js's OWN read/render logic
+ * (buildRowModel/renderRow), the consumer this suite is actually testing,
+ * rather than guessed.
+ */
+async function setExamPresence(examId, studentId, { connectionState, tabFocused, questionsAnswered }) {
+    ensureApp();
+    const now = new Date().toISOString();
+    const record = {
+        connectionState,
+        tabFocused,
+        lastSeenAt: now,
+        lastFocusChangeAt: now,
+        clientReportedProgress: { questionsAnswered: questionsAnswered ?? 0 },
+    };
+    await admin.database().ref(`examPresence/${examId}/${studentId}`).set(record);
+    return record;
+}
+
 module.exports = {
     SCHOOL_ID, SEMESTER_ID, SEMESTER_NAME, CLASS_NAME,
     TEACHER_ID, TEACHER_PIN,
@@ -1198,6 +1592,17 @@ module.exports = {
     POST_UNPINNED_NEW_ID, POST_UNPINNED_NEW_TITLE,
     POST_UNPINNED_MID_ID, POST_UNPINNED_MID_TITLE,
     POST_LESSON_PLAN_ID, POST_LESSON_PLAN_TITLE,
+    // Phase 9 (Lesson Builder & Live Lessons) sandbox
+    TEACHER_LESSON_ID, TEACHER_LESSON_PIN,
+    CLASS_LESSON_ID, CLASS_LESSON_NAME, SUBJECT_LESSON_ID, SUBJECT_LESSON_NAME,
+    LESSON_SLIDES_ID, SLIDE_REORDER_A_ID, SLIDE_REORDER_B_ID, SLIDE_REORDER_C_ID,
+    LESSON_LIVE_ID, SLIDE_LIVE_TITLE_ID, SLIDE_LIVE_PROMPT_ID,
+    // Phase 10 (Exams: grading + live monitor) sandbox
+    TEACHER_EXAM_ID, TEACHER_EXAM_PIN,
+    CLASS_EXAM_ID, CLASS_EXAM_NAME, SUBJECT_EXAM_ID, SUBJECT_EXAM_NAME,
+    EXAM_ID, QUESTION_EXAM_MC_ID, QUESTION_EXAM_FR_ID,
+    STUDENT_EXAM_SUBMITTED_ID, STUDENT_EXAM_INPROGRESS_ID, STUDENT_EXAM_PIN,
+    EXAM_SUBMISSION_SUBMITTED_ID, EXAM_SUBMISSION_INPROGRESS_ID,
     seed,
     setStudentScore,
     getStudentDoc,
@@ -1213,6 +1618,11 @@ module.exports = {
     getAttendanceDoc,
     getPostDoc,
     findPostByTitle,
+    getLessonDoc,
+    getLiveSessionDoc,
+    writeLiveResponse,
+    findExamSubmission,
+    setExamPresence,
 };
 
 // Only run automatically when invoked directly (`node seed.js` / `npm run
