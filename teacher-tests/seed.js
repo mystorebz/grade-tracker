@@ -127,6 +127,123 @@ const ASSIGNMENT_TITLE = 'E2E Map Quiz';
 const SEMESTER_MIDTERM_ID = 'tch-e2e-sem-2';
 const SEMESTER_MIDTERM_NAME = 'E2E Term 2 (Midterm Configured)';
 
+// ── Phase 5 (Grade Entry) & Phase 6 (Gradebook) fixtures ────────────────
+// A third, separate sandbox teacher — grade_form.html and gradebook.html
+// are two views onto the exact same students/{id}/grades documents, so
+// they share one teacher/class/roster here rather than each getting their
+// own, the same way Phase 3 and Phase 4 already share TEACHER_ROSTER_ID's
+// sandbox. Still fully isolated from every earlier phase's fixtures.
+const TEACHER_GRADE_ID = 'T26-TCH06';
+const TEACHER_GRADE_PIN = '1234';
+
+const CLASS_GRADE_NAME = 'E2E Grade Entry Homeroom';
+const CLASS_GRADE_ID = 'cls-e2e-grade-1';
+
+const SUBJECT_GRADE_ID = 'sub-e2e-grade-1';
+const SUBJECT_GRADE_NAME = 'E2E Grade Entry Science';
+
+// Three students with a clean, deterministic roster order isn't guaranteed
+// by Firestore — every spec file reads the ACTUAL rendered order out of the
+// DOM (#agStudent's options / #gfRosterList's buttons) rather than assuming
+// these three come back in id order, especially for 5.7's wraparound test.
+// None of the three has any grade yet — every assignment below starts
+// fully ungraded across the whole roster.
+const STUDENT_GRADE_1_ID = 'S26-GRD01';
+const STUDENT_GRADE_2_ID = 'S26-GRD02';
+const STUDENT_GRADE_3_ID = 'S26-GRD03';
+
+// A fourth, disposable student that ONLY the Phase 6 destructive-delete
+// test (6.4) ever touches — kept off the other three students' roster
+// entirely so a deleted grade record can never be confused with anything
+// 6.3/6.6/6.7/6.8 depend on.
+const STUDENT_GRADE_DELETE_ID = 'S26-GRDDL';
+
+// A real, prepared STANDARD (non-assessment) assignment — used by 5.1 (the
+// "select a real prepared assignment" branch of the 3-step router) and 5.7
+// (Commit & Next wraparound: simple single-score grading, no per-question
+// tally to fill in first).
+const ASSIGNMENT_STANDARD_ID = 'asg-e2e-grade-std';
+const ASSIGNMENT_STANDARD_TITLE = 'E2E Grade Entry Reading Log';
+
+// A real ASSESSMENT assignment (category:'assessment', real questions[]) —
+// one multiple_choice question (auto-gradable) + one free_response question
+// (never auto-graded, per functions/index.js's autoGradeWorkSubmission) —
+// used by 5.4 (per-question auto-tally) and 5.5 (Request Revision). Answer
+// key lives in work_answer_keys/{assignmentId}, mirroring exactly what
+// subjects.js's awSaveWork() itself writes for a real Multiple Choice
+// question, so grade_form.js's own reads of that collection stay realistic
+// even though this suite seeds the "auto-grade result" directly (see the
+// submission doc below) rather than depending on the Functions emulator's
+// Firestore trigger actually firing during seed — the same
+// isolate-from-async-triggers reasoning the rest of this suite already
+// follows for anything time-sensitive.
+const ASSIGNMENT_ASSESS_ID = 'asg-e2e-grade-assess';
+const ASSIGNMENT_ASSESS_TITLE = 'E2E Grade Entry Science Quiz';
+const QUESTION_MC_ID = 'q_mc1';
+const QUESTION_FR_ID = 'q_fr1';
+
+// Fixed grade-doc ids (Admin SDK .doc(id).set() doesn't care that the real
+// app would normally addDoc() a random one) so the Phase 6 spec can read
+// them straight back without a lookup-by-field query.
+const GRADEBOOK_EDIT_GRADE_ID = 'tch-e2e-gradebook-edit-target';   // 6.3
+const GRADEBOOK_DELETE_GRADE_ID = 'tch-e2e-gradebook-delete-target'; // 6.4
+const GRADEBOOK_EDIT_TITLE = 'E2E Gradebook Edit Target';
+
+// ── Phase 7 (Attendance) fixtures ────────────────────────────────────────
+// A dedicated sandbox teacher with TWO real classes (not one) — 7.1 needs a
+// genuine second class to switch the dropdown to and prove the roster
+// actually reloads, not just re-renders the same list.
+const TEACHER_ATTENDANCE_ID = 'T26-TCH07';
+const TEACHER_ATTENDANCE_PIN = '1234';
+
+const CLASS_ATT_A_NAME = 'E2E Attendance Homeroom A';
+const CLASS_ATT_A_ID = 'cls-e2e-att-a';
+const CLASS_ATT_B_NAME = 'E2E Attendance Homeroom B';
+const CLASS_ATT_B_ID = 'cls-e2e-att-b';
+
+// Three students on Class A (enough to prove "Mark all Present" actually
+// touches every row, not just the first) and one lone student on Class B
+// (enough to prove the roster is genuinely class-scoped on switch).
+const STUDENT_ATT_A1_ID = 'S26-ATA01';
+const STUDENT_ATT_A2_ID = 'S26-ATA02';
+const STUDENT_ATT_A3_ID = 'S26-ATA03';
+const STUDENT_ATT_B1_ID = 'S26-ATB01';
+
+// Phase 7.5 (empty state) deliberately reuses TEACHER_EMPTY_ID rather than a
+// new fixture — its classes:[CLASS_NAME] already resolves to an EMPTY array
+// (no real 'E2E Homeroom' class doc exists anywhere in this file — see
+// CLASS_NAME's own comment above), the exact same "zero resolved classes"
+// condition attendance.js's init() checks for. Already proven safe to reuse
+// this way by phase4-subjects.spec.js's 4.1 test.
+
+// ── Phase 8 (Class Stream) fixtures ──────────────────────────────────────
+const TEACHER_STREAM_ID = 'T26-TCH08';
+const TEACHER_STREAM_PIN = '1234';
+const CLASS_STREAM_NAME = 'E2E Stream Homeroom';
+const CLASS_STREAM_ID = 'cls-e2e-stream-1';
+const SUBJECT_STREAM_ID = 'sub-e2e-stream-1';
+const SUBJECT_STREAM_NAME = 'E2E Stream English';
+
+// Four pre-seeded posts, deliberately timestamped OUT of pin-priority order
+// so 8.2 has something real to prove: POST_PINNED is the OLDEST of the four
+// by createdAt, yet must render FIRST in the Stream view purely because
+// it's pinned (getVisiblePosts() in stream.js floats every pinned post
+// above every unpinned one, each group staying newest-first within itself).
+// POST_LESSON_PLAN is a type:'lesson_plan' post used by 8.8 — per stream.js's
+// own getVisiblePosts(), the Lesson Plans view filters TO only lesson_plan
+// posts, but the Stream view does NOT filter lesson_plan posts OUT (it only
+// separates pinned from unpinned) — so this fixture is expected to appear
+// in BOTH views, not just Lesson Plans. That asymmetry is real, read
+// directly out of the source, not a guess.
+const POST_PINNED_ID = 'post-e2e-stream-pinned';
+const POST_PINNED_TITLE = 'E2E Pinned Announcement';
+const POST_UNPINNED_NEW_ID = 'post-e2e-stream-new';
+const POST_UNPINNED_NEW_TITLE = 'E2E Newest Announcement';
+const POST_UNPINNED_MID_ID = 'post-e2e-stream-mid';
+const POST_UNPINNED_MID_TITLE = 'E2E Middle Announcement';
+const POST_LESSON_PLAN_ID = 'post-e2e-stream-lesson';
+const POST_LESSON_PLAN_TITLE = 'E2E Lesson Plan Fixture';
+
 // Matches sha256Trim in functions/index.js and assets/js/crypto-utils.js
 // exactly: trim whitespace only, preserve case, SHA-256, lowercase hex.
 function sha256Trim(text) {
@@ -442,6 +559,337 @@ async function seed() {
         updatedAt: new Date().toISOString(),
     });
 
+    // ── Phase 5/6 sandbox: class + subject ──────────────────────────────
+    await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(CLASS_GRADE_ID)
+        .set({ name: CLASS_GRADE_NAME, order: 3 });
+
+    await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(CLASS_GRADE_ID)
+        .collection('subjects').doc(SUBJECT_GRADE_ID)
+        .set({
+            name: SUBJECT_GRADE_NAME,
+            description: '',
+            schoolId: SCHOOL_ID,
+            classId: CLASS_GRADE_ID,
+            archived: false,
+            archivedAt: null,
+            createdAt: new Date().toISOString(),
+        });
+
+    // ── Phase 5/6 sandbox: teacher ───────────────────────────────────────
+    await db.collection('teachers').doc(TEACHER_GRADE_ID).set(baseTeacher({
+        pin: sha256Trim(TEACHER_GRADE_PIN),
+        name: 'E2E Grade Entry Teacher',
+        classes: [CLASS_GRADE_NAME],
+        securityQuestionsSet: true,
+        requiresPinReset: false,
+        profileComplete: true,
+    }));
+
+    // ── Phase 5/6 sandbox: roster (3 ungraded students + 1 disposable) ──
+    const gradeRoster = [
+        { id: STUDENT_GRADE_1_ID, name: 'E2E Grade Student One' },
+        { id: STUDENT_GRADE_2_ID, name: 'E2E Grade Student Two' },
+        { id: STUDENT_GRADE_3_ID, name: 'E2E Grade Student Three' },
+        { id: STUDENT_GRADE_DELETE_ID, name: 'E2E Grade Student Disposable' },
+    ];
+    for (const s of gradeRoster) {
+        await db.collection('students').doc(s.id).set({
+            currentSchoolId: SCHOOL_ID,
+            teacherId: TEACHER_GRADE_ID,
+            name: s.name,
+            enrollmentStatus: 'Active',
+            className: CLASS_GRADE_NAME,
+        });
+        const staleGrades = await db.collection('students').doc(s.id).collection('grades').get();
+        if (!staleGrades.empty) {
+            const batch = db.batch();
+            staleGrades.docs.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+        }
+    }
+
+    // ── Phase 5/6 sandbox: a real, prepared STANDARD assignment (5.1, 5.7) ──
+    await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(CLASS_GRADE_ID)
+        .collection('subjects').doc(SUBJECT_GRADE_ID)
+        .collection('assignments').doc(ASSIGNMENT_STANDARD_ID)
+        .set({
+            id: ASSIGNMENT_STANDARD_ID,
+            title: ASSIGNMENT_STANDARD_TITLE,
+            type: 'Test',
+            maxScore: 20,
+            date: null,
+            instructions: '',
+            description: '',
+            locked: false,
+            lockedAt: null,
+            completed: false,
+            attachments: [],
+            category: 'standard',
+            questions: [],
+            teacherId: TEACHER_GRADE_ID,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+        });
+
+    // ── Phase 5/6 sandbox: a real ASSESSMENT assignment (5.4, 5.5) ──────
+    const assessRef = db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(CLASS_GRADE_ID)
+        .collection('subjects').doc(SUBJECT_GRADE_ID)
+        .collection('assignments').doc(ASSIGNMENT_ASSESS_ID);
+    await assessRef.set({
+        id: ASSIGNMENT_ASSESS_ID,
+        title: ASSIGNMENT_ASSESS_TITLE,
+        type: 'Test',
+        maxScore: 5,
+        date: null,
+        instructions: '',
+        description: '',
+        locked: false,
+        lockedAt: null,
+        completed: false,
+        attachments: [],
+        category: 'assessment',
+        questions: [
+            { id: QUESTION_MC_ID, type: 'multiple_choice', prompt: 'What is H2O?', points: 2, options: ['Water', 'Salt', 'Sugar', 'Oxygen'], attachments: [] },
+            { id: QUESTION_FR_ID, type: 'free_response', prompt: 'Explain photosynthesis in one sentence.', points: 3, hint: '', attachments: [] },
+        ],
+        teacherId: TEACHER_GRADE_ID,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+    });
+
+    // Mirrors awSaveWork()'s own write in subjects.js — the answer key for
+    // the one multiple_choice question (option index 0, "Water", is correct).
+    await db.collection('work_answer_keys').doc(ASSIGNMENT_ASSESS_ID).set({
+        assignmentId: ASSIGNMENT_ASSESS_ID,
+        schoolId: SCHOOL_ID,
+        keys: { [QUESTION_MC_ID]: 0 },
+        createdAt: new Date().toISOString(),
+    });
+
+    // STUDENT_GRADE_1_ID has already submitted this assessment — answered
+    // the MC question correctly (index 0) and the free_response question
+    // with real text — with objectiveAutoGrade seeded directly in the exact
+    // shape functions/index.js's autoGradeWorkSubmission() itself writes
+    // (points/maxObjectivePoints/correctCount/totalObjective/perQuestion),
+    // rather than relying on that Firestore trigger actually firing before
+    // the test reads it back.
+    const staleAssessSubs = await assessRef.collection('submissions').get();
+    if (!staleAssessSubs.empty) {
+        const batch = db.batch();
+        staleAssessSubs.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+    }
+    await assessRef.collection('submissions').doc(STUDENT_GRADE_1_ID).set({
+        studentId: STUDENT_GRADE_1_ID,
+        studentName: 'E2E Grade Student One',
+        assignmentId: ASSIGNMENT_ASSESS_ID,
+        assignmentTitle: ASSIGNMENT_ASSESS_TITLE,
+        workType: 'Test',
+        subjectId: SUBJECT_GRADE_ID,
+        subjectName: SUBJECT_GRADE_NAME,
+        classId: CLASS_GRADE_ID,
+        className: CLASS_GRADE_NAME,
+        status: 'submitted',
+        responses: [
+            { questionId: QUESTION_MC_ID, responseText: '0' },
+            { questionId: QUESTION_FR_ID, responseText: 'Plants convert sunlight into chemical energy.' },
+        ],
+        objectiveAutoGrade: {
+            points: 2,
+            maxObjectivePoints: 2,
+            correctCount: 1,
+            totalObjective: 1,
+            perQuestion: { [QUESTION_MC_ID]: true },
+            gradedAt: new Date().toISOString(),
+        },
+        submittedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+    });
+
+    // ── Phase 6 sandbox: pre-existing committed grades for the gradebook ──
+    // Type 'Test' on both is deliberate — it's the ONLY grade type this
+    // sandbox ever uses, so 6.7's "in-use categories can't be deleted" test
+    // has exactly one protected category (Test) and every other DEFAULT_
+    // GRADE_TYPES category (Quiz/Project/Assignment/Homework) stays free to
+    // delete.
+    await db.collection('students').doc(STUDENT_GRADE_1_ID)
+        .collection('grades').doc(GRADEBOOK_EDIT_GRADE_ID).set({
+            studentId: STUDENT_GRADE_1_ID,
+            schoolId: SCHOOL_ID,
+            teacherId: TEACHER_GRADE_ID,
+            semesterId: SEMESTER_ID,
+            className: CLASS_GRADE_NAME,
+            subject: SUBJECT_GRADE_NAME,
+            title: GRADEBOOK_EDIT_TITLE,
+            type: 'Test',
+            score: 15,
+            max: 20,
+            date: new Date().toISOString().split('T')[0],
+            notes: '',
+            historyLogs: [],
+        });
+
+    await db.collection('students').doc(STUDENT_GRADE_DELETE_ID)
+        .collection('grades').doc(GRADEBOOK_DELETE_GRADE_ID).set({
+            studentId: STUDENT_GRADE_DELETE_ID,
+            schoolId: SCHOOL_ID,
+            teacherId: TEACHER_GRADE_ID,
+            semesterId: SEMESTER_ID,
+            className: CLASS_GRADE_NAME,
+            subject: SUBJECT_GRADE_NAME,
+            title: 'E2E Gradebook Delete Target',
+            type: 'Test',
+            score: 10,
+            max: 10,
+            date: new Date().toISOString().split('T')[0],
+            notes: '',
+            historyLogs: [],
+        });
+
+    // ── Phase 7 (Attendance) sandbox: two real classes + roster ─────────
+    await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(CLASS_ATT_A_ID)
+        .set({ name: CLASS_ATT_A_NAME, order: 4 });
+    await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(CLASS_ATT_B_ID)
+        .set({ name: CLASS_ATT_B_NAME, order: 5 });
+
+    await db.collection('teachers').doc(TEACHER_ATTENDANCE_ID).set(baseTeacher({
+        pin: sha256Trim(TEACHER_ATTENDANCE_PIN),
+        name: 'E2E Attendance Teacher',
+        classes: [CLASS_ATT_A_NAME, CLASS_ATT_B_NAME], // ORDER MATTERS — 7.1 asserts Class A is picked by default (resolveClassNamesToIds() preserves this array's order)
+        securityQuestionsSet: true,
+        requiresPinReset: false,
+        profileComplete: true,
+    }));
+
+    const attRoster = [
+        { id: STUDENT_ATT_A1_ID, name: 'E2E Attendance Student A1', className: CLASS_ATT_A_NAME },
+        { id: STUDENT_ATT_A2_ID, name: 'E2E Attendance Student A2', className: CLASS_ATT_A_NAME },
+        { id: STUDENT_ATT_A3_ID, name: 'E2E Attendance Student A3', className: CLASS_ATT_A_NAME },
+        { id: STUDENT_ATT_B1_ID, name: 'E2E Attendance Student B1', className: CLASS_ATT_B_NAME },
+    ];
+    for (const s of attRoster) {
+        await db.collection('students').doc(s.id).set({
+            currentSchoolId: SCHOOL_ID,
+            teacherId: TEACHER_ATTENDANCE_ID,
+            name: s.name,
+            enrollmentStatus: 'Active',
+            className: s.className,
+        });
+    }
+
+    // Clear any attendance day-docs a previous run of this suite left behind
+    // (fixed YYYY-MM-DD doc ids mean today's/yesterday's docs genuinely
+    // persist across reseeds within the same day otherwise) — every 7.x test
+    // needs to start from "this date has never been taken" for both classes.
+    for (const classId of [CLASS_ATT_A_ID, CLASS_ATT_B_ID]) {
+        const staleAtt = await db.collection('schools').doc(SCHOOL_ID)
+            .collection('classes').doc(classId).collection('attendance').get();
+        if (!staleAtt.empty) {
+            const batch = db.batch();
+            staleAtt.docs.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+        }
+    }
+
+    // ── Phase 8 (Class Stream) sandbox: class + subject + 4 seeded posts ──
+    await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(CLASS_STREAM_ID)
+        .set({ name: CLASS_STREAM_NAME, order: 6 });
+
+    await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(CLASS_STREAM_ID)
+        .collection('subjects').doc(SUBJECT_STREAM_ID)
+        .set({
+            name: SUBJECT_STREAM_NAME,
+            description: '',
+            schoolId: SCHOOL_ID,
+            classId: CLASS_STREAM_ID,
+            archived: false,
+            archivedAt: null,
+            createdAt: new Date().toISOString(),
+        });
+
+    await db.collection('teachers').doc(TEACHER_STREAM_ID).set(baseTeacher({
+        pin: sha256Trim(TEACHER_STREAM_PIN),
+        name: 'E2E Stream Teacher',
+        classes: [CLASS_STREAM_NAME],
+        securityQuestionsSet: true,
+        requiresPinReset: false,
+        profileComplete: true,
+    }));
+
+    const streamPostsRef = db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(CLASS_STREAM_ID)
+        .collection('subjects').doc(SUBJECT_STREAM_ID)
+        .collection('posts');
+
+    // Idempotent reseed — 8.1/8.3/8.4 all create/edit/delete additional posts
+    // of their own through the real UI, so this subject's posts must start
+    // from EXACTLY these 4 known fixtures every run, nothing left behind.
+    const staleStreamPosts = await streamPostsRef.get();
+    if (!staleStreamPosts.empty) {
+        const batch = db.batch();
+        staleStreamPosts.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+    }
+
+    const streamNow = Date.now();
+    const streamAuthor = { authorId: TEACHER_STREAM_ID, authorName: 'E2E Stream Teacher' };
+    const streamBaseFields = {
+        schoolId: SCHOOL_ID, classId: CLASS_STREAM_ID, className: CLASS_STREAM_NAME,
+        subjectId: SUBJECT_STREAM_ID, subjectName: SUBJECT_STREAM_NAME,
+        attachments: [],
+        ...streamAuthor,
+    };
+
+    await streamPostsRef.doc(POST_PINNED_ID).set({
+        ...streamBaseFields,
+        type: 'announcement',
+        title: POST_PINNED_TITLE,
+        body: 'This is pinned and must sort above every unpinned post, even newer ones.',
+        lessonDate: null, objectives: null,
+        pinned: true,
+        createdAt: new Date(streamNow - 3 * 3600 * 1000).toISOString(), // oldest of the 4 — pin alone keeps it first
+        updatedAt: new Date(streamNow - 3 * 3600 * 1000).toISOString(),
+    });
+    await streamPostsRef.doc(POST_UNPINNED_MID_ID).set({
+        ...streamBaseFields,
+        type: 'announcement',
+        title: POST_UNPINNED_MID_TITLE,
+        body: 'Unpinned, middle timestamp.',
+        lessonDate: null, objectives: null,
+        pinned: false,
+        createdAt: new Date(streamNow - 2 * 3600 * 1000).toISOString(),
+        updatedAt: new Date(streamNow - 2 * 3600 * 1000).toISOString(),
+    });
+    await streamPostsRef.doc(POST_LESSON_PLAN_ID).set({
+        ...streamBaseFields,
+        type: 'lesson_plan',
+        title: POST_LESSON_PLAN_TITLE,
+        body: 'Lesson plan body — read-only from the Stream composer (no edit button).',
+        lessonDate: new Date(streamNow).toISOString().split('T')[0],
+        objectives: 'Understand pin priority vs. view filtering.',
+        pinned: false, // createPost() always forces this false for lesson_plan
+        createdAt: new Date(streamNow - 1.5 * 3600 * 1000).toISOString(),
+        updatedAt: new Date(streamNow - 1.5 * 3600 * 1000).toISOString(),
+    });
+    await streamPostsRef.doc(POST_UNPINNED_NEW_ID).set({
+        ...streamBaseFields,
+        type: 'announcement',
+        title: POST_UNPINNED_NEW_TITLE,
+        body: 'Unpinned, newest timestamp — chronologically first, but must NOT out-rank the pinned post.',
+        lessonDate: null, objectives: null,
+        pinned: false,
+        createdAt: new Date(streamNow - 1 * 3600 * 1000).toISOString(), // newest of the 4
+        updatedAt: new Date(streamNow - 1 * 3600 * 1000).toISOString(),
+    });
+
     console.log('Seed complete:');
     console.log(`  School:              ${SCHOOL_ID} (active semester: ${SEMESTER_ID})`);
     console.log(`  Complete teacher:    ${TEACHER_ID} / PIN ${TEACHER_PIN}`);
@@ -452,6 +900,14 @@ async function seed() {
     console.log(`  Roster/Subjects teacher: ${TEACHER_ROSTER_ID} / PIN ${TEACHER_ROSTER_PIN} (classes: ${CLASS_ROSTER_NAME}, ${CLASS_ROSTER_NAME_2}; orphan class: ${CLASS_ROSTER_NAME_ORPHAN})`);
     console.log(`  Roster students (under ${CLASS_ROSTER_NAME}): ${STUDENT_ROSTER_A_ID} (85%, submitted), ${STUDENT_ROSTER_B_ID} (55%, graded), ${STUDENT_ROSTER_NO_CLASS_ID} (no class, no grades)`);
     console.log(`  Subject/assignment: ${SUBJECT_NAME} / ${ASSIGNMENT_TITLE}`);
+    console.log(`  Grade Entry/Gradebook teacher: ${TEACHER_GRADE_ID} / PIN ${TEACHER_GRADE_PIN} (class: ${CLASS_GRADE_NAME}, subject: ${SUBJECT_GRADE_NAME})`);
+    console.log(`  Grade Entry roster (all ungraded): ${STUDENT_GRADE_1_ID}, ${STUDENT_GRADE_2_ID}, ${STUDENT_GRADE_3_ID}; disposable: ${STUDENT_GRADE_DELETE_ID}`);
+    console.log(`  Standard assignment: ${ASSIGNMENT_STANDARD_TITLE} (max ${20})`);
+    console.log(`  Assessment assignment: ${ASSIGNMENT_ASSESS_TITLE} (1 MC + 1 free-response; ${STUDENT_GRADE_1_ID} has a submitted, auto-graded submission)`);
+    console.log(`  Gradebook fixtures: ${GRADEBOOK_EDIT_GRADE_ID} (edit target, 15/20) on ${STUDENT_GRADE_1_ID}; ${GRADEBOOK_DELETE_GRADE_ID} (delete target, 10/10) on ${STUDENT_GRADE_DELETE_ID}`);
+    console.log(`  Attendance teacher: ${TEACHER_ATTENDANCE_ID} / PIN ${TEACHER_ATTENDANCE_PIN} (classes: ${CLASS_ATT_A_NAME} [${STUDENT_ATT_A1_ID}, ${STUDENT_ATT_A2_ID}, ${STUDENT_ATT_A3_ID}], ${CLASS_ATT_B_NAME} [${STUDENT_ATT_B1_ID}])`);
+    console.log(`  Stream teacher: ${TEACHER_STREAM_ID} / PIN ${TEACHER_STREAM_PIN} (subject: ${SUBJECT_STREAM_NAME})`);
+    console.log(`  Stream posts (newest first, ignoring pin): ${POST_UNPINNED_NEW_ID}, ${POST_LESSON_PLAN_ID} (lesson_plan), ${POST_UNPINNED_MID_ID}; pinned (sorts first in Stream view): ${POST_PINNED_ID}`);
 }
 
 /**
@@ -573,6 +1029,139 @@ async function setAdHocGrade(studentId, gradeDocId, fields) {
     });
 }
 
+/**
+ * Reads back a real assignment's live submission doc by its known
+ * classId/subjectId/assignmentId/studentId path — the exact path
+ * submissions.js writes to and grade_form.js's own loadSubmission() reads
+ * from (via resolvePostContext()). Used by the 5.5 (Request Revision) test
+ * to confirm commitGrade() actually flipped the submission's `status`
+ * field (rather than just trusting the in-page banner).
+ */
+async function getSubmissionDoc(classId, subjectId, assignmentId, studentId) {
+    ensureApp();
+    const db = admin.firestore();
+    const snap = await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(classId)
+        .collection('subjects').doc(subjectId)
+        .collection('assignments').doc(assignmentId)
+        .collection('submissions').doc(studentId)
+        .get();
+    return snap.exists ? snap.data() : null;
+}
+
+/**
+ * Finds a student's grade doc by its assignmentId field rather than its
+ * Firestore doc id — saveGrade() in utils.js always addDoc()s a fresh
+ * random id the first time it grades a given student+assignment pair (see
+ * that file's own comment), so a test driving the real Commit & Next UI has
+ * no way to know that id ahead of time. Used by the 5.5 (Request Revision)
+ * test to read back the perQuestion/revision payload commitGrade() wrote.
+ */
+async function findGradeByAssignment(studentId, assignmentId) {
+    ensureApp();
+    const db = admin.firestore();
+    const snap = await db.collection('students').doc(studentId)
+        .collection('grades')
+        .where('assignmentId', '==', assignmentId)
+        .limit(1)
+        .get();
+    return snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
+}
+
+/**
+ * Finds a real per-class assignment doc by its (unique, teacher-chosen)
+ * title rather than its Firestore id — grade_form.js's ensureAssignmentDoc()
+ * generates the id client-side via genId() when converting a manual entry
+ * into a real assignment template, so a test that drove that conversion
+ * through the real "Post to Class" UI has no way to know that id ahead of
+ * time. Used by the 5.2 (manual entry → real assignment template) test.
+ */
+async function findAssignmentDoc(classId, subjectId, title) {
+    ensureApp();
+    const db = admin.firestore();
+    const snap = await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(classId)
+        .collection('subjects').doc(subjectId)
+        .collection('assignments')
+        .where('title', '==', title)
+        .limit(1)
+        .get();
+    return snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
+}
+
+/**
+ * Locks or unlocks the ACTIVE semester (SEMESTER_ID) via a plain .update()
+ * (not .set(), which would wipe the doc's other fields) — used only by the
+ * 7.7 test to prove attendance.js's own save flow never once reads
+ * activeSem.isLocked (unlike grade_form.js/gradebook.js/roster.js/
+ * subjects.js, which all gate on it — see the comment on this constant's
+ * declaration). seed()'s own semester write is a full .set() with no
+ * isLocked field, so this always resets back to unlocked on the very next
+ * reseed — no explicit unlock-afterward cleanup needed in the test itself.
+ */
+async function setSemesterLocked(semesterId, locked) {
+    ensureApp();
+    const db = admin.firestore();
+    await db.collection('schools').doc(SCHOOL_ID)
+        .collection('semesters').doc(semesterId)
+        .update({ isLocked: !!locked });
+}
+
+/**
+ * Reads back one class's attendance-for-one-day doc directly — the exact
+ * schools/{schoolId}/classes/{classId}/attendance/{date} path
+ * assets/js/attendance.js's saveAttendanceForDate()/loadAttendanceForDate()
+ * both use. Returns null when that date has never been taken (no
+ * setDoc has ever run for it), same as a raw Firestore read would.
+ */
+async function getAttendanceDoc(classId, date) {
+    ensureApp();
+    const db = admin.firestore();
+    const snap = await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(classId)
+        .collection('attendance').doc(date)
+        .get();
+    return snap.exists ? snap.data() : null;
+}
+
+/**
+ * Reads back one Class Stream post by its known doc id — the exact
+ * schools/{schoolId}/classes/{classId}/subjects/{subjectId}/posts/{postId}
+ * path posts.js's createPost()/updatePost()/deletePost() all use. Used to
+ * verify a save/edit actually persisted (8.1/8.3) or that a delete actually
+ * removed the document server-side (8.4), not just from the in-page cache.
+ */
+async function getPostDoc(classId, subjectId, postId) {
+    ensureApp();
+    const db = admin.firestore();
+    const snap = await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(classId)
+        .collection('subjects').doc(subjectId)
+        .collection('posts').doc(postId)
+        .get();
+    return snap.exists ? snap.data() : null;
+}
+
+/**
+ * Finds a post by its (unique, teacher-chosen) title rather than its
+ * Firestore id — posts.js's createPost() generates the id client-side via
+ * genPostId(), so a test that created a post through the real Composer UI
+ * (8.1's valid-submission case, 8.3/8.4's disposable posts) has no way to
+ * know that id ahead of time.
+ */
+async function findPostByTitle(classId, subjectId, title) {
+    ensureApp();
+    const db = admin.firestore();
+    const snap = await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(classId)
+        .collection('subjects').doc(subjectId)
+        .collection('posts')
+        .where('title', '==', title)
+        .limit(1)
+        .get();
+    return snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
+}
+
 module.exports = {
     SCHOOL_ID, SEMESTER_ID, SEMESTER_NAME, CLASS_NAME,
     TEACHER_ID, TEACHER_PIN,
@@ -588,6 +1177,27 @@ module.exports = {
     STUDENT_ROSTER_A_ID, STUDENT_ROSTER_B_ID, STUDENT_ROSTER_NO_CLASS_ID,
     SUBJECT_ID, SUBJECT_NAME, ASSIGNMENT_ID, ASSIGNMENT_TITLE,
     SEMESTER_MIDTERM_ID, SEMESTER_MIDTERM_NAME,
+    // Phase 5 (Grade Entry) & Phase 6 (Gradebook) sandbox
+    TEACHER_GRADE_ID, TEACHER_GRADE_PIN,
+    CLASS_GRADE_NAME, CLASS_GRADE_ID,
+    SUBJECT_GRADE_ID, SUBJECT_GRADE_NAME,
+    STUDENT_GRADE_1_ID, STUDENT_GRADE_2_ID, STUDENT_GRADE_3_ID,
+    STUDENT_GRADE_DELETE_ID,
+    ASSIGNMENT_STANDARD_ID, ASSIGNMENT_STANDARD_TITLE,
+    ASSIGNMENT_ASSESS_ID, ASSIGNMENT_ASSESS_TITLE,
+    QUESTION_MC_ID, QUESTION_FR_ID,
+    GRADEBOOK_EDIT_GRADE_ID, GRADEBOOK_DELETE_GRADE_ID, GRADEBOOK_EDIT_TITLE,
+    // Phase 7 (Attendance) sandbox
+    TEACHER_ATTENDANCE_ID, TEACHER_ATTENDANCE_PIN,
+    CLASS_ATT_A_NAME, CLASS_ATT_A_ID, CLASS_ATT_B_NAME, CLASS_ATT_B_ID,
+    STUDENT_ATT_A1_ID, STUDENT_ATT_A2_ID, STUDENT_ATT_A3_ID, STUDENT_ATT_B1_ID,
+    // Phase 8 (Class Stream) sandbox
+    TEACHER_STREAM_ID, TEACHER_STREAM_PIN,
+    CLASS_STREAM_ID, CLASS_STREAM_NAME, SUBJECT_STREAM_ID, SUBJECT_STREAM_NAME,
+    POST_PINNED_ID, POST_PINNED_TITLE,
+    POST_UNPINNED_NEW_ID, POST_UNPINNED_NEW_TITLE,
+    POST_UNPINNED_MID_ID, POST_UNPINNED_MID_TITLE,
+    POST_LESSON_PLAN_ID, POST_LESSON_PLAN_TITLE,
     seed,
     setStudentScore,
     getStudentDoc,
@@ -596,6 +1206,13 @@ module.exports = {
     findSubjectDoc,
     getGradeDoc,
     setAdHocGrade,
+    findAssignmentDoc,
+    getSubmissionDoc,
+    findGradeByAssignment,
+    setSemesterLocked,
+    getAttendanceDoc,
+    getPostDoc,
+    findPostByTitle,
 };
 
 // Only run automatically when invoked directly (`node seed.js` / `npm run
