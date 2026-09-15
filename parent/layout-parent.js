@@ -134,6 +134,16 @@ export function injectParentLayout(activePageId, pageTitle, pageSub) {
                 --sb-accent-border: rgba(245,158,11,0.30);
                 --sb-hover: rgba(255,255,255,0.07);
             }
+            /* The student selector's closed state is styled white-on-burgundy
+               (text-white) to match the sidebar, but the browser renders its
+               OPEN option list as its own plain white popup. Options inherit
+               that white text color unless told otherwise, so without this
+               rule every student name is invisible (white on white) once the
+               dropdown is opened. */
+            #parentStudentSelector option {
+                color: #1e293b;
+                background: #ffffff;
+            }
         `;
         document.head.appendChild(style);
     }
