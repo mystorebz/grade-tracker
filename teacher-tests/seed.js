@@ -315,6 +315,63 @@ const EVAL_MID_ID = 'eval-e2e-mid-1';
 const EVAL_OLD_ID = 'eval-e2e-old-1';
 const EVAL_PREV_SCHOOL_ID = 'PREV-SCHOOL-E2E-001'; // a school OTHER than SCHOOL_ID, for the "Schools Evaluated At" count (12.1) and the "Previous school" badge
 
+// ── PHASE 13: ARCHIVES SANDBOX ───────────────────────────────────────────
+// archives.js's archived-student query is TWO separate Firestore queries
+// merged client-side (currentSchoolId+enrollmentStatus-in-[...] OR
+// archivedSchoolIds array-contains-schoolId), then filtered again in JS to
+// `teacherId === session.teacherId || !teacherId || teacherId === ''` —
+// so the fixture below deliberately includes an orphan (no teacherId, must
+// still appear) and an archived student that belongs to a DIFFERENT
+// teacher (must NOT appear), plus an ACTIVE student under this same
+// teacher (must NOT appear), to actually exercise that filter rather than
+// just seeding a uniform "all archived, all mine" roster.
+// Archived SUBJECTS use the new-model per-class subjects collection (same
+// as Phase 4's SUBJECT_ID), since that is what loadTeacherSubjectsCache()
+// actually resolves for a teacher with a real class — restoreSubject()/
+// permanentDeleteSubject() both branch on sub._source, and the 'new'
+// branch is the one exercised here.
+const TEACHER_ARCHIVES_ID = 'T26-TCH13';
+const TEACHER_ARCHIVES_PIN = '1234';
+const CLASS_ARCHIVES_NAME = 'E2E Archives Homeroom';
+const CLASS_ARCHIVES_ID = 'cls-e2e-archives-1';
+const SUBJECT_ARCHIVES_RESTORE_ID = 'sub-e2e-archives-restore';
+const SUBJECT_ARCHIVES_RESTORE_NAME = 'E2E Archives Restore Subject';
+const SUBJECT_ARCHIVES_DELETE_ID = 'sub-e2e-archives-delete';
+const SUBJECT_ARCHIVES_DELETE_NAME = 'E2E Archives Delete Subject';
+const SUBJECT_ARCHIVES_ACTIVE_ID = 'sub-e2e-archives-active';
+const SUBJECT_ARCHIVES_ACTIVE_NAME = 'E2E Archives Active Subject'; // NOT archived — negative control for list composition (13.1)
+const ASSIGNMENT_ARCHIVES_DELETE_ID = 'asg-e2e-archives-delete'; // proves permanentDeleteSubject()'s cascade-delete of the assignments subcollection (13.7)
+const STUDENT_ARCHIVES_RESTORE_ID = 'S26-ARC01';
+const STUDENT_ARCHIVES_DELETE_ID = 'S26-ARC02'; // has 1 grade doc, to prove permanentDeleteStudent()'s cascade-delete of the grades subcollection (13.5)
+const STUDENT_ARCHIVES_SEARCH_A_ID = 'S26-ARC03'; // name contains 'Zephyr'
+const STUDENT_ARCHIVES_SEARCH_B_ID = 'S26-ARC04'; // name contains 'Quincy'
+const STUDENT_ARCHIVES_ORPHAN_ID = 'S26-ARC05'; // teacherId '' — must still appear (the `!teacherId` clause)
+const STUDENT_ARCHIVES_ACTIVE_ID = 'S26-ARC06'; // enrollmentStatus 'Active' — must NOT appear (negative control)
+const STUDENT_ARCHIVES_OTHERTEACHER_ID = 'S26-ARC07'; // archived, but belongs to TEACHER_ID — must NOT appear in TEACHER_ARCHIVES_ID's list
+
+// ── PHASE 14: DEACTIVATED ACCOUNT SANDBOX ────────────────────────────────
+// deactivated.html is reached for real via auth.js's requireAuth() "TEACHER
+// ARCHIVE WATCHER" (an onSnapshot on the teacher's own doc, active on every
+// teacher page): when an admin flips `archived: true` on a teacher who is
+// currently logged in elsewhere in the app, that listener fires client-side
+// and redirects them here WITHOUT logging them out — session preserved on
+// purpose so this page can render their own career summary. That is the
+// real, load-bearing path tested here (rather than only a directly-mocked
+// session), since normal login already blocks archived teachers up front
+// (see the 1.4 finding this mandate references) — login is NOT how a real
+// teacher ever ends up on this page.
+const TEACHER_DEACT_ID = 'T26-TCH14'; // starts NOT archived at seed time — the test itself flips it via Admin SDK mid-session
+const TEACHER_DEACT_PIN = '1234';
+const TEACHER_DEACT_EMPTY_ID = 'T26-DEACT'; // seeded ALREADY archived, zero teachingHistory/evaluations — 14.3's empty state
+const TEACHER_DEACT_EMPTY_PIN = '1234';
+
+// ── PHASE 15: SETTINGS SANDBOX ───────────────────────────────────────────
+const TEACHER_SETTINGS_ID = 'T26-TCH15';
+const TEACHER_SETTINGS_PIN = '1234';
+const TEACHER_SETTINGS_EMAIL = 'e2e.settings.teacher@example.com';
+const TEACHER_SETTINGS_TAKEN_EMAIL = 'e2e.settings.taken@example.com'; // pre-registered to a DIFFERENT teacher, for the 15.2 email-collision block
+const TEACHER_SETTINGS_NEW_EMAIL = 'e2e.settings.newemail@example.com'; // NOT pre-registered — the 15.2 successful-change counterpart
+
 // Matches sha256Trim in functions/index.js and assets/js/crypto-utils.js
 // exactly: trim whitespace only, preserve case, SHA-256, lowercase hex.
 function sha256Trim(text) {
@@ -1374,6 +1431,213 @@ async function seed() {
             evaluatorName: 'Former Principal Diaz',
         });
 
+    // ── PHASE 13: ARCHIVES SANDBOX ────────────────────────────────────────
+    await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(CLASS_ARCHIVES_ID)
+        .set({ name: CLASS_ARCHIVES_NAME, order: 5 });
+
+    await db.collection('teachers').doc(TEACHER_ARCHIVES_ID).set(baseTeacher({
+        pin: sha256Trim(TEACHER_ARCHIVES_PIN),
+        name: 'E2E Archives Teacher',
+        classes: [CLASS_ARCHIVES_NAME],
+        securityQuestionsSet: true,
+        requiresPinReset: false,
+        profileComplete: true,
+    }));
+
+    // New-model per-class subjects (same shape as Phase 4's SUBJECT_ID) —
+    // two archived (restore + delete targets) and one active negative control.
+    const archivesSubjects = [
+        { id: SUBJECT_ARCHIVES_RESTORE_ID, name: SUBJECT_ARCHIVES_RESTORE_NAME, archived: true, archivedAt: '2026-01-05T00:00:00.000Z' },
+        { id: SUBJECT_ARCHIVES_DELETE_ID, name: SUBJECT_ARCHIVES_DELETE_NAME, archived: true, archivedAt: '2026-01-06T00:00:00.000Z' },
+        { id: SUBJECT_ARCHIVES_ACTIVE_ID, name: SUBJECT_ARCHIVES_ACTIVE_NAME, archived: false, archivedAt: null },
+    ];
+    for (const sub of archivesSubjects) {
+        await db.collection('schools').doc(SCHOOL_ID)
+            .collection('classes').doc(CLASS_ARCHIVES_ID)
+            .collection('subjects').doc(sub.id)
+            .set({
+                name: sub.name,
+                description: '',
+                schoolId: SCHOOL_ID,
+                classId: CLASS_ARCHIVES_ID,
+                archived: sub.archived,
+                archivedAt: sub.archivedAt,
+                createdAt: new Date().toISOString(),
+            });
+    }
+
+    // One assignment under the delete-target subject, so 13.7 can prove
+    // permanentDeleteSubject()'s cascade-delete of the assignments
+    // subcollection actually ran (Firestore never does this on its own).
+    await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(CLASS_ARCHIVES_ID)
+        .collection('subjects').doc(SUBJECT_ARCHIVES_DELETE_ID)
+        .collection('assignments').doc(ASSIGNMENT_ARCHIVES_DELETE_ID)
+        .set({
+            id: ASSIGNMENT_ARCHIVES_DELETE_ID,
+            title: 'E2E Archives Delete-Cascade Assignment',
+            type: 'Test',
+            maxScore: 100,
+            date: null,
+            instructions: '', description: '',
+            locked: false, lockedAt: null, completed: false,
+            attachments: [], category: 'standard', questions: [],
+            teacherId: TEACHER_ARCHIVES_ID,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+        });
+
+    // Archived-student roster — deliberately mixed ownership (see the
+    // constants-block comment above for why): the orphan and other-teacher
+    // students prove archives.js's `teacherId === session.teacherId ||
+    // !teacherId` filter actually discriminates, not just "shows everything
+    // archived at this school".
+    const archivesStudents = [
+        { id: STUDENT_ARCHIVES_RESTORE_ID, name: 'E2E Archives Restore Target', teacherId: TEACHER_ARCHIVES_ID, status: 'Archived', archivedAt: '2026-01-05', archiveReason: 'Transferred to another school' },
+        { id: STUDENT_ARCHIVES_DELETE_ID, name: 'E2E Archives Delete Target', teacherId: TEACHER_ARCHIVES_ID, status: 'Archived', archivedAt: '2026-01-06', archiveReason: 'Graduated' },
+        { id: STUDENT_ARCHIVES_SEARCH_A_ID, name: 'E2E Archives Zephyr Ostrowski', teacherId: TEACHER_ARCHIVES_ID, status: 'Archived', archivedAt: '2026-01-04', archiveReason: '' },
+        { id: STUDENT_ARCHIVES_SEARCH_B_ID, name: 'E2E Archives Quincy Delgado', teacherId: TEACHER_ARCHIVES_ID, status: 'Archived', archivedAt: '2026-01-03', archiveReason: '' },
+        { id: STUDENT_ARCHIVES_ORPHAN_ID, name: 'E2E Archives Orphan Student', teacherId: '', status: 'Archived', archivedAt: '2026-01-02', archiveReason: '' },
+        { id: STUDENT_ARCHIVES_ACTIVE_ID, name: 'E2E Archives Active Control', teacherId: TEACHER_ARCHIVES_ID, status: 'Active', archivedAt: null, archiveReason: '' },
+        { id: STUDENT_ARCHIVES_OTHERTEACHER_ID, name: 'E2E Archives OtherTeacher Control', teacherId: TEACHER_ID, status: 'Archived', archivedAt: '2026-01-01', archiveReason: '' },
+    ];
+    for (const s of archivesStudents) {
+        const doc = {
+            currentSchoolId: SCHOOL_ID,
+            teacherId: s.teacherId,
+            name: s.name,
+            enrollmentStatus: s.status,
+            className: CLASS_ARCHIVES_NAME,
+        };
+        if (s.status !== 'Active') doc.archivedAt = s.archivedAt;
+        if (s.archiveReason) doc.archiveReason = s.archiveReason;
+        await db.collection('students').doc(s.id).set(doc);
+
+        const staleArchiveGrades = await db.collection('students').doc(s.id).collection('grades').get();
+        if (!staleArchiveGrades.empty) {
+            const batch = db.batch();
+            staleArchiveGrades.docs.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+        }
+    }
+    // One grade doc on the delete-target student, to prove
+    // permanentDeleteStudent()'s cascade-delete of the grades subcollection.
+    await db.collection('students').doc(STUDENT_ARCHIVES_DELETE_ID)
+        .collection('grades').doc('grd-e2e-archives-delete-1')
+        .set({
+            studentId: STUDENT_ARCHIVES_DELETE_ID, schoolId: SCHOOL_ID, teacherId: TEACHER_ARCHIVES_ID,
+            semesterId: SEMESTER_ID, className: CLASS_ARCHIVES_NAME,
+            subject: SUBJECT_ARCHIVES_RESTORE_NAME, type: 'Test', date: '2025-12-01',
+            title: 'E2E Archives Pre-Archive Grade', score: 75, max: 100, notes: '',
+            historyLogs: [], createdAt: new Date().toISOString(),
+        });
+
+    // ── PHASE 14: DEACTIVATED ACCOUNT SANDBOX ─────────────────────────────
+    // Starts NOT archived — the spec's own test flips `archived: true` via
+    // the Admin SDK mid-session, the same real trigger auth.js's teacher
+    // archive watcher (requireAuth()) reacts to on every teacher page.
+    await db.collection('teachers').doc(TEACHER_DEACT_ID).set(baseTeacher({
+        pin: sha256Trim(TEACHER_DEACT_PIN),
+        name: 'E2E Deactivated Teacher',
+        email: 'e2e.deact.teacher@example.com',
+        phone: '501-555-0114',
+        teacherLicenseNumber: 'BZ-TCH-99914',
+        licenseType: 'Trained Teacher',
+        employmentType: 'Full-Time',
+        highestEducationLevel: "Bachelor's Degree",
+        archived: false,
+        securityQuestionsSet: true,
+        requiresPinReset: false,
+        profileComplete: true,
+        teachingHistory: [
+            {
+                schoolId: 'E2E Prior School Alpha',
+                semesterName: 'Fall 2024',
+                classes: ['Grade 5A'],
+                studentCount: 22,
+                snapshotDate: '2024-12-01T00:00:00.000Z',
+                subjectAverages: { Math: 82, Science: 77 },
+            },
+            // Deliberately missing semesterName/classes/studentCount/
+            // snapshotDate/subjectAverages — exercises the `subjects[]`
+            // pill fallback and confirms those optional bullet lines are
+            // just omitted, not rendered as "undefined".
+            { schoolId: 'E2E Prior School Beta', subjects: ['English', 'History'] },
+        ],
+    }));
+    const staleDeactEvals = await db.collection('teachers').doc(TEACHER_DEACT_ID).collection('evaluations').get();
+    if (!staleDeactEvals.empty) {
+        const batch = db.batch();
+        staleDeactEvals.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+    }
+    await db.collection('teachers').doc(TEACHER_DEACT_ID)
+        .collection('evaluations').doc('eval-e2e-deact-1')
+        .set({
+            overallRating: 4, recommendedAction: 'Commendation',
+            date: '2026-05-01', evaluatorName: 'Principal X',
+            schoolId: 'E2E Prior School Alpha',
+            strengths: 'Great lesson planning.', areasForImprovement: null,
+            comments: 'Keep it up.', type: 'end_of_year',
+        });
+    await db.collection('teachers').doc(TEACHER_DEACT_ID)
+        .collection('evaluations').doc('eval-e2e-deact-2')
+        .set({
+            overallRating: 3, recommendedAction: 'None',
+            date: '2026-01-01', evaluatorName: 'Principal Y',
+            schoolId: 'E2E Prior School Beta',
+            strengths: null, areasForImprovement: 'Needs more parent communication.',
+            comments: null, type: 'academic',
+        });
+
+    // Already archived at seed time, with nothing on record — 14.3's empty state.
+    await db.collection('teachers').doc(TEACHER_DEACT_EMPTY_ID).set(baseTeacher({
+        pin: sha256Trim(TEACHER_DEACT_EMPTY_PIN),
+        name: 'E2E Deactivated Empty Teacher',
+        archived: true,
+        securityQuestionsSet: true,
+        requiresPinReset: false,
+        profileComplete: true,
+    }));
+    const staleDeactEmptyEvals = await db.collection('teachers').doc(TEACHER_DEACT_EMPTY_ID).collection('evaluations').get();
+    if (!staleDeactEmptyEvals.empty) {
+        const batch = db.batch();
+        staleDeactEmptyEvals.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+    }
+
+    // ── PHASE 15: SETTINGS SANDBOX ────────────────────────────────────────
+    // requiresPinReset:false guarantees this teacher logs in straight to
+    // home.html (same routing rule Phase 1 established), regardless of
+    // securityQuestionsSet — deliberately false here so 15.4 exercises a
+    // real "Not Set" -> "Set" transition. No teacherLicenseNumber/
+    // licenseType/highestEducationLevel/employmentType/address.city — an
+    // intentionally incomplete profile for 15.3's initial state.
+    await db.collection('teachers').doc(TEACHER_SETTINGS_ID).set(baseTeacher({
+        pin: sha256Trim(TEACHER_SETTINGS_PIN),
+        name: 'E2E Settings Teacher',
+        email: TEACHER_SETTINGS_EMAIL,
+        phone: '501-555-0115',
+        securityQuestionsSet: false,
+        requiresPinReset: false,
+        profileComplete: true,
+    }));
+
+    // Registered to a DIFFERENT (fictional) teacher — the 15.2 collision target.
+    await db.collection('registered_emails').doc(TEACHER_SETTINGS_TAKEN_EMAIL).set({
+        email: TEACHER_SETTINGS_TAKEN_EMAIL,
+        name: 'E2E Some Other Teacher',
+        role: 'teacher',
+        referenceId: 'T26-SOMEOTHER',
+        createdAt: new Date().toISOString(),
+    });
+    // Clear out any registration this teacher's OWN email, or the
+    // successful-change target email, may have picked up from a previous
+    // run's assertions, so every fresh seed starts from the same known state.
+    await db.collection('registered_emails').doc(TEACHER_SETTINGS_EMAIL).delete();
+    await db.collection('registered_emails').doc(TEACHER_SETTINGS_NEW_EMAIL).delete();
+
     console.log('Seed complete:');
     console.log(`  School:              ${SCHOOL_ID} (active semester: ${SEMESTER_ID})`);
     console.log(`  Complete teacher:    ${TEACHER_ID} / PIN ${TEACHER_PIN}`);
@@ -1401,6 +1665,11 @@ async function seed() {
     console.log(`  Reports roster: ${STUDENT_REPORTS_1_ID} (sem1 overall 78, sem2 overall 85), ${STUDENT_REPORTS_2_ID} (sem1 overall 80, sem2 overall 75), ${STUDENT_REPORTS_EMPTY_ID} (zero grades)`);
     console.log(`  Evaluations teacher: ${TEACHER_EVAL_ID} / PIN ${TEACHER_EVAL_PIN} (${EVAL_RECENT_ID} Commendation, ${EVAL_MID_ID} Professional Development, ${EVAL_OLD_ID} None/${EVAL_PREV_SCHOOL_ID})`);
     console.log(`  Evaluations empty teacher: ${TEACHER_EVAL_EMPTY_ID} / PIN ${TEACHER_EVAL_EMPTY_PIN} (zero evaluations)`);
+    console.log(`  Archives teacher: ${TEACHER_ARCHIVES_ID} / PIN ${TEACHER_ARCHIVES_PIN} (class: ${CLASS_ARCHIVES_NAME})`);
+    console.log(`  Archived subjects: ${SUBJECT_ARCHIVES_RESTORE_ID} (restore target), ${SUBJECT_ARCHIVES_DELETE_ID} (delete target, has 1 assignment), ${SUBJECT_ARCHIVES_ACTIVE_ID} (active control)`);
+    console.log(`  Archived students: ${STUDENT_ARCHIVES_RESTORE_ID} (restore), ${STUDENT_ARCHIVES_DELETE_ID} (delete, has 1 grade), ${STUDENT_ARCHIVES_SEARCH_A_ID}/${STUDENT_ARCHIVES_SEARCH_B_ID} (search), ${STUDENT_ARCHIVES_ORPHAN_ID} (orphan, must show), ${STUDENT_ARCHIVES_ACTIVE_ID}/${STUDENT_ARCHIVES_OTHERTEACHER_ID} (must NOT show)`);
+    console.log(`  Deactivated teacher: ${TEACHER_DEACT_ID} / PIN ${TEACHER_DEACT_PIN} (starts non-archived; test flips archived:true mid-session), ${TEACHER_DEACT_EMPTY_ID} / PIN ${TEACHER_DEACT_EMPTY_PIN} (already archived, empty history/evals)`);
+    console.log(`  Settings teacher: ${TEACHER_SETTINGS_ID} / PIN ${TEACHER_SETTINGS_PIN} (email ${TEACHER_SETTINGS_EMAIL}, securityQuestionsSet:false, incomplete profile); collision email ${TEACHER_SETTINGS_TAKEN_EMAIL} pre-registered`);
 }
 
 /**
@@ -1768,6 +2037,66 @@ async function setExamPresence(examId, studentId, { connectionState, tabFocused,
     return record;
 }
 
+/**
+ * Reads back a teacher document's raw fields via the Admin SDK — used by
+ * the Phase 14 (Deactivated) archive-watcher test and the Phase 15
+ * (Settings) tests to confirm PIN hashes, security question answers, and
+ * profile field writes actually land in Firestore exactly as settings.js's
+ * own save handlers write them, not just what the UI shows. Returns null
+ * if the teacher doesn't exist.
+ */
+async function getTeacherDoc(teacherId) {
+    ensureApp();
+    const db = admin.firestore();
+    const snap = await db.collection('teachers').doc(teacherId).get();
+    return snap.exists ? snap.data() : null;
+}
+
+/**
+ * Flips a teacher's `archived` flag via the Admin SDK — used by the Phase
+ * 14 (Deactivated) test to trigger auth.js's requireAuth() "TEACHER ARCHIVE
+ * WATCHER" (an onSnapshot on this exact doc, live on every teacher page)
+ * for real, the same way an admin archiving a currently-logged-in teacher
+ * would in production — rather than only asserting against a directly
+ * mocked session.
+ */
+async function setTeacherArchived(teacherId, archived) {
+    ensureApp();
+    const db = admin.firestore();
+    await db.collection('teachers').doc(teacherId).update({ archived });
+}
+
+/**
+ * Returns the ids of every assignment doc under one per-class subject's
+ * assignments subcollection — used by the 13.7 (Permanent Delete Subject)
+ * test to confirm permanentDeleteSubject()'s cascade-delete of that
+ * subcollection actually ran (Firestore never cascade-deletes a
+ * subcollection on its own just because its parent doc was deleted).
+ */
+async function getSubjectAssignmentIds(classId, subjectId) {
+    ensureApp();
+    const db = admin.firestore();
+    const snap = await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(classId)
+        .collection('subjects').doc(subjectId)
+        .collection('assignments').get();
+    return snap.docs.map(d => d.id);
+}
+
+/**
+ * Reads back a registered_emails/{email} doc — used by the 15.2 (Email
+ * Collision) test to confirm a successful email change swaps the
+ * registration (old email's doc removed, new email's doc created) exactly
+ * as settings.js's save handler's batch does. Returns null if no such
+ * registration exists.
+ */
+async function getRegisteredEmailDoc(email) {
+    ensureApp();
+    const db = admin.firestore();
+    const snap = await db.collection('registered_emails').doc(email).get();
+    return snap.exists ? snap.data() : null;
+}
+
 module.exports = {
     SCHOOL_ID, SEMESTER_ID, SEMESTER_NAME, CLASS_NAME,
     TEACHER_ID, TEACHER_PIN,
@@ -1824,6 +2153,22 @@ module.exports = {
     TEACHER_EVAL_ID, TEACHER_EVAL_PIN,
     TEACHER_EVAL_EMPTY_ID, TEACHER_EVAL_EMPTY_PIN,
     EVAL_RECENT_ID, EVAL_MID_ID, EVAL_OLD_ID, EVAL_PREV_SCHOOL_ID,
+    // Phase 13 (Archives) sandbox
+    TEACHER_ARCHIVES_ID, TEACHER_ARCHIVES_PIN,
+    CLASS_ARCHIVES_ID, CLASS_ARCHIVES_NAME,
+    SUBJECT_ARCHIVES_RESTORE_ID, SUBJECT_ARCHIVES_RESTORE_NAME,
+    SUBJECT_ARCHIVES_DELETE_ID, SUBJECT_ARCHIVES_DELETE_NAME,
+    SUBJECT_ARCHIVES_ACTIVE_ID, SUBJECT_ARCHIVES_ACTIVE_NAME,
+    ASSIGNMENT_ARCHIVES_DELETE_ID,
+    STUDENT_ARCHIVES_RESTORE_ID, STUDENT_ARCHIVES_DELETE_ID,
+    STUDENT_ARCHIVES_SEARCH_A_ID, STUDENT_ARCHIVES_SEARCH_B_ID,
+    STUDENT_ARCHIVES_ORPHAN_ID, STUDENT_ARCHIVES_ACTIVE_ID, STUDENT_ARCHIVES_OTHERTEACHER_ID,
+    // Phase 14 (Deactivated Account) sandbox
+    TEACHER_DEACT_ID, TEACHER_DEACT_PIN,
+    TEACHER_DEACT_EMPTY_ID, TEACHER_DEACT_EMPTY_PIN,
+    // Phase 15 (Settings) sandbox
+    TEACHER_SETTINGS_ID, TEACHER_SETTINGS_PIN,
+    TEACHER_SETTINGS_EMAIL, TEACHER_SETTINGS_TAKEN_EMAIL, TEACHER_SETTINGS_NEW_EMAIL,
     seed,
     setStudentScore,
     getStudentDoc,
@@ -1844,6 +2189,10 @@ module.exports = {
     writeLiveResponse,
     findExamSubmission,
     setExamPresence,
+    getTeacherDoc,
+    setTeacherArchived,
+    getSubjectAssignmentIds,
+    getRegisteredEmailDoc,
 };
 
 // Only run automatically when invoked directly (`node seed.js` / `npm run
