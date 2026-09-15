@@ -372,6 +372,57 @@ const TEACHER_SETTINGS_EMAIL = 'e2e.settings.teacher@example.com';
 const TEACHER_SETTINGS_TAKEN_EMAIL = 'e2e.settings.taken@example.com'; // pre-registered to a DIFFERENT teacher, for the 15.2 email-collision block
 const TEACHER_SETTINGS_NEW_EMAIL = 'e2e.settings.newemail@example.com'; // NOT pre-registered — the 15.2 successful-change counterpart
 
+// ── Cross-Cutting Regressions fixtures ──────────────────────────────────
+// One dedicated teacher/class/subject, isolated from every prior phase's
+// fixtures per this mandate's Data Isolation constraint, with a legacy
+// two-type rubric (no teaching_assignments doc, matching the same
+// "legacy gradeTypes/customGradeTypes fallback" pattern the Phase 11
+// Reports fixture already established) so resolveGradeWeights() resolves
+// identically everywhere it's called: home.js, roster.js, gradebook.js,
+// grade_form.js, subjects.js, and reports.js all call it the SAME way
+// (teacherId only, no classId/subjectId), so this teacher has exactly one
+// rubric school-wide — the same rubric X.5's "before" and "after" values
+// below are computed against.
+const TEACHER_XCUT_ID = 'T26-TCHXC';
+const TEACHER_XCUT_PIN = '1234';
+const CLASS_XCUT_NAME = 'E2E Cross-Cutting Homeroom';
+const CLASS_XCUT_ID = 'cls-e2e-xcut-1';
+const SUBJECT_XCUT_NAME = 'E2E Cross-Cutting Subject';
+
+// Initial rubric: Test 50% / Quiz 50%.
+const XCUT_INITIAL_WEIGHTS = [{ name: 'Test', weight: 50 }, { name: 'Quiz', weight: 50 }];
+// X.5's "after" rubric, applied live through the real Gradebook "Save &
+// Recalculate" UI (saveTeacherWeightingEverywhere) mid-test — never seeded
+// directly, so the test proves the actual save flow, not just the math.
+const XCUT_CHANGED_WEIGHTS = [{ name: 'Test', weight: 80 }, { name: 'Quiz', weight: 20 }];
+
+// X.3: Test 70/100 AND Quiz 70/100 — both types average exactly 70%, so
+// calculateWeightedAverage() returns exactly 70 regardless of how Test/Quiz
+// weight is split between them (70*w1 + 70*w2, w1+w2=100, is always 7000).
+// That makes this student's bucket ("On Track"/"ontrack", the >=70 tier)
+// stable even across X.5's own live weight change on the SAME teacher —
+// the two tests can run in either order without interfering.
+const STUDENT_XCUT_BOUNDARY_ID = 'S26-XCUT01';
+
+// X.5: Test 100/100 (100%), Quiz 40/100 (40%). At the seeded 50/50 rubric
+// that's (100*50 + 40*50)/100 = 70%. After the test changes the rubric to
+// 80/20 it becomes (100*80 + 40*20)/100 = 88% — a large, unambiguous jump
+// to assert Dashboard/Roster/Reports all pick up after the change.
+const STUDENT_XCUT_WEIGHT_ID = 'S26-XCUT02';
+
+// X.1/X.2: one assignment with the per-assignment `locked` flag set true —
+// subjects.js's own toggleAssignmentLocked() comment states this flag is
+// "informational only" and never gates grade_form.js's grading. Paired
+// with an unlocked control assignment so the test isolates the boundary:
+// per-assignment lock never blocks grading; only the semester-level
+// isLocked (toggled live via setSemesterLocked, never seeded true here so
+// every OTHER fixture/teacher sharing this active semester is unaffected
+// at seed time) does.
+const ASSIGNMENT_XCUT_LOCKED_ID = 'asg-e2e-xcut-locked';
+const ASSIGNMENT_XCUT_LOCKED_TITLE = 'E2E XCut Locked Assignment';
+const ASSIGNMENT_XCUT_OPEN_ID = 'asg-e2e-xcut-open';
+const ASSIGNMENT_XCUT_OPEN_TITLE = 'E2E XCut Open Assignment';
+
 // Matches sha256Trim in functions/index.js and assets/js/crypto-utils.js
 // exactly: trim whitespace only, preserve case, SHA-256, lowercase hex.
 function sha256Trim(text) {
@@ -1638,6 +1689,151 @@ async function seed() {
     await db.collection('registered_emails').doc(TEACHER_SETTINGS_EMAIL).delete();
     await db.collection('registered_emails').doc(TEACHER_SETTINGS_NEW_EMAIL).delete();
 
+    // ── Cross-Cutting Regressions fixtures ──────────────────────────────
+    await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(CLASS_XCUT_ID)
+        .set({ name: CLASS_XCUT_NAME, order: 20 });
+
+    // Legacy gradeTypes/customGradeTypes only — no teaching_assignments doc
+    // seeded, so resolveGradeWeights() falls back to these fields exactly
+    // the way the Phase 11 Reports fixture already established, and X.5's
+    // "Save & Recalculate" flow (saveTeacherWeightingEverywhere) can freely
+    // write a real teaching_assignments doc for this teacher mid-test
+    // without that write racing a pre-seeded one.
+    await db.collection('teachers').doc(TEACHER_XCUT_ID).set(baseTeacher({
+        pin: sha256Trim(TEACHER_XCUT_PIN),
+        name: 'E2E Cross-Cutting Teacher',
+        classes: [CLASS_XCUT_NAME],
+        subjects: [],
+        gradeTypes: XCUT_INITIAL_WEIGHTS,
+        customGradeTypes: XCUT_INITIAL_WEIGHTS,
+        securityQuestionsSet: true,
+        requiresPinReset: false,
+        profileComplete: true,
+    }));
+
+    // Remove any teaching_assignments docs a previous X.5 run may have left
+    // behind (that test writes one for real via the app's own save flow),
+    // so every fresh seed starts back at the legacy-fallback rubric above.
+    const staleXcutAssignments = await db.collection('schools').doc(SCHOOL_ID)
+        .collection('teaching_assignments').where('teacherId', '==', TEACHER_XCUT_ID).get();
+    for (const d of staleXcutAssignments.docs) await d.ref.delete();
+
+    // New-model per-class subject (matches archives.js/subjects.js's
+    // `_source: 'new'` shape) with two prepared assignments — one carrying
+    // the per-assignment `locked: true` flag (proven cosmetic-only by
+    // X.1/X.2), one an unlocked control.
+    await db.collection('schools').doc(SCHOOL_ID)
+        .collection('classes').doc(CLASS_XCUT_ID)
+        .collection('subjects').doc('sub-e2e-xcut-1')
+        .set({
+            name: SUBJECT_XCUT_NAME,
+            description: '',
+            schoolId: SCHOOL_ID,
+            classId: CLASS_XCUT_ID,
+            archived: false,
+            archivedAt: null,
+            createdAt: new Date().toISOString(),
+        });
+
+    const xcutAssignments = [
+        { id: ASSIGNMENT_XCUT_LOCKED_ID, title: ASSIGNMENT_XCUT_LOCKED_TITLE, locked: true, lockedAt: new Date().toISOString() },
+        { id: ASSIGNMENT_XCUT_OPEN_ID, title: ASSIGNMENT_XCUT_OPEN_TITLE, locked: false, lockedAt: null },
+    ];
+    for (const a of xcutAssignments) {
+        await db.collection('schools').doc(SCHOOL_ID)
+            .collection('classes').doc(CLASS_XCUT_ID)
+            .collection('subjects').doc('sub-e2e-xcut-1')
+            .collection('assignments').doc(a.id)
+            .set({
+                id: a.id,
+                title: a.title,
+                type: 'Test',
+                maxScore: 100,
+                date: null,
+                instructions: '', description: '',
+                locked: a.locked, lockedAt: a.lockedAt, completed: false,
+                attachments: [], category: 'standard', questions: [],
+                teacherId: TEACHER_XCUT_ID,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+            });
+    }
+
+    // Two students, both Active, both on CLASS_XCUT_NAME under TEACHER_XCUT_ID.
+    const xcutStudents = [
+        { id: STUDENT_XCUT_BOUNDARY_ID, name: 'E2E XCut Boundary Student' },
+        { id: STUDENT_XCUT_WEIGHT_ID, name: 'E2E XCut Weight-Change Student' },
+    ];
+    for (const s of xcutStudents) {
+        await db.collection('students').doc(s.id).set({
+            currentSchoolId: SCHOOL_ID,
+            teacherId: TEACHER_XCUT_ID,
+            name: s.name,
+            className: CLASS_XCUT_NAME,
+            enrollmentStatus: 'Active',
+            createdAt: '2025-08-01T00:00:00.000Z',
+        });
+        const staleG = await db.collection('students').doc(s.id).collection('grades').get();
+        for (const d of staleG.docs) await d.ref.delete();
+    }
+
+    // Boundary student: Test 70/100 + Quiz 70/100 -> exactly 70% under ANY
+    // Test/Quiz weight split (see the constants-block comment for the math).
+    const xcutBoundaryGrades = [
+        { id: 'grd-e2e-xcut-boundary-test', type: 'Test', score: 70, max: 100 },
+        { id: 'grd-e2e-xcut-boundary-quiz', type: 'Quiz', score: 70, max: 100 },
+    ];
+    for (const g of xcutBoundaryGrades) {
+        await db.collection('students').doc(STUDENT_XCUT_BOUNDARY_ID).collection('grades').doc(g.id).set({
+            studentId: STUDENT_XCUT_BOUNDARY_ID,
+            schoolId: SCHOOL_ID,
+            teacherId: TEACHER_XCUT_ID,
+            semesterId: SEMESTER_ID,
+            className: CLASS_XCUT_NAME,
+            subject: SUBJECT_XCUT_NAME,
+            title: `E2E XCut Boundary ${g.type}`,
+            type: g.type,
+            score: g.score,
+            max: g.max,
+            date: new Date().toISOString(),
+            notes: '',
+        });
+    }
+
+    // Weight-change student: Test 100/100 (100%) + Quiz 40/100 (40%) -> 70%
+    // at the seeded 50/50 rubric, 88% at X.5's 80/20 "after" rubric.
+    const xcutWeightGrades = [
+        { id: 'grd-e2e-xcut-weight-test', type: 'Test', score: 100, max: 100 },
+        { id: 'grd-e2e-xcut-weight-quiz', type: 'Quiz', score: 40, max: 100 },
+    ];
+    for (const g of xcutWeightGrades) {
+        await db.collection('students').doc(STUDENT_XCUT_WEIGHT_ID).collection('grades').doc(g.id).set({
+            studentId: STUDENT_XCUT_WEIGHT_ID,
+            schoolId: SCHOOL_ID,
+            teacherId: TEACHER_XCUT_ID,
+            semesterId: SEMESTER_ID,
+            className: CLASS_XCUT_NAME,
+            subject: SUBJECT_XCUT_NAME,
+            title: `E2E XCut Weight ${g.type}`,
+            type: g.type,
+            score: g.score,
+            max: g.max,
+            date: new Date().toISOString(),
+            notes: '',
+        });
+    }
+
+    // Defensive: make sure the shared ACTIVE semester starts unlocked for
+    // every fresh seed, regardless of whatever a previous X.1/X.2 run left
+    // it as (that test unlocks it again itself in a finally-block, but a
+    // seed-level reset is the real safety net — see setSemesterLocked()'s
+    // own doc comment for why seed()'s plain .set() would already imply
+    // this if it wrote isLocked at all).
+    await db.collection('schools').doc(SCHOOL_ID)
+        .collection('semesters').doc(SEMESTER_ID)
+        .update({ isLocked: false });
+
     console.log('Seed complete:');
     console.log(`  School:              ${SCHOOL_ID} (active semester: ${SEMESTER_ID})`);
     console.log(`  Complete teacher:    ${TEACHER_ID} / PIN ${TEACHER_PIN}`);
@@ -2169,6 +2365,13 @@ module.exports = {
     // Phase 15 (Settings) sandbox
     TEACHER_SETTINGS_ID, TEACHER_SETTINGS_PIN,
     TEACHER_SETTINGS_EMAIL, TEACHER_SETTINGS_TAKEN_EMAIL, TEACHER_SETTINGS_NEW_EMAIL,
+    // Cross-Cutting Regressions sandbox
+    TEACHER_XCUT_ID, TEACHER_XCUT_PIN,
+    CLASS_XCUT_ID, CLASS_XCUT_NAME, SUBJECT_XCUT_NAME,
+    XCUT_INITIAL_WEIGHTS, XCUT_CHANGED_WEIGHTS,
+    STUDENT_XCUT_BOUNDARY_ID, STUDENT_XCUT_WEIGHT_ID,
+    ASSIGNMENT_XCUT_LOCKED_ID, ASSIGNMENT_XCUT_LOCKED_TITLE,
+    ASSIGNMENT_XCUT_OPEN_ID, ASSIGNMENT_XCUT_OPEN_TITLE,
     seed,
     setStudentScore,
     getStudentDoc,
