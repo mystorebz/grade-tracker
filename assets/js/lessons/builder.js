@@ -48,6 +48,33 @@ let quill = null;
 let pendingAssignmentBlotRange = null; // where to insert once a picker selection is made
 let openAssignmentViewId = null; // id of the assignment currently shown in the view/edit modal
 
+// Slide Deck rich-text fields (Title's Heading/Objective, Content's Body) —
+// unlike Document mode's single long-lived `quill` instance above, each of
+// these is a short-lived Quill instance tied to whichever slide is
+// currently on the canvas. renderSlideCanvas() rebuilds #slideCanvas's
+// innerHTML from scratch on every slide switch/add/delete, which destroys
+// these instances' DOM outright, so there is nothing to explicitly tear
+// down — dropping the old references here (see wireRichFields()) is
+// enough to let them be garbage collected. Keyed by field name
+// ('heading' | 'objective' | 'body') for the slide currently on screen.
+let slideFieldQuills = {};
+
+// Shared toolbar for every Slide Deck rich-text field — the same
+// formatting set Document mode's custom toolbar offers (headers, color,
+// lists, alignment, links), just expressed as Quill's declarative toolbar
+// array instead of a hand-built container, since these are small
+// per-field editors rather than one page-level editor. Quill renders this
+// as a `.ql-toolbar` element it inserts immediately before the target
+// container — no markup for it needs to exist in builder.html.
+const SLIDE_FIELD_TOOLBAR = [
+    [{ header: [1, 2, 3, false] }],
+    ['bold', 'italic', 'underline', 'strike'],
+    [{ color: [] }, { background: [] }],
+    [{ list: 'ordered' }, { list: 'bullet' }],
+    [{ align: [] }],
+    ['link', 'clean']
+];
+
 const ASSIGNMENT_TEMPLATE_LABELS = {
     title: 'Title / Objective',
     content: 'Rich Content',
@@ -141,6 +168,7 @@ function cacheEls() {
         'importOptionsBtn', 'importOptionsOverlay', 'importOptionsPanel', 'closeImportOptionsBtn',
         'importDocxInput', 'importDocxTrigger', 'importDocxStatus',
         'importSlidesUrlInput', 'importSlidesBtn', 'importSlidesStatus',
+        'importPptxInput', 'importPptxTrigger', 'importPptxStatus',
         'assignmentPickerOverlay', 'assignmentPickerPanel', 'closeAssignmentPickerBtn', 'assignmentPickerList',
         'notesOverlay', 'pacingNotesInput', 'standardsInput', 'closeNotesBtn', 'cancelNotesBtn', 'saveNotesBtn',
         'assignmentViewOverlay', 'assignmentViewPanel', 'closeAssignmentViewBtn',
@@ -241,6 +269,17 @@ function wireEvents() {
     els.importDocxTrigger.addEventListener('click', () => els.importDocxInput.click());
     els.importDocxInput.addEventListener('change', onImportDocxFileSelected);
     els.importSlidesBtn.addEventListener('click', onImportSlidesClick);
+
+    // ── PowerPoint (.pptx) import — upload + clipboard-paste ──
+    els.importPptxTrigger.addEventListener('click', () => els.importPptxInput.click());
+    els.importPptxInput.addEventListener('change', onImportPptxFileSelected);
+    // Document-wide (not scoped to the modal's DOM) because a 'paste'
+    // event only fires on a focused, pasteable target by default — the
+    // modal has no such target for this. onImportPptxPaste itself checks
+    // whether the modal is actually open before doing anything, so this is
+    // a no-op everywhere else on the page (e.g. pasting text into the
+    // lesson title input is untouched).
+    document.addEventListener('paste', onImportPptxPaste);
 }
 
 // ── 4. SUBJECT SELECTION ─────────────────────────────────────────────────
@@ -594,6 +633,7 @@ function renderSlideCanvas() {
     };
     els.slideCanvas.innerHTML = (renderers[slide.type] || renderContentCanvas)(slide);
     wireCanvasInputs(slide);
+    wireRichFields(slide);
 }
 
 // Whether a media slide's URL field currently fails validation — keyed by
@@ -616,9 +656,9 @@ function fieldWrap(label, inputHtml) {
 function renderTitleCanvas(slide) {
     return `
     <div class="bg-white rounded-xl shadow-sm border border-[#dce3ed] p-8 min-h-[360px] flex flex-col justify-center">
-        ${fieldWrap('Heading', `<input data-field="heading" type="text" value="${escHtml(slide.heading)}" placeholder="Lesson title" class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded text-[22px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
+        ${fieldWrap('Heading', `<div data-rich-field="heading" class="lb-rich-field lb-rich-field-heading"></div>`)}
         ${fieldWrap('Subheading', `<input data-field="subheading" type="text" value="${escHtml(slide.subheading)}" placeholder="Unit 4, Lesson 2" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[14px] text-[#374f6b] outline-none focus:border-[#2563eb]">`)}
-        ${fieldWrap('Objective', `<textarea data-field="objective" rows="2" placeholder="Students will be able to..." class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb] resize-none">${escHtml(slide.objective)}</textarea>`)}
+        ${fieldWrap('Objective', `<div data-rich-field="objective" class="lb-rich-field"></div>`)}
     </div>`;
 }
 
@@ -626,8 +666,57 @@ function renderContentCanvas(slide) {
     return `
     <div class="bg-white rounded-xl shadow-sm border border-[#dce3ed] p-8 min-h-[360px]">
         ${fieldWrap('Heading', `<input data-field="heading" type="text" value="${escHtml(slide.heading)}" placeholder="Slide heading" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[16px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
-        ${fieldWrap('Body', `<textarea data-field="body" rows="8" placeholder="Write this slide's content..." class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded text-[13.5px] text-[#0d1f35] outline-none focus:border-[#2563eb] resize-none leading-relaxed">${escHtml(slide.body)}</textarea>`)}
+        ${fieldWrap('Body', `<div data-rich-field="body" class="lb-rich-field"></div>`)}
     </div>`;
+}
+
+// Field-level metadata for wireRichFields() below: which slide fields get a
+// Quill instance, and which plain-text field each syncs back into (for
+// slide-thumb labels, search, and any other code that still expects plain
+// text — see newSlide()'s headingHtml/objectiveHtml/bodyHtml comment in
+// lessons.js). Driven purely by which [data-rich-field] containers exist in
+// the rendered canvas, so this one table covers both the 'title' slide
+// (heading + objective) and the 'content' slide (body) without the caller
+// needing to know which slide type it's looking at.
+const RICH_FIELD_HTML_KEY = { heading: 'headingHtml', objective: 'objectiveHtml', body: 'bodyHtml' };
+
+// Instantiates a Quill editor over every [data-rich-field] container the
+// just-rendered canvas contains (title slides: heading + objective; content
+// slides: body; every other slide type has none, so this is a no-op there).
+// Must run AFTER els.slideCanvas.innerHTML has been set — Quill needs the
+// target element already attached to the document.
+function wireRichFields(slide) {
+    slideFieldQuills = {};
+
+    els.slideCanvas.querySelectorAll('[data-rich-field]').forEach(container => {
+        const field = container.dataset.richField;
+        const htmlKey = RICH_FIELD_HTML_KEY[field];
+        if (!htmlKey) return;
+
+        const editor = new Quill(container, { theme: 'snow', modules: { toolbar: SLIDE_FIELD_TOOLBAR } });
+
+        // Backward-compat seed: a slide saved before this field existed has
+        // no *Html value, so fall back to its plain-text value (escaped,
+        // same as the old <input>/<textarea> used to show it) rather than
+        // showing nothing or throwing. The slide is only ever upgraded to a
+        // real *Html value once the teacher edits it here and saves — see
+        // the 'text-change' handler below.
+        editor.root.innerHTML = slide[htmlKey] || escHtml(slide[field]);
+        editor.history.clear();
+
+        editor.on('text-change', (delta, oldDelta, source) => {
+            if (source !== 'user') return;
+            slide[htmlKey] = editor.root.innerHTML;
+            // Quill's getText() always ends in one trailing "\n" for the
+            // editor's final line — stripped here so the plain-text mirror
+            // doesn't accumulate a phantom trailing blank line every edit.
+            slide[field] = editor.getText().replace(/\n$/, '');
+            hasUnsavedChanges = true;
+            if (field === 'heading') renderSlideThumbs(); // matches the plain-input heading handler in wireCanvasInputs()
+        });
+
+        slideFieldQuills[field] = editor;
+    });
 }
 
 function renderMediaCanvas(slide) {
@@ -1182,6 +1271,18 @@ function initQuillIfNeeded() {
         <span class="ql-formats">
             <button class="ql-list" value="ordered"></button>
             <button class="ql-list" value="bullet"></button>
+            <!-- Indent/align (Google Docs parity) — unlike the 'divider'/
+                 'assignmentEmbed' blots above, 'indent' and 'align' are
+                 built into Quill 1.3.7 itself, so no Quill.register() call
+                 is needed for these to work — only the toolbar buttons. -->
+            <button class="ql-indent" value="-1"></button>
+            <button class="ql-indent" value="+1"></button>
+        </span>
+        <span class="ql-formats">
+            <button class="ql-align" value=""></button>
+            <button class="ql-align" value="center"></button>
+            <button class="ql-align" value="right"></button>
+            <button class="ql-align" value="justify"></button>
         </span>
         <span class="ql-formats">
             <button class="ql-link"></button>
@@ -1423,18 +1524,24 @@ async function onSaveAssignmentViewEdits() {
     }
 }
 
-// ── IMPORT MATERIALS (Phase 3 scaffolding) ───────────────────────────────
-// Two import paths, both reachable from one "Import Options" modal next to
-// "New Lesson": a Google Slides / PowerPoint "Publish to Web" embed link
-// (works today — see onImportSlidesClick, below), and a .docx file picker
-// (stubbed per this phase's scope — reads the file and reports back; actual
-// .docx → lesson-content conversion is intentionally NOT implemented yet).
+// ── IMPORT MATERIALS ──────────────────────────────────────────────────────
+// Three import paths, all reachable from one "Import Options" modal next to
+// "New Lesson" (on the lesson picker — no lesson is open yet when any of
+// these run): a Google Slides / PowerPoint "Publish to Web" embed link
+// (see onImportSlidesClick, below), a .docx file picker (stubbed — reads
+// the file and reports back; actual .docx → lesson-content conversion is
+// intentionally NOT implemented yet), and native .pptx upload/paste (see
+// runPptxImport, below), which — unlike the other two — always creates a
+// brand-new Slide Deck lesson from the parsed content, since there's no
+// open lesson here to import into.
 function openImportOptionsModal() {
     if (!currentPostContext) { alert('Select a subject first.'); return; }
     els.importDocxInput.value = '';
     els.importDocxStatus.classList.add('hidden');
     els.importSlidesUrlInput.value = '';
     els.importSlidesStatus.classList.add('hidden');
+    els.importPptxInput.value = '';
+    els.importPptxStatus.classList.add('hidden');
     els.importOptionsOverlay.classList.remove('hidden');
     requestAnimationFrame(() => {
         els.importOptionsOverlay.classList.remove('opacity-0');
@@ -1539,6 +1646,255 @@ function onImportSlidesClick() {
 
     showImportStatus(els.importSlidesStatus, 'Embedded — close this and check the canvas.');
     setTimeout(closeImportOptionsModal, 900);
+}
+
+// ── NATIVE POWERPOINT (.PPTX) IMPORT ──────────────────────────────────────
+// Unlike the embed-link import above, this parses the actual file: a .pptx
+// is a ZIP archive of OOXML (an XML dialect) parts — JSZip (loaded via CDN,
+// see builder.html) unzips it, and the browser's own built-in DOMParser
+// reads the XML; no second parsing library is pulled in for this. Only
+// JSZip is a genuinely new dependency the browser doesn't already have.
+//
+// Scope of what this reads, by design: each slide's TITLE placeholder text,
+// its other text placeholders (body/subtitle/content — concatenated, in
+// document order, as that slide's body), and its first embedded raster
+// image (png/jpg/gif/bmp/webp — vector formats like EMF/WMF, which
+// PowerPoint sometimes uses for pasted charts/icons, are skipped, since
+// browsers can't render them as an <img> anyway). It does NOT read speaker
+// notes, tables, charts, SmartArt, grouped/rotated shapes, animations, or
+// slide masters/layouts (placeholder text that comes ONLY from a slide's
+// layout — nothing typed directly on the slide itself — won't be picked
+// up). A slide that parses to no usable content is still imported as an
+// empty Content slide rather than silently dropped, so the deck's slide
+// count and order always match the source file.
+//
+// Each parsed slide maps to exactly one Slide Deck slide type:
+//   - text + a picture, or text with no picture  → 'content' (heading +
+//     body; a picture here is noted in the body text, not dropped, since a
+//     Content slide has no image field of its own — see newSlide()).
+//   - a picture with no other text                → 'media' (image)
+//   - title text only, nothing else                → 'title'
+//
+// Images are inlined as base64 data: URIs directly into the slide's
+// imageUrl field — there is no image-upload/Storage pipeline wired into
+// this builder today (existing Media slides only ever accept an
+// already-hosted external URL), and adding one is a bigger piece of work
+// than this import feature itself. This is a real trade-off, not a bug:
+// a deck with several large images can hit Firestore's 1MB-per-document
+// cap on save — describeSaveFailure() already has a specific, clear error
+// message for exactly that case, so it fails loud and explained rather
+// than silently, but it WILL fail for image-heavy decks until real image
+// upload exists.
+function isPptxFile(file) {
+    return /\.pptx$/i.test(file?.name || '') ||
+        file?.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+}
+
+async function onImportPptxFileSelected(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same filename after a failed attempt
+    if (!file) return;
+    await runPptxImport(file);
+}
+
+async function onImportPptxPaste(e) {
+    if (els.importOptionsOverlay.classList.contains('hidden')) return; // only act while this modal is open
+    const file = [...(e.clipboardData?.files || [])].find(isPptxFile);
+    if (!file) return;
+    e.preventDefault();
+    await runPptxImport(file);
+}
+
+async function runPptxImport(file) {
+    if (!currentPostContext) { alert('Select a subject first.'); return; }
+    if (typeof JSZip === 'undefined') {
+        showImportStatus(els.importPptxStatus, "PowerPoint import isn't available right now (a required library failed to load) — please reload the page and try again.", true);
+        return;
+    }
+
+    showImportStatus(els.importPptxStatus, `Reading ${file.name}…`);
+    els.importPptxTrigger.classList.add('opacity-50', 'pointer-events-none');
+
+    try {
+        const slides = await parsePptxFile(file);
+        const title = (file.name || 'Imported Presentation')
+            .replace(/\.pptx$/i, '').replace(/[_-]+/g, ' ').trim() || 'Imported Presentation';
+
+        // No lesson is open on the picker view this modal lives on (see
+        // this section's top comment), so importing always creates a new
+        // Slide Deck lesson — createLesson() seeds one default title slide,
+        // immediately overwritten by saveLessonContent() with the real
+        // parsed slides, same two-step create-then-populate pattern
+        // onCreateLesson() + openBuilder() already use for a manually
+        // created lesson.
+        const authorContext = { authorId: session.teacherId, authorName: session.teacherData.name };
+        const lesson = await createLesson(session.schoolId, currentPostContext, authorContext, { title, format: 'slides' });
+        await saveLessonContent(session.schoolId, currentPostContext, lesson.id, { title, slides });
+        lessonsCache.unshift({ ...lesson, title, slides });
+
+        showImportStatus(els.importPptxStatus, `Imported ${slides.length} slide${slides.length === 1 ? '' : 's'} — opening "${title}"…`);
+        setTimeout(async () => {
+            closeImportOptionsModal();
+            await openBuilder(lesson.id);
+        }, 700);
+    } catch (err) {
+        console.error('[Lesson Builder] PPTX import failed:', err);
+        const message = (err?.message && err.message.length < 160) ? err.message : 'Could not read that PowerPoint file. Please try a different file.';
+        showImportStatus(els.importPptxStatus, message, true);
+    } finally {
+        els.importPptxTrigger.classList.remove('opacity-50', 'pointer-events-none');
+    }
+}
+
+// Resolves a package-relative or ..-relative OOXML rels Target against a
+// base directory — e.g. normalizeZipPath('ppt/slides/', '../media/image1.png')
+// → 'ppt/media/image1.png'. Needed because rels Targets are written
+// relative to the folder the .rels file's SUBJECT part lives in, not to
+// the package root.
+function normalizeZipPath(base, target) {
+    if (!target) return '';
+    if (target.startsWith('/')) return target.slice(1);
+    const baseDir = base.endsWith('/') ? base : base + '/';
+    const stack = [];
+    for (const part of (baseDir + target).split('/')) {
+        if (!part || part === '.') continue;
+        if (part === '..') stack.pop();
+        else stack.push(part);
+    }
+    return stack.join('/');
+}
+
+async function readZipXml(zip, path) {
+    const entry = zip.file(path);
+    if (!entry) return null;
+    const text = await entry.async('text');
+    const doc = new DOMParser().parseFromString(text, 'application/xml');
+    if (doc.getElementsByTagName('parsererror').length) return null;
+    return doc;
+}
+
+const PPTX_IMAGE_MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', webp: 'image/webp' };
+
+async function parsePptxFile(file) {
+    let zip;
+    try {
+        zip = await JSZip.loadAsync(file);
+    } catch (err) {
+        throw new Error("That file couldn't be opened — make sure it's a real, unmodified .pptx file.");
+    }
+
+    // The presentation's own slide-id list (ppt/presentation.xml) is the
+    // only authoritative slide ORDER — PowerPoint does not guarantee
+    // slide N's part is actually named slideN.xml, so this resolves each
+    // <p:sldId>'s r:id through presentation.xml.rels rather than just
+    // listing ppt/slides/*.xml alphabetically.
+    const presentationDoc = await readZipXml(zip, 'ppt/presentation.xml');
+    const presentationRels = await readZipXml(zip, 'ppt/_rels/presentation.xml.rels');
+    if (!presentationDoc || !presentationRels) {
+        throw new Error("This doesn't look like a valid .pptx file (its presentation.xml is missing or unreadable).");
+    }
+
+    const relIdToTarget = {};
+    presentationRels.querySelectorAll('Relationship').forEach(rel => {
+        relIdToTarget[rel.getAttribute('Id')] = rel.getAttribute('Target');
+    });
+
+    const slidePaths = [...presentationDoc.getElementsByTagName('p:sldId')]
+        .map(node => node.getAttribute('r:id'))
+        .filter(Boolean)
+        .map(rid => relIdToTarget[rid])
+        .filter(Boolean)
+        .map(target => normalizeZipPath('ppt/', target));
+
+    if (!slidePaths.length) throw new Error('No slides were found in this file.');
+
+    const slides = [];
+    for (const slidePath of slidePaths) {
+        try {
+            slides.push(await parseOnePptxSlide(zip, slidePath));
+        } catch (err) {
+            // One malformed slide shouldn't sink the whole import — skip it
+            // but keep going, same "degrade, don't crash" approach
+            // describeSaveFailure()/renderMediaCanvas's onerror take
+            // elsewhere in this file. It IS still logged so a genuinely
+            // bad import is diagnosable rather than mysteriously short a
+            // slide.
+            console.warn(`[Lesson Builder] Skipped an unreadable slide (${slidePath}):`, err);
+        }
+    }
+    if (!slides.length) throw new Error("Slides were found, but none of their content could be read.");
+    return slides;
+}
+
+async function parseOnePptxSlide(zip, slidePath) {
+    const doc = await readZipXml(zip, slidePath);
+    if (!doc) return newSlide('content'); // malformed slide XML — still counts as a slide, just an empty one
+
+    // Sibling _rels/<partName>.rels is where OOXML always keeps a part's
+    // own relationships (here: which rId a <a:blip r:embed="rId"> points
+    // to in ppt/media/).
+    const relsPath = slidePath.replace(/([^/]+)$/, '_rels/$1.rels');
+    const relsDoc = await readZipXml(zip, relsPath);
+    const imageRelIdToTarget = {};
+    if (relsDoc) {
+        relsDoc.querySelectorAll('Relationship').forEach(rel => {
+            if ((rel.getAttribute('Type') || '').indexOf('/image') !== -1) {
+                imageRelIdToTarget[rel.getAttribute('Id')] = rel.getAttribute('Target');
+            }
+        });
+    }
+
+    let title = '';
+    const bodyParagraphs = [];
+    [...doc.getElementsByTagName('p:sp')].forEach(shape => {
+        const phType = shape.getElementsByTagName('p:ph')[0]?.getAttribute('type') || '';
+        const isTitlePh = phType === 'title' || phType === 'ctrTitle';
+
+        const paragraphs = [...shape.getElementsByTagName('a:p')]
+            .map(p => [...p.getElementsByTagName('a:t')].map(t => t.textContent).join(''))
+            .filter(text => text.length);
+        if (!paragraphs.length) return;
+
+        if (isTitlePh && !title) title = paragraphs.join(' ');
+        else bodyParagraphs.push(...paragraphs);
+    });
+
+    // First browser-renderable embedded image on the slide, if any (see
+    // this section's top comment on why only raster formats are kept).
+    let imageDataUrl = null;
+    const blipRid = doc.getElementsByTagName('a:blip')[0]?.getAttribute('r:embed');
+    const mediaTarget = blipRid && imageRelIdToTarget[blipRid];
+    if (mediaTarget) {
+        const mediaPath = normalizeZipPath(slidePath.replace(/slides\/[^/]+$/, ''), mediaTarget);
+        const mime = PPTX_IMAGE_MIME[(mediaPath.split('.').pop() || '').toLowerCase()];
+        const mediaEntry = mime && zip.file(mediaPath);
+        if (mediaEntry) {
+            const base64 = await mediaEntry.async('base64');
+            imageDataUrl = `data:${mime};base64,${base64}`;
+        }
+    }
+
+    const bodyText = bodyParagraphs.join('\n');
+
+    if (imageDataUrl && !bodyText) {
+        const slide = newSlide('media');
+        slide.mediaKind = 'image';
+        slide.imageUrl = imageDataUrl;
+        slide.heading = title;
+        return slide;
+    }
+    if (title && !bodyText && !imageDataUrl) {
+        const slide = newSlide('title');
+        slide.heading = title;
+        return slide;
+    }
+    const slide = newSlide('content');
+    slide.heading = title;
+    slide.body = bodyText || (title ? '' : 'This slide had no readable text.');
+    if (imageDataUrl) {
+        slide.body += (slide.body ? '\n\n' : '') + '[This slide also had an image, which was not imported — recreate it as a Media slide if you need it.]';
+    }
+    return slide;
 }
 
 function onAssignmentPickerClick(e) {

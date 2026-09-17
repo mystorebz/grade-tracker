@@ -109,7 +109,18 @@ export function newSlide(type) {
     const id = genSlideId();
     switch (type) {
         case 'title':
-            return { id, type: 'title', heading: '', subheading: '', objective: '' };
+            // headingHtml/objectiveHtml: rich-text (Quill) versions of
+            // heading/objective, added for Slide Deck toolbar parity with
+            // the Document format. heading/objective themselves stay
+            // plain-text mirrors — kept in sync by the builder on every
+            // edit — because other code (slide-thumb labels, list
+            // previews) still expects plain text there. A slide with no
+            // *Html value is a legacy slide that predates this field, and
+            // every renderer treats that as "fall back to the escaped
+            // plain-text value" rather than throwing — see builder.js's
+            // wireRichFields() and lessons/live.js + lessons/viewer.js's
+            // title-slide renderers.
+            return { id, type: 'title', heading: '', subheading: '', objective: '', headingHtml: '', objectiveHtml: '' };
         case 'media':
             // mediaKind picks which of the two sub-modes this slide is in —
             // 'video' (external iframe embed: YouTube/Vimeo/Drive, via
@@ -154,7 +165,10 @@ export function newSlide(type) {
             return { id, type: 'richtext', contentHtml: '' };
         case 'content':
         default:
-            return { id, type: 'content', heading: '', body: '', bullets: [] };
+            // bodyHtml: rich-text (Quill) version of body — same
+            // legacy-fallback convention as headingHtml/objectiveHtml on
+            // 'title' above (see that case's comment).
+            return { id, type: 'content', heading: '', body: '', bullets: [], bodyHtml: '' };
     }
 }
 

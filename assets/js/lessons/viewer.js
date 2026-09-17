@@ -462,12 +462,21 @@ function renderSlideCanvas() {
     }
 }
 
+// headingHtml/objectiveHtml/bodyHtml (Slide Deck toolbar parity, see
+// lessons.js's newSlide()) take priority when present; a slide saved
+// before those fields existed has none, so these fall back to the escaped
+// plain heading/objective/body exactly as they rendered before — same
+// legacy-compat convention this file's Document-format rendering already
+// relies on (an empty contentHtml just shows the empty-state message).
+// The `.ql-editor` class reuses Quill's own CSS (already loaded on this
+// page for the Document-format read-only editor below) purely for its
+// typography rules — this is a plain div, not a live Quill instance.
 function renderTitleSlideHtml(slide) {
     return `
     <div class="lv-slide-card items-center text-center">
         <p class="text-[11px] font-black text-indigo-400 uppercase tracking-widest mb-3">${escHtml(slide.subheading || '')}</p>
-        <h2 class="text-2xl md:text-3xl font-black text-slate-800 leading-tight mb-4">${escHtml(slide.heading) || 'Untitled Slide'}</h2>
-        ${slide.objective ? `<p class="text-[14px] text-slate-500 font-semibold max-w-md mx-auto leading-relaxed">${escHtml(slide.objective)}</p>` : ''}
+        <div class="ql-editor text-2xl md:text-3xl font-black text-slate-800 leading-tight mb-4" style="padding:0; text-align:center;">${slide.headingHtml || escHtml(slide.heading) || 'Untitled Slide'}</div>
+        ${(slide.objectiveHtml || slide.objective) ? `<div class="ql-editor text-[14px] text-slate-500 font-semibold max-w-md mx-auto leading-relaxed" style="padding:0; text-align:center;">${slide.objectiveHtml || escHtml(slide.objective)}</div>` : ''}
     </div>`;
 }
 
@@ -475,7 +484,9 @@ function renderContentSlideHtml(slide) {
     return `
     <div class="lv-slide-card">
         ${slide.heading ? `<h2 class="text-xl md:text-2xl font-black text-slate-800 mb-4">${escHtml(slide.heading)}</h2>` : ''}
-        <p class="text-[14.5px] text-slate-600 leading-relaxed whitespace-pre-wrap m-0">${escHtml(slide.body)}</p>
+        ${slide.bodyHtml
+            ? `<div class="ql-editor text-[14.5px] text-slate-600 leading-relaxed" style="padding:0;">${slide.bodyHtml}</div>`
+            : `<p class="text-[14.5px] text-slate-600 leading-relaxed whitespace-pre-wrap m-0">${escHtml(slide.body)}</p>`}
     </div>`;
 }
 

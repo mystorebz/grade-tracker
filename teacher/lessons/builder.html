@@ -22,6 +22,13 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js"></script>
 
+    <!-- JSZip — native .pptx import only (a .pptx is a ZIP of XML parts;
+         see builder.js's "NATIVE POWERPOINT (.PPTX) IMPORT" section). No
+         separate PPTX-parsing library is loaded: the actual slide XML is
+         read with the browser's own built-in DOMParser, so JSZip (just the
+         unzip step) is the only new dependency this feature needed. -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
     <style>
         /* Match Quill's editing surface to this app's own type scale/colors
            instead of its default look, and give the custom assignment-card
@@ -34,6 +41,20 @@
         #docEditor.ql-container { border-color: #dce3ed; border-radius: 0 0 0.75rem 0.75rem; font-family: 'DM Sans', sans-serif; }
         .assignment-embed { display: inline-flex; align-items: center; gap: 6px; background: #eef4ff; border: 1px solid #c7d9fd; color: #2563eb; font-weight: 700; font-size: 12.5px; padding: 4px 10px 4px 8px; border-radius: 999px; cursor: pointer; user-select: none; }
         .assignment-embed:hover { background: #dbe8ff; }
+
+        /* Slide Deck rich-text fields (Title's Heading/Objective, Content's
+           Body — see builder.js's wireRichFields()). Each is its own small
+           Quill instance; Quill auto-generates the .ql-toolbar element
+           itself (it does not inherit the container div's own class), so
+           these are scoped generically to any Quill instance inside
+           #slideCanvas rather than by the .lb-rich-field class. */
+        #slideCanvas .ql-toolbar.ql-snow { border-color: #dce3ed; background: #f8fafb; border-radius: 0.5rem 0.5rem 0 0; padding: 5px 6px; }
+        #slideCanvas .ql-container.ql-snow { border-color: #dce3ed; border-radius: 0 0 0.5rem 0.5rem; font-family: 'DM Sans', sans-serif; font-size: 13.5px; }
+        #slideCanvas .ql-editor { padding: 10px 12px; min-height: 44px; color: #0d1f35; line-height: 1.55; }
+        /* .lb-rich-field-heading IS preserved on the container div itself
+           (Quill augments that element in place rather than replacing it),
+           so this one can safely target it directly. */
+        #slideCanvas .lb-rich-field-heading.ql-container .ql-editor { font-size: 22px; font-weight: 700; }
     </style>
 </head>
 <body class="flex w-full h-screen overflow-hidden bg-[#f4f7fb] font-['DM_Sans']">
@@ -327,6 +348,33 @@
                         <button id="importSlidesBtn" class="bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-2 px-3 rounded text-[12px] transition flex-shrink-0">Embed</button>
                     </div>
                     <p id="importSlidesStatus" class="text-[11px] font-semibold text-[#6b84a0] mt-2 m-0 hidden"></p>
+                </div>
+
+                <!-- Native PowerPoint import: real .pptx upload or paste,
+                     parsed client-side and auto-mapped to Slide Deck
+                     slides — see builder.js's runPptxImport()/
+                     parsePptxFile(). Always creates a brand-new lesson
+                     (this modal only ever opens from the lesson picker,
+                     before any lesson is open — see openImportOptionsModal's
+                     comment in builder.js). -->
+                <div class="border border-[#dce3ed] rounded-lg p-3.5">
+                    <div class="flex items-center gap-2.5 mb-2">
+                        <div class="w-8 h-8 rounded-lg bg-[#fdf2f8] text-[#be185d] border border-[#fbcfe8] flex items-center justify-center flex-shrink-0">
+                            <i class="fa-solid fa-file-powerpoint"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <p class="font-bold text-[#0d1f35] text-[13px] m-0">Import PowerPoint</p>
+                            <p class="text-[10.5px] text-[#9ab0c6] m-0">.pptx — creates a new Slide Deck lesson</p>
+                        </div>
+                    </div>
+                    <label class="block">
+                        <input type="file" id="importPptxInput" accept=".pptx" class="hidden">
+                        <span id="importPptxTrigger" class="cursor-pointer w-full inline-flex items-center justify-center gap-2 bg-[#f4f7fb] hover:bg-[#eef4ff] text-[#0d1f35] font-bold py-2 px-3 rounded text-[12px] border border-[#dce3ed] transition">
+                            <i class="fa-solid fa-upload"></i> Choose .pptx File
+                        </span>
+                    </label>
+                    <p class="text-[10px] text-[#9ab0c6] mt-1.5 mb-0">Or copy a .pptx file and paste (Ctrl/Cmd+V) anywhere on this window while this dialog is open.</p>
+                    <p id="importPptxStatus" class="text-[11px] font-semibold text-[#6b84a0] mt-2 m-0 hidden"></p>
                 </div>
             </div>
         </div>

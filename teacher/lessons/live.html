@@ -38,6 +38,16 @@
         .lb-media-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
         .lb-richtext { display: block; text-align: left; }
         .lb-richtext h1, .lb-richtext h2, .lb-richtext h3 { font-weight: 900; color: #1e293b; }
+        /* Added for Slide Deck rich-text fields (Title/Objective/Rich
+           Content — see lessons.js's newSlide() headingHtml/objectiveHtml/
+           bodyHtml comment): those fields' shared toolbar allows lists and
+           alignment that the Document-only rules above never needed to
+           cover. p/ul/ol margins mirror Quill's own .ql-editor defaults so
+           saved content looks the same here as it did in the builder. */
+        .lb-richtext p { margin: 0 0 0.6em; }
+        .lb-richtext p:last-child { margin-bottom: 0; }
+        .lb-richtext ul, .lb-richtext ol { margin: 0 0 0.6em; padding-left: 1.5em; }
+        .lb-richtext li { margin-bottom: 0.2em; }
 
         .lb-live-badge {
             display: inline-flex; align-items: center; gap: 6px;

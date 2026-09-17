@@ -209,11 +209,17 @@ function renderCurrentBlock() {
 function renderBlockHtml(block) {
     switch (block.type) {
         case 'title':
+            // headingHtml/objectiveHtml (Slide Deck toolbar parity, see
+            // lessons.js's newSlide()) take priority when present; a slide
+            // saved before that field existed has none, so this falls back
+            // to the plain heading/objective exactly as before — same
+            // legacy-compat convention as the 'richtext' case's contentHtml
+            // fallback just below.
             return `
             <div class="lb-block-card items-center text-center">
                 <p class="text-[11px] font-black text-teal-500 uppercase tracking-widest mb-3">${escHtml(block.subheading || '')}</p>
-                <h2 class="text-2xl md:text-3xl font-black text-slate-800 leading-tight mb-4">${escHtml(block.heading) || 'Untitled Slide'}</h2>
-                ${block.objective ? `<p class="text-[14px] text-slate-500 font-semibold max-w-md mx-auto leading-relaxed">${escHtml(block.objective)}</p>` : ''}
+                <div class="lb-richtext text-2xl md:text-3xl font-black text-slate-800 leading-tight mb-4" style="text-align:center;">${block.headingHtml || escHtml(block.heading) || 'Untitled Slide'}</div>
+                ${(block.objectiveHtml || block.objective) ? `<div class="lb-richtext text-[14px] text-slate-500 font-semibold max-w-md mx-auto leading-relaxed" style="text-align:center;">${block.objectiveHtml || escHtml(block.objective)}</div>` : ''}
             </div>`;
         case 'media':
             return `
@@ -251,10 +257,16 @@ function renderBlockHtml(block) {
             </div>`;
         case 'content':
         default:
+            // bodyHtml (Slide Deck toolbar parity) takes priority when
+            // present, same legacy-fallback convention as the 'title' case
+            // above — a pre-existing slide with no bodyHtml falls back to
+            // the plain body text, unchanged from before this field existed.
             return `
             <div class="lb-block-card">
                 ${block.heading ? `<h2 class="text-xl md:text-2xl font-black text-slate-800 mb-4">${escHtml(block.heading)}</h2>` : ''}
-                <p class="text-[14.5px] text-slate-600 leading-relaxed whitespace-pre-wrap">${escHtml(block.body || '')}</p>
+                ${block.bodyHtml
+                    ? `<div class="lb-richtext text-[14.5px] text-slate-600 leading-relaxed">${block.bodyHtml}</div>`
+                    : `<p class="text-[14.5px] text-slate-600 leading-relaxed whitespace-pre-wrap">${escHtml(block.body || '')}</p>`}
             </div>`;
     }
 }
