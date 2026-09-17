@@ -206,20 +206,44 @@ export function newSlide(type) {
 // live-session prompt mechanics) keeps functioning exactly as it already
 // does — only how a block gets ONTO a slide is changing, not what it does
 // once there.
-export function newBlock(type) {
+//
+// FREE-FORM CANVAS: every block also carries x/y/w/h — percentages (0-100)
+// of the slide stage's box, not pixels, so a saved layout still makes sense
+// at any screen size / on the student-facing viewer's own stage. This is
+// what lets a block be dragged and resized anywhere on the slide, PowerPoint/
+// Google-Slides style, instead of always flowing top-to-bottom in a fixed
+// stack. BLOCK_DEFAULT_SIZE is the starting w/h for a freshly-inserted
+// block of each type; x/y default to a small cascade (see builder.js's
+// insertBlock()) so several quick inserts don't all land exactly on top of
+// one another. ensureBlockLayout() below is what backfills x/y/w/h for a
+// block that predates this feature (an already-migrated 'blank' slide
+// saved before free-form positioning existed) — every read path runs
+// through it via migrateLegacySlide(), so no lesson saved before this
+// change loses or overlaps its content the first time it's opened.
+export const BLOCK_DEFAULT_SIZE = {
+    text: { w: 60, h: 16 },
+    image: { w: 50, h: 38 },
+    video: { w: 55, h: 34 },
+    interactive_prompt: { w: 65, h: 26 },
+    assignment: { w: 60, h: 18 }
+};
+
+export function newBlock(type, layout) {
     const id = genBlockId();
+    const size = BLOCK_DEFAULT_SIZE[type] || BLOCK_DEFAULT_SIZE.text;
+    const pos = { x: 12, y: 10, w: size.w, h: size.h, ...(layout || {}) };
     switch (type) {
         case 'image':
-            return { id, type: 'image', imageUrl: '', imageAlt: '', caption: '' };
+            return { id, type: 'image', imageUrl: '', imageAlt: '', caption: '', ...pos };
         case 'video':
             // provider/mediaUrl/embedUrl: same fields/semantics as the old
             // 'media' slide's video sub-mode — populated via
             // parseMediaUrl() below, unchanged (YouTube/Vimeo/Drive only).
-            return { id, type: 'video', provider: null, mediaUrl: '', embedUrl: '', caption: '' };
+            return { id, type: 'video', provider: null, mediaUrl: '', embedUrl: '', caption: '', ...pos };
         case 'interactive_prompt':
-            return { id, type: 'interactive_prompt', promptText: '', promptKind: 'short_answer', choices: [] };
+            return { id, type: 'interactive_prompt', promptText: '', promptKind: 'short_answer', choices: [], ...pos };
         case 'assignment':
-            return { id, type: 'assignment', prompt: '', linkedAssignmentId: null };
+            return { id, type: 'assignment', prompt: '', linkedAssignmentId: null, ...pos };
         case 'text':
         default:
             // html: Quill-produced rich HTML, same convention as the old
@@ -227,8 +251,33 @@ export function newBlock(type) {
             // fields — a block with an empty html is just an empty text
             // box, never a legacy/fallback case (blocks are new; there is
             // no plain-text mirror to fall back to).
-            return { id, type: 'text', html: '' };
+            return { id, type: 'text', html: '', ...pos };
     }
+}
+
+// Backfills x/y/w/h on any block of a 'blank' slide that doesn't already
+// have real numbers there — a simple top-to-bottom auto-stack, so a slide
+// migrated straight from the old fixed-type schema (or saved by this app
+// before free-form positioning existed) still reads top-to-bottom in its
+// original order rather than piling every block into the same corner.
+// Idempotent and non-destructive: a block that already has a stored
+// position is never touched, so once a teacher (or this function, on first
+// load) has placed something, that placement sticks.
+function ensureBlockLayout(slide) {
+    if (!slide || slide.type !== 'blank' || !Array.isArray(slide.blocks)) return slide;
+    let cursorY = 6;
+    slide.blocks.forEach(block => {
+        if (typeof block.x === 'number' && typeof block.y === 'number' && typeof block.w === 'number' && typeof block.h === 'number') {
+            return;
+        }
+        const size = BLOCK_DEFAULT_SIZE[block.type] || BLOCK_DEFAULT_SIZE.text;
+        block.x = 8;
+        block.w = size.w;
+        block.h = size.h;
+        block.y = Math.min(cursorY, Math.max(0, 100 - size.h - 2));
+        cursorY = block.y + size.h + 3;
+    });
+    return slide;
 }
 
 function escHtmlForMigration(str) {
@@ -257,9 +306,11 @@ function escHtmlForMigration(str) {
 // never writes anything.
 export function migrateLegacySlide(slide) {
     if (!slide || typeof slide !== 'object') return slide;
-    // Already new-shape, or one of the two whole-slide types that never
-    // become blocks — pass through untouched.
-    if (slide.type === 'blank' && Array.isArray(slide.blocks)) return slide;
+    // Already new-shape — still runs through ensureBlockLayout() (a
+    // 'blank' slide saved before free-form positioning existed has blocks
+    // with no x/y/w/h yet), or one of the two whole-slide types that never
+    // become blocks and pass through completely untouched.
+    if (slide.type === 'blank' && Array.isArray(slide.blocks)) return ensureBlockLayout(slide);
     if (slide.type === 'collaborative_board' || slide.type === 'richtext') return slide;
 
     const blocks = [];
@@ -318,7 +369,7 @@ export function migrateLegacySlide(slide) {
             break;
     }
 
-    return { id: slide.id || genSlideId(), type: 'blank', blocks };
+    return ensureBlockLayout({ id: slide.id || genSlideId(), type: 'blank', blocks });
 }
 
 // Applies migrateLegacySlide() across an entire lesson's slides[] array —

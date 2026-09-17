@@ -53,6 +53,16 @@
            complaint, without that readability regression. */
         .lv-deck-stage { display: flex; align-items: stretch; justify-content: center; flex: 1; min-height: 0; padding: 20px 32px; }
         .lv-slide-card { background: #fff; border-radius: 20px; box-shadow: 0 4px 24px rgba(30,27,75,0.08); border: 1px solid #e2e8f0; width: 100%; max-width: 1400px; height: 100%; min-height: 420px; padding: 48px; display: flex; flex-direction: column; justify-content: center; }
+        /* Free-form slide stage: mirrors the builder's own .lb-slide-stage
+           (16:9 box, blocks absolutely positioned by their saved x/y/w/h
+           percentages) so a 'blank' slide looks the same here as it did when
+           the teacher built it — read-only, no drag/resize affordances. Only
+           one dimension (height) is left to `auto` so aspect-ratio actually
+           applies; align-self overrides the parent .lv-deck-stage's
+           align-items:stretch so this box doesn't get force-stretched to the
+           full column height like the other (non-free-form) slide cards. */
+        .lv-slide-card.lv-live-stage { display: block; position: relative; overflow: hidden; align-self: center; height: auto; aspect-ratio: 16 / 9; box-sizing: border-box; }
+        .lv-live-block { position: absolute; overflow: auto; }
         .lv-nav-btn { width: 48px; height: 48px; border-radius: 999px; background: #fff; border: 1px solid #e2e8f0; color: #4338ca; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(30,27,75,0.08); transition: transform 0.12s, box-shadow 0.12s; flex-shrink: 0; }
         .lv-nav-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(30,27,75,0.14); }
         .lv-nav-btn:disabled { opacity: 0.35; cursor: default; }

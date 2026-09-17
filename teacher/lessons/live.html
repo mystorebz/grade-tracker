@@ -29,6 +29,15 @@
             background: #fff; border: 1px solid #e2e8f0; border-radius: 18px;
             padding: 36px; min-height: 320px; display: flex; flex-direction: column; justify-content: center;
         }
+        /* Free-form slide stage: mirrors the builder's own .lb-slide-stage
+           (16:9 box, blocks absolutely positioned inside by their saved
+           x/y/w/h percentages) so what the teacher built matches what's
+           presented here — read-only, no drag/resize affordances needed. */
+        .lb-block-card.lb-live-stage {
+            display: block; position: relative; overflow: hidden;
+            aspect-ratio: 16 / 9; padding: 36px 44px; min-height: 0; box-sizing: border-box;
+        }
+        .lb-live-block { position: absolute; overflow: auto; }
         .lb-media-placeholder {
             display: flex; align-items: center; justify-content: center; min-height: 220px;
             background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 14px;

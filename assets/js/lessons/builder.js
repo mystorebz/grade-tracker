@@ -206,6 +206,44 @@ function currentTheme() {
     return THEMES[lessonDraft?.theme] || THEMES.general;
 }
 
+// ── SLIDE DECK REDESIGN: slide-layout gallery ("Add Slide" popover) ────────
+// PowerPoint's "New Slide" gallery, adapted here now that blocks are
+// free-form positioned objects (x/y/w/h — see lessons.js's newBlock()):
+// each entry is just a starting arrangement of ordinary Text/Video blocks
+// at sensible positions, nothing more. Nothing this creates is locked in —
+// every block it places can still be dragged, resized, edited or deleted
+// exactly like a block inserted from the toolbar, because it IS one. Layout
+// percentages here are hand-picked to look right on the 16:9 stage, not
+// computed.
+const SLIDE_LAYOUTS = {
+    blank: { label: 'Blank', icon: 'fa-square', blocks: [] },
+    title: {
+        label: 'Title Slide', icon: 'fa-heading', blocks: [
+            { type: 'text', layout: { x: 10, y: 36, w: 80, h: 16 }, html: '<h1>Click to add title</h1>' },
+            { type: 'text', layout: { x: 15, y: 54, w: 70, h: 12 }, html: '<p>Click to add subtitle</p>' }
+        ]
+    },
+    title_content: {
+        label: 'Title + Content', icon: 'fa-align-left', blocks: [
+            { type: 'text', layout: { x: 6, y: 6, w: 88, h: 14 }, html: '<h2>Click to add title</h2>' },
+            { type: 'text', layout: { x: 6, y: 24, w: 88, h: 70 }, html: '' }
+        ]
+    },
+    two_content: {
+        label: 'Two Content', icon: 'fa-table-columns', blocks: [
+            { type: 'text', layout: { x: 6, y: 6, w: 88, h: 14 }, html: '<h2>Click to add title</h2>' },
+            { type: 'text', layout: { x: 6, y: 24, w: 42, h: 70 }, html: '' },
+            { type: 'text', layout: { x: 52, y: 24, w: 42, h: 70 }, html: '' }
+        ]
+    },
+    title_media: {
+        label: 'Title + Media', icon: 'fa-photo-film', blocks: [
+            { type: 'text', layout: { x: 6, y: 6, w: 88, h: 14 }, html: '<h2>Click to add title</h2>' },
+            { type: 'video', layout: { x: 12, y: 24, w: 76, h: 68 } }
+        ]
+    }
+};
+
 const els = {};
 
 function escHtml(str) {
@@ -283,13 +321,18 @@ function cacheEls() {
         'backToListBtn', 'slideThumbList', 'addSlideBtn', 'addCollabBoardBtn',
         'lessonTitleInput', 'statusPill', 'saveMsg', 'notesBtn', 'saveBtn', 'publishBtn', 'publishBtnLabel',
         'slideCanvas', 'propertiesPanel',
-        // SLIDE DECK REDESIGN: persistent insert toolbar + its Image/Video/
-        // Theme popovers — see wireInsertToolbar()/wireThemeMenu().
+        // SLIDE DECK REDESIGN: persistent insert toolbar + its Image/Video
+        // popovers — see wireInsertToolbar().
         'slideInsertToolbar',
         'insertImageBtn', 'insertImageMenu', 'insertImageUploadRow',
         'insertImageUrlInput', 'insertImageUrlBtn', 'insertImageFileInput',
         'insertVideoBtn', 'insertVideoMenu', 'insertVideoUrlInput', 'insertVideoUrlBtn', 'insertVideoError',
-        'themeBtn', 'themeBtnDot', 'themeMenu',
+        // Theme is a real gallery modal now (see openThemeGallery()), not a
+        // corner dropdown — themeBtn lives in the top bar.
+        'themeBtn', 'themeBtnDot', 'themeOverlay', 'closeThemeBtn', 'themeGallery',
+        // "Add Slide" opens a layout gallery popover (see
+        // wireAddSlideLayoutMenu()) instead of always creating one blank slide.
+        'addSlideLayoutMenu',
         // Fixed global text-formatting toolbar (replaces the old per-block
         // in-canvas Quill toolbar) — see wireFormatToolbar().
         'slideFormatToolbar', 'fmtHeaderSelect', 'fmtColorInput', 'fmtBgInput',
@@ -329,17 +372,16 @@ function wireEvents() {
         closeBuilder();
     });
 
-    // SLIDE DECK REDESIGN: "Add Slide" is now always a plain blank slide
-    // (content is added afterward from the persistent insert toolbar), and
-    // Collaborative Board is its own dedicated action — see
-    // addBlankSlide()/addCollaborativeBoardSlide() below.
-    els.addSlideBtn.addEventListener('click', () => addBlankSlide());
+    // SLIDE DECK REDESIGN: "Add Slide" opens the layout gallery — see
+    // wireAddSlideLayoutMenu() (wires els.addSlideBtn itself) below. Add
+    // Collaboration Board stays its own dedicated action.
     els.addCollabBoardBtn.addEventListener('click', () => addCollaborativeBoardSlide());
 
     els.slideThumbList.addEventListener('click', onSlideThumbClick);
 
     wireInsertToolbar();
-    wireThemeMenu();
+    wireAddSlideLayoutMenu();
+    wireThemeGallery();
     wireFormatToolbar();
 
     els.lessonTitleInput.addEventListener('input', () => {
@@ -733,28 +775,31 @@ function renderSlideThumbPreviewHtml(slide, theme) {
     if (!blocks.length) {
         return `<div class="w-full h-full flex items-center justify-center"><span class="text-[8px] font-semibold text-[#c2cedd]">Empty slide</span></div>`;
     }
-    // Only the first few blocks are shown — a long slide's later content
-    // would be clipped by the box's fixed height anyway, so rendering more
-    // is wasted work.
-    return `<div class="w-full h-full overflow-hidden p-1.5 flex flex-col gap-1">${blocks.slice(0, 4).map(renderThumbBlockHtml).join('')}</div>`;
+    // FREE-FORM CANVAS: absolutely positioned at the same x/y/w/h percentages
+    // as the real canvas (see blockPositionStyle()), so the "live preview"
+    // thumbnail actually reflects where things are, not just what's on the
+    // slide — matters now that blocks can be placed/sized anywhere instead
+    // of always flowing top-to-bottom.
+    return `<div class="w-full h-full relative overflow-hidden">${blocks.map(renderThumbBlockHtml).join('')}</div>`;
 }
 
 function renderThumbBlockHtml(block) {
+    const pos = `position:absolute; ${blockPositionStyle(block)} overflow:hidden;`;
     switch (block.type) {
         case 'image':
             return block.imageUrl
-                ? `<img src="${escHtml(block.imageUrl)}" alt="" class="w-full rounded object-cover flex-shrink-0" style="height:20px;" onerror="this.replaceWith(Object.assign(document.createElement('div'), {className:'w-full rounded bg-slate-100 flex-shrink-0', style:'height:20px'}))">`
-                : `<div class="w-full rounded bg-slate-100 flex items-center justify-center flex-shrink-0" style="height:20px;"><i class="fa-solid fa-image text-[8px] text-slate-300"></i></div>`;
+                ? `<div style="${pos}"><img src="${escHtml(block.imageUrl)}" alt="" class="w-full h-full rounded-sm object-cover" onerror="this.style.display='none'"></div>`
+                : `<div style="${pos}" class="rounded-sm bg-slate-100 flex items-center justify-center"><i class="fa-solid fa-image text-[7px] text-slate-300"></i></div>`;
         case 'video':
-            return `<div class="w-full rounded bg-slate-100 flex items-center justify-center flex-shrink-0" style="height:20px;"><i class="fa-solid fa-circle-play text-[9px] text-slate-300"></i></div>`;
+            return `<div style="${pos}" class="rounded-sm bg-slate-100 flex items-center justify-center"><i class="fa-solid fa-circle-play text-[8px] text-slate-300"></i></div>`;
         case 'interactive_prompt':
-            return `<div class="flex items-center gap-1 rounded bg-indigo-50 px-1 py-0.5 flex-shrink-0"><i class="fa-solid fa-bolt text-[6.5px] text-indigo-400 flex-shrink-0"></i><span class="text-[6px] font-bold text-indigo-500 truncate">${escHtml(block.promptText || 'Interactive prompt')}</span></div>`;
+            return `<div style="${pos}" class="flex items-center gap-0.5 rounded-sm bg-indigo-50 px-1"><i class="fa-solid fa-bolt text-[6px] text-indigo-400 flex-shrink-0"></i><span class="text-[5.5px] font-bold text-indigo-500 truncate">${escHtml(block.promptText || 'Interactive prompt')}</span></div>`;
         case 'assignment':
-            return `<div class="flex items-center gap-1 rounded bg-amber-50 px-1 py-0.5 flex-shrink-0"><i class="fa-solid fa-clipboard-check text-[6.5px] text-amber-500 flex-shrink-0"></i><span class="text-[6px] font-bold text-amber-600 truncate">${escHtml(block.prompt || 'Assignment')}</span></div>`;
+            return `<div style="${pos}" class="flex items-center gap-0.5 rounded-sm bg-amber-50 px-1"><i class="fa-solid fa-clipboard-check text-[6px] text-amber-500 flex-shrink-0"></i><span class="text-[5.5px] font-bold text-amber-600 truncate">${escHtml(block.prompt || 'Assignment')}</span></div>`;
         case 'text':
         default:
             return block.html
-                ? `<div class="ql-editor slide-thumb-clip" style="padding:0; font-size:5px; line-height:1.3; color:#374f6b;">${block.html}</div>`
+                ? `<div style="${pos} padding:0; font-size:5px; line-height:1.25; color:#374f6b;" class="ql-editor slide-thumb-clip">${block.html}</div>`
                 : '';
     }
 }
@@ -813,13 +858,21 @@ document.addEventListener('drop', (e) => {
     renderSlideThumbs();
 });
 
-// SLIDE DECK REDESIGN: "Add Slide" is a plain blank slide (content is added
-// afterward from the persistent insert toolbar — see wireInsertToolbar());
-// "Add Collaboration Board" stays its own dedicated action since that slide
-// type is special and whole-slide, never blocks-based (see newSlide()'s own
-// comment in lessons.js for why).
-function addBlankSlide() {
+// SLIDE DECK REDESIGN: "Add Slide" opens the SLIDE_LAYOUTS gallery (see
+// renderSlideLayoutMenu()/wireAddSlideLayoutMenu() below) instead of always
+// dropping in one empty blank slide; this is what actually builds whichever
+// layout was picked (Blank included — it's just an empty blocks[] entry in
+// SLIDE_LAYOUTS). "Add Collaboration Board" stays its own dedicated action
+// since that slide type is special and whole-slide, never blocks-based (see
+// newSlide()'s own comment in lessons.js for why).
+function addSlideFromLayout(key) {
+    const def = SLIDE_LAYOUTS[key] || SLIDE_LAYOUTS.blank;
     const slide = newSlide('blank');
+    def.blocks.forEach(spec => {
+        const block = newBlock(spec.type, spec.layout);
+        if (spec.html !== undefined) block.html = spec.html;
+        slide.blocks.push(block);
+    });
     lessonDraft.slides.splice(currentSlideIndex + 1, 0, slide);
     currentSlideIndex += 1;
     currentBlockId = null;
@@ -827,6 +880,30 @@ function addBlankSlide() {
     renderSlideThumbs();
     renderSlideCanvas();
     renderPropertiesPanel();
+}
+
+function renderSlideLayoutMenu() {
+    els.addSlideLayoutMenu.innerHTML = Object.entries(SLIDE_LAYOUTS).map(([key, def]) => `
+        <button type="button" data-layout-key="${key}" class="lb-layout-card" title="${escHtml(def.label)}">
+            <i class="fa-solid ${def.icon}"></i>
+            <span>${escHtml(def.label)}</span>
+        </button>`).join('');
+}
+
+function wireAddSlideLayoutMenu() {
+    renderSlideLayoutMenu();
+    els.addSlideBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const wasOpen = !els.addSlideLayoutMenu.classList.contains('hidden');
+        closeAllInsertPopovers();
+        els.addSlideLayoutMenu.classList.toggle('hidden', wasOpen);
+    });
+    els.addSlideLayoutMenu.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-layout-key]');
+        if (!btn) return;
+        addSlideFromLayout(btn.dataset.layoutKey);
+        closeAllInsertPopovers();
+    });
 }
 
 function addCollaborativeBoardSlide() {
@@ -896,7 +973,6 @@ function renderSlideCanvas() {
 
     els.slideInsertToolbar.classList.remove('hidden');
     els.slideInsertToolbar.classList.add('flex');
-    renderThemeMenu();
 
     const blocks = slide.blocks || [];
     if (!blocks.length) {
@@ -923,6 +999,7 @@ function renderSlideCanvas() {
 // cosmetic; see THEMES/currentTheme() near the top of this file.
 function applyThemeToStage() {
     els.slideCanvas.style.setProperty('--lb-accent', currentTheme().accent);
+    updateThemeBtnDot();
 }
 
 // Whether a video/image block's URL field currently fails validation —
@@ -934,21 +1011,36 @@ function applyThemeToStage() {
 // lose that change the instant the next render rebuilt the element fresh.
 const blockUrlInvalid = new Map();
 
-// One wrapper per block: the hover/selection ring, and the small floating
-// move-up/move-down/delete toolbar (Google Slides-style per-element
-// controls) — every block type shares this shell; only what's inside
-// differs. See wireBlockSelection() for how clicking a block (vs. its own
-// inner controls) sets currentBlockId.
+// One wrapper per block: absolute position/size (FREE-FORM CANVAS — see
+// lessons.js's newBlock()/ensureBlockLayout()), the hover/selection ring,
+// 8 resize handles (shown only while selected — see wireBlockDrag()), and
+// the small floating toolbar — every block type shares this shell; only
+// what's inside differs. "Move up/down" is now "bring forward/send
+// backward" one position (data-block-action stays up/down — see
+// wireBlockSelection()'s handler — only the icon/title changed): with
+// blocks free-positioned instead of stacked, array order controls paint
+// z-order (later = on top) rather than visual top-to-bottom placement, so
+// the exact same swap-with-neighbor logic that used to reorder the stack
+// now nudges stacking order instead, which is the correct adaptation for a
+// free-form canvas. See wireBlockSelection() for how clicking a block (vs.
+// its own inner controls/a resize handle) sets currentBlockId.
+const RESIZE_HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+
+function blockPositionStyle(block) {
+    return `left:${block.x}%; top:${block.y}%; width:${block.w}%; height:${block.h}%;`;
+}
+
 function blockWrap(block, innerHtml) {
     const selected = block.id === currentBlockId;
     return `
-    <div class="lb-block ${selected ? 'lb-block-selected' : ''}" data-block-id="${escHtml(block.id)}">
+    <div class="lb-block ${selected ? 'lb-block-selected' : ''}" data-block-id="${escHtml(block.id)}" style="${blockPositionStyle(block)}">
         <div class="lb-block-toolbar">
-            <button type="button" data-block-action="up" title="Move up"><i class="fa-solid fa-arrow-up"></i></button>
-            <button type="button" data-block-action="down" title="Move down"><i class="fa-solid fa-arrow-down"></i></button>
+            <button type="button" data-block-action="down" title="Send backward"><i class="fa-solid fa-arrow-down"></i></button>
+            <button type="button" data-block-action="up" title="Bring forward"><i class="fa-solid fa-arrow-up"></i></button>
             <button type="button" data-block-action="delete" title="Delete"><i class="fa-solid fa-trash"></i></button>
         </div>
         ${innerHtml}
+        ${RESIZE_HANDLES.map(h => `<div class="lb-resize-handle" data-handle="${h}"></div>`).join('')}
     </div>`;
 }
 
@@ -1154,24 +1246,54 @@ function wireBlockRichFields(slide) {
 // block never interrupts an actively-focused Quill editor inside another
 // Text block on the same slide. The move-up/move-down/delete actions DO
 // re-render (nothing is mid-edit when you click a toolbar icon).
+// Elements a mousedown on which should NEVER start a move-drag — the
+// block's actual editable/interactive content. Clicking inside a Text
+// block still has to place the cursor, clicking an image/iframe is just a
+// click, and a form control (the Interactive Prompt's "Add choice" button,
+// an <input>, etc.) needs its own click to register. A mousedown anywhere
+// ELSE on the block (its padding/background) is the drag affordance.
+const BLOCK_DRAG_EXCLUDE_SELECTOR = '[data-rich-block], img, iframe, textarea, input, select, button';
+
 function wireBlockSelection(slide) {
     els.slideCanvas.querySelectorAll('[data-block-id]').forEach(wrap => {
         wrap.addEventListener('mousedown', (e) => {
             if (e.target.closest('[data-block-action]')) return; // handled below
+            if (e.target.closest('.lb-resize-handle')) return; // handled below
             const id = wrap.dataset.blockId;
             // A non-Text block has no Quill editor of its own to hand the
             // fixed format toolbar to — disable it (its own Quill selection-
             // change handler is what re-enables it, for a Text block).
             const block = (slide.blocks || []).find(b => b.id === id);
-            if (block && block.type !== 'text') setFormatToolbarEnabled(false);
-            if (id === currentBlockId) return;
-            currentBlockId = id;
-            els.slideCanvas.querySelectorAll('[data-block-id]').forEach(w => w.classList.toggle('lb-block-selected', w.dataset.blockId === id));
-            renderPropertiesPanel();
+            if (!block) return;
+            if (block.type !== 'text') setFormatToolbarEnabled(false);
+            if (id !== currentBlockId) {
+                currentBlockId = id;
+                els.slideCanvas.querySelectorAll('[data-block-id]').forEach(w => w.classList.toggle('lb-block-selected', w.dataset.blockId === id));
+                renderPropertiesPanel();
+            }
+            if (!e.target.closest(BLOCK_DRAG_EXCLUDE_SELECTOR)) {
+                startBlockDrag(e, block, wrap, 'move');
+            }
+        });
+    });
+
+    els.slideCanvas.querySelectorAll('.lb-resize-handle').forEach(handle => {
+        handle.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+            const wrap = handle.closest('[data-block-id]');
+            const block = (slide.blocks || []).find(b => b.id === wrap.dataset.blockId);
+            if (!block) return;
+            if (currentBlockId !== block.id) {
+                currentBlockId = block.id;
+                els.slideCanvas.querySelectorAll('[data-block-id]').forEach(w => w.classList.toggle('lb-block-selected', w.dataset.blockId === block.id));
+                renderPropertiesPanel();
+            }
+            startBlockDrag(e, block, wrap, 'resize', handle.dataset.handle);
         });
     });
 
     els.slideCanvas.querySelectorAll('[data-block-action]').forEach(btn => {
+        btn.addEventListener('mousedown', (e) => e.stopPropagation());
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             const wrap = btn.closest('[data-block-id]');
@@ -1183,10 +1305,12 @@ function wireBlockSelection(slide) {
                 slide.blocks.splice(idx, 1);
                 if (currentBlockId === id) currentBlockId = null;
                 blockUrlInvalid.delete(id);
-            } else if (action === 'up' && idx > 0) {
-                [slide.blocks[idx - 1], slide.blocks[idx]] = [slide.blocks[idx], slide.blocks[idx - 1]];
-            } else if (action === 'down' && idx < slide.blocks.length - 1) {
+            } else if (action === 'up' && idx < slide.blocks.length - 1) {
+                // "Bring forward" — swap toward the END of the array, which
+                // paints later (on top). See blockWrap()'s own comment.
                 [slide.blocks[idx + 1], slide.blocks[idx]] = [slide.blocks[idx], slide.blocks[idx + 1]];
+            } else if (action === 'down' && idx > 0) {
+                [slide.blocks[idx - 1], slide.blocks[idx]] = [slide.blocks[idx], slide.blocks[idx - 1]];
             }
             hasUnsavedChanges = true;
             renderSlideCanvas();
@@ -1194,6 +1318,71 @@ function wireBlockSelection(slide) {
             renderSlideThumbs();
         });
     });
+}
+
+function clamp(v, min, max) {
+    return Math.min(Math.max(v, min), Math.max(min, max));
+}
+
+// FREE-FORM CANVAS: drag-to-move and drag-to-resize a block, both driven
+// by the same document-level mousemove/mouseup pair (removed on mouseup —
+// there is never more than one of these active at a time). Everything is
+// tracked in the stage's own percentage coordinate system (block.x/y/w/h),
+// converting the raw pixel mouse delta via the stage's own bounding rect
+// captured once at drag start — so this keeps working correctly regardless
+// of the stage's actual on-screen size (it's a responsive aspect-ratio
+// box, not a fixed pixel size). The DOM is updated directly on every
+// mousemove for immediate visual feedback (bypassing a full
+// renderSlideCanvas(), which would tear down the very block being
+// dragged); the canvas only properly re-renders once, on mouseup, via
+// renderSlideThumbs()/renderPropertiesPanel() picking up the final values.
+function startBlockDrag(e, block, wrap, mode, handleDir) {
+    e.preventDefault();
+    const stageRect = els.slideCanvas.getBoundingClientRect();
+    const startX = e.clientX, startY = e.clientY;
+    const start = { x: block.x, y: block.y, w: block.w, h: block.h };
+    const MIN_W = 6, MIN_H = 4;
+    document.body.classList.add('lb-dragging');
+
+    function onMove(ev) {
+        const dxPct = ((ev.clientX - startX) / stageRect.width) * 100;
+        const dyPct = ((ev.clientY - startY) / stageRect.height) * 100;
+
+        if (mode === 'move') {
+            block.x = clamp(start.x + dxPct, 0, 100 - start.w);
+            block.y = clamp(start.y + dyPct, 0, 100 - start.h);
+        } else {
+            let { x, y, w, h } = start;
+            if (handleDir.includes('e')) w = clamp(start.w + dxPct, MIN_W, 100 - start.x);
+            if (handleDir.includes('s')) h = clamp(start.h + dyPct, MIN_H, 100 - start.y);
+            if (handleDir.includes('w')) {
+                w = clamp(start.w - dxPct, MIN_W, start.x + start.w);
+                x = start.x + start.w - w;
+            }
+            if (handleDir.includes('n')) {
+                h = clamp(start.h - dyPct, MIN_H, start.y + start.h);
+                y = start.y + start.h - h;
+            }
+            block.x = x; block.y = y; block.w = w; block.h = h;
+        }
+
+        wrap.style.left = block.x + '%';
+        wrap.style.top = block.y + '%';
+        wrap.style.width = block.w + '%';
+        wrap.style.height = block.h + '%';
+    }
+
+    function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        document.body.classList.remove('lb-dragging');
+        hasUnsavedChanges = true;
+        renderSlideThumbs();
+        renderPropertiesPanel();
+    }
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
 }
 
 // Interactive Prompt / Assignment blocks' own inline authoring fields —
@@ -1279,7 +1468,12 @@ function wireBlockInputs(slide) {
 function insertBlock(type, extraProps) {
     const slide = currentSlide();
     if (!slide || slide.type !== 'blank') return null;
-    const block = newBlock(type);
+    // FREE-FORM CANVAS: a small cascade (offset a bit further each time,
+    // wrapping back around) so several quick inserts don't all land in the
+    // exact same spot on top of one another — the same idea PowerPoint uses
+    // when you paste/insert repeatedly.
+    const n = slide.blocks.length % 4;
+    const block = newBlock(type, { x: 10 + n * 6, y: 8 + n * 8 });
     if (extraProps) Object.assign(block, extraProps);
     const afterIndex = currentBlockId ? slide.blocks.findIndex(b => b.id === currentBlockId) : slide.blocks.length - 1;
     slide.blocks.splice(afterIndex + 1, 0, block);
@@ -1301,7 +1495,7 @@ function insertBlock(type, extraProps) {
 function closeAllInsertPopovers() {
     els.insertImageMenu.classList.add('hidden');
     els.insertVideoMenu.classList.add('hidden');
-    els.themeMenu.classList.add('hidden');
+    els.addSlideLayoutMenu.classList.add('hidden');
 }
 
 function wireInsertToolbar() {
@@ -1357,9 +1551,10 @@ function wireInsertToolbar() {
         closeAllInsertPopovers();
     });
 
-    // Close any open popover when clicking elsewhere on the page.
+    // Close any open popover when clicking elsewhere on the page. Theme is
+    // a modal now, not a popover in this flow — it isn't listed here.
     document.addEventListener('click', (e) => {
-        if (e.target.closest('#insertImageBtn, #insertImageMenu, #insertVideoBtn, #insertVideoMenu, #themeBtn, #themeMenu')) return;
+        if (e.target.closest('#insertImageBtn, #insertImageMenu, #insertVideoBtn, #insertVideoMenu, #addSlideBtn, #addSlideLayoutMenu')) return;
         closeAllInsertPopovers();
     });
 
@@ -1399,32 +1594,47 @@ function fileToDataUrl(file) {
     });
 }
 
-// ── SLIDE DECK REDESIGN: theme popover ─────────────────────────────────────
-function renderThemeMenu() {
+// ── SLIDE DECK REDESIGN: theme gallery (top-bar Theme button → modal) ─────
+// A real "come look and choose" gallery, not a dropdown tucked in a corner
+// of the insert toolbar — openThemeGallery() shows #themeOverlay with a
+// full-size preview card per theme; wireThemeGallery() only needs to run
+// once (at init), same as the other modals in this file.
+function updateThemeBtnDot() {
     els.themeBtnDot.style.background = currentTheme().accent;
-    els.themeMenu.innerHTML = Object.entries(THEMES).map(([key, theme]) => `
-        <button type="button" data-theme-key="${key}" class="lb-theme-swatch ${(lessonDraft.theme || 'general') === key ? 'lb-theme-selected' : ''}" title="${escHtml(theme.label)}">
-            <span class="lb-theme-swatch-dot" style="background:${theme.accent}"></span>
-            <span class="text-[9.5px] font-bold text-[#374f6b]">${escHtml(theme.label)}</span>
+}
+
+function renderThemeGallery() {
+    els.themeGallery.innerHTML = Object.entries(THEMES).map(([key, theme]) => `
+        <button type="button" data-theme-key="${key}" class="lb-theme-card ${(lessonDraft.theme || 'general') === key ? 'lb-theme-selected' : ''}" title="${escHtml(theme.label)}">
+            <span class="lb-theme-card-dot" style="background:${theme.accent}"><i class="fa-solid ${theme.icon}"></i></span>
+            <span class="text-[11px] font-bold text-[#374f6b]">${escHtml(theme.label)}</span>
         </button>`).join('');
 }
 
-function wireThemeMenu() {
-    els.themeBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const wasOpen = !els.themeMenu.classList.contains('hidden');
-        closeAllInsertPopovers();
-        els.themeMenu.classList.toggle('hidden', wasOpen);
+function openThemeGallery() {
+    renderThemeGallery();
+    els.themeOverlay.classList.remove('hidden');
+}
+
+function closeThemeGallery() {
+    els.themeOverlay.classList.add('hidden');
+}
+
+function wireThemeGallery() {
+    els.themeBtn.addEventListener('click', openThemeGallery);
+    els.closeThemeBtn.addEventListener('click', closeThemeGallery);
+    els.themeOverlay.addEventListener('click', (e) => {
+        if (e.target === els.themeOverlay) closeThemeGallery();
     });
-    els.themeMenu.addEventListener('click', (e) => {
+    els.themeGallery.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-theme-key]');
         if (!btn) return;
         lessonDraft.theme = btn.dataset.themeKey;
         hasUnsavedChanges = true;
         applyThemeToStage();
-        renderThemeMenu();
+        renderThemeGallery();
         renderSlideThumbs();
-        closeAllInsertPopovers();
+        closeThemeGallery();
     });
 }
 
@@ -1464,8 +1674,47 @@ function renderPropertiesPanel() {
     } else {
         els.propertiesPanel.innerHTML = `
         <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Block Properties</p>
-        <p class="text-[12px] text-[#9ab0c6] font-semibold">This block has no additional properties — everything is edited directly on the slide.</p>`;
+        <p class="text-[12px] text-[#9ab0c6] font-semibold">This block has no additional properties beyond position — drag it, resize it from its corner/edge handles, or set exact numbers below.</p>`;
     }
+
+    // FREE-FORM CANVAS: every block type gets Position & Size fields — the
+    // exact-number counterpart to dragging/resizing on the canvas (see
+    // startBlockDrag()). Prepended after the type-specific renderer above
+    // (which sets the panel's innerHTML wholesale) rather than folded into
+    // each of those functions individually, so this only has to be written
+    // once.
+    els.propertiesPanel.insertAdjacentHTML('afterbegin', renderBlockPositionFields(block));
+    wireBlockPositionFields(block);
+}
+
+function renderBlockPositionFields(block) {
+    return `
+    <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-2">Position & Size</p>
+    <div class="grid grid-cols-2 gap-2 mb-4">
+        ${fieldWrap('X %', `<input data-pos-field="x" type="number" step="1" value="${Math.round(block.x)}" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[12.5px] text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
+        ${fieldWrap('Y %', `<input data-pos-field="y" type="number" step="1" value="${Math.round(block.y)}" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[12.5px] text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
+        ${fieldWrap('Width %', `<input data-pos-field="w" type="number" step="1" value="${Math.round(block.w)}" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[12.5px] text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
+        ${fieldWrap('Height %', `<input data-pos-field="h" type="number" step="1" value="${Math.round(block.h)}" class="form-input w-full p-2 bg-white border border-[#dce3ed] rounded text-[12.5px] text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
+    </div>`;
+}
+
+function wireBlockPositionFields(block) {
+    els.propertiesPanel.querySelectorAll('[data-pos-field]').forEach(input => {
+        input.addEventListener('change', () => {
+            const field = input.dataset.posField;
+            let v = parseFloat(input.value);
+            if (isNaN(v)) v = block[field];
+            if (field === 'w') v = clamp(v, 6, 100 - block.x);
+            else if (field === 'h') v = clamp(v, 4, 100 - block.y);
+            else if (field === 'x') v = clamp(v, 0, 100 - block.w);
+            else if (field === 'y') v = clamp(v, 0, 100 - block.h);
+            block[field] = v;
+            hasUnsavedChanges = true;
+            renderSlideCanvas();
+            renderPropertiesPanel();
+            renderSlideThumbs();
+        });
+    });
 }
 
 function renderImageBlockProperties(block) {
@@ -2446,23 +2695,30 @@ async function parseOnePptxSlide(zip, slidePath) {
     // migrated legacy deck's.
     const slide = newSlide('blank');
     const headingHtml = title ? `<h2>${escHtml(title)}</h2>` : '';
+    // FREE-FORM CANVAS: explicit layout hints (mirroring SLIDE_LAYOUTS'
+    // "Title + Content" arrangement) so a heading + body/image don't land
+    // stacked exactly on top of each other — newBlock()'s own bare default
+    // position is the same fixed spot for every block, which is fine for a
+    // single block but wrong here.
+    const HEADING_LAYOUT = { x: 6, y: 6, w: 88, h: 14 };
+    const BODY_LAYOUT = { x: 6, y: 24, w: 88, h: 70 };
 
     if (imageDataUrl && !bodyText) {
         // Picture with no other text → a heading Text block (if any) plus
         // one Image block.
         if (headingHtml) {
-            const headingBlock = newBlock('text');
+            const headingBlock = newBlock('text', HEADING_LAYOUT);
             headingBlock.html = headingHtml;
             slide.blocks.push(headingBlock);
         }
-        const imageBlock = newBlock('image');
+        const imageBlock = newBlock('image', headingHtml ? BODY_LAYOUT : { x: 12, y: 12, w: 76, h: 76 });
         imageBlock.imageUrl = imageDataUrl;
         slide.blocks.push(imageBlock);
         return slide;
     }
     if (title && !bodyText && !imageDataUrl) {
         // Title text only, nothing else → a single heading Text block.
-        const headingBlock = newBlock('text');
+        const headingBlock = newBlock('text', { x: 10, y: 38, w: 80, h: 24 });
         headingBlock.html = headingHtml;
         slide.blocks.push(headingBlock);
         return slide;
@@ -2474,7 +2730,7 @@ async function parseOnePptxSlide(zip, slidePath) {
     // found alongside body text is noted in the body text rather than
     // dropped silently — unchanged behavior from before this rewrite.
     if (headingHtml) {
-        const headingBlock = newBlock('text');
+        const headingBlock = newBlock('text', HEADING_LAYOUT);
         headingBlock.html = headingHtml;
         slide.blocks.push(headingBlock);
     }
@@ -2485,7 +2741,7 @@ async function parseOnePptxSlide(zip, slidePath) {
         bodyHtml += '<p>[This slide also had an image, which was not imported — recreate it as an Image block if you need it.]</p>';
     }
     if (bodyHtml) {
-        const bodyBlock = newBlock('text');
+        const bodyBlock = newBlock('text', headingHtml ? BODY_LAYOUT : { x: 6, y: 8, w: 88, h: 86 });
         bodyBlock.html = bodyHtml;
         slide.blocks.push(bodyBlock);
     }

@@ -483,7 +483,21 @@ function renderBlankSlideHtml(slide) {
     if (!blocks.length) {
         return `<div class="lv-slide-card"><p class="text-slate-400 font-semibold m-0">This slide has no content yet.</p></div>`;
     }
-    return `<div class="lv-slide-card space-y-5">${blocks.map(renderLiveBlockDisplayHtml).join('')}</div>`;
+    // FREE-FORM CANVAS: each block is positioned absolutely inside the 16:9
+    // stage using its saved x/y/w/h (percentages of the stage box), the same
+    // layout the teacher's builder canvas and live-session dashboard use.
+    return `<div class="lv-slide-card lv-live-stage">${blocks.map(b => `<div class="lv-live-block" style="${liveBlockPositionStyle(b)}">${renderLiveBlockDisplayHtml(b)}</div>`).join('')}</div>`;
+}
+
+// Mirrors builder.js's blockPositionStyle()/live.js's liveBlockPositionStyle();
+// ensureBlockLayout() (run by normalizeLessonSlides()/loadLesson()) guarantees
+// every block has numeric x/y/w/h by the time it reaches this page, but the
+// numeric guard keeps this resilient even against unmigrated data.
+function liveBlockPositionStyle(block) {
+    if (typeof block.x !== 'number' || typeof block.y !== 'number' || typeof block.w !== 'number' || typeof block.h !== 'number') {
+        return 'position:static;';
+    }
+    return `left:${block.x}%; top:${block.y}%; width:${block.w}%; height:${block.h}%;`;
 }
 
 // The `.ql-editor` class reuses Quill's own CSS (already loaded on this page
@@ -493,16 +507,16 @@ function renderLiveBlockDisplayHtml(block) {
     switch (block.type) {
         case 'image':
             return block.imageUrl
-                ? `<div>
-                     <img src="${escHtml(block.imageUrl)}" alt="${escHtml(block.imageAlt)}" class="w-full max-h-[420px] object-contain rounded-xl bg-slate-50 border border-slate-200"
+                ? `<div class="h-full flex flex-col">
+                     <img src="${escHtml(block.imageUrl)}" alt="${escHtml(block.imageAlt)}" class="w-full flex-1 min-h-0 object-contain rounded-xl bg-slate-50 border border-slate-200"
                           onerror="this.outerHTML = '<div class=\\'lv-media-frame\\'><div class=\\'lv-media-placeholder\\'><p class=\\'text-[12.5px] font-semibold\\'>This image couldn\\'t be loaded.</p></div></div>'">
-                     ${block.caption ? `<p class="text-[12px] text-slate-400 font-semibold mt-2 text-center">${escHtml(block.caption)}</p>` : ''}
+                     ${block.caption ? `<p class="text-[12px] text-slate-400 font-semibold mt-2 text-center flex-shrink-0">${escHtml(block.caption)}</p>` : ''}
                    </div>`
-                : `<div class="lv-media-frame"><div class="lv-media-placeholder"><p class="text-[12.5px] font-semibold">No image was added to this slide.</p></div></div>`;
+                : `<div class="lv-media-frame h-full" style="aspect-ratio:auto;"><div class="lv-media-placeholder"><p class="text-[12.5px] font-semibold">No image was added to this slide.</p></div></div>`;
         case 'video':
-            return `<div>
-                       <div class="lv-media-frame" data-lazy-media data-block-id="${escHtml(block.id)}" data-embed-url="${escHtml(block.embedUrl || '')}"><div class="lv-media-placeholder"><i class="fa-solid fa-circle-play text-3xl"></i></div></div>
-                       ${block.caption ? `<p class="text-[12px] text-slate-400 font-semibold mt-2 text-center">${escHtml(block.caption)}</p>` : ''}
+            return `<div class="h-full flex flex-col">
+                       <div class="lv-media-frame flex-1 min-h-0" style="aspect-ratio:auto;" data-lazy-media data-block-id="${escHtml(block.id)}" data-embed-url="${escHtml(block.embedUrl || '')}"><div class="lv-media-placeholder"><i class="fa-solid fa-circle-play text-3xl"></i></div></div>
+                       ${block.caption ? `<p class="text-[12px] text-slate-400 font-semibold mt-2 text-center flex-shrink-0">${escHtml(block.caption)}</p>` : ''}
                     </div>`;
         case 'assignment':
             return `<div>${renderAssignmentEmbedHtml(block.linkedAssignmentId)}</div>`;

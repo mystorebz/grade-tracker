@@ -242,25 +242,40 @@ function renderSlideHtml(slide) {
     if (!blocks.length) {
         return `<div class="lb-block-card"><p class="text-slate-400 font-semibold">This slide has no content yet.</p></div>`;
     }
-    return `<div class="lb-block-card space-y-5">${blocks.map(renderLiveBlockHtml).join('')}</div>`;
+    // FREE-FORM CANVAS: each block is positioned absolutely inside the 16:9
+    // stage using its saved x/y/w/h (percentages of the stage box), exactly
+    // matching how the builder's own canvas lays them out — read-only here,
+    // just the position/size, no drag or resize handles.
+    return `<div class="lb-block-card lb-live-stage">${blocks.map(b => `<div class="lb-live-block" style="${liveBlockPositionStyle(b)}">${renderLiveBlockHtml(b)}</div>`).join('')}</div>`;
+}
+
+// Mirrors builder.js's blockPositionStyle(); ensureBlockLayout() (run by
+// normalizeLessonSlides()/loadLesson()) guarantees every block has numeric
+// x/y/w/h by the time it reaches this page, but the numeric guard keeps this
+// resilient even against unmigrated data.
+function liveBlockPositionStyle(block) {
+    if (typeof block.x !== 'number' || typeof block.y !== 'number' || typeof block.w !== 'number' || typeof block.h !== 'number') {
+        return 'position:static;';
+    }
+    return `left:${block.x}%; top:${block.y}%; width:${block.w}%; height:${block.h}%;`;
 }
 
 function renderLiveBlockHtml(block) {
     switch (block.type) {
         case 'image':
             return block.imageUrl
-                ? `<div>
-                     <img src="${escHtml(block.imageUrl)}" alt="${escHtml(block.imageAlt)}" class="w-full max-h-[420px] object-contain rounded-xl bg-slate-50 border border-slate-200">
-                     ${block.caption ? `<p class="text-[12px] text-slate-400 font-semibold mt-2 text-center">${escHtml(block.caption)}</p>` : ''}
+                ? `<div class="h-full flex flex-col">
+                     <img src="${escHtml(block.imageUrl)}" alt="${escHtml(block.imageAlt)}" class="w-full flex-1 min-h-0 object-contain rounded-xl bg-slate-50 border border-slate-200">
+                     ${block.caption ? `<p class="text-[12px] text-slate-400 font-semibold mt-2 text-center flex-shrink-0">${escHtml(block.caption)}</p>` : ''}
                    </div>`
-                : `<div class="lb-media-placeholder">No image on this slide.</div>`;
+                : `<div class="lb-media-placeholder h-full">No image on this slide.</div>`;
         case 'video':
             return block.embedUrl
-                ? `<div>
-                     <div class="lb-media-frame"><iframe src="${escHtml(block.embedUrl)}" allowfullscreen loading="lazy"></iframe></div>
-                     ${block.caption ? `<p class="text-[12px] text-slate-400 font-semibold mt-2 text-center">${escHtml(block.caption)}</p>` : ''}
+                ? `<div class="h-full flex flex-col">
+                     <div class="lb-media-frame flex-1 min-h-0" style="aspect-ratio:auto;"><iframe src="${escHtml(block.embedUrl)}" allowfullscreen loading="lazy"></iframe></div>
+                     ${block.caption ? `<p class="text-[12px] text-slate-400 font-semibold mt-2 text-center flex-shrink-0">${escHtml(block.caption)}</p>` : ''}
                    </div>`
-                : `<div class="lb-media-placeholder">No video on this slide.</div>`;
+                : `<div class="lb-media-placeholder h-full">No video on this slide.</div>`;
         case 'assignment':
             return `<div>${block.prompt ? `<p class="text-[13.5px] text-slate-600 leading-relaxed whitespace-pre-wrap">${escHtml(block.prompt)}</p>` : '<p class="text-slate-400 font-semibold">Embedded assignment.</p>'}</div>`;
         case 'interactive_prompt':
