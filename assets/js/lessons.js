@@ -48,6 +48,10 @@ export function genSessionId() {
     return 'live_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
 }
 
+export function genBlockId() {
+    return 'block_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+}
+
 function lessonRef(schoolId, postContext, lessonId) {
     const { classId, subjectId } = postContext;
     return doc(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'lessons', lessonId);
@@ -108,6 +112,24 @@ function liveResponseRef(schoolId, postContext, lessonId, sessionId, responseDoc
 export function newSlide(type) {
     const id = genSlideId();
     switch (type) {
+        case 'blank':
+            // ── SLIDE DECK REDESIGN: generic slide + insertable blocks ──
+            // Every Slide Deck slide the builder creates going forward uses
+            // THIS shape — no more fixed "kind" of slide chosen up front.
+            // What used to be separate slide types (Title/Content/Media/
+            // Assignment/Interactive Prompt) are now blocks a teacher
+            // inserts from the persistent toolbar at the top of the canvas
+            // — see newBlock() just below. collaborative_board (further
+            // down in this switch) is the one deliberate exception: it
+            // stays a special, distinct whole-slide type, added via its own
+            // "Add Collaboration Board" action rather than a toolbar block.
+            //
+            // The OLD typed cases below ('title'/'content'/'media'/
+            // 'assignment'/'interactive_prompt') are kept in this file only
+            // as migration TARGETS for migrateLegacySlide() (also just
+            // below) and as a safety net for any not-yet-updated call site
+            // — no new code should construct them going forward.
+            return { id, type: 'blank', blocks: [] };
         case 'title':
             // headingHtml/objectiveHtml: rich-text (Quill) versions of
             // heading/objective, added for Slide Deck toolbar parity with
@@ -170,6 +192,143 @@ export function newSlide(type) {
             // 'title' above (see that case's comment).
             return { id, type: 'content', heading: '', body: '', bullets: [], bodyHtml: '' };
     }
+}
+
+// ── BLOCK TEMPLATES (toolbar-insertable content within a 'blank' slide) ───
+// One factory per block type, mirroring newSlide()'s own "id + type always
+// present, every field always present (even empty/null)" convention. These
+// are what the persistent top toolbar inserts into a slide's blocks[]
+// array — Text / Image / Video / Interactive Prompt / Assignment. Field
+// shapes intentionally match the old fixed-type slides' own fields
+// one-for-one (mediaUrl/embedUrl/provider for video, promptKind/choices for
+// interactive_prompt, linkedAssignmentId for assignment) so every existing
+// renderer/behavior (parseMediaUrl() below, assignment-gradebook linking,
+// live-session prompt mechanics) keeps functioning exactly as it already
+// does — only how a block gets ONTO a slide is changing, not what it does
+// once there.
+export function newBlock(type) {
+    const id = genBlockId();
+    switch (type) {
+        case 'image':
+            return { id, type: 'image', imageUrl: '', imageAlt: '', caption: '' };
+        case 'video':
+            // provider/mediaUrl/embedUrl: same fields/semantics as the old
+            // 'media' slide's video sub-mode — populated via
+            // parseMediaUrl() below, unchanged (YouTube/Vimeo/Drive only).
+            return { id, type: 'video', provider: null, mediaUrl: '', embedUrl: '', caption: '' };
+        case 'interactive_prompt':
+            return { id, type: 'interactive_prompt', promptText: '', promptKind: 'short_answer', choices: [] };
+        case 'assignment':
+            return { id, type: 'assignment', prompt: '', linkedAssignmentId: null };
+        case 'text':
+        default:
+            // html: Quill-produced rich HTML, same convention as the old
+            // title/content slides' headingHtml/objectiveHtml/bodyHtml
+            // fields — a block with an empty html is just an empty text
+            // box, never a legacy/fallback case (blocks are new; there is
+            // no plain-text mirror to fall back to).
+            return { id, type: 'text', html: '' };
+    }
+}
+
+function escHtmlForMigration(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// ── LEGACY SLIDE → BLOCKS MIGRATION (applied on READ, never a one-time DB
+//    rewrite) ────────────────────────────────────────────────────────────
+// Converts a slide saved under the OLD fixed-type Slide Deck schema
+// ('title'/'content'/'media'/'assignment'/'interactive_prompt') into the
+// new generic { type:'blank', blocks:[...] } shape, using the richest
+// available source for each field (an *Html rich-text field before its
+// plain-text mirror, itself escaped) exactly like Phase 2's headingHtml/
+// objectiveHtml/bodyHtml backward-compat convention. This is idempotent and
+// safe to run on every read: an already-new-shape slide, a
+// collaborative_board slide, or a Document-format richtext slide all pass
+// through UNCHANGED. The lesson doc itself is only ever rewritten in the
+// new shape the next time a teacher hits Save (builder.js's
+// currentSlidesForSave() only ever emits the new shape) — this function
+// never writes anything.
+export function migrateLegacySlide(slide) {
+    if (!slide || typeof slide !== 'object') return slide;
+    // Already new-shape, or one of the two whole-slide types that never
+    // become blocks — pass through untouched.
+    if (slide.type === 'blank' && Array.isArray(slide.blocks)) return slide;
+    if (slide.type === 'collaborative_board' || slide.type === 'richtext') return slide;
+
+    const blocks = [];
+    switch (slide.type) {
+        case 'title':
+            if (slide.headingHtml || slide.heading) {
+                blocks.push({ id: genBlockId(), type: 'text', html: slide.headingHtml || escHtmlForMigration(slide.heading) });
+            }
+            if (slide.objectiveHtml || slide.objective) {
+                blocks.push({ id: genBlockId(), type: 'text', html: slide.objectiveHtml || escHtmlForMigration(slide.objective) });
+            }
+            break;
+        case 'content':
+            if (slide.heading) {
+                blocks.push({ id: genBlockId(), type: 'text', html: `<h2>${escHtmlForMigration(slide.heading)}</h2>` });
+            }
+            if (slide.bodyHtml || slide.body) {
+                blocks.push({ id: genBlockId(), type: 'text', html: slide.bodyHtml || escHtmlForMigration(slide.body) });
+            }
+            break;
+        case 'media':
+            if (slide.heading) {
+                blocks.push({ id: genBlockId(), type: 'text', html: `<h2>${escHtmlForMigration(slide.heading)}</h2>` });
+            }
+            if (slide.mediaKind === 'image') {
+                blocks.push({ id: genBlockId(), type: 'image', imageUrl: slide.imageUrl || '', imageAlt: slide.imageAlt || '', caption: slide.caption || '' });
+            } else {
+                blocks.push({ id: genBlockId(), type: 'video', provider: slide.provider || null, mediaUrl: slide.mediaUrl || '', embedUrl: slide.embedUrl || '', caption: slide.caption || '' });
+            }
+            break;
+        case 'assignment':
+            if (slide.heading) {
+                blocks.push({ id: genBlockId(), type: 'text', html: `<h2>${escHtmlForMigration(slide.heading)}</h2>` });
+            }
+            blocks.push({ id: genBlockId(), type: 'assignment', prompt: slide.prompt || '', linkedAssignmentId: slide.linkedAssignmentId || null });
+            break;
+        case 'interactive_prompt':
+            if (slide.heading) {
+                blocks.push({ id: genBlockId(), type: 'text', html: `<h2>${escHtmlForMigration(slide.heading)}</h2>` });
+            }
+            blocks.push({
+                id: genBlockId(),
+                type: 'interactive_prompt',
+                promptText: slide.promptText || '',
+                promptKind: slide.promptKind || 'short_answer',
+                choices: Array.isArray(slide.choices) ? slide.choices : []
+            });
+            break;
+        default:
+            // Unrecognized legacy type — surface whatever text-ish content
+            // it has as a single text block rather than silently dropping
+            // the slide's data.
+            if (slide.heading || slide.body) {
+                blocks.push({ id: genBlockId(), type: 'text', html: slide.bodyHtml || escHtmlForMigration(slide.heading || slide.body || '') });
+            }
+            break;
+    }
+
+    return { id: slide.id || genSlideId(), type: 'blank', blocks };
+}
+
+// Applies migrateLegacySlide() across an entire lesson's slides[] array —
+// the single shared entry point every read path funnels through (see
+// loadLesson/loadLessonsForSubject/loadPublishedLessonsForSubject/
+// subscribeToLesson below, and lessons/viewer.js's own separate getDoc,
+// which calls migrateLegacySlide() directly since it doesn't go through
+// loadLesson() at all).
+export function normalizeLessonSlides(slides) {
+    return Array.isArray(slides) ? slides.map(migrateLegacySlide) : slides;
 }
 
 // ── YOUTUBE / VIMEO URL → SANITIZED EMBED URL ────────────────────────────
@@ -239,7 +398,7 @@ export async function loadLesson(schoolId, postContext, lessonId) {
     const snap = await getDoc(lessonRef(schoolId, postContext, lessonId));
     if (!snap.exists()) return null;
     const data = snap.data();
-    return { id: snap.id, ...data, format: normalizeFormat(data) };
+    return { id: snap.id, ...data, format: normalizeFormat(data), slides: normalizeLessonSlides(data.slides) };
 }
 
 // ── READ: this teacher-only private doc (pacingNotes/standards) ─────────
@@ -258,7 +417,7 @@ export async function loadLessonsForSubject(schoolId, postContext) {
     const snap = await getDocs(collection(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'lessons'));
     const lessons = snap.docs.map(d => {
         const data = d.data();
-        return { id: d.id, ...data, format: normalizeFormat(data) };
+        return { id: d.id, ...data, format: normalizeFormat(data), slides: normalizeLessonSlides(data.slides) };
     });
     lessons.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
     return lessons;
@@ -295,7 +454,7 @@ export async function loadPublishedLessonsForSubject(schoolId, postContext) {
     ));
     const lessons = snap.docs.map(d => {
         const data = d.data();
-        return { id: d.id, ...data, format: normalizeFormat(data) };
+        return { id: d.id, ...data, format: normalizeFormat(data), slides: normalizeLessonSlides(data.slides) };
     });
     lessons.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
     return lessons;
@@ -332,6 +491,13 @@ export async function createLesson(schoolId, postContext, authorContext, { title
     const now = new Date().toISOString();
     const resolvedFormat = format === 'document' ? 'document' : 'slides';
 
+    // A brand-new Slide Deck lesson starts on one blank slide seeded with a
+    // single empty text block (so the canvas never opens completely empty)
+    // rather than the old fixed 'title' slide type — see the "SLIDE DECK
+    // REDESIGN" comment on newSlide('blank') above.
+    const firstSlideDeckSlide = newSlide('blank');
+    firstSlideDeckSlide.blocks.push(newBlock('text'));
+
     const lesson = {
         title: (title || '').trim() || 'Untitled Lesson',
         format: resolvedFormat,
@@ -340,7 +506,15 @@ export async function createLesson(schoolId, postContext, authorContext, { title
         subjectId, subjectName,
         authorId: authorContext.authorId,
         authorName: authorContext.authorName,
-        slides: resolvedFormat === 'document' ? [newSlide('richtext')] : [newSlide('title')],
+        slides: resolvedFormat === 'document' ? [newSlide('richtext')] : [firstSlideDeckSlide],
+        // Slide Deck visual theme (accent color/icon — see builder.js's
+        // THEMES config and its "Theme" button). Document lessons have no
+        // canvas to theme, so this is meaningless there but harmless to
+        // always include — one less format-specific branch for every
+        // caller to worry about. A lesson saved before this field existed
+        // has none; every reader treats a missing/unknown theme as
+        // 'general' rather than throwing (see builder.js's THEMES lookup).
+        theme: 'general',
         createdAt: now,
         updatedAt: now,
         publishedAt: null
@@ -358,12 +532,16 @@ export async function createLesson(schoolId, postContext, authorContext, { title
 // a Slides lesson's array of blocks or a Document lesson's single richtext
 // block — the caller (builder.js's currentSlidesForSave()) is what decides
 // what `slides` actually contains before calling this.
-export async function saveLessonContent(schoolId, postContext, lessonId, { title, slides }) {
+export async function saveLessonContent(schoolId, postContext, lessonId, { title, slides, theme }) {
     const updates = {
         title: (title || '').trim() || 'Untitled Lesson',
         slides,
         updatedAt: new Date().toISOString()
     };
+    // theme is optional here (not every caller — e.g. a Document lesson's
+    // save — has one to send) so it only touches the doc when actually
+    // provided, rather than ever writing `theme: undefined`.
+    if (theme) updates.theme = theme;
     await updateDoc(lessonRef(schoolId, postContext, lessonId), updates);
     return updates;
 }
@@ -448,7 +626,7 @@ export function subscribeToLesson(schoolId, postContext, lessonId, onChange) {
     return onSnapshot(lessonRef(schoolId, postContext, lessonId), (snap) => {
         if (snap.exists()) {
             const data = snap.data();
-            onChange({ id: snap.id, ...data, format: normalizeFormat(data) });
+            onChange({ id: snap.id, ...data, format: normalizeFormat(data), slides: normalizeLessonSlides(data.slides) });
         }
     }, (error) => {
         console.error(`[Lessons] subscribeToLesson failed for ${lessonId}:`, error);

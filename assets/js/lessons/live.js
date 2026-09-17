@@ -46,10 +46,15 @@ const postContext = { classId: urlClassId, subjectId: urlSubjectId, subjectName:
 // ── 3. STATE ──────────────────────────────────────────────────────────────
 let lesson = null;
 let liveSessionId = null;
-let currentBlockIndex = 0;
+// SLIDE DECK REDESIGN: navigation is by SLIDE, same unit the builder's own
+// canvas and thumbnails use — a slide is no longer a single fixed-type
+// "block" 1:1 (see lessons.js's newSlide('blank')/newBlock()); it can now
+// hold several toolbar-inserted blocks presented together, exactly as the
+// teacher laid them out. collaborative_board stays the one whole-slide type.
+let currentSlideIndex = 0;
 let unsubSession = null;
 let unsubResponses = null;
-let responsesByStudentBlock = new Map(); // "{studentId}_{blockId}" -> response record, for the CURRENT block only
+let responsesByStudentBlock = new Map(); // "{studentId}_{blockId}" -> response record, for the CURRENT slide's live block(s) only
 
 const els = {};
 
@@ -103,9 +108,9 @@ async function init() {
         liveSessionId = result.id;
 
         if (result.resumed) {
-            currentBlockIndex = Math.max(0, lesson.slides.findIndex(b => b.id === result.teacherPositionId));
+            currentSlideIndex = Math.max(0, lesson.slides.findIndex(s => s.id === result.teacherPositionId));
         } else {
-            currentBlockIndex = 0;
+            currentSlideIndex = 0;
             await updateLiveSessionPosition(session.schoolId, postContext, urlLessonId, liveSessionId, lesson.slides[0]?.id || null);
         }
 
@@ -116,7 +121,7 @@ async function init() {
         els.lessonTitleLabel.textContent = lesson.title || 'Untitled Lesson';
         els.subjectLabel.textContent = postContext.subjectName || '';
 
-        renderCurrentBlock();
+        renderCurrentSlide();
     } catch (e) {
         console.error('[Live Session] init:', e);
         showFatalError('Something went wrong starting this live session. Please try again.');
@@ -133,8 +138,8 @@ function cacheEls() {
 }
 
 function wireEvents() {
-    els.prevBlockBtn.addEventListener('click', () => navigateTo(currentBlockIndex - 1));
-    els.nextBlockBtn.addEventListener('click', () => navigateTo(currentBlockIndex + 1));
+    els.prevBlockBtn.addEventListener('click', () => navigateTo(currentSlideIndex - 1));
+    els.nextBlockBtn.addEventListener('click', () => navigateTo(currentSlideIndex + 1));
     els.endSessionBtn.addEventListener('click', onEndSession);
 }
 
@@ -162,117 +167,120 @@ async function navigateTo(index) {
     const total = lesson.slides.length;
     if (index < 0 || index >= total) return;
 
-    currentBlockIndex = index;
-    renderCurrentBlock();
+    currentSlideIndex = index;
+    renderCurrentSlide();
 
     try {
-        await updateLiveSessionPosition(session.schoolId, postContext, urlLessonId, liveSessionId, currentBlock().id);
+        await updateLiveSessionPosition(session.schoolId, postContext, urlLessonId, liveSessionId, currentSlideData().id);
     } catch (e) {
         console.error('[Live Session] updateLiveSessionPosition:', e);
     }
 }
 
-function currentBlock() {
-    return lesson.slides[currentBlockIndex] || null;
+function currentSlideData() {
+    return lesson.slides[currentSlideIndex] || null;
+}
+
+// Which block(s) on the current slide are LIVE-INTERACTIVE (i.e. get a
+// responses listener + grid) — Interactive Prompt blocks within a 'blank'
+// slide (a slide may now hold more than one, unlike the old one-type-per-
+// slide schema), or the whole slide itself for collaborative_board (still
+// the one special, non-blocks whole-slide type). `label` is only set when
+// there's more than one live block on the same slide, so the grid can tell
+// them apart — the common single-block case stays unlabeled, matching the
+// old UI exactly.
+function liveBlocksForSlide(slide) {
+    if (!slide) return [];
+    if (slide.type === 'collaborative_board') return [{ id: slide.id, label: null }];
+    const prompts = (slide.blocks || []).filter(b => b.type === 'interactive_prompt');
+    return prompts.map((b, i) => ({ id: b.id, label: prompts.length > 1 ? `Prompt ${i + 1}` : null }));
 }
 
 // ── 7. RENDER ─────────────────────────────────────────────────────────────
-function renderCurrentBlock() {
-    const block = currentBlock();
+function renderCurrentSlide() {
+    const slide = currentSlideData();
     const total = lesson.slides.length;
 
-    els.blockCounter.textContent = `Block ${currentBlockIndex + 1} of ${total}`;
-    els.prevBlockBtn.disabled = currentBlockIndex === 0;
-    els.nextBlockBtn.disabled = currentBlockIndex === total - 1;
+    els.blockCounter.textContent = `Slide ${currentSlideIndex + 1} of ${total}`;
+    els.prevBlockBtn.disabled = currentSlideIndex === 0;
+    els.nextBlockBtn.disabled = currentSlideIndex === total - 1;
 
-    if (!block) { els.presentCanvas.innerHTML = ''; return; }
+    if (!slide) { els.presentCanvas.innerHTML = ''; return; }
 
-    els.presentCanvas.innerHTML = renderBlockHtml(block);
+    els.presentCanvas.innerHTML = renderSlideHtml(slide);
 
-    // The live grid view only ever applies to the two interactive block
-    // types — every other block type gets no responses listener at all
-    // (there is nothing for a student to submit against it), and any
-    // PREVIOUS block's listener is torn down here before a new one (or
+    // Any PREVIOUS slide's listener is torn down here before a new one (or
     // none) is registered, so this page never runs more than one responses
     // listener at a time regardless of how fast the teacher clicks through.
     if (unsubResponses) { unsubResponses(); unsubResponses = null; }
     responsesByStudentBlock.clear();
 
-    if (block.type === 'interactive_prompt' || block.type === 'collaborative_board') {
+    const liveBlocks = liveBlocksForSlide(slide);
+    if (liveBlocks.length) {
         els.responsesPanel.classList.remove('hidden');
-        registerResponsesListener(block.id);
+        registerResponsesListener(liveBlocks);
     } else {
         els.responsesPanel.classList.add('hidden');
     }
 }
 
-function renderBlockHtml(block) {
+// SLIDE DECK REDESIGN: a 'blank' slide's presentation is now its blocks
+// stacked together (matching the builder's own canvas) rather than one
+// fixed-type slide. collaborative_board is unchanged — still a special,
+// non-blocks whole-slide type.
+function renderSlideHtml(slide) {
+    if (slide.type === 'collaborative_board') {
+        return `
+        <div class="lb-block-card">
+            <span class="lb-live-badge lb-live-badge-board"><i class="fa-solid fa-people-group"></i> Collaborative Board</span>
+            ${slide.heading ? `<h2 class="text-lg md:text-xl font-black text-slate-800 mt-3 mb-3">${escHtml(slide.heading)}</h2>` : ''}
+            ${slide.instructions ? `<p class="text-[13.5px] text-slate-600 leading-relaxed whitespace-pre-wrap">${escHtml(slide.instructions)}</p>` : ''}
+        </div>`;
+    }
+
+    const blocks = slide.blocks || [];
+    if (!blocks.length) {
+        return `<div class="lb-block-card"><p class="text-slate-400 font-semibold">This slide has no content yet.</p></div>`;
+    }
+    return `<div class="lb-block-card space-y-5">${blocks.map(renderLiveBlockHtml).join('')}</div>`;
+}
+
+function renderLiveBlockHtml(block) {
     switch (block.type) {
-        case 'title':
-            // headingHtml/objectiveHtml (Slide Deck toolbar parity, see
-            // lessons.js's newSlide()) take priority when present; a slide
-            // saved before that field existed has none, so this falls back
-            // to the plain heading/objective exactly as before — same
-            // legacy-compat convention as the 'richtext' case's contentHtml
-            // fallback just below.
-            return `
-            <div class="lb-block-card items-center text-center">
-                <p class="text-[11px] font-black text-teal-500 uppercase tracking-widest mb-3">${escHtml(block.subheading || '')}</p>
-                <div class="lb-richtext text-2xl md:text-3xl font-black text-slate-800 leading-tight mb-4" style="text-align:center;">${block.headingHtml || escHtml(block.heading) || 'Untitled Slide'}</div>
-                ${(block.objectiveHtml || block.objective) ? `<div class="lb-richtext text-[14px] text-slate-500 font-semibold max-w-md mx-auto leading-relaxed" style="text-align:center;">${block.objectiveHtml || escHtml(block.objective)}</div>` : ''}
-            </div>`;
-        case 'media':
-            return `
-            <div class="lb-block-card">
-                ${block.heading ? `<h2 class="text-lg md:text-xl font-black text-slate-800 mb-4">${escHtml(block.heading)}</h2>` : ''}
-                ${block.mediaKind === 'image'
-                    ? (block.imageUrl ? `<img src="${escHtml(block.imageUrl)}" alt="${escHtml(block.imageAlt)}" class="w-full max-h-[420px] object-contain rounded-xl bg-slate-50 border border-slate-200">` : `<div class="lb-media-placeholder">No image on this slide.</div>`)
-                    : (block.embedUrl ? `<div class="lb-media-frame"><iframe src="${escHtml(block.embedUrl)}" allowfullscreen loading="lazy"></iframe></div>` : `<div class="lb-media-placeholder">No video on this slide.</div>`)}
-                ${block.caption ? `<p class="text-[12px] text-slate-400 font-semibold mt-3 text-center">${escHtml(block.caption)}</p>` : ''}
-            </div>`;
+        case 'image':
+            return block.imageUrl
+                ? `<div>
+                     <img src="${escHtml(block.imageUrl)}" alt="${escHtml(block.imageAlt)}" class="w-full max-h-[420px] object-contain rounded-xl bg-slate-50 border border-slate-200">
+                     ${block.caption ? `<p class="text-[12px] text-slate-400 font-semibold mt-2 text-center">${escHtml(block.caption)}</p>` : ''}
+                   </div>`
+                : `<div class="lb-media-placeholder">No image on this slide.</div>`;
+        case 'video':
+            return block.embedUrl
+                ? `<div>
+                     <div class="lb-media-frame"><iframe src="${escHtml(block.embedUrl)}" allowfullscreen loading="lazy"></iframe></div>
+                     ${block.caption ? `<p class="text-[12px] text-slate-400 font-semibold mt-2 text-center">${escHtml(block.caption)}</p>` : ''}
+                   </div>`
+                : `<div class="lb-media-placeholder">No video on this slide.</div>`;
         case 'assignment':
-            return `
-            <div class="lb-block-card">
-                ${block.heading ? `<h2 class="text-lg md:text-xl font-black text-slate-800 mb-3">${escHtml(block.heading)}</h2>` : ''}
-                ${block.prompt ? `<p class="text-[13.5px] text-slate-600 leading-relaxed whitespace-pre-wrap">${escHtml(block.prompt)}</p>` : ''}
-            </div>`;
-        case 'richtext':
-            return `<div class="lb-block-card lb-richtext">${block.contentHtml || '<p class="text-slate-400 font-semibold">This document has no content yet.</p>'}</div>`;
+            return `<div>${block.prompt ? `<p class="text-[13.5px] text-slate-600 leading-relaxed whitespace-pre-wrap">${escHtml(block.prompt)}</p>` : '<p class="text-slate-400 font-semibold">Embedded assignment.</p>'}</div>`;
         case 'interactive_prompt':
             return `
-            <div class="lb-block-card">
+            <div>
                 <span class="lb-live-badge"><i class="fa-solid fa-bolt"></i> Interactive Prompt</span>
-                ${block.heading ? `<h2 class="text-lg md:text-xl font-black text-slate-800 mt-3 mb-3">${escHtml(block.heading)}</h2>` : ''}
-                <p class="text-[14px] text-slate-700 font-semibold leading-relaxed">${escHtml(block.promptText) || 'No prompt text set.'}</p>
+                <p class="text-[14px] text-slate-700 font-semibold leading-relaxed mt-2">${escHtml(block.promptText) || 'No prompt text set.'}</p>
                 ${block.promptKind === 'multiple_choice' && (block.choices || []).length
                     ? `<ul class="mt-3 space-y-1.5">${block.choices.map(c => `<li class="text-[13px] text-slate-600 font-semibold bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">${escHtml(c)}</li>`).join('')}</ul>`
                     : ''}
             </div>`;
-        case 'collaborative_board':
-            return `
-            <div class="lb-block-card">
-                <span class="lb-live-badge lb-live-badge-board"><i class="fa-solid fa-people-group"></i> Collaborative Board</span>
-                ${block.heading ? `<h2 class="text-lg md:text-xl font-black text-slate-800 mt-3 mb-3">${escHtml(block.heading)}</h2>` : ''}
-                ${block.instructions ? `<p class="text-[13.5px] text-slate-600 leading-relaxed whitespace-pre-wrap">${escHtml(block.instructions)}</p>` : ''}
-            </div>`;
-        case 'content':
+        case 'text':
         default:
-            // bodyHtml (Slide Deck toolbar parity) takes priority when
-            // present, same legacy-fallback convention as the 'title' case
-            // above — a pre-existing slide with no bodyHtml falls back to
-            // the plain body text, unchanged from before this field existed.
-            return `
-            <div class="lb-block-card">
-                ${block.heading ? `<h2 class="text-xl md:text-2xl font-black text-slate-800 mb-4">${escHtml(block.heading)}</h2>` : ''}
-                ${block.bodyHtml
-                    ? `<div class="lb-richtext text-[14.5px] text-slate-600 leading-relaxed">${block.bodyHtml}</div>`
-                    : `<p class="text-[14.5px] text-slate-600 leading-relaxed whitespace-pre-wrap">${escHtml(block.body || '')}</p>`}
-            </div>`;
+            return `<div class="lb-richtext">${block.html || '<p class="text-slate-400 font-semibold">(empty text block)</p>'}</div>`;
     }
 }
 
-// ── 8. LIVE RESPONSES GRID (interactive_prompt / collaborative_board) ───
-function registerResponsesListener(blockId) {
+// ── 8. LIVE RESPONSES GRID (interactive_prompt block(s) / collaborative_board) ──
+function registerResponsesListener(liveBlocks) {
+    const idSet = new Set(liveBlocks.map(b => b.id));
     // callerRole: 'teacher' — an unfiltered query (every response in the
     // session, every blockType included) is correct and necessary here: the
     // teacher needs interactive_prompt answers too, which the student-side
@@ -282,19 +290,19 @@ function registerResponsesListener(blockId) {
     // stays allowed regardless of blockType.
     unsubResponses = subscribeToLiveResponses(session.schoolId, postContext, urlLessonId, liveSessionId, (responses) => {
         // The subscription is on the WHOLE session's responses (every block
-        // touched so far), not just this one — filtered client-side to the
-        // block currently on screen, same "list once, filter in memory"
-        // approach teacher/exams/live.js takes with its own two merged
-        // streams. Re-registered per block (see renderCurrentBlock()) so
-        // this filter is cheap and the listener itself never has to survive
-        // across a navigation.
-        const forThisBlock = responses.filter(r => r.blockId === blockId);
-        responsesByStudentBlock = new Map(forThisBlock.map(r => [r.id, r]));
-        renderResponsesGrid(forThisBlock);
+        // touched so far), not just this slide's — filtered client-side to
+        // whichever block id(s) are actually live on the current slide, same
+        // "list once, filter in memory" approach teacher/exams/live.js takes
+        // with its own two merged streams. Re-registered per slide (see
+        // renderCurrentSlide()) so this filter is cheap and the listener
+        // itself never has to survive across a navigation.
+        const forThisSlide = responses.filter(r => idSet.has(r.blockId));
+        responsesByStudentBlock = new Map(forThisSlide.map(r => [r.id, r]));
+        renderResponsesGrid(forThisSlide, liveBlocks);
     }, 'teacher');
 }
 
-function renderResponsesGrid(responses) {
+function renderResponsesGrid(responses, liveBlocks) {
     els.responsesCount.textContent = `${responses.length} response${responses.length === 1 ? '' : 's'}`;
 
     if (!responses.length) {
@@ -308,8 +316,10 @@ function renderResponsesGrid(responses) {
     // submissions visible without scrolling, same ordering principle
     // loadLessonsForSubject() uses for its own list.
     const sorted = [...responses].sort((a, b) => new Date(b.submittedAt || 0) - new Date(a.submittedAt || 0));
+    const labelFor = (blockId) => liveBlocks.find(b => b.id === blockId)?.label;
     els.responsesGrid.innerHTML = sorted.map(r => `
         <div class="response-card">
+            ${labelFor(r.blockId) ? `<p class="text-[9.5px] font-black text-indigo-400 uppercase tracking-widest mb-1">${escHtml(labelFor(r.blockId))}</p>` : ''}
             <p class="response-card-student">${escHtml(r.studentName || r.studentId)}</p>
             <p class="response-card-text">${escHtml(r.answerText) || '<span class="text-slate-300">(no answer text)</span>'}</p>
         </div>`).join('');
@@ -337,7 +347,7 @@ async function onEndSession() {
 // Every onSnapshot this page opens (registerSessionListener,
 // registerResponsesListener) has a matching unsubscribe here. The responses
 // listener is ALSO individually torn down and re-registered on every
-// navigation (see renderCurrentBlock()) — this pagehide handler is the
+// navigation (see renderCurrentSlide()) — this pagehide handler is the
 // final safety net for whichever listener is still live when the tab
 // actually closes, not the only place either one is ever unsubscribed.
 window.addEventListener('pagehide', () => {

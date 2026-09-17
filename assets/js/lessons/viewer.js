@@ -26,7 +26,8 @@ import {
     getActiveLiveSession,
     subscribeToLiveSession,
     subscribeToLiveResponses,
-    saveLiveResponse
+    saveLiveResponse,
+    normalizeLessonSlides
 } from '../../../assets/js/lessons.js';
 
 // ── 1. AUTHENTICATION & LAYOUT ──────────────────────────────────────────────
@@ -57,7 +58,7 @@ let quillViewer = null;        // Document format's read-only Quill instance
 let assignmentsById = new Map(); // linkedAssignmentId -> the real assignment record (for the submission panel)
 let gradesById = new Map();      // assignmentId -> grade record | null
 let currentPanelAssignmentId = null; // assignment currently open in the slide-in panel
-let loadedMediaSlideIds = new Set(); // slide ids whose iframe has already been lazily inserted (Slides format)
+let loadedMediaSlideIds = new Set(); // video block ids whose iframe has already been lazily inserted (Slides format)
 
 // ── PHASE 3: LIVE SESSION ENGINE — student-side state ────────────────────
 let liveSessionId = null;          // this lesson's currently-active live session, if any
@@ -192,7 +193,14 @@ async function init() {
             showError('This lesson is no longer published.');
             return;
         }
-        lesson = { id: snap.id, ...data, format: data.format === 'document' ? 'document' : 'slides' };
+        // normalizeLessonSlides() upgrades any pre-redesign ('title'/
+        // 'content'/'media'/'assignment'/'interactive_prompt') slide into
+        // the current { type:'blank', blocks:[...] } shape on read — this
+        // page bypasses lessons.js's own loadLesson() (see the fetch
+        // comment above), so it has to call this explicitly rather than
+        // getting it "for free" the way builder.js/live.js do. See
+        // lessons.js's migrateLegacySlide() for the full rationale.
+        lesson = { id: snap.id, ...data, format: data.format === 'document' ? 'document' : 'slides', slides: normalizeLessonSlides(data.slides) };
         postContext = { classId: urlClassId, className: data.className || '', subjectId: urlSubjectId, subjectName: data.subjectName || urlSubjectName };
 
         // ── Resolve this student's real assignment records ───────────────
@@ -397,39 +405,37 @@ function manualGoToSlide(index) {
     goToSlide(index);
 }
 
+// SLIDE DECK REDESIGN: a 'blank' slide's presentation is now its blocks
+// stacked together — the exact content/order the teacher laid out with the
+// builder's own toolbar — rather than one fixed-type slide dispatch table.
+// collaborative_board is unchanged: still a special, non-blocks whole-slide
+// type, rendered directly.
 function renderSlideCanvas() {
     const slide = currentSlide();
     if (!slide) { els.lvSlideCanvas.innerHTML = ''; return; }
 
-    const renderers = {
-        title: renderTitleSlideHtml,
-        content: renderContentSlideHtml,
-        media: renderMediaSlideHtml,
-        assignment: renderAssignmentSlideHtml,
-        interactive_prompt: renderInteractivePromptHtml,
-        collaborative_board: renderCollaborativeBoardHtml
-    };
-    els.lvSlideCanvas.innerHTML = (renderers[slide.type] || renderContentSlideHtml)(slide);
+    els.lvSlideCanvas.innerHTML = slide.type === 'collaborative_board'
+        ? renderCollaborativeBoardHtml(slide)
+        : renderBlankSlideHtml(slide);
 
-    // Lazy-load: a media slide's <iframe> is only ever inserted once this
+    // Lazy-load: a video block's <iframe> is only ever inserted once this
     // exact slide becomes the active one (here, right after it's rendered
     // as the current slide) — see mountLazyMediaFrame() below. Re-visiting
-    // an already-loaded slide does not reload the iframe (loadedMediaSlideIds
+    // an already-loaded block does not reload the iframe (loadedMediaSlideIds
     // guards that), so a student paging back and forth doesn't restart video
-    // playback on every pass.
-    if (slide.type === 'media') mountLazyMediaFrame(slide, els.lvSlideCanvas.querySelector('[data-lazy-media]'));
+    // playback on every pass. A slide can now hold more than one video block,
+    // so every [data-lazy-media] node on screen is mounted, not just one.
+    els.lvSlideCanvas.querySelectorAll('[data-lazy-media]').forEach(mountLazyMediaFrame);
 
-    // ── PHASE 3: live-response wiring for the two interactive block types.
-    // Only meaningful while the session is ACTIVELY live — isSessionLive()
-    // (not the bare liveSessionId, which stays truthy after the session
-    // ends) gates this so a submit button is never wired once the session
-    // is over. The two render functions below only emit a submit button/
-    // textarea/choice buttons in the first place when isSessionLive() is
-    // true, so this stays in sync with what's actually on screen — outside
-    // that, these blocks render either their read-only "session ended"
-    // state or their static "no live session" prompt text.
-    if (isSessionLive() && (slide.type === 'interactive_prompt' || slide.type === 'collaborative_board')) {
-        wireLiveBlockForm(slide);
+    // ── PHASE 3: live-response wiring. Only meaningful while the session is
+    // ACTIVELY live — isSessionLive() (not the bare liveSessionId, which
+    // stays truthy after the session ends) gates this so a submit button is
+    // never wired once the session is over. liveBlocksForSlide() below finds
+    // every live-interactive item on the current slide: any Interactive
+    // Prompt block(s) within a 'blank' slide (there can now be more than
+    // one), or the whole slide itself for collaborative_board.
+    if (isSessionLive()) {
+        liveBlocksForSlide(slide).forEach(item => wireLiveBlockForm(item));
     }
     // The live responses LISTENER (as opposed to the submission FORM above)
     // is only ever opened for collaborative_board. interactive_prompt is
@@ -462,63 +468,57 @@ function renderSlideCanvas() {
     }
 }
 
-// headingHtml/objectiveHtml/bodyHtml (Slide Deck toolbar parity, see
-// lessons.js's newSlide()) take priority when present; a slide saved
-// before those fields existed has none, so these fall back to the escaped
-// plain heading/objective/body exactly as they rendered before — same
-// legacy-compat convention this file's Document-format rendering already
-// relies on (an empty contentHtml just shows the empty-state message).
-// The `.ql-editor` class reuses Quill's own CSS (already loaded on this
-// page for the Document-format read-only editor below) purely for its
-// typography rules — this is a plain div, not a live Quill instance.
-function renderTitleSlideHtml(slide) {
-    return `
-    <div class="lv-slide-card items-center text-center">
-        <p class="text-[11px] font-black text-indigo-400 uppercase tracking-widest mb-3">${escHtml(slide.subheading || '')}</p>
-        <div class="ql-editor text-2xl md:text-3xl font-black text-slate-800 leading-tight mb-4" style="padding:0; text-align:center;">${slide.headingHtml || escHtml(slide.heading) || 'Untitled Slide'}</div>
-        ${(slide.objectiveHtml || slide.objective) ? `<div class="ql-editor text-[14px] text-slate-500 font-semibold max-w-md mx-auto leading-relaxed" style="padding:0; text-align:center;">${slide.objectiveHtml || escHtml(slide.objective)}</div>` : ''}
-    </div>`;
+// Which item(s) on the current slide are live-interactive (get a submit
+// form wired, keyed by data-live-block-id) — mirrors live.js's own
+// liveBlocksForSlide(), same reasoning: a 'blank' slide's Interactive
+// Prompt block(s), or the whole slide for collaborative_board.
+function liveBlocksForSlide(slide) {
+    if (!slide) return [];
+    if (slide.type === 'collaborative_board') return [slide];
+    return (slide.blocks || []).filter(b => b.type === 'interactive_prompt');
 }
 
-function renderContentSlideHtml(slide) {
-    return `
-    <div class="lv-slide-card">
-        ${slide.heading ? `<h2 class="text-xl md:text-2xl font-black text-slate-800 mb-4">${escHtml(slide.heading)}</h2>` : ''}
-        ${slide.bodyHtml
-            ? `<div class="ql-editor text-[14.5px] text-slate-600 leading-relaxed" style="padding:0;">${slide.bodyHtml}</div>`
-            : `<p class="text-[14.5px] text-slate-600 leading-relaxed whitespace-pre-wrap m-0">${escHtml(slide.body)}</p>`}
-    </div>`;
+function renderBlankSlideHtml(slide) {
+    const blocks = slide.blocks || [];
+    if (!blocks.length) {
+        return `<div class="lv-slide-card"><p class="text-slate-400 font-semibold m-0">This slide has no content yet.</p></div>`;
+    }
+    return `<div class="lv-slide-card space-y-5">${blocks.map(renderLiveBlockDisplayHtml).join('')}</div>`;
 }
 
-function renderMediaSlideHtml(slide) {
-    const isImage = slide.mediaKind === 'image';
-    return `
-    <div class="lv-slide-card">
-        ${slide.heading ? `<h2 class="text-lg md:text-xl font-black text-slate-800 mb-4">${escHtml(slide.heading)}</h2>` : ''}
-        ${isImage
-            ? (slide.imageUrl
-                ? `<img src="${escHtml(slide.imageUrl)}" alt="${escHtml(slide.imageAlt)}" class="w-full max-h-[420px] object-contain rounded-xl bg-slate-50 border border-slate-200"
-                       onerror="this.outerHTML = '<div class=\\'lv-media-frame\\'><div class=\\'lv-media-placeholder\\'><p class=\\'text-[12.5px] font-semibold\\'>This image couldn\\'t be loaded.</p></div></div>'">`
-                : `<div class="lv-media-frame"><div class="lv-media-placeholder"><p class="text-[12.5px] font-semibold">No image was added to this slide.</p></div></div>`)
-            : `<div class="lv-media-frame" data-lazy-media data-embed-url="${escHtml(slide.embedUrl || '')}"><div class="lv-media-placeholder"><i class="fa-solid fa-circle-play text-3xl"></i></div></div>`}
-        ${slide.caption ? `<p class="text-[12px] text-slate-400 font-semibold mt-3 text-center">${escHtml(slide.caption)}</p>` : ''}
-    </div>`;
-}
-
-function renderAssignmentSlideHtml(slide) {
-    return `
-    <div class="lv-slide-card">
-        ${slide.heading ? `<h2 class="text-lg md:text-xl font-black text-slate-800 mb-3">${escHtml(slide.heading)}</h2>` : ''}
-        ${slide.prompt ? `<p class="text-[13.5px] text-slate-600 leading-relaxed whitespace-pre-wrap mb-5">${escHtml(slide.prompt)}</p>` : ''}
-        ${renderAssignmentEmbedHtml(slide.linkedAssignmentId)}
-    </div>`;
+// The `.ql-editor` class reuses Quill's own CSS (already loaded on this page
+// for the Document-format read-only editor below) purely for its typography
+// rules — a plain div, not a live Quill instance.
+function renderLiveBlockDisplayHtml(block) {
+    switch (block.type) {
+        case 'image':
+            return block.imageUrl
+                ? `<div>
+                     <img src="${escHtml(block.imageUrl)}" alt="${escHtml(block.imageAlt)}" class="w-full max-h-[420px] object-contain rounded-xl bg-slate-50 border border-slate-200"
+                          onerror="this.outerHTML = '<div class=\\'lv-media-frame\\'><div class=\\'lv-media-placeholder\\'><p class=\\'text-[12.5px] font-semibold\\'>This image couldn\\'t be loaded.</p></div></div>'">
+                     ${block.caption ? `<p class="text-[12px] text-slate-400 font-semibold mt-2 text-center">${escHtml(block.caption)}</p>` : ''}
+                   </div>`
+                : `<div class="lv-media-frame"><div class="lv-media-placeholder"><p class="text-[12.5px] font-semibold">No image was added to this slide.</p></div></div>`;
+        case 'video':
+            return `<div>
+                       <div class="lv-media-frame" data-lazy-media data-block-id="${escHtml(block.id)}" data-embed-url="${escHtml(block.embedUrl || '')}"><div class="lv-media-placeholder"><i class="fa-solid fa-circle-play text-3xl"></i></div></div>
+                       ${block.caption ? `<p class="text-[12px] text-slate-400 font-semibold mt-2 text-center">${escHtml(block.caption)}</p>` : ''}
+                    </div>`;
+        case 'assignment':
+            return `<div>${renderAssignmentEmbedHtml(block.linkedAssignmentId)}</div>`;
+        case 'interactive_prompt':
+            return renderInteractivePromptBlockHtml(block);
+        case 'text':
+        default:
+            return `<div class="ql-editor" style="padding:0;">${block.html || ''}</div>`;
+    }
 }
 
 // ── PHASE 3: LIVE SESSION ENGINE — interactive block rendering ──────────
-// Both block types render their prompt text unconditionally (a teacher
-// paging through the deck outside a live session, or a student opening the
-// lesson later for review, should still see what was asked). The
-// submission form itself has THREE possible states, not two:
+// Prompt text renders unconditionally (a teacher paging through the deck
+// outside a live session, or a student opening the lesson later for review,
+// should still see what was asked). The submission form itself has THREE
+// possible states, not two:
 //   1. isSessionLive() — the writable form (textarea/choices/submit button),
 //      wired by wireLiveBlockForm() in renderSlideCanvas() above.
 //   2. liveSessionId set but the session has ENDED (liveSessionData.endedAt)
@@ -529,22 +529,28 @@ function renderAssignmentSlideHtml(slide) {
 //   3. liveSessionId never set at all (no session has ever run for this
 //      lesson) — the original static "only live during an active session"
 //      copy.
-function renderInteractivePromptHtml(slide) {
-    const alreadySubmitted = mySubmittedBlockIds.has(slide.id);
+// SLIDE DECK REDESIGN: a slide can now hold more than one Interactive
+// Prompt block, so every id that used to be a page-global id (lvLiveSubmitBtn
+// etc.) is now a data-attribute scoped inside [data-live-block-id="<id>"] —
+// see wireLiveBlockForm()/submitLiveResponse() below, which query within
+// that scope rather than the whole document. collaborative_board (still
+// exactly one per slide) uses the same scoped pattern now too, for one
+// unified code path instead of two.
+function renderInteractivePromptBlockHtml(block) {
+    const alreadySubmitted = mySubmittedBlockIds.has(block.id);
     const sessionEnded = !!(liveSessionId && liveSessionData && liveSessionData.endedAt);
     return `
-    <div class="lv-slide-card">
+    <div data-live-block-id="${escHtml(block.id)}">
         <span class="lv-live-badge"><i class="fa-solid fa-bolt"></i> Live Prompt</span>
-        ${slide.heading ? `<h2 class="text-lg md:text-xl font-black text-slate-800 mt-3 mb-3">${escHtml(slide.heading)}</h2>` : ''}
-        <p class="text-[14px] text-slate-700 font-semibold leading-relaxed mb-4">${escHtml(slide.promptText) || 'No prompt text set.'}</p>
+        <p class="text-[14px] text-slate-700 font-semibold leading-relaxed mb-4 mt-2">${escHtml(block.promptText) || 'No prompt text set.'}</p>
         ${isSessionLive() ? `
-            <div id="lvLiveFormWrap">
-                ${slide.promptKind === 'multiple_choice' && (slide.choices || []).length
-                    ? `<div class="space-y-2 mb-3">${slide.choices.map((c, i) => `
+            <div data-live-form-wrap>
+                ${block.promptKind === 'multiple_choice' && (block.choices || []).length
+                    ? `<div class="space-y-2 mb-3">${block.choices.map((c, i) => `
                         <button type="button" data-live-choice="${escHtml(c)}" class="lv-choice-btn w-full text-left px-3.5 py-2.5 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 font-semibold text-[13px] text-slate-700 transition">${escHtml(c)}</button>`).join('')}</div>`
-                    : `<textarea id="lvLiveAnswerText" placeholder="Type your answer…" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm resize-none leading-relaxed mb-3" style="height:6rem;"></textarea>
-                       <button id="lvLiveSubmitBtn" class="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-black py-2.5 px-5 rounded-xl transition shadow-md text-sm"><i class="fa-solid fa-paper-plane mr-1"></i> Submit</button>`}
-                <p id="lvLiveMsg" class="text-[12px] font-bold mt-2 hidden"></p>
+                    : `<textarea data-live-answer-text placeholder="Type your answer…" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm resize-none leading-relaxed mb-3" style="height:6rem;"></textarea>
+                       <button type="button" data-live-submit-btn class="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-black py-2.5 px-5 rounded-xl transition shadow-md text-sm"><i class="fa-solid fa-paper-plane mr-1"></i> Submit</button>`}
+                <p data-live-msg class="text-[12px] font-bold mt-2 hidden"></p>
                 ${alreadySubmitted ? `<p class="text-[11.5px] font-bold text-emerald-600 mt-2"><i class="fa-solid fa-circle-check"></i> Your answer was submitted.</p>` : ''}
             </div>`
             : sessionEnded
@@ -568,15 +574,15 @@ function renderCollaborativeBoardHtml(slide) {
     // function's own comment) has somewhere to keep showing everyone's
     // already-submitted cards for review.
     return `
-    <div class="lv-slide-card">
+    <div class="lv-slide-card" data-live-block-id="${escHtml(slide.id)}">
         <span class="lv-live-badge lv-live-badge-board"><i class="fa-solid fa-people-group"></i> Collaborative Board</span>
         ${slide.heading ? `<h2 class="text-lg md:text-xl font-black text-slate-800 mt-3 mb-3">${escHtml(slide.heading)}</h2>` : ''}
         ${slide.instructions ? `<p class="text-[13.5px] text-slate-600 leading-relaxed whitespace-pre-wrap mb-4">${escHtml(slide.instructions)}</p>` : ''}
         ${isSessionLive() ? `
-            <div id="lvLiveFormWrap" class="mb-4">
-                <textarea id="lvLiveAnswerText" placeholder="Add your card…" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm resize-none leading-relaxed mb-3" style="height:4.5rem;"></textarea>
-                <button id="lvLiveSubmitBtn" class="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-black py-2.5 px-5 rounded-xl transition shadow-md text-sm"><i class="fa-solid fa-plus mr-1"></i> ${alreadySubmitted ? 'Update My Card' : 'Add My Card'}</button>
-                <p id="lvLiveMsg" class="text-[12px] font-bold mt-2 hidden"></p>
+            <div data-live-form-wrap class="mb-4">
+                <textarea data-live-answer-text placeholder="Add your card…" class="form-input w-full p-3 bg-white border border-slate-200 rounded-xl text-sm resize-none leading-relaxed mb-3" style="height:4.5rem;"></textarea>
+                <button type="button" data-live-submit-btn class="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-black py-2.5 px-5 rounded-xl transition shadow-md text-sm"><i class="fa-solid fa-plus mr-1"></i> ${alreadySubmitted ? 'Update My Card' : 'Add My Card'}</button>
+                <p data-live-msg class="text-[12px] font-bold mt-2 hidden"></p>
             </div>
             <div id="lvBoardWall" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5"></div>`
             : sessionEnded
@@ -590,41 +596,47 @@ function renderCollaborativeBoardHtml(slide) {
 }
 
 // Wires the Submit/Add-card button (and, for multiple_choice prompts, each
-// choice button) for whichever interactive block is currently on screen.
-// Re-called every renderSlideCanvas(), so no stale listener from a previous
-// slide's form can fire against the wrong block.
-function wireLiveBlockForm(slide) {
-    const submitBtn = document.getElementById('lvLiveSubmitBtn');
+// choice button) for ONE live-interactive item (an Interactive Prompt block,
+// or the collaborative_board slide itself), scoped to its own
+// [data-live-block-id] subtree so multiple prompts on the same slide never
+// cross-wire each other's buttons. Re-called every renderSlideCanvas(), so
+// no stale listener from a previous slide's form can fire against the wrong
+// item.
+function wireLiveBlockForm(item) {
+    const scope = els.lvSlideCanvas.querySelector(`[data-live-block-id="${item.id}"]`);
+    if (!scope) return;
+    const submitBtn = scope.querySelector('[data-live-submit-btn]');
     if (submitBtn) {
-        submitBtn.addEventListener('click', () => submitLiveResponse(slide, document.getElementById('lvLiveAnswerText')?.value || ''));
+        submitBtn.addEventListener('click', () => submitLiveResponse(item, scope.querySelector('[data-live-answer-text]')?.value || ''));
     }
-    document.querySelectorAll('[data-live-choice]').forEach(btn => {
-        btn.addEventListener('click', () => submitLiveResponse(slide, btn.dataset.liveChoice));
+    scope.querySelectorAll('[data-live-choice]').forEach(btn => {
+        btn.addEventListener('click', () => submitLiveResponse(item, btn.dataset.liveChoice));
     });
 }
 
-async function submitLiveResponse(slide, answerText) {
+async function submitLiveResponse(item, answerText) {
+    const scope = els.lvSlideCanvas.querySelector(`[data-live-block-id="${item.id}"]`);
     const text = (answerText || '').trim();
     if (!text) {
-        const msg = document.getElementById('lvLiveMsg');
+        const msg = scope?.querySelector('[data-live-msg]');
         if (msg) { msg.textContent = 'Write an answer before submitting.'; msg.className = 'text-[12px] font-bold mt-2 text-rose-600'; msg.classList.remove('hidden'); }
         return;
     }
-    const btn = document.getElementById('lvLiveSubmitBtn');
+    const btn = scope?.querySelector('[data-live-submit-btn]');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; }
 
     try {
         const studentName = session.studentData?.name || '';
-        await saveLiveResponse(session.schoolId, postContext, lesson.id, liveSessionId, session.studentId, studentName, slide.id, slide.type, { answerText: text });
-        mySubmittedBlockIds.add(slide.id);
-        const msg = document.getElementById('lvLiveMsg');
+        await saveLiveResponse(session.schoolId, postContext, lesson.id, liveSessionId, session.studentId, studentName, item.id, item.type, { answerText: text });
+        mySubmittedBlockIds.add(item.id);
+        const msg = scope?.querySelector('[data-live-msg]');
         if (msg) { msg.textContent = 'Submitted!'; msg.className = 'text-[12px] font-bold mt-2 text-emerald-600'; msg.classList.remove('hidden'); }
-        const textarea = document.getElementById('lvLiveAnswerText');
-        if (slide.type === 'collaborative_board' && textarea) textarea.value = ''; // board keeps accepting new/updated cards; prompt is one-and-done
-        if (btn) { btn.disabled = false; btn.innerHTML = slide.type === 'collaborative_board' ? '<i class="fa-solid fa-plus mr-1"></i> Update My Card' : '<i class="fa-solid fa-paper-plane mr-1"></i> Submit'; }
+        const textarea = scope?.querySelector('[data-live-answer-text]');
+        if (item.type === 'collaborative_board' && textarea) textarea.value = ''; // board keeps accepting new/updated cards; prompt is one-and-done
+        if (btn) { btn.disabled = false; btn.innerHTML = item.type === 'collaborative_board' ? '<i class="fa-solid fa-plus mr-1"></i> Update My Card' : '<i class="fa-solid fa-paper-plane mr-1"></i> Submit'; }
     } catch (e) {
         console.error('[Lesson Viewer] submitLiveResponse:', e);
-        const msg = document.getElementById('lvLiveMsg');
+        const msg = scope?.querySelector('[data-live-msg]');
         if (msg) { msg.textContent = 'Could not submit — please try again.'; msg.className = 'text-[12px] font-bold mt-2 text-rose-600'; msg.classList.remove('hidden'); }
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-paper-plane mr-1"></i> Submit'; }
     }
@@ -723,16 +735,21 @@ function showLiveBanner(text, ended = false) {
     els.lvLiveBanner.classList.toggle('text-rose-300', ended);
 }
 
-// Lazy iframe mount: called only when a media slide's canvas node has just
-// been inserted into the DOM as the CURRENT slide — never for an off-screen
-// slide, and never twice for the same slide (loadedMediaSlideIds is the
-// guard). This is what keeps a 20-slide deck with 20 video embeds from ever
-// loading more than one iframe's worth of external network/JS at a time.
-function mountLazyMediaFrame(slide, frameEl) {
-    if (!frameEl || loadedMediaSlideIds.has(slide.id)) return;
-    if (!slide.embedUrl) return; // placeholder already covers "no video yet"
-    loadedMediaSlideIds.add(slide.id);
-    frameEl.innerHTML = `<iframe src="${escHtml(slide.embedUrl)}" allowfullscreen loading="lazy"></iframe>`;
+// Lazy iframe mount: called only when a video block's canvas node has just
+// been inserted into the DOM as part of the CURRENT slide — never for an
+// off-screen slide, and never twice for the same block (loadedMediaSlideIds
+// is the guard, now keyed by block id since a single slide can hold more
+// than one video block). This is what keeps a 20-slide deck with 20 video
+// embeds from ever loading more than one iframe's worth of external
+// network/JS at a time.
+function mountLazyMediaFrame(frameEl) {
+    if (!frameEl) return;
+    const blockId = frameEl.dataset.blockId;
+    if (!blockId || loadedMediaSlideIds.has(blockId)) return;
+    const embedUrl = frameEl.dataset.embedUrl;
+    if (!embedUrl) return; // placeholder already covers "no video yet"
+    loadedMediaSlideIds.add(blockId);
+    frameEl.innerHTML = `<iframe src="${escHtml(embedUrl)}" allowfullscreen loading="lazy"></iframe>`;
 }
 
 // ── 7. DOCUMENT FORMAT (Quill read-only + Table of Contents) ─────────────

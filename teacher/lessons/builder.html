@@ -55,6 +55,48 @@
            (Quill augments that element in place rather than replacing it),
            so this one can safely target it directly. */
         #slideCanvas .lb-rich-field-heading.ql-container .ql-editor { font-size: 22px; font-weight: 700; }
+
+        /* ── SLIDE DECK REDESIGN: fixed 16:9 stage, insertable blocks ────── */
+        /* A real presentation surface — fixed aspect ratio, centered, capped
+           width — instead of the old auto-height card that grew with content.
+           aspect-ratio keeps it exactly 16:9 responsively (no JS resize
+           listener needed); max-width keeps it from feeling oversized on a
+           wide monitor, same "professional spacing" Google Slides' own canvas
+           has, adapted to this app's own content width rather than copying
+           Slides' exact pixel dimensions. */
+        .lb-stage-wrap { width: 100%; max-width: 860px; }
+        .lb-slide-stage { width: 100%; aspect-ratio: 16 / 9; overflow-y: auto; padding: 36px 44px; border-top: 5px solid var(--lb-accent, #2563eb); box-sizing: border-box; }
+
+        .lb-toolbar-btn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; flex-shrink: 0; padding: 7px 11px; border-radius: 7px; font-size: 12px; font-weight: 700; color: #374f6b; background: transparent; border: 1px solid transparent; transition: background .12s, border-color .12s; }
+        .lb-toolbar-btn:hover { background: #f4f7fb; border-color: #dce3ed; }
+        .lb-toolbar-btn i { color: #2563eb; font-size: 11.5px; }
+
+        .lb-block { position: relative; border: 1.5px solid transparent; border-radius: 8px; padding: 8px; margin-bottom: 14px; transition: border-color .12s, background .12s; cursor: default; }
+        .lb-block:hover { background: #f8fafd; }
+        .lb-block.lb-block-selected { border-color: var(--lb-accent, #2563eb); background: #f8fafd; }
+        .lb-block-toolbar { position: absolute; top: -14px; right: 6px; display: none; align-items: center; gap: 2px; background: #0d1f35; border-radius: 6px; padding: 3px; box-shadow: 0 2px 6px rgba(13,31,53,.25); z-index: 5; }
+        .lb-block:hover .lb-block-toolbar, .lb-block.lb-block-selected .lb-block-toolbar { display: flex; }
+        .lb-block-toolbar button { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; color: #dce3ed; border-radius: 4px; font-size: 10.5px; transition: background .12s, color .12s; }
+        .lb-block-toolbar button:hover { background: #2563eb; color: #fff; }
+
+        .lb-theme-swatch { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 7px 4px; border-radius: 7px; border: 1.5px solid transparent; transition: border-color .12s, background .12s; }
+        .lb-theme-swatch:hover { background: #f4f7fb; }
+        .lb-theme-swatch.lb-theme-selected { border-color: #2563eb; background: #eef4ff; }
+        .lb-theme-swatch-dot { width: 18px; height: 18px; border-radius: 999px; }
+
+        /* ── SLIDE DECK REDESIGN: live-preview sidebar thumbnails (Task #6) ──
+           A true scaled-down rendering of the slide's own blocks — Google-
+           Slides-style — instead of an icon + text label. Rendered at real
+           thumbnail size (no CSS transform/scale trick) since the sidebar's
+           width is fixed (see #slideThumbList's non-resizable 220px parent
+           in the layout above), so this ratio never needs to be recomputed
+           in JS. Text blocks reuse the `.ql-editor` class purely for Quill's
+           own em-based heading/paragraph typography rules (h1/h2/h3 sizes
+           are relative, so they shrink proportionally with the small base
+           font-size set inline) — same trick already used for the read-only
+           block display in viewer.js. */
+        .slide-thumb-preview { aspect-ratio: 16 / 9; overflow: hidden; position: relative; }
+        .slide-thumb-clip { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
     </style>
 </head>
 <body class="flex w-full h-screen overflow-hidden bg-[#f4f7fb] font-['DM_Sans']">
@@ -106,39 +148,19 @@
                     </button>
                 </div>
                 <div id="slideThumbList" class="flex-1 overflow-y-auto p-3 space-y-2"></div>
-                <div class="p-3 border-t border-[#dce3ed]">
-                    <div class="relative">
-                        <button id="addSlideBtn" class="w-full bg-[#eef4ff] hover:bg-[#dbe8ff] text-[#2563eb] font-bold py-2.5 rounded text-[12.5px] flex items-center justify-center gap-2 transition">
-                            <i class="fa-solid fa-plus"></i> Add Slide
-                        </button>
-                        <div id="slideTemplateMenu" class="hidden absolute bottom-full left-0 mb-2 w-full bg-white border border-[#dce3ed] rounded-lg shadow-lg overflow-hidden z-10">
-                            <button data-template="title" class="w-full text-left px-3 py-2.5 text-[12.5px] font-semibold text-[#0d1f35] hover:bg-[#f4f7fb] flex items-center gap-2 border-b border-[#f0f4f8]">
-                                <i class="fa-solid fa-heading text-[#2563eb] w-4"></i> Title / Objective
-                            </button>
-                            <button data-template="content" class="w-full text-left px-3 py-2.5 text-[12.5px] font-semibold text-[#0d1f35] hover:bg-[#f4f7fb] flex items-center gap-2 border-b border-[#f0f4f8]">
-                                <i class="fa-solid fa-align-left text-[#2563eb] w-4"></i> Rich Content
-                            </button>
-                            <button data-template="media" class="w-full text-left px-3 py-2.5 text-[12.5px] font-semibold text-[#0d1f35] hover:bg-[#f4f7fb] flex items-center gap-2 border-b border-[#f0f4f8]">
-                                <i class="fa-solid fa-photo-film text-[#2563eb] w-4"></i> Media
-                            </button>
-                            <button data-template="assignment" class="w-full text-left px-3 py-2.5 text-[12.5px] font-semibold text-[#0d1f35] hover:bg-[#f4f7fb] flex items-center gap-2 border-b border-[#f0f4f8]">
-                                <i class="fa-solid fa-clipboard-check text-[#2563eb] w-4"></i> Embedded Assignment
-                            </button>
-                            <!-- PHASE 3: LIVE SESSION ENGINE — the two block types newSlide()
-                                 (assets/js/lessons.js) already supports, but the Add Slide menu
-                                 never exposed. Live-only: neither renders anything meaningful
-                                 outside an active live_sessions document (see lessons/live.js and
-                                 lessons/viewer.js), so a teacher previewing a lesson outside a
-                                 live session sees a static "this is live-only" placeholder — same
-                                 as an Embedded Assignment slide's read-only canvas preview. -->
-                            <button data-template="interactive_prompt" class="w-full text-left px-3 py-2.5 text-[12.5px] font-semibold text-[#0d1f35] hover:bg-[#f4f7fb] flex items-center gap-2 border-b border-[#f0f4f8]">
-                                <i class="fa-solid fa-bolt text-[#2563eb] w-4"></i> Interactive Prompt
-                            </button>
-                            <button data-template="collaborative_board" class="w-full text-left px-3 py-2.5 text-[12.5px] font-semibold text-[#0d1f35] hover:bg-[#f4f7fb] flex items-center gap-2">
-                                <i class="fa-solid fa-people-group text-[#2563eb] w-4"></i> Collaborative Board
-                            </button>
-                        </div>
-                    </div>
+                <!-- SLIDE DECK REDESIGN: "Add Slide" is now a plain "+" (always a
+                     blank slide — content is added afterward from the persistent
+                     insert toolbar above the canvas, not chosen up front). Collaborative
+                     Board stays a separate, dedicated action — it's still the one
+                     special whole-slide type, not something you "insert" into a
+                     blank slide. See builder.js's addBlankSlide()/addCollaborativeBoardSlide(). -->
+                <div class="p-3 border-t border-[#dce3ed] space-y-2">
+                    <button id="addSlideBtn" class="w-full bg-[#eef4ff] hover:bg-[#dbe8ff] text-[#2563eb] font-bold py-2.5 rounded text-[12.5px] flex items-center justify-center gap-2 transition">
+                        <i class="fa-solid fa-plus"></i> Add Slide
+                    </button>
+                    <button id="addCollabBoardBtn" class="w-full bg-white hover:bg-[#f4f7fb] text-[#374f6b] font-bold py-2.5 rounded text-[12.5px] flex items-center justify-center gap-2 transition border border-[#dce3ed]">
+                        <i class="fa-solid fa-people-group"></i> Add Collaboration Board
+                    </button>
                 </div>
             </div>
 
@@ -166,9 +188,70 @@
                     </div>
                 </div>
 
-                <!-- Slide canvas -->
-                <div class="flex-1 overflow-y-auto p-8">
-                    <div id="slideCanvas" class="max-w-2xl mx-auto"></div>
+                <!-- SLIDE DECK REDESIGN: persistent insert toolbar — visible on every
+                     'blank' slide (hidden for the special Collaborative Board slide
+                     type, which has no insertable blocks). This is what replaced the
+                     old fixed per-slide "types" — Text/Image/Video/Interactive Prompt/
+                     Assignment are all inserted from here instead of chosen when the
+                     slide itself is created. See builder.js's wireInsertToolbar(). -->
+                <div id="slideInsertToolbar" class="hidden flex-shrink-0 bg-white border-b border-[#dce3ed] px-5 py-2 items-center gap-1 overflow-x-auto relative">
+                    <button data-insert="text" class="lb-toolbar-btn" title="Insert Text">
+                        <i class="fa-solid fa-font"></i> Text
+                    </button>
+                    <div class="relative">
+                        <button id="insertImageBtn" class="lb-toolbar-btn" title="Insert Image">
+                            <i class="fa-solid fa-image"></i> Image
+                        </button>
+                        <div id="insertImageMenu" class="hidden absolute top-full left-0 mt-1.5 w-64 bg-white border border-[#dce3ed] rounded-lg shadow-lg z-20 overflow-hidden">
+                            <button id="insertImageUploadRow" class="w-full text-left px-3 py-2.5 text-[12.5px] font-semibold text-[#0d1f35] hover:bg-[#f4f7fb] flex items-center gap-2 border-b border-[#f0f4f8]">
+                                <i class="fa-solid fa-upload text-[#2563eb] w-4"></i> Upload from computer
+                            </button>
+                            <div class="p-2.5">
+                                <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">By URL</label>
+                                <div class="flex gap-1.5">
+                                    <input id="insertImageUrlInput" type="url" placeholder="https://example.com/photo.jpg" class="form-input flex-1 min-w-0 p-2 bg-white border border-[#dce3ed] rounded text-[12px] text-[#0d1f35] outline-none focus:border-[#2563eb]">
+                                    <button id="insertImageUrlBtn" class="bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold px-3 rounded text-[12px] transition flex-shrink-0">Insert</button>
+                                </div>
+                                <p class="text-[10.5px] text-[#9ab0c6] font-semibold mt-2 mb-0">Or paste an image (Ctrl/Cmd+V) anywhere on the slide.</p>
+                            </div>
+                        </div>
+                        <input type="file" id="insertImageFileInput" accept="image/*" class="hidden">
+                    </div>
+                    <div class="relative">
+                        <button id="insertVideoBtn" class="lb-toolbar-btn" title="Insert Video">
+                            <i class="fa-solid fa-video"></i> Video
+                        </button>
+                        <div id="insertVideoMenu" class="hidden absolute top-full left-0 mt-1.5 w-72 bg-white border border-[#dce3ed] rounded-lg shadow-lg z-20 p-2.5">
+                            <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">YouTube, Vimeo, or Google Drive link</label>
+                            <div class="flex gap-1.5">
+                                <input id="insertVideoUrlInput" type="url" placeholder="https://youtube.com/watch?v=..." class="form-input flex-1 min-w-0 p-2 bg-white border border-[#dce3ed] rounded text-[12px] text-[#0d1f35] outline-none focus:border-[#2563eb]">
+                                <button id="insertVideoUrlBtn" class="bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold px-3 rounded text-[12px] transition flex-shrink-0">Insert</button>
+                            </div>
+                            <p id="insertVideoError" class="hidden text-[11px] font-bold text-[#e31b4a] mt-1.5 mb-0">Couldn't recognize that as a YouTube, Vimeo, or Google Drive link.</p>
+                        </div>
+                    </div>
+                    <span class="w-px h-5 bg-[#dce3ed] mx-1.5 flex-shrink-0"></span>
+                    <button data-insert="interactive_prompt" class="lb-toolbar-btn" title="Insert Interactive Prompt">
+                        <i class="fa-solid fa-bolt"></i> Interactive Prompt
+                    </button>
+                    <button data-insert="assignment" class="lb-toolbar-btn" title="Insert Assignment">
+                        <i class="fa-solid fa-clipboard-check"></i> Assignment
+                    </button>
+                    <span class="flex-1"></span>
+                    <div class="relative flex-shrink-0">
+                        <button id="themeBtn" class="lb-toolbar-btn" title="Slide theme">
+                            <span id="themeBtnDot" class="w-2.5 h-2.5 rounded-full inline-block"></span> Theme
+                        </button>
+                        <div id="themeMenu" class="hidden absolute top-full right-0 mt-1.5 w-56 bg-white border border-[#dce3ed] rounded-lg shadow-lg z-20 p-2 grid grid-cols-2 gap-1.5"></div>
+                    </div>
+                </div>
+
+                <!-- Slide canvas: a fixed 16:9 "slide stage", centered, like a real
+                     presentation surface rather than an auto-height card. -->
+                <div class="flex-1 overflow-y-auto p-8 bg-[#eef1f5]">
+                    <div class="lb-stage-wrap mx-auto">
+                        <div id="slideCanvas" class="lb-slide-stage bg-white rounded-xl shadow-sm border border-[#dce3ed]"></div>
+                    </div>
                 </div>
             </div>
 

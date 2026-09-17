@@ -17,7 +17,7 @@ import { resolvePostContext } from '../../../assets/js/posts.js';
 import { db } from '../../../assets/js/firebase-init.js';
 import { doc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import {
-    newSlide, parseMediaUrl, isLikelyImageUrl,
+    newSlide, newBlock, migrateLegacySlide, parseMediaUrl, isLikelyImageUrl,
     loadLesson, loadLessonPrivateNotes, loadLessonsForSubject,
     createLesson, saveLessonContent, saveLessonPrivateNotes,
     publishLesson, unpublishLesson, deleteLesson
@@ -41,6 +41,14 @@ let currentLessonId = null;    // null while on the picker view
 let currentSlideIndex = 0;
 let hasUnsavedChanges = false;
 
+// SLIDE DECK REDESIGN: which block (by id) within the current 'blank'
+// slide is selected — drives both the canvas's selection ring (see
+// wireBlockSelection()) and what renderPropertiesPanel() shows. null means
+// no block selected (nothing on the canvas is highlighted, and the panel
+// shows a generic hint). Reset to null on every slide switch/add/delete —
+// a selection never carries over to a different slide.
+let currentBlockId = null;
+
 // Document-format state — Quill is the live source of truth for document
 // content while the editor is open; lessonDraft.slides[0].contentHtml is
 // only synced from it at save time (see currentSlidesForSave()).
@@ -48,15 +56,15 @@ let quill = null;
 let pendingAssignmentBlotRange = null; // where to insert once a picker selection is made
 let openAssignmentViewId = null; // id of the assignment currently shown in the view/edit modal
 
-// Slide Deck rich-text fields (Title's Heading/Objective, Content's Body) —
-// unlike Document mode's single long-lived `quill` instance above, each of
-// these is a short-lived Quill instance tied to whichever slide is
-// currently on the canvas. renderSlideCanvas() rebuilds #slideCanvas's
-// innerHTML from scratch on every slide switch/add/delete, which destroys
-// these instances' DOM outright, so there is nothing to explicitly tear
-// down — dropping the old references here (see wireRichFields()) is
-// enough to let them be garbage collected. Keyed by field name
-// ('heading' | 'objective' | 'body') for the slide currently on screen.
+// Slide Deck rich-text blocks (Text blocks — see newBlock('text') in
+// lessons.js) — unlike Document mode's single long-lived `quill` instance
+// above, each of these is a short-lived Quill instance tied to whichever
+// Text block is currently on the canvas. renderSlideCanvas() rebuilds
+// #slideCanvas's innerHTML from scratch on every slide switch/add/delete,
+// which destroys these instances' DOM outright, so there is nothing to
+// explicitly tear down — dropping the old references here (see
+// wireBlockRichFields()) is enough to let them be garbage collected. Keyed
+// by block id for whichever slide is currently on screen.
 let slideFieldQuills = {};
 
 // Shared toolbar for every Slide Deck rich-text field — the same
@@ -75,14 +83,28 @@ const SLIDE_FIELD_TOOLBAR = [
     ['link', 'clean']
 ];
 
-const ASSIGNMENT_TEMPLATE_LABELS = {
-    title: 'Title / Objective',
-    content: 'Rich Content',
-    media: 'Media',
-    assignment: 'Embedded Assignment',
-    interactive_prompt: 'Interactive Prompt',
-    collaborative_board: 'Collaborative Board'
+// ── SLIDE DECK VISUAL THEMES ───────────────────────────────────────────────
+// Purely cosmetic — an accent color + icon applied to the slide stage and
+// thumbnail rail (see .lb-slide-stage / renderSlideThumbPreviewHtml()), same
+// idea as Google Slides' own Theme picker. Labeled by subject vibe so a
+// teacher can find one that feels right at a glance, but any theme can be
+// used for any lesson — nothing here is enforced against the lesson's
+// actual subject. `lessonDraft.theme` stores just the key; THEMES[key] is
+// looked up wherever it's needed, always falling back to 'general' so an
+// unrecognized or missing key (every lesson saved before this feature
+// existed) never throws — see currentTheme().
+const THEMES = {
+    general: { label: 'General', accent: '#2563eb', accentSoft: '#eef4ff', icon: 'fa-chalkboard' },
+    science: { label: 'Science', accent: '#0d9488', accentSoft: '#f0fdfa', icon: 'fa-flask' },
+    math: { label: 'Math', accent: '#7c3aed', accentSoft: '#f5f3ff', icon: 'fa-calculator' },
+    language_arts: { label: 'Language Arts', accent: '#b45309', accentSoft: '#fffbeb', icon: 'fa-book-open' },
+    history: { label: 'History', accent: '#b91c1c', accentSoft: '#fef2f2', icon: 'fa-landmark' },
+    art: { label: 'Art', accent: '#db2777', accentSoft: '#fdf2f8', icon: 'fa-palette' }
 };
+
+function currentTheme() {
+    return THEMES[lessonDraft?.theme] || THEMES.general;
+}
 
 const els = {};
 
@@ -158,9 +180,16 @@ function cacheEls() {
     [
         'lessonPickerView', 'builderView', 'docBuilderView',
         'subjectSelect', 'newLessonBtn', 'lessonListCount', 'lessonList',
-        'backToListBtn', 'slideThumbList', 'addSlideBtn', 'slideTemplateMenu',
+        'backToListBtn', 'slideThumbList', 'addSlideBtn', 'addCollabBoardBtn',
         'lessonTitleInput', 'statusPill', 'saveMsg', 'notesBtn', 'saveBtn', 'publishBtn', 'publishBtnLabel',
         'slideCanvas', 'propertiesPanel',
+        // SLIDE DECK REDESIGN: persistent insert toolbar + its Image/Video/
+        // Theme popovers — see wireInsertToolbar()/wireThemeMenu().
+        'slideInsertToolbar',
+        'insertImageBtn', 'insertImageMenu', 'insertImageUploadRow',
+        'insertImageUrlInput', 'insertImageUrlBtn', 'insertImageFileInput',
+        'insertVideoBtn', 'insertVideoMenu', 'insertVideoUrlInput', 'insertVideoUrlBtn', 'insertVideoError',
+        'themeBtn', 'themeBtnDot', 'themeMenu',
         'docBackToListBtn', 'docLessonTitleInput', 'docStatusPill', 'docSaveMsg',
         'docNotesBtn', 'docSaveBtn', 'docPublishBtn', 'docPublishBtnLabel',
         'docToolbar', 'docEditor',
@@ -197,23 +226,17 @@ function wireEvents() {
         closeBuilder();
     });
 
-    els.addSlideBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        els.slideTemplateMenu.classList.toggle('hidden');
-    });
-    document.addEventListener('click', (e) => {
-        if (!els.slideTemplateMenu.contains(e.target) && e.target !== els.addSlideBtn) {
-            els.slideTemplateMenu.classList.add('hidden');
-        }
-    });
-    els.slideTemplateMenu.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-template]');
-        if (!btn) return;
-        addSlide(btn.dataset.template);
-        els.slideTemplateMenu.classList.add('hidden');
-    });
+    // SLIDE DECK REDESIGN: "Add Slide" is now always a plain blank slide
+    // (content is added afterward from the persistent insert toolbar), and
+    // Collaborative Board is its own dedicated action — see
+    // addBlankSlide()/addCollaborativeBoardSlide() below.
+    els.addSlideBtn.addEventListener('click', () => addBlankSlide());
+    els.addCollabBoardBtn.addEventListener('click', () => addCollaborativeBoardSlide());
 
     els.slideThumbList.addEventListener('click', onSlideThumbClick);
+
+    wireInsertToolbar();
+    wireThemeMenu();
 
     els.lessonTitleInput.addEventListener('input', () => {
         lessonDraft.title = els.lessonTitleInput.value;
@@ -436,6 +459,7 @@ async function openBuilder(lessonId) {
         lessonDraft = lesson;
         currentLessonId = lessonId;
         currentSlideIndex = 0;
+        currentBlockId = null;
         hasUnsavedChanges = false;
 
         els.lessonPickerView.classList.add('hidden');
@@ -530,26 +554,105 @@ function renderSlideThumbs() {
     els.slideThumbList.innerHTML = lessonDraft.slides.map((slide, i) => renderSlideThumb(slide, i)).join('');
 }
 
-function slideThumbIcon(type) {
-    return { title: 'fa-heading', content: 'fa-align-left', media: 'fa-photo-film', assignment: 'fa-clipboard-check', interactive_prompt: 'fa-bolt', collaborative_board: 'fa-people-group' }[type] || 'fa-file';
+// SLIDE DECK REDESIGN: slides no longer have a fixed "type" that implies an
+// icon — a 'blank' slide's icon is now inferred from what it actually
+// contains (its first image/video/interactive/assignment block), falling
+// back to a generic page icon for a text-only or empty slide.
+// collaborative_board remains the one special whole-slide type.
+function slideThumbIcon(slide) {
+    if (slide.type === 'collaborative_board') return 'fa-people-group';
+    const blocks = slide.blocks || [];
+    const firstMedia = blocks.find(b => b.type === 'image' || b.type === 'video');
+    if (firstMedia) return firstMedia.type === 'image' ? 'fa-image' : 'fa-video';
+    const firstInteractive = blocks.find(b => b.type === 'interactive_prompt' || b.type === 'assignment');
+    if (firstInteractive) return firstInteractive.type === 'interactive_prompt' ? 'fa-bolt' : 'fa-clipboard-check';
+    return 'fa-file-lines';
 }
 
+// Plain-text thumbnail label — the first non-empty Text block's content
+// (HTML-stripped), since a slide no longer carries its own dedicated
+// `heading` field (that was the old fixed-type schema's job). Falls back to
+// a generic label per slide state. Shown as the small caption line below
+// the live visual preview (renderSlideThumbPreviewHtml()) — the caption is
+// deliberately plain text (not scaled HTML) since it needs to stay legible
+// at 10.5px, unlike the preview box above it.
 function slideThumbLabel(slide) {
-    return slide.heading?.trim() || ASSIGNMENT_TEMPLATE_LABELS[slide.type] || 'Slide';
+    if (slide.type === 'collaborative_board') return slide.heading?.trim() || 'Collaboration Board';
+    const firstText = (slide.blocks || []).find(b => b.type === 'text' && b.html && b.html.replace(/<[^>]*>/g, '').trim());
+    if (firstText) {
+        const stripped = firstText.html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (stripped) return stripped.slice(0, 60);
+    }
+    return (slide.blocks || []).length ? 'Slide' : 'Blank Slide';
 }
 
 function renderSlideThumb(slide, i) {
     const isActive = i === currentSlideIndex;
+    // Active-thumb accent follows the lesson's own theme (Task #9) — via
+    // inline style, not a Tailwind arbitrary-value class, since the color
+    // is only known at runtime and inline style is the same reliable
+    // pattern already used for the theme swatches/button dot above.
+    const theme = currentTheme();
+    const activeStyle = isActive ? `style="border-color:${theme.accent}; background:${theme.accentSoft};"` : '';
     return `
-    <div class="slide-thumb group relative rounded-lg border p-2.5 cursor-pointer transition ${isActive ? 'border-[#2563eb] bg-[#eef4ff]' : 'border-[#dce3ed] bg-white hover:border-[#9ab0c6]'}"
-         data-slide-index="${i}" draggable="true">
-        <div class="flex items-center gap-2">
-            <span class="text-[10px] font-black text-[#9ab0c6] w-4 flex-shrink-0">${i + 1}</span>
-            <i class="fa-solid ${slideThumbIcon(slide.type)} text-[11px] ${isActive ? 'text-[#2563eb]' : 'text-[#6b84a0]'} flex-shrink-0"></i>
-            <span class="text-[11.5px] font-bold ${isActive ? 'text-[#0d1f35]' : 'text-[#374f6b]'} truncate flex-1">${escHtml(slideThumbLabel(slide))}</span>
+    <div class="slide-thumb group relative rounded-lg border p-1.5 cursor-pointer transition ${isActive ? '' : 'border-[#dce3ed] bg-white hover:border-[#9ab0c6]'}"
+         ${activeStyle} data-slide-index="${i}" draggable="true">
+        <div class="slide-thumb-preview rounded bg-white" style="border-top: 3px solid ${theme.accent};">
+            ${renderSlideThumbPreviewHtml(slide, theme)}
+        </div>
+        <div class="flex items-center gap-1.5 mt-1.5 px-0.5">
+            <span class="text-[10px] font-black text-[#9ab0c6] w-3.5 flex-shrink-0">${i + 1}</span>
+            <i class="fa-solid ${slideThumbIcon(slide)} text-[9.5px] flex-shrink-0" ${isActive ? `style="color:${theme.accent}"` : 'style="color:#9ab0c6"'}></i>
+            <span class="text-[10.5px] font-bold ${isActive ? 'text-[#0d1f35]' : 'text-[#374f6b]'} truncate flex-1">${escHtml(slideThumbLabel(slide))}</span>
             ${lessonDraft.slides.length > 1 ? `<button data-action="delete-slide" data-slide-index="${i}" class="opacity-0 group-hover:opacity-100 text-[#9ab0c6] hover:text-[#e31b4a] flex-shrink-0 transition"><i class="fa-solid fa-xmark text-[11px]"></i></button>` : ''}
         </div>
     </div>`;
+}
+
+// SLIDE DECK REDESIGN (Task #6): a true scaled-down rendering of the
+// slide's own blocks, Google-Slides-style, rendered at real thumbnail
+// size (see .slide-thumb-preview's comment in builder.html for why no
+// transform/scale trick is needed). This intentionally does NOT try to
+// pixel-match the real canvas's layout (spacing, exact font sizes) — the
+// goal is a glance-level "shape" of the slide (what kind of content is on
+// it and roughly where), same level of fidelity Google Slides' own
+// thumbnail rail gives at this size, not a miniature replica.
+function renderSlideThumbPreviewHtml(slide, theme) {
+    if (slide.type === 'collaborative_board') {
+        return `
+        <div class="w-full h-full flex flex-col items-center justify-center gap-1 p-2" style="background:${theme.accentSoft};">
+            <i class="fa-solid fa-people-group" style="color:${theme.accent}; font-size:13px;"></i>
+            <p class="slide-thumb-clip text-center font-bold m-0" style="font-size:6px; line-height:1.2; color:#374f6b; -webkit-line-clamp:2;">${escHtml(slide.heading?.trim() || 'Collaboration Board')}</p>
+        </div>`;
+    }
+    const blocks = slide.blocks || [];
+    if (!blocks.length) {
+        return `<div class="w-full h-full flex items-center justify-center"><span class="text-[8px] font-semibold text-[#c2cedd]">Empty slide</span></div>`;
+    }
+    // Only the first few blocks are shown — a long slide's later content
+    // would be clipped by the box's fixed height anyway, so rendering more
+    // is wasted work.
+    return `<div class="w-full h-full overflow-hidden p-1.5 flex flex-col gap-1">${blocks.slice(0, 4).map(renderThumbBlockHtml).join('')}</div>`;
+}
+
+function renderThumbBlockHtml(block) {
+    switch (block.type) {
+        case 'image':
+            return block.imageUrl
+                ? `<img src="${escHtml(block.imageUrl)}" alt="" class="w-full rounded object-cover flex-shrink-0" style="height:20px;" onerror="this.replaceWith(Object.assign(document.createElement('div'), {className:'w-full rounded bg-slate-100 flex-shrink-0', style:'height:20px'}))">`
+                : `<div class="w-full rounded bg-slate-100 flex items-center justify-center flex-shrink-0" style="height:20px;"><i class="fa-solid fa-image text-[8px] text-slate-300"></i></div>`;
+        case 'video':
+            return `<div class="w-full rounded bg-slate-100 flex items-center justify-center flex-shrink-0" style="height:20px;"><i class="fa-solid fa-circle-play text-[9px] text-slate-300"></i></div>`;
+        case 'interactive_prompt':
+            return `<div class="flex items-center gap-1 rounded bg-indigo-50 px-1 py-0.5 flex-shrink-0"><i class="fa-solid fa-bolt text-[6.5px] text-indigo-400 flex-shrink-0"></i><span class="text-[6px] font-bold text-indigo-500 truncate">${escHtml(block.promptText || 'Interactive prompt')}</span></div>`;
+        case 'assignment':
+            return `<div class="flex items-center gap-1 rounded bg-amber-50 px-1 py-0.5 flex-shrink-0"><i class="fa-solid fa-clipboard-check text-[6.5px] text-amber-500 flex-shrink-0"></i><span class="text-[6px] font-bold text-amber-600 truncate">${escHtml(block.prompt || 'Assignment')}</span></div>`;
+        case 'text':
+        default:
+            return block.html
+                ? `<div class="ql-editor slide-thumb-clip" style="padding:0; font-size:5px; line-height:1.3; color:#374f6b;">${block.html}</div>`
+                : '';
+    }
 }
 
 function onSlideThumbClick(e) {
@@ -560,6 +663,7 @@ function onSlideThumbClick(e) {
         if (!confirm('Delete this slide?')) return;
         lessonDraft.slides.splice(idx, 1);
         if (currentSlideIndex >= lessonDraft.slides.length) currentSlideIndex = lessonDraft.slides.length - 1;
+        currentBlockId = null;
         hasUnsavedChanges = true;
         renderSlideThumbs();
         renderSlideCanvas();
@@ -570,6 +674,7 @@ function onSlideThumbClick(e) {
     const thumb = e.target.closest('[data-slide-index]');
     if (!thumb) return;
     currentSlideIndex = Number(thumb.dataset.slideIndex);
+    currentBlockId = null;
     renderSlideThumbs();
     renderSlideCanvas();
     renderPropertiesPanel();
@@ -604,198 +709,193 @@ document.addEventListener('drop', (e) => {
     renderSlideThumbs();
 });
 
-function addSlide(type) {
-    const slide = newSlide(type);
+// SLIDE DECK REDESIGN: "Add Slide" is a plain blank slide (content is added
+// afterward from the persistent insert toolbar — see wireInsertToolbar());
+// "Add Collaboration Board" stays its own dedicated action since that slide
+// type is special and whole-slide, never blocks-based (see newSlide()'s own
+// comment in lessons.js for why).
+function addBlankSlide() {
+    const slide = newSlide('blank');
     lessonDraft.slides.splice(currentSlideIndex + 1, 0, slide);
     currentSlideIndex += 1;
+    currentBlockId = null;
     hasUnsavedChanges = true;
     renderSlideThumbs();
     renderSlideCanvas();
     renderPropertiesPanel();
 }
 
-// ── 9. SLIDE CANVAS (center pane — the slide's main editable content) ────
+function addCollaborativeBoardSlide() {
+    const slide = newSlide('collaborative_board');
+    lessonDraft.slides.splice(currentSlideIndex + 1, 0, slide);
+    currentSlideIndex += 1;
+    currentBlockId = null;
+    hasUnsavedChanges = true;
+    renderSlideThumbs();
+    renderSlideCanvas();
+    renderPropertiesPanel();
+}
+
+// ── 9. SLIDE CANVAS (center pane — the fixed 16:9 stage) ──────────────────
+// SLIDE DECK REDESIGN: a 'blank' slide's canvas is now just its blocks[]
+// stacked top-to-bottom, each inserted from the persistent toolbar above
+// (see wireInsertToolbar()) rather than picked as a whole-slide "type" up
+// front. collaborative_board remains the one special whole-slide type — its
+// own renderer (renderCollaborativeBoardCanvas, unchanged in content) is
+// still used directly, with no blocks/toolbar involved.
 function currentSlide() {
     return lessonDraft.slides[currentSlideIndex] || null;
 }
 
-function renderSlideCanvas() {
+function currentBlock() {
     const slide = currentSlide();
-    if (!slide) { els.slideCanvas.innerHTML = ''; return; }
-
-    const renderers = {
-        title: renderTitleCanvas,
-        content: renderContentCanvas,
-        media: renderMediaCanvas,
-        assignment: renderAssignmentCanvas,
-        interactive_prompt: renderInteractivePromptCanvas,
-        collaborative_board: renderCollaborativeBoardCanvas
-    };
-    els.slideCanvas.innerHTML = (renderers[slide.type] || renderContentCanvas)(slide);
-    wireCanvasInputs(slide);
-    wireRichFields(slide);
+    if (!slide || slide.type !== 'blank') return null;
+    return (slide.blocks || []).find(b => b.id === currentBlockId) || null;
 }
-
-// Whether a media slide's URL field currently fails validation — keyed by
-// slide id, not stored on the slide object itself, because it's pure
-// transient UI state (never saved, never loaded from Firestore). This
-// exists because renderSlideCanvas() replaces the canvas's innerHTML
-// wholesale on every keystroke to refresh the embed/image preview; a
-// property-panel handler that reached into the old DOM and toggled
-// `#mediaUrlError`'s `hidden` class directly would have that change
-// discarded the instant the very next render rebuilt the element fresh.
-// Computing the hidden state from this map inside renderMediaCanvas keeps
-// the error message correct across every re-render instead of only until
-// the next one.
-const mediaUrlInvalid = new Map();
 
 function fieldWrap(label, inputHtml) {
     return `<div class="mb-4"><label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">${label}</label>${inputHtml}</div>`;
 }
 
-function renderTitleCanvas(slide) {
+function renderSlideCanvas() {
+    let slide = currentSlide();
+    if (!slide) { els.slideCanvas.innerHTML = ''; els.slideInsertToolbar.classList.add('hidden'); return; }
+
+    // Safety net: a slide that hasn't gone through migrateLegacySlide() yet
+    // — e.g. one just created in-memory this session by the PPTX importer
+    // or the "Import Presentation" embed-link flow (still emit the OLD
+    // fixed-type shape as of this writing) — is converted in place here so
+    // the canvas never has to know about the old shapes at all. Every
+    // *loaded* lesson is already migrated by lessons.js's loadLesson().
+    if (slide.type !== 'blank' && slide.type !== 'collaborative_board') {
+        slide = migrateLegacySlide(slide);
+        lessonDraft.slides[currentSlideIndex] = slide;
+    }
+
+    applyThemeToStage();
+
+    if (slide.type === 'collaborative_board') {
+        els.slideInsertToolbar.classList.add('hidden');
+        els.slideInsertToolbar.classList.remove('flex');
+        els.slideCanvas.innerHTML = renderCollaborativeBoardCanvas(slide);
+        wireCollaborativeBoardInputs(slide);
+        return;
+    }
+
+    els.slideInsertToolbar.classList.remove('hidden');
+    els.slideInsertToolbar.classList.add('flex');
+    renderThemeMenu();
+
+    const blocks = slide.blocks || [];
+    if (!blocks.length) {
+        els.slideCanvas.innerHTML = `
+        <div class="h-full min-h-[280px] flex items-center justify-center">
+            <div class="text-center text-[#9ab0c6] max-w-xs">
+                <i class="fa-solid fa-wand-magic-sparkles text-3xl mb-3 block"></i>
+                <p class="text-[13px] font-bold text-[#374f6b] mb-1">This slide is empty</p>
+                <p class="text-[11.5px] font-semibold">Use the toolbar above to add text, an image, a video, or interactive content.</p>
+            </div>
+        </div>`;
+        return;
+    }
+
+    els.slideCanvas.innerHTML = blocks.map(renderBlock).join('');
+    wireBlockSelection(slide);
+    wireBlockRichFields(slide);
+    wireBlockInputs(slide);
+}
+
+// Applies the current lesson theme's accent color to the stage as a CSS
+// custom property — read by .lb-slide-stage's border-top (see
+// builder.html) and, in future, the sidebar thumbnails (Task #9). Purely
+// cosmetic; see THEMES/currentTheme() near the top of this file.
+function applyThemeToStage() {
+    els.slideCanvas.style.setProperty('--lb-accent', currentTheme().accent);
+}
+
+// Whether a video/image block's URL field currently fails validation —
+// keyed by BLOCK id (was slide id before this redesign, back when a slide
+// itself was the media item), for the same reason as before: this is pure
+// transient UI state (never saved), and renderSlideCanvas() rebuilds the
+// canvas's innerHTML wholesale on every insert/delete/reorder, so a handler
+// that reached into the old DOM and toggled a hidden class directly would
+// lose that change the instant the next render rebuilt the element fresh.
+const blockUrlInvalid = new Map();
+
+// One wrapper per block: the hover/selection ring, and the small floating
+// move-up/move-down/delete toolbar (Google Slides-style per-element
+// controls) — every block type shares this shell; only what's inside
+// differs. See wireBlockSelection() for how clicking a block (vs. its own
+// inner controls) sets currentBlockId.
+function blockWrap(block, innerHtml) {
+    const selected = block.id === currentBlockId;
     return `
-    <div class="bg-white rounded-xl shadow-sm border border-[#dce3ed] p-8 min-h-[360px] flex flex-col justify-center">
-        ${fieldWrap('Heading', `<div data-rich-field="heading" class="lb-rich-field lb-rich-field-heading"></div>`)}
-        ${fieldWrap('Subheading', `<input data-field="subheading" type="text" value="${escHtml(slide.subheading)}" placeholder="Unit 4, Lesson 2" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[14px] text-[#374f6b] outline-none focus:border-[#2563eb]">`)}
-        ${fieldWrap('Objective', `<div data-rich-field="objective" class="lb-rich-field"></div>`)}
+    <div class="lb-block ${selected ? 'lb-block-selected' : ''}" data-block-id="${escHtml(block.id)}">
+        <div class="lb-block-toolbar">
+            <button type="button" data-block-action="up" title="Move up"><i class="fa-solid fa-arrow-up"></i></button>
+            <button type="button" data-block-action="down" title="Move down"><i class="fa-solid fa-arrow-down"></i></button>
+            <button type="button" data-block-action="delete" title="Delete"><i class="fa-solid fa-trash"></i></button>
+        </div>
+        ${innerHtml}
     </div>`;
 }
 
-function renderContentCanvas(slide) {
-    return `
-    <div class="bg-white rounded-xl shadow-sm border border-[#dce3ed] p-8 min-h-[360px]">
-        ${fieldWrap('Heading', `<input data-field="heading" type="text" value="${escHtml(slide.heading)}" placeholder="Slide heading" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[16px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
-        ${fieldWrap('Body', `<div data-rich-field="body" class="lb-rich-field"></div>`)}
-    </div>`;
+function renderBlock(block) {
+    switch (block.type) {
+        case 'image': return renderImageBlock(block);
+        case 'video': return renderVideoBlock(block);
+        case 'interactive_prompt': return renderInteractivePromptBlock(block);
+        case 'assignment': return renderAssignmentBlock(block);
+        case 'text':
+        default: return renderTextBlock(block);
+    }
 }
 
-// Field-level metadata for wireRichFields() below: which slide fields get a
-// Quill instance, and which plain-text field each syncs back into (for
-// slide-thumb labels, search, and any other code that still expects plain
-// text — see newSlide()'s headingHtml/objectiveHtml/bodyHtml comment in
-// lessons.js). Driven purely by which [data-rich-field] containers exist in
-// the rendered canvas, so this one table covers both the 'title' slide
-// (heading + objective) and the 'content' slide (body) without the caller
-// needing to know which slide type it's looking at.
-const RICH_FIELD_HTML_KEY = { heading: 'headingHtml', objective: 'objectiveHtml', body: 'bodyHtml' };
-
-// Instantiates a Quill editor over every [data-rich-field] container the
-// just-rendered canvas contains (title slides: heading + objective; content
-// slides: body; every other slide type has none, so this is a no-op there).
-// Must run AFTER els.slideCanvas.innerHTML has been set — Quill needs the
-// target element already attached to the document.
-function wireRichFields(slide) {
-    slideFieldQuills = {};
-
-    els.slideCanvas.querySelectorAll('[data-rich-field]').forEach(container => {
-        const field = container.dataset.richField;
-        const htmlKey = RICH_FIELD_HTML_KEY[field];
-        if (!htmlKey) return;
-
-        const editor = new Quill(container, { theme: 'snow', modules: { toolbar: SLIDE_FIELD_TOOLBAR } });
-
-        // Backward-compat seed: a slide saved before this field existed has
-        // no *Html value, so fall back to its plain-text value (escaped,
-        // same as the old <input>/<textarea> used to show it) rather than
-        // showing nothing or throwing. The slide is only ever upgraded to a
-        // real *Html value once the teacher edits it here and saves — see
-        // the 'text-change' handler below.
-        editor.root.innerHTML = slide[htmlKey] || escHtml(slide[field]);
-        editor.history.clear();
-
-        editor.on('text-change', (delta, oldDelta, source) => {
-            if (source !== 'user') return;
-            slide[htmlKey] = editor.root.innerHTML;
-            // Quill's getText() always ends in one trailing "\n" for the
-            // editor's final line — stripped here so the plain-text mirror
-            // doesn't accumulate a phantom trailing blank line every edit.
-            slide[field] = editor.getText().replace(/\n$/, '');
-            hasUnsavedChanges = true;
-            if (field === 'heading') renderSlideThumbs(); // matches the plain-input heading handler in wireCanvasInputs()
-        });
-
-        slideFieldQuills[field] = editor;
-    });
+function renderTextBlock(block) {
+    return blockWrap(block, `<div data-rich-block="${escHtml(block.id)}" class="lb-rich-field"></div>`);
 }
 
-function renderMediaCanvas(slide) {
-    const isImage = slide.mediaKind === 'image';
+function renderImageBlock(block) {
+    // onerror swaps the broken <img> for the same placeholder markup an
+    // image block already shows with no URL — a dead/incorrect image link
+    // degrades to "couldn't load" rather than a browser broken-image icon.
+    const preview = block.imageUrl
+        ? `<img src="${escHtml(block.imageUrl)}" alt="${escHtml(block.imageAlt)}"
+               class="w-full max-h-[280px] object-contain rounded-lg border border-[#dce3ed] bg-[#f4f7fb]"
+               onerror="this.nextElementSibling.classList.remove('hidden'); this.classList.add('hidden');">
+           <div class="hidden w-full h-[180px] bg-[#fff0f3] rounded-lg border border-dashed border-[#e31b4a] flex items-center justify-center text-[#e31b4a]">
+               <div class="text-center"><i class="fa-solid fa-triangle-exclamation text-2xl mb-1.5 block"></i><p class="text-[11.5px] font-semibold">This image link couldn't be loaded</p></div>
+           </div>`
+        : `<div class="w-full h-[180px] bg-[#f4f7fb] rounded-lg border border-dashed border-[#dce3ed] flex items-center justify-center text-[#9ab0c6]">
+             <div class="text-center"><i class="fa-solid fa-image text-2xl mb-1.5 block"></i><p class="text-[11.5px] font-semibold">No image yet — set one from the panel on the right</p></div>
+           </div>`;
+    const caption = block.caption ? `<p class="text-[11.5px] text-[#6b84a0] font-semibold text-center mt-1.5">${escHtml(block.caption)}</p>` : '';
+    return blockWrap(block, `${preview}${caption}`);
+}
 
-    const videoPreview = slide.embedUrl
+function renderVideoBlock(block) {
+    const preview = block.embedUrl
         ? `<div class="aspect-video w-full bg-black rounded-lg overflow-hidden border border-[#dce3ed]">
-             <iframe src="${escHtml(slide.embedUrl)}" class="w-full h-full" frameborder="0" allowfullscreen></iframe>
+             <iframe src="${escHtml(block.embedUrl)}" class="w-full h-full" frameborder="0" allowfullscreen></iframe>
            </div>`
         : `<div class="aspect-video w-full bg-[#f4f7fb] rounded-lg border border-dashed border-[#dce3ed] flex items-center justify-center text-[#9ab0c6]">
-             <div class="text-center">
-               <i class="fa-solid fa-photo-film text-3xl mb-2 block"></i>
-               <p class="text-[12px] font-semibold">Paste a YouTube, Vimeo, or Google Drive link</p>
-             </div>
+             <div class="text-center"><i class="fa-solid fa-video text-2xl mb-1.5 block"></i><p class="text-[11.5px] font-semibold">No video yet — set one from the panel on the right</p></div>
            </div>`;
-
-    // onerror swaps the broken <img> for the same placeholder markup a media
-    // slide already shows with no URL — a dead/incorrect image link degrades
-    // to "no image yet" rather than a browser broken-image icon. Handled
-    // inline (not addEventListener) because this string is re-parsed into
-    // innerHTML on every render, same as every other slide preview here.
-    const imagePreview = slide.imageUrl
-        ? `<img src="${escHtml(slide.imageUrl)}" alt="${escHtml(slide.imageAlt)}"
-               class="w-full max-h-[320px] object-contain rounded-lg border border-[#dce3ed] bg-[#f4f7fb]"
-               onerror="this.closest('[data-media-preview]').innerHTML = document.getElementById('imgPreviewFallback').innerHTML">`
-        : `<div class="w-full h-[220px] bg-[#f4f7fb] rounded-lg border border-dashed border-[#dce3ed] flex items-center justify-center text-[#9ab0c6]">
-             <div class="text-center">
-               <i class="fa-solid fa-image text-3xl mb-2 block"></i>
-               <p class="text-[12px] font-semibold">Paste a direct image link</p>
-             </div>
-           </div>`;
-
-    return `
-    <div class="bg-white rounded-xl shadow-sm border border-[#dce3ed] p-8 min-h-[360px]">
-        ${fieldWrap('Heading', `<input data-field="heading" type="text" value="${escHtml(slide.heading)}" placeholder="Slide heading" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[16px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
-
-        <div class="flex items-center gap-1 bg-[#f4f7fb] border border-[#dce3ed] rounded-lg p-1 w-fit mb-3">
-            <button type="button" data-media-kind="video" class="px-3 py-1.5 rounded text-[12px] font-bold transition ${!isImage ? 'bg-white text-[#0d1f35] shadow-sm' : 'text-[#6b84a0]'}">
-                <i class="fa-solid fa-video text-[11px] mr-1"></i>Video
-            </button>
-            <button type="button" data-media-kind="image" class="px-3 py-1.5 rounded text-[12px] font-bold transition ${isImage ? 'bg-white text-[#0d1f35] shadow-sm' : 'text-[#6b84a0]'}">
-                <i class="fa-solid fa-image text-[11px] mr-1"></i>Image
-            </button>
-        </div>
-
-        <div data-media-preview class="mb-2">${isImage ? imagePreview : videoPreview}</div>
-        <p id="mediaUrlError" class="text-[11px] font-bold text-[#e31b4a] mb-2 ${mediaUrlInvalid.get(slide.id) ? '' : 'hidden'}">${isImage ? "That doesn't look like a direct image link (needs to end in .jpg, .png, etc.)." : "Couldn't recognize that as a YouTube, Vimeo, or Google Drive link."}</p>
-        ${fieldWrap('Caption', `<input data-field="caption" type="text" value="${escHtml(slide.caption)}" placeholder="Optional caption" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
-    </div>
-    <div id="imgPreviewFallback" class="hidden">
-        <div class="w-full h-[220px] bg-[#fff0f3] rounded-lg border border-dashed border-[#e31b4a] flex items-center justify-center text-[#e31b4a]">
-            <div class="text-center">
-                <i class="fa-solid fa-triangle-exclamation text-3xl mb-2 block"></i>
-                <p class="text-[12px] font-semibold">This image link couldn't be loaded</p>
-            </div>
-        </div>
-    </div>`;
+    const caption = block.caption ? `<p class="text-[11.5px] text-[#6b84a0] font-semibold text-center mt-1.5">${escHtml(block.caption)}</p>` : '';
+    return blockWrap(block, `${preview}${caption}`);
 }
 
-function renderAssignmentCanvas(slide) {
-    return `
-    <div class="bg-white rounded-xl shadow-sm border border-[#dce3ed] p-8 min-h-[360px]">
-        ${fieldWrap('Heading', `<input data-field="heading" type="text" value="${escHtml(slide.heading)}" placeholder="e.g. Check for Understanding" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[16px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
-        ${fieldWrap('Prompt', `<textarea data-field="prompt" rows="4" placeholder="What should students do on this slide?" class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded text-[13.5px] text-[#0d1f35] outline-none focus:border-[#2563eb] resize-none leading-relaxed">${escHtml(slide.prompt)}</textarea>`)}
-        <p class="text-[11.5px] text-[#6b84a0] font-semibold"><i class="fa-solid fa-circle-info mr-1"></i>Pick which assignment this slide submits to in the panel on the right.</p>
-    </div>`;
-}
-
-// ── PHASE 3: LIVE SESSION ENGINE — canvas renderers ───────────────────────
-// Both block types are LIVE-ONLY: their student-facing form/wall only ever
-// renders inside an active live_sessions document (see lessons/live.js's
-// teacher dashboard and lessons/viewer.js's student auto-follow view) —
-// there is no "preview" of the interactive experience itself here, same
-// reason renderAssignmentCanvas above doesn't try to preview the student's
-// submission form. The canvas here is purely the teacher's AUTHORING form
-// for the block's own content (the prompt text / instructions), plus a
-// static banner explaining that the interactive part only appears once a
-// live session is started from this lesson's card in the Lesson Builder
-// list (see builder.js's onLessonListClick 'golive' branch).
+// ── PHASE 3: LIVE SESSION ENGINE — block/canvas renderers ─────────────────
+// Interactive Prompt and Assignment (like Collaborative Board) are LIVE-ONLY
+// or submission-only: their student-facing form only ever renders inside an
+// active live_sessions document (interactive_prompt — see lessons/live.js's
+// teacher dashboard and lessons/viewer.js's student auto-follow view) or the
+// real assignment/submission workflow (assignment — see viewer.js). What's
+// authored here is purely the block's own content (prompt text / choices),
+// plus, for interactive_prompt, a static banner explaining that the
+// interactive part only appears once a live session is started from this
+// lesson's card in the Lesson Builder list (see onLessonListClick's
+// 'golive' branch).
 function liveOnlyBanner(text) {
     return `
     <p class="text-[11.5px] text-[#6b84a0] font-semibold bg-[#f4f7fb] border border-[#dce3ed] rounded-lg px-3 py-2.5 mt-2">
@@ -803,9 +903,9 @@ function liveOnlyBanner(text) {
     </p>`;
 }
 
-function renderInteractivePromptCanvas(slide) {
-    const isMultipleChoice = slide.promptKind === 'multiple_choice';
-    const choicesHtml = (slide.choices || []).map((choice, i) => `
+function renderInteractivePromptBlock(block) {
+    const isMultipleChoice = block.promptKind === 'multiple_choice';
+    const choicesHtml = (block.choices || []).map((choice, i) => `
         <div class="flex items-center gap-2 mb-2" data-choice-row="${i}">
             <input data-choice-index="${i}" type="text" value="${escHtml(choice)}" placeholder="Choice ${i + 1}"
                    class="form-input flex-1 p-2 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">
@@ -814,13 +914,11 @@ function renderInteractivePromptCanvas(slide) {
             </button>
         </div>`).join('');
 
-    return `
-    <div class="bg-white rounded-xl shadow-sm border border-[#dce3ed] p-8 min-h-[360px]">
+    return blockWrap(block, `
         <span class="lb-live-badge inline-flex items-center gap-1.5 text-[10.5px] font-black uppercase tracking-wide px-2.5 py-1 rounded-full bg-[#eef2ff] text-[#4338ca] border border-[#c7d2fe] mb-3">
             <i class="fa-solid fa-bolt"></i> Interactive Prompt
         </span>
-        ${fieldWrap('Heading', `<input data-field="heading" type="text" value="${escHtml(slide.heading)}" placeholder="e.g. Quick Check" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[16px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
-        ${fieldWrap('Prompt Text', `<textarea data-field="promptText" rows="3" placeholder="What question do you want students to answer?" class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded text-[13.5px] text-[#0d1f35] outline-none focus:border-[#2563eb] resize-none leading-relaxed">${escHtml(slide.promptText)}</textarea>`)}
+        ${fieldWrap('Prompt Text', `<textarea data-block-field="promptText" rows="3" placeholder="What question do you want students to answer?" class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded text-[13.5px] text-[#0d1f35] outline-none focus:border-[#2563eb] resize-none leading-relaxed">${escHtml(block.promptText)}</textarea>`)}
 
         <div class="flex items-center gap-1 bg-[#f4f7fb] border border-[#dce3ed] rounded-lg p-1 w-fit mb-3">
             <button type="button" data-prompt-kind="short_answer" class="px-3 py-1.5 rounded text-[12px] font-bold transition ${!isMultipleChoice ? 'bg-white text-[#0d1f35] shadow-sm' : 'text-[#6b84a0]'}">
@@ -834,20 +932,34 @@ function renderInteractivePromptCanvas(slide) {
         ${isMultipleChoice ? `
         <div class="mb-2">
             <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Choices</label>
-            <div id="promptChoicesList">${choicesHtml}</div>
-            <button type="button" id="addChoiceBtn" class="text-[#2563eb] hover:text-[#1d4ed8] text-[12px] font-bold mt-1">
+            <div data-choices-list>${choicesHtml}</div>
+            <button type="button" data-add-choice class="text-[#2563eb] hover:text-[#1d4ed8] text-[12px] font-bold mt-1">
                 <i class="fa-solid fa-plus mr-1"></i>Add Choice
             </button>
         </div>` : ''}
 
         ${liveOnlyBanner('Students answer this privately — only you see individual responses. This only works during a live session (use the broadcast icon on the lesson list).')}
-    </div>`;
+    `);
 }
 
+function renderAssignmentBlock(block) {
+    return blockWrap(block, `
+        <span class="lb-live-badge inline-flex items-center gap-1.5 text-[10.5px] font-black uppercase tracking-wide px-2.5 py-1 rounded-full bg-[#eef4ff] text-[#2563eb] border border-[#c7d9fd] mb-3">
+            <i class="fa-solid fa-clipboard-check"></i> Assignment
+        </span>
+        ${fieldWrap('Prompt', `<textarea data-block-field="prompt" rows="4" placeholder="What should students do on this slide?" class="form-input w-full p-3 bg-white border border-[#dce3ed] rounded text-[13.5px] text-[#0d1f35] outline-none focus:border-[#2563eb] resize-none leading-relaxed">${escHtml(block.prompt)}</textarea>`)}
+        <p class="text-[11.5px] text-[#6b84a0] font-semibold"><i class="fa-solid fa-circle-info mr-1"></i>Pick which assignment this submits to in the panel on the right.</p>
+    `);
+}
+
+// Collaborative Board — UNCHANGED content/behavior, still a special
+// whole-slide type (never blocks-based). Only its outer wrapper changed:
+// #slideCanvas IS the white bordered stage now (see .lb-slide-stage in
+// builder.html), so this no longer draws its own nested white card.
 function renderCollaborativeBoardCanvas(slide) {
     return `
-    <div class="bg-white rounded-xl shadow-sm border border-[#dce3ed] p-8 min-h-[360px]">
-        <span class="lb-live-badge inline-flex items-center gap-1.5 text-[10.5px] font-black uppercase tracking-wide px-2.5 py-1 rounded-full bg-[#f0fdfa] text-[#0f766e] border border-[#99f6e4] mb-3">
+    <div class="min-h-full flex flex-col justify-center">
+        <span class="lb-live-badge inline-flex items-center gap-1.5 text-[10.5px] font-black uppercase tracking-wide px-2.5 py-1 rounded-full bg-[#f0fdfa] text-[#0f766e] border border-[#99f6e4] mb-3 w-fit">
             <i class="fa-solid fa-people-group"></i> Collaborative Board
         </span>
         ${fieldWrap('Heading', `<input data-field="heading" type="text" value="${escHtml(slide.heading)}" placeholder="e.g. Share One Idea" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[16px] font-bold text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
@@ -856,172 +968,468 @@ function renderCollaborativeBoardCanvas(slide) {
     </div>`;
 }
 
-function wireCanvasInputs(slide) {
+function wireCollaborativeBoardInputs(slide) {
     els.slideCanvas.querySelectorAll('[data-field]').forEach(input => {
         input.addEventListener('input', () => {
             slide[input.dataset.field] = input.value;
             hasUnsavedChanges = true;
-            renderSlideThumbs(); // heading changes should update the thumbnail label live
+            renderSlideThumbs();
         });
     });
+}
 
-    // Video/Image toggle only exists on a media slide's canvas. Switching
-    // kinds doesn't clear the other kind's fields (mediaUrl/embedUrl stay
-    // put when flipping to image, and vice versa) — so flipping back and
-    // forth doesn't lose what was already typed in either one.
-    els.slideCanvas.querySelectorAll('[data-media-kind]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const kind = btn.dataset.mediaKind;
-            if (slide.mediaKind === kind) return;
-            slide.mediaKind = kind;
+// Instantiates a Quill editor over every [data-rich-block] container the
+// just-rendered canvas contains (one per Text block on this slide — every
+// other block type has none). Must run AFTER els.slideCanvas.innerHTML has
+// been set — Quill needs the target element already attached to the
+// document. Mirrors the old per-FIELD wireRichFields(), generalized to
+// per-BLOCK: a slide can now hold any number of Text blocks, not just one
+// fixed heading/objective/body field.
+function wireBlockRichFields(slide) {
+    slideFieldQuills = {};
+
+    els.slideCanvas.querySelectorAll('[data-rich-block]').forEach(container => {
+        const blockId = container.dataset.richBlock;
+        const block = (slide.blocks || []).find(b => b.id === blockId);
+        if (!block) return;
+
+        const editor = new Quill(container, { theme: 'snow', modules: { toolbar: SLIDE_FIELD_TOOLBAR } });
+        editor.root.innerHTML = block.html || '';
+        editor.history.clear();
+
+        editor.on('text-change', (delta, oldDelta, source) => {
+            if (source !== 'user') return;
+            block.html = editor.root.innerHTML;
             hasUnsavedChanges = true;
-            renderSlideCanvas();
+            renderSlideThumbs(); // the first Text block's content drives the thumbnail label
+        });
+        // Clicking into a Text block to edit it also selects it (so the
+        // block-toolbar shows and it visually reads as "selected"), without
+        // a full canvas re-render that would tear down this very editor.
+        editor.on('selection-change', (range) => {
+            if (range && currentBlockId !== blockId) {
+                currentBlockId = blockId;
+                els.slideCanvas.querySelectorAll('[data-block-id]').forEach(w => w.classList.toggle('lb-block-selected', w.dataset.blockId === blockId));
+                renderPropertiesPanel();
+            }
+        });
+
+        slideFieldQuills[blockId] = editor;
+    });
+}
+
+// Selecting a block only updates the DOM's selection classes + the
+// properties panel — never a full renderSlideCanvas() — so clicking a
+// block never interrupts an actively-focused Quill editor inside another
+// Text block on the same slide. The move-up/move-down/delete actions DO
+// re-render (nothing is mid-edit when you click a toolbar icon).
+function wireBlockSelection(slide) {
+    els.slideCanvas.querySelectorAll('[data-block-id]').forEach(wrap => {
+        wrap.addEventListener('mousedown', (e) => {
+            if (e.target.closest('[data-block-action]')) return; // handled below
+            const id = wrap.dataset.blockId;
+            if (id === currentBlockId) return;
+            currentBlockId = id;
+            els.slideCanvas.querySelectorAll('[data-block-id]').forEach(w => w.classList.toggle('lb-block-selected', w.dataset.blockId === id));
             renderPropertiesPanel();
         });
     });
 
-    // Interactive Prompt: Short Answer / Multiple Choice toggle — same
-    // pattern as the media video/image toggle above. Switching to
-    // 'short_answer' intentionally leaves slide.choices untouched (so
-    // flipping back to 'multiple_choice' doesn't lose what was typed).
-    els.slideCanvas.querySelectorAll('[data-prompt-kind]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const kind = btn.dataset.promptKind;
-            if (slide.promptKind === kind) return;
-            slide.promptKind = kind;
-            if (kind === 'multiple_choice' && !(slide.choices || []).length) {
-                slide.choices = ['', ''];
+    els.slideCanvas.querySelectorAll('[data-block-action]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const wrap = btn.closest('[data-block-id]');
+            const id = wrap.dataset.blockId;
+            const idx = slide.blocks.findIndex(b => b.id === id);
+            if (idx === -1) return;
+            const action = btn.dataset.blockAction;
+            if (action === 'delete') {
+                slide.blocks.splice(idx, 1);
+                if (currentBlockId === id) currentBlockId = null;
+                blockUrlInvalid.delete(id);
+            } else if (action === 'up' && idx > 0) {
+                [slide.blocks[idx - 1], slide.blocks[idx]] = [slide.blocks[idx], slide.blocks[idx - 1]];
+            } else if (action === 'down' && idx < slide.blocks.length - 1) {
+                [slide.blocks[idx + 1], slide.blocks[idx]] = [slide.blocks[idx], slide.blocks[idx + 1]];
             }
             hasUnsavedChanges = true;
+            renderSlideCanvas();
+            renderPropertiesPanel();
+            renderSlideThumbs();
+        });
+    });
+}
+
+// Interactive Prompt / Assignment blocks' own inline authoring fields —
+// mirrors the old wireCanvasInputs(), scoped to whichever block each input
+// lives inside (a slide can now hold more than one of these, unlike the
+// old one-type-per-slide schema).
+function wireBlockInputs(slide) {
+    const blockFor = (el) => {
+        const wrap = el.closest('[data-block-id]');
+        return wrap ? (slide.blocks || []).find(b => b.id === wrap.dataset.blockId) : null;
+    };
+
+    els.slideCanvas.querySelectorAll('[data-block-field]').forEach(input => {
+        input.addEventListener('input', () => {
+            const block = blockFor(input);
+            if (!block) return;
+            block[input.dataset.blockField] = input.value;
+            hasUnsavedChanges = true;
+        });
+    });
+
+    // Interactive Prompt: Short Answer / Multiple Choice toggle. Switching
+    // to 'short_answer' intentionally leaves choices untouched (so flipping
+    // back to 'multiple_choice' doesn't lose what was typed).
+    els.slideCanvas.querySelectorAll('[data-prompt-kind]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const block = blockFor(btn);
+            if (!block) return;
+            const kind = btn.dataset.promptKind;
+            if (block.promptKind === kind) return;
+            block.promptKind = kind;
+            if (kind === 'multiple_choice' && !(block.choices || []).length) {
+                block.choices = ['', ''];
+            }
+            hasUnsavedChanges = true;
+            currentBlockId = block.id;
             renderSlideCanvas();
         });
     });
 
-    // Multiple Choice: Add Choice button — appends one empty choice and
-    // re-renders so the new input row appears.
-    els.slideCanvas.querySelector('#addChoiceBtn')?.addEventListener('click', () => {
-        slide.choices = [...(slide.choices || []), ''];
-        hasUnsavedChanges = true;
-        renderSlideCanvas();
+    els.slideCanvas.querySelectorAll('[data-add-choice]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const block = blockFor(btn);
+            if (!block) return;
+            block.choices = [...(block.choices || []), ''];
+            hasUnsavedChanges = true;
+            currentBlockId = block.id;
+            renderSlideCanvas();
+        });
     });
 
-    // Multiple Choice: per-choice text inputs — updates in place, no
-    // full re-render needed (matches the generic [data-field] pattern
-    // above; avoids losing focus/cursor position while typing).
     els.slideCanvas.querySelectorAll('[data-choice-index]').forEach(input => {
         input.addEventListener('input', () => {
+            const block = blockFor(input);
+            if (!block) return;
             const i = Number(input.dataset.choiceIndex);
-            if (!Array.isArray(slide.choices)) slide.choices = [];
-            slide.choices[i] = input.value;
+            if (!Array.isArray(block.choices)) block.choices = [];
+            block.choices[i] = input.value;
             hasUnsavedChanges = true;
         });
     });
 
-    // Multiple Choice: remove-choice buttons — splice out the entry and
-    // re-render so remaining rows re-index correctly.
     els.slideCanvas.querySelectorAll('[data-remove-choice]').forEach(btn => {
         btn.addEventListener('click', () => {
+            const block = blockFor(btn);
+            if (!block) return;
             const i = Number(btn.dataset.removeChoice);
-            slide.choices = (slide.choices || []).filter((_, idx) => idx !== i);
+            block.choices = (block.choices || []).filter((_, idx) => idx !== i);
             hasUnsavedChanges = true;
+            currentBlockId = block.id;
             renderSlideCanvas();
         });
     });
 }
 
-// ── 10. PROPERTIES PANEL (right pane — type-specific extras) ─────────────
+// ── SLIDE DECK REDESIGN: persistent insert toolbar ────────────────────────
+// Text/Interactive Prompt/Assignment insert directly; Image/Video open a
+// small popover first since those need a source before there's anything to
+// show — Image mirrors Google Slides' own Insert > Image submenu (Upload
+// from computer / By URL / paste-anywhere). Only ever active while a
+// 'blank' slide is on screen (the toolbar itself is hidden for the special
+// Collaborative Board slide type — see renderSlideCanvas()).
+function insertBlock(type, extraProps) {
+    const slide = currentSlide();
+    if (!slide || slide.type !== 'blank') return null;
+    const block = newBlock(type);
+    if (extraProps) Object.assign(block, extraProps);
+    const afterIndex = currentBlockId ? slide.blocks.findIndex(b => b.id === currentBlockId) : slide.blocks.length - 1;
+    slide.blocks.splice(afterIndex + 1, 0, block);
+    currentBlockId = block.id;
+    hasUnsavedChanges = true;
+    renderSlideCanvas();
+    renderPropertiesPanel();
+    renderSlideThumbs();
+    // A newly-inserted block may be below the fold on a long slide — bring
+    // it into view, and hand a fresh Text block focus immediately (matching
+    // "Insert > Text" landing you ready to type, same as Slides/Docs).
+    requestAnimationFrame(() => {
+        els.slideCanvas.querySelector(`[data-block-id="${block.id}"]`)?.scrollIntoView({ block: 'nearest' });
+        if (type === 'text') slideFieldQuills[block.id]?.focus();
+    });
+    return block;
+}
+
+function closeAllInsertPopovers() {
+    els.insertImageMenu.classList.add('hidden');
+    els.insertVideoMenu.classList.add('hidden');
+    els.themeMenu.classList.add('hidden');
+}
+
+function wireInsertToolbar() {
+    els.slideInsertToolbar.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-insert]');
+        if (!btn) return;
+        closeAllInsertPopovers();
+        insertBlock(btn.dataset.insert);
+    });
+
+    // ── Image: Upload from computer / By URL ──
+    els.insertImageBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const wasOpen = !els.insertImageMenu.classList.contains('hidden');
+        closeAllInsertPopovers();
+        els.insertImageMenu.classList.toggle('hidden', wasOpen);
+    });
+    els.insertImageUploadRow.addEventListener('click', () => els.insertImageFileInput.click());
+    els.insertImageFileInput.addEventListener('change', async () => {
+        const file = els.insertImageFileInput.files?.[0];
+        els.insertImageFileInput.value = '';
+        if (!file) return;
+        const dataUrl = await fileToDataUrl(file);
+        if (dataUrl) insertBlock('image', { imageUrl: dataUrl, imageAlt: file.name.replace(/\.[^.]+$/, '') });
+        closeAllInsertPopovers();
+    });
+    els.insertImageUrlBtn.addEventListener('click', () => {
+        const url = els.insertImageUrlInput.value.trim();
+        if (!url) return;
+        insertBlock('image', { imageUrl: url });
+        els.insertImageUrlInput.value = '';
+        closeAllInsertPopovers();
+    });
+
+    // ── Video: URL only — unchanged YouTube/Vimeo/Drive parsing ──
+    els.insertVideoBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const wasOpen = !els.insertVideoMenu.classList.contains('hidden');
+        closeAllInsertPopovers();
+        els.insertVideoMenu.classList.toggle('hidden', wasOpen);
+        if (!wasOpen) els.insertVideoUrlInput.focus();
+    });
+    els.insertVideoUrlBtn.addEventListener('click', () => {
+        const url = els.insertVideoUrlInput.value.trim();
+        const parsed = parseMediaUrl(url);
+        if (!url || !parsed) {
+            els.insertVideoError.classList.remove('hidden');
+            return;
+        }
+        insertBlock('video', { provider: parsed.provider, mediaUrl: url, embedUrl: parsed.embedUrl });
+        els.insertVideoUrlInput.value = '';
+        els.insertVideoError.classList.add('hidden');
+        closeAllInsertPopovers();
+    });
+
+    // Close any open popover when clicking elsewhere on the page.
+    document.addEventListener('click', (e) => {
+        if (e.target.closest('#insertImageBtn, #insertImageMenu, #insertVideoBtn, #insertVideoMenu, #themeBtn, #themeMenu')) return;
+        closeAllInsertPopovers();
+    });
+
+    // "Copy and paste the image" — pasting an image anywhere on the slide
+    // stage (while a 'blank' slide is open) inserts it as a new Image
+    // block, the same zero-extra-step gesture Google Slides offers.
+    // Scoped to the canvas so pasting text into a Text block's own Quill
+    // editor is completely unaffected — Quill handles that paste itself;
+    // this listener only ever acts on actual image clipboard data.
+    els.slideCanvas.addEventListener('paste', async (e) => {
+        const slide = currentSlide();
+        if (!slide || slide.type !== 'blank') return;
+        const items = e.clipboardData?.items || [];
+        const imageItem = [...items].find(it => it.type.startsWith('image/'));
+        if (!imageItem) return; // let Quill (or nothing) handle a plain-text paste as usual
+        e.preventDefault();
+        const file = imageItem.getAsFile();
+        if (!file) return;
+        const dataUrl = await fileToDataUrl(file);
+        if (dataUrl) insertBlock('image', { imageUrl: dataUrl });
+    });
+}
+
+// FileReader → base64 data: URL — used by the Image toolbar's "Upload from
+// computer" row, the paste-to-insert handler above, and the Image block's
+// own "Upload from computer" button in the properties panel. No Storage
+// upload pipeline exists in ConnectUs (see the PPTX importer's own images,
+// inlined the exact same way), so describeSaveFailure() already has a
+// specific, actionable error message for the Firestore 1MB document cap
+// this can run into on a large image — same safety net as the PPTX path.
+function fileToDataUrl(file) {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+    });
+}
+
+// ── SLIDE DECK REDESIGN: theme popover ─────────────────────────────────────
+function renderThemeMenu() {
+    els.themeBtnDot.style.background = currentTheme().accent;
+    els.themeMenu.innerHTML = Object.entries(THEMES).map(([key, theme]) => `
+        <button type="button" data-theme-key="${key}" class="lb-theme-swatch ${(lessonDraft.theme || 'general') === key ? 'lb-theme-selected' : ''}" title="${escHtml(theme.label)}">
+            <span class="lb-theme-swatch-dot" style="background:${theme.accent}"></span>
+            <span class="text-[9.5px] font-bold text-[#374f6b]">${escHtml(theme.label)}</span>
+        </button>`).join('');
+}
+
+function wireThemeMenu() {
+    els.themeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const wasOpen = !els.themeMenu.classList.contains('hidden');
+        closeAllInsertPopovers();
+        els.themeMenu.classList.toggle('hidden', wasOpen);
+    });
+    els.themeMenu.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-theme-key]');
+        if (!btn) return;
+        lessonDraft.theme = btn.dataset.themeKey;
+        hasUnsavedChanges = true;
+        applyThemeToStage();
+        renderThemeMenu();
+        renderSlideThumbs();
+        closeAllInsertPopovers();
+    });
+}
+
+// ── 10. PROPERTIES PANEL (right pane — the SELECTED BLOCK's extra fields) ─
+// SLIDE DECK REDESIGN: block-scoped now, not slide-scoped. A 'blank'
+// slide's own content lives entirely in its blocks (edited directly on the
+// canvas), so this panel only ever shows the selected block's source/config
+// fields — the ones that aren't naturally "click and type on the slide" (an
+// image/video's URL, which assignment a slide submits to). Text and
+// Interactive Prompt blocks have nothing here, same as the old builder's
+// Title/Content/Interactive Prompt slides never populated this panel either.
 function renderPropertiesPanel() {
     const slide = currentSlide();
     if (!slide) { els.propertiesPanel.innerHTML = ''; return; }
 
-    if (slide.type === 'media') {
-        renderMediaProperties(slide);
-    } else if (slide.type === 'assignment') {
-        renderAssignmentProperties(slide);
-    } else {
+    if (slide.type === 'collaborative_board') {
         els.propertiesPanel.innerHTML = `
         <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Slide Properties</p>
         <p class="text-[12px] text-[#9ab0c6] font-semibold">This slide type has no additional properties — everything is edited on the canvas.</p>`;
+        return;
     }
-}
 
-function renderMediaProperties(slide) {
-    if (slide.mediaKind === 'image') {
-        renderImageProperties(slide);
+    const block = currentBlock();
+    if (!block) {
+        els.propertiesPanel.innerHTML = `
+        <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Slide Properties</p>
+        <p class="text-[12px] text-[#9ab0c6] font-semibold">${(slide.blocks || []).length ? 'Select a block on the slide to see its properties.' : 'Use the toolbar above to add content to this slide.'}</p>`;
+        return;
+    }
+
+    if (block.type === 'image') {
+        renderImageBlockProperties(block);
+    } else if (block.type === 'video') {
+        renderVideoBlockProperties(block);
+    } else if (block.type === 'assignment') {
+        renderAssignmentBlockProperties(block);
     } else {
-        renderVideoProperties(slide);
+        els.propertiesPanel.innerHTML = `
+        <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Block Properties</p>
+        <p class="text-[12px] text-[#9ab0c6] font-semibold">This block has no additional properties — everything is edited directly on the slide.</p>`;
     }
 }
 
-function renderVideoProperties(slide) {
+function renderImageBlockProperties(block) {
     els.propertiesPanel.innerHTML = `
-    <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Media Source</p>
-    ${fieldWrap('Video URL', `<input id="mediaUrlInput" type="url" value="${escHtml(slide.mediaUrl)}" placeholder="https://youtube.com/watch?v=..." class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
+    <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Image</p>
+    ${fieldWrap('Image URL', `<input id="blockImageUrlInput" type="url" value="${escHtml(block.imageUrl)}" placeholder="https://example.com/photo.jpg" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
+    <button type="button" id="blockImageUploadBtn" class="w-full mb-4 -mt-2.5 bg-[#f4f7fb] hover:bg-[#eef4ff] text-[#0d1f35] font-bold py-2 px-3 rounded text-[12px] border border-[#dce3ed] transition flex items-center justify-center gap-2">
+        <i class="fa-solid fa-upload"></i> Upload from computer
+    </button>
+    <input type="file" id="blockImageUploadInput" accept="image/*" class="hidden">
+    ${fieldWrap('Alt Text', `<input id="blockImageAltInput" type="text" value="${escHtml(block.imageAlt)}" placeholder="Describe the image for screen readers" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
+    ${fieldWrap('Caption', `<input id="blockImageCaptionInput" type="text" value="${escHtml(block.caption)}" placeholder="Optional caption" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
+    <p class="text-[11px] text-[#9ab0c6] font-semibold leading-relaxed">
+        <i class="fa-solid fa-circle-info mr-1"></i>
+        Paste a direct image link, upload a file, or paste (Ctrl/Cmd+V) an image directly onto the slide.
+    </p>`;
+
+    document.getElementById('blockImageUrlInput').addEventListener('input', (e) => {
+        block.imageUrl = e.target.value;
+        blockUrlInvalid.set(block.id, !!e.target.value.trim() && !isLikelyImageUrl(e.target.value));
+        hasUnsavedChanges = true;
+        renderSlideCanvas(); // re-render to update the live image preview
+        renderPropertiesPanel();
+    });
+    document.getElementById('blockImageUploadBtn').addEventListener('click', () => document.getElementById('blockImageUploadInput').click());
+    document.getElementById('blockImageUploadInput').addEventListener('change', async (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+        const dataUrl = await fileToDataUrl(file);
+        if (dataUrl) {
+            block.imageUrl = dataUrl;
+            hasUnsavedChanges = true;
+            renderSlideCanvas();
+            renderPropertiesPanel();
+        }
+    });
+    document.getElementById('blockImageAltInput').addEventListener('input', (e) => {
+        block.imageAlt = e.target.value;
+        hasUnsavedChanges = true;
+        // No canvas re-render needed — alt text isn't visible in the
+        // preview itself, only in the <img alt> attribute.
+    });
+    document.getElementById('blockImageCaptionInput').addEventListener('input', (e) => {
+        block.caption = e.target.value;
+        hasUnsavedChanges = true;
+        renderSlideCanvas();
+    });
+}
+
+function renderVideoBlockProperties(block) {
+    els.propertiesPanel.innerHTML = `
+    <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Video</p>
+    ${fieldWrap('Video URL', `<input id="blockVideoUrlInput" type="url" value="${escHtml(block.mediaUrl)}" placeholder="https://youtube.com/watch?v=..." class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
+    <p class="text-[11px] font-bold text-[#e31b4a] mb-3 ${blockUrlInvalid.get(block.id) ? '' : 'hidden'}">Couldn't recognize that as a YouTube, Vimeo, or Google Drive link.</p>
+    ${fieldWrap('Caption', `<input id="blockVideoCaptionInput" type="text" value="${escHtml(block.caption)}" placeholder="Optional caption" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
     <p class="text-[11px] text-[#9ab0c6] font-semibold leading-relaxed">
         <i class="fa-solid fa-circle-info mr-1"></i>
         Paste a full YouTube, Vimeo, or Google Drive link. It's parsed into a safe embed automatically — raw video files aren't supported; only external links.
     </p>`;
 
-    const input = document.getElementById('mediaUrlInput');
-    input.addEventListener('input', () => {
-        const parsed = parseMediaUrl(input.value);
-        slide.mediaUrl = input.value;
-        if (input.value.trim() && !parsed) {
-            slide.provider = null;
-            slide.embedUrl = '';
-            mediaUrlInvalid.set(slide.id, true);
+    document.getElementById('blockVideoUrlInput').addEventListener('input', (e) => {
+        const parsed = parseMediaUrl(e.target.value);
+        block.mediaUrl = e.target.value;
+        if (e.target.value.trim() && !parsed) {
+            block.provider = null;
+            block.embedUrl = '';
+            blockUrlInvalid.set(block.id, true);
         } else {
-            slide.provider = parsed?.provider || null;
-            slide.embedUrl = parsed?.embedUrl || '';
-            mediaUrlInvalid.set(slide.id, false);
+            block.provider = parsed?.provider || null;
+            block.embedUrl = parsed?.embedUrl || '';
+            blockUrlInvalid.set(block.id, false);
         }
         hasUnsavedChanges = true;
         renderSlideCanvas(); // re-render to update the live embed preview + error message
+        renderPropertiesPanel();
+    });
+    document.getElementById('blockVideoCaptionInput').addEventListener('input', (e) => {
+        block.caption = e.target.value;
+        hasUnsavedChanges = true;
+        renderSlideCanvas();
     });
 }
 
-function renderImageProperties(slide) {
-    els.propertiesPanel.innerHTML = `
-    <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Media Source</p>
-    ${fieldWrap('Image URL', `<input id="imageUrlInput" type="url" value="${escHtml(slide.imageUrl)}" placeholder="https://example.com/photo.jpg" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
-    ${fieldWrap('Alt Text', `<input id="imageAltInput" type="text" value="${escHtml(slide.imageAlt)}" placeholder="Describe the image for screen readers" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">`)}
-    <p class="text-[11px] text-[#9ab0c6] font-semibold leading-relaxed">
-        <i class="fa-solid fa-circle-info mr-1"></i>
-        Paste a direct link to an image file. No uploads — this keeps storage costs at zero, same as video slides.
-    </p>`;
-
-    const urlInput = document.getElementById('imageUrlInput');
-    urlInput.addEventListener('input', () => {
-        slide.imageUrl = urlInput.value;
-        mediaUrlInvalid.set(slide.id, !!urlInput.value.trim() && !isLikelyImageUrl(urlInput.value));
-        hasUnsavedChanges = true;
-        renderSlideCanvas(); // re-render to update the live image preview + error message
-    });
-
-    document.getElementById('imageAltInput').addEventListener('input', (e) => {
-        slide.imageAlt = e.target.value;
-        hasUnsavedChanges = true;
-        // No canvas re-render needed here — alt text isn't visible in the
-        // preview itself, only in the <img alt> attribute.
-    });
-}
-
-function renderAssignmentProperties(slide) {
+function renderAssignmentBlockProperties(block) {
     const assignments = (currentSubject?.assignments || []).filter(a => !a.archived);
     const options = ['<option value="">Select an assignment…</option>']
-        .concat(assignments.map(a => `<option value="${escHtml(a.id)}" ${slide.linkedAssignmentId === a.id ? 'selected' : ''}>${escHtml(a.title)} (/${a.maxScore})</option>`));
+        .concat(assignments.map(a => `<option value="${escHtml(a.id)}" ${block.linkedAssignmentId === a.id ? 'selected' : ''}>${escHtml(a.title)} (/${a.maxScore})</option>`));
 
     els.propertiesPanel.innerHTML = `
     <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-3">Linked Assignment</p>
-    ${fieldWrap('Assignment', `<select id="linkedAssignmentSelect" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">${options.join('')}</select>`)}
+    ${fieldWrap('Assignment', `<select id="blockLinkedAssignmentSelect" class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">${options.join('')}</select>`)}
     <p class="text-[11px] text-[#9ab0c6] font-semibold leading-relaxed">
         <i class="fa-solid fa-circle-info mr-1"></i>
         Students submit directly on this slide — grading, locking, and submission history all use this subject's existing assignment records, unchanged.
     </p>
     ${!assignments.length ? `<p class="text-[11px] font-bold text-[#e31b4a] mt-2">No assignments exist for this subject yet — create one from Enter Grade first.</p>` : ''}`;
 
-    document.getElementById('linkedAssignmentSelect').addEventListener('change', (e) => {
-        slide.linkedAssignmentId = e.target.value || null;
+    document.getElementById('blockLinkedAssignmentSelect').addEventListener('change', (e) => {
+        block.linkedAssignmentId = e.target.value || null;
         hasUnsavedChanges = true;
         renderSlideThumbs();
     });
@@ -1083,7 +1491,7 @@ async function onSaveDraft() {
     const prevLabel = btn.textContent;
     btn.disabled = true;
     btn.textContent = 'Saving…';
-    const payload = { title: lessonDraft.title, slides: currentSlidesForSave() };
+    const payload = { title: lessonDraft.title, slides: currentSlidesForSave(), theme: lessonDraft.theme };
     try {
         await saveLessonContent(session.schoolId, currentPostContext, currentLessonId, payload);
         hasUnsavedChanges = false;
@@ -1109,7 +1517,7 @@ async function onPublishToggle() {
     // never publishes stale content from the last explicit Save.
     const btn = lessonDraft.format === 'document' ? els.docPublishBtn : els.publishBtn;
     btn.disabled = true;
-    const payload = { title: lessonDraft.title, slides: currentSlidesForSave() };
+    const payload = { title: lessonDraft.title, slides: currentSlidesForSave(), theme: lessonDraft.theme };
     try {
         await saveLessonContent(session.schoolId, currentPostContext, currentLessonId, payload);
         hasUnsavedChanges = false;
@@ -1589,9 +1997,9 @@ async function onImportDocxFileSelected(e) {
 // Google Slides ("File → Share → Publish to web" → Embed tab, which yields
 // an <iframe src="https://docs.google.com/presentation/d/.../embed?...">
 // link) or any other already-hosted presentation embed URL. This inserts a
-// real, working 'media' slide (mediaKind: 'video', reusing the exact same
+// real, working Video block (provider: 'embed', reusing the exact same
 // iframe-embed rendering path parseMediaUrl()'s YouTube/Vimeo/Drive results
-// already use — see newSlide('media') in lessons.js) rather than a UI-only
+// already use — see newBlock('video') in lessons.js) rather than a UI-only
 // stub, since accepting an already-published embed URL needs no server-side
 // conversion at all: the teacher did the "export" step themselves via
 // Google's own Publish to Web flow.
@@ -1613,13 +2021,20 @@ function onImportSlidesClick() {
     }
 
     if (lessonDraft.format === 'slides') {
-        const slide = newSlide('media');
-        slide.mediaKind = 'video';
-        slide.provider = 'embed';
-        slide.embedUrl = embedUrl;
-        slide.heading = 'Imported Presentation';
+        // SLIDE DECK REDESIGN: built directly in the current blocks-based
+        // shape (a blank slide holding one Video block) rather than the old
+        // fixed 'media' slide type, so the sidebar thumbnail and canvas
+        // render correctly on the very first paint — no reliance on
+        // renderSlideCanvas()'s migrateLegacySlide() safety net, which only
+        // runs once that slide is actually selected.
+        const slide = newSlide('blank');
+        const block = newBlock('video');
+        block.provider = 'embed';
+        block.embedUrl = embedUrl;
+        slide.blocks.push(block);
         lessonDraft.slides.splice(currentSlideIndex + 1, 0, slide);
         currentSlideIndex += 1;
+        currentBlockId = block.id;
         hasUnsavedChanges = true;
         renderSlideThumbs();
         renderSlideCanvas();
@@ -1664,21 +2079,28 @@ function onImportSlidesClick() {
 // notes, tables, charts, SmartArt, grouped/rotated shapes, animations, or
 // slide masters/layouts (placeholder text that comes ONLY from a slide's
 // layout — nothing typed directly on the slide itself — won't be picked
-// up). A slide that parses to no usable content is still imported as an
-// empty Content slide rather than silently dropped, so the deck's slide
-// count and order always match the source file.
+// up). A slide that parses to no usable content is still imported as a
+// blank slide with a placeholder Text block rather than silently dropped,
+// so the deck's slide count and order always match the source file.
 //
-// Each parsed slide maps to exactly one Slide Deck slide type:
-//   - text + a picture, or text with no picture  → 'content' (heading +
-//     body; a picture here is noted in the body text, not dropped, since a
-//     Content slide has no image field of its own — see newSlide()).
-//   - a picture with no other text                → 'media' (image)
-//   - title text only, nothing else                → 'title'
+// SLIDE DECK REDESIGN: each parsed slide becomes one 'blank' slide holding
+// the blocks below, in reading order (see parseOnePptxSlide()) — the same
+// content mapping the old fixed slide types used, just expressed as blocks
+// instead of a slide type:
+//   - text + a picture, or text with no picture  → a heading Text block
+//     (if a title was found) plus a body Text block; a picture here is
+//     noted in the body text, not dropped, since a Text block has no image
+//     field of its own.
+//   - a picture with no other text                → a heading Text block
+//     (if any) plus one Image block.
+//   - title text only, nothing else                → a single heading
+//     Text block.
 //
-// Images are inlined as base64 data: URIs directly into the slide's
+// Images are inlined as base64 data: URIs directly into the Image block's
 // imageUrl field — there is no image-upload/Storage pipeline wired into
-// this builder today (existing Media slides only ever accept an
-// already-hosted external URL), and adding one is a bigger piece of work
+// this builder today (an Image block only ever accepts an already-hosted
+// external URL or a manual upload via its own properties panel), and
+// adding a dedicated import-time upload pipeline is a bigger piece of work
 // than this import feature itself. This is a real trade-off, not a bug:
 // a deck with several large images can hit Firestore's 1MB-per-document
 // cap on save — describeSaveFailure() already has a specific, clear error
@@ -1815,7 +2237,7 @@ async function parsePptxFile(file) {
         } catch (err) {
             // One malformed slide shouldn't sink the whole import — skip it
             // but keep going, same "degrade, don't crash" approach
-            // describeSaveFailure()/renderMediaCanvas's onerror take
+            // describeSaveFailure()/renderImageBlock's onerror take
             // elsewhere in this file. It IS still logged so a genuinely
             // bad import is diagnosable rather than mysteriously short a
             // slide.
@@ -1828,7 +2250,7 @@ async function parsePptxFile(file) {
 
 async function parseOnePptxSlide(zip, slidePath) {
     const doc = await readZipXml(zip, slidePath);
-    if (!doc) return newSlide('content'); // malformed slide XML — still counts as a slide, just an empty one
+    if (!doc) return newSlide('blank'); // malformed slide XML — still counts as a slide, just an empty one
 
     // Sibling _rels/<partName>.rels is where OOXML always keeps a part's
     // own relationships (here: which rId a <a:blip r:embed="rId"> points
@@ -1876,23 +2298,60 @@ async function parseOnePptxSlide(zip, slidePath) {
 
     const bodyText = bodyParagraphs.join('\n');
 
+    // SLIDE DECK REDESIGN: builds directly in the current blocks-based shape
+    // (a 'blank' slide holding Text/Image blocks in reading order) rather
+    // than the old fixed slide types (media/title/content) — same mapping
+    // of parsed content to slide shape as before, just expressed as blocks,
+    // so the sidebar thumbnail and canvas render correctly on first paint
+    // with no reliance on renderSlideCanvas()'s migrateLegacySlide() safety
+    // net. A heading, when present, is always its own Text block wrapped as
+    // <h2>...</h2> — mirrors migrateLegacySlide()'s own convention in
+    // lessons.js, so an imported deck's headings look identical to a
+    // migrated legacy deck's.
+    const slide = newSlide('blank');
+    const headingHtml = title ? `<h2>${escHtml(title)}</h2>` : '';
+
     if (imageDataUrl && !bodyText) {
-        const slide = newSlide('media');
-        slide.mediaKind = 'image';
-        slide.imageUrl = imageDataUrl;
-        slide.heading = title;
+        // Picture with no other text → a heading Text block (if any) plus
+        // one Image block.
+        if (headingHtml) {
+            const headingBlock = newBlock('text');
+            headingBlock.html = headingHtml;
+            slide.blocks.push(headingBlock);
+        }
+        const imageBlock = newBlock('image');
+        imageBlock.imageUrl = imageDataUrl;
+        slide.blocks.push(imageBlock);
         return slide;
     }
     if (title && !bodyText && !imageDataUrl) {
-        const slide = newSlide('title');
-        slide.heading = title;
+        // Title text only, nothing else → a single heading Text block.
+        const headingBlock = newBlock('text');
+        headingBlock.html = headingHtml;
+        slide.blocks.push(headingBlock);
         return slide;
     }
-    const slide = newSlide('content');
-    slide.heading = title;
-    slide.body = bodyText || (title ? '' : 'This slide had no readable text.');
+
+    // Text + a picture, or text with no picture → a heading Text block (if
+    // any) plus a body Text block. A Text block has no image field of its
+    // own (same limitation the old Content slide type had), so a picture
+    // found alongside body text is noted in the body text rather than
+    // dropped silently — unchanged behavior from before this rewrite.
+    if (headingHtml) {
+        const headingBlock = newBlock('text');
+        headingBlock.html = headingHtml;
+        slide.blocks.push(headingBlock);
+    }
+    let bodyHtml = bodyText
+        ? bodyText.split('\n').map(line => `<p>${escHtml(line) || '<br>'}</p>`).join('')
+        : (title ? '' : '<p>This slide had no readable text.</p>');
     if (imageDataUrl) {
-        slide.body += (slide.body ? '\n\n' : '') + '[This slide also had an image, which was not imported — recreate it as a Media slide if you need it.]';
+        bodyHtml += '<p>[This slide also had an image, which was not imported — recreate it as an Image block if you need it.]</p>';
+    }
+    if (bodyHtml) {
+        const bodyBlock = newBlock('text');
+        bodyBlock.html = bodyHtml;
+        slide.blocks.push(bodyBlock);
     }
     return slide;
 }
