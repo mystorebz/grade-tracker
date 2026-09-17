@@ -67,21 +67,121 @@ let openAssignmentViewId = null; // id of the assignment currently shown in the 
 // by block id for whichever slide is currently on screen.
 let slideFieldQuills = {};
 
-// Shared toolbar for every Slide Deck rich-text field — the same
-// formatting set Document mode's custom toolbar offers (headers, color,
-// lists, alignment, links), just expressed as Quill's declarative toolbar
-// array instead of a hand-built container, since these are small
-// per-field editors rather than one page-level editor. Quill renders this
-// as a `.ql-toolbar` element it inserts immediately before the target
-// container — no markup for it needs to exist in builder.html.
-const SLIDE_FIELD_TOOLBAR = [
-    [{ header: [1, 2, 3, false] }],
-    ['bold', 'italic', 'underline', 'strike'],
-    [{ color: [] }, { background: [] }],
-    [{ list: 'ordered' }, { list: 'bullet' }],
-    [{ align: [] }],
-    ['link', 'clean']
-];
+// ── FIXED GLOBAL TEXT-FORMATTING TOOLBAR (#slideFormatToolbar) ──────────
+// Every Text block's Quill instance is created with `toolbar: false` (see
+// wireBlockRichFields()) — there is deliberately no per-block/contextual/
+// floating toolbar inside the canvas. Formatting instead goes through the
+// ONE toolbar docked in the fixed header (built by hand in builder.html,
+// wired here), which always acts on whichever block is currently focused.
+// activeQuill/activeQuillRange are that "currently focused" pointer: they
+// are set the moment a block's Quill editor gets a real selection, and are
+// deliberately left in place when the editor merely blurs (e.g. because
+// the person just clicked a toolbar button) so a click on Bold never has
+// to be preceded by re-clicking back into the text first — exactly how
+// Google Slides' own docked toolbar behaves.
+let activeQuill = null;
+let activeQuillRange = null;
+
+function setFormatToolbarEnabled(enabled) {
+    if (!enabled) { activeQuill = null; activeQuillRange = null; }
+    els.slideFormatToolbar.querySelectorAll('button, select, input').forEach(el => { el.disabled = !enabled; });
+    els.slideFormatToolbar.classList.toggle('opacity-40', !enabled);
+    els.slideFormatToolbar.classList.toggle('pointer-events-none', !enabled);
+}
+
+function updateFormatToolbarState() {
+    if (!activeQuill) return;
+    const range = activeQuill.getSelection() || activeQuillRange;
+    const fmt = range ? activeQuill.getFormat(range) : {};
+    els.fmtHeaderSelect.value = fmt.header ? String(fmt.header) : '';
+    els.slideFormatToolbar.querySelectorAll('[data-fmt]').forEach(btn => {
+        btn.classList.toggle('lb-format-btn-active', !!fmt[btn.dataset.fmt]);
+    });
+    els.slideFormatToolbar.querySelectorAll('[data-fmt-list]').forEach(btn => {
+        btn.classList.toggle('lb-format-btn-active', fmt.list === btn.dataset.fmtList);
+    });
+    els.slideFormatToolbar.querySelectorAll('[data-fmt-align]').forEach(btn => {
+        btn.classList.toggle('lb-format-btn-active', (fmt.align || '') === btn.dataset.fmtAlign);
+    });
+}
+
+// Brings focus + selection back to whichever block was last active — used
+// before applying a format from a control (the header <select>, the color
+// pickers) whose own native interaction necessarily blurred the editor.
+function restoreActiveSelection() {
+    if (!activeQuill) return;
+    activeQuill.focus();
+    if (activeQuillRange) activeQuill.setSelection(activeQuillRange, 'silent');
+}
+
+function wireFormatToolbar() {
+    // Plain toolbar buttons (Bold/Italic/.../Clear): preventDefault on
+    // mousedown keeps the editor's own selection intact right through the
+    // click — the same trick Quill's own toolbar module uses internally —
+    // so format() always applies to what was actually selected rather than
+    // to nothing (focus would otherwise jump to the button first).
+    els.slideFormatToolbar.querySelectorAll('button.lb-format-btn').forEach(btn => {
+        btn.addEventListener('mousedown', (e) => e.preventDefault());
+    });
+
+    els.slideFormatToolbar.querySelectorAll('[data-fmt]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (!activeQuill) return;
+            const name = btn.dataset.fmt;
+            const range = activeQuill.getSelection() || activeQuillRange;
+            if (name === 'link') {
+                if (!range || !range.length) { alert('Select some text first to add a link.'); return; }
+                const url = prompt('Link URL:');
+                if (url) activeQuill.format('link', url);
+            } else if (name === 'clean') {
+                if (range) activeQuill.removeFormat(range.index, range.length);
+            } else {
+                const current = activeQuill.getFormat(range || undefined);
+                activeQuill.format(name, !current[name]);
+            }
+            activeQuillRange = activeQuill.getSelection() || activeQuillRange;
+            updateFormatToolbarState();
+        });
+    });
+
+    els.slideFormatToolbar.querySelectorAll('[data-fmt-list]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (!activeQuill) return;
+            const value = btn.dataset.fmtList;
+            const current = activeQuill.getFormat(activeQuill.getSelection() || activeQuillRange || undefined);
+            activeQuill.format('list', current.list === value ? false : value);
+            updateFormatToolbarState();
+        });
+    });
+
+    els.slideFormatToolbar.querySelectorAll('[data-fmt-align]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (!activeQuill) return;
+            activeQuill.format('align', btn.dataset.fmtAlign || false);
+            updateFormatToolbarState();
+        });
+    });
+
+    els.fmtHeaderSelect.addEventListener('change', () => {
+        if (!activeQuill) return;
+        restoreActiveSelection();
+        activeQuill.format('header', els.fmtHeaderSelect.value ? Number(els.fmtHeaderSelect.value) : false);
+        updateFormatToolbarState();
+    });
+
+    els.fmtColorInput.addEventListener('input', () => {
+        if (!activeQuill) return;
+        restoreActiveSelection();
+        activeQuill.format('color', els.fmtColorInput.value);
+    });
+    els.fmtBgInput.addEventListener('input', () => {
+        if (!activeQuill) return;
+        restoreActiveSelection();
+        activeQuill.format('background', els.fmtBgInput.value);
+    });
+
+    setFormatToolbarEnabled(false);
+}
 
 // ── SLIDE DECK VISUAL THEMES ───────────────────────────────────────────────
 // Purely cosmetic — an accent color + icon applied to the slide stage and
@@ -190,6 +290,9 @@ function cacheEls() {
         'insertImageUrlInput', 'insertImageUrlBtn', 'insertImageFileInput',
         'insertVideoBtn', 'insertVideoMenu', 'insertVideoUrlInput', 'insertVideoUrlBtn', 'insertVideoError',
         'themeBtn', 'themeBtnDot', 'themeMenu',
+        // Fixed global text-formatting toolbar (replaces the old per-block
+        // in-canvas Quill toolbar) — see wireFormatToolbar().
+        'slideFormatToolbar', 'fmtHeaderSelect', 'fmtColorInput', 'fmtBgInput',
         'docBackToListBtn', 'docLessonTitleInput', 'docStatusPill', 'docSaveMsg',
         'docNotesBtn', 'docSaveBtn', 'docPublishBtn', 'docPublishBtnLabel',
         'docToolbar', 'docEditor',
@@ -237,6 +340,7 @@ function wireEvents() {
 
     wireInsertToolbar();
     wireThemeMenu();
+    wireFormatToolbar();
 
     els.lessonTitleInput.addEventListener('input', () => {
         lessonDraft.title = els.lessonTitleInput.value;
@@ -758,6 +862,14 @@ function fieldWrap(label, inputHtml) {
 }
 
 function renderSlideCanvas() {
+    // Any re-render replaces #slideCanvas's innerHTML wholesale, which
+    // destroys every Quill instance currently on screen — reset the fixed
+    // format toolbar's "currently focused block" pointer unconditionally,
+    // on every branch below, so it can never end up pointing at a Quill
+    // instance whose DOM no longer exists. wireBlockRichFields() re-arms it
+    // the moment a Text block on the new canvas actually gets focus.
+    setFormatToolbarEnabled(false);
+
     let slide = currentSlide();
     if (!slide) { els.slideCanvas.innerHTML = ''; els.slideInsertToolbar.classList.add('hidden'); return; }
 
@@ -987,13 +1099,24 @@ function wireCollaborativeBoardInputs(slide) {
 // fixed heading/objective/body field.
 function wireBlockRichFields(slide) {
     slideFieldQuills = {};
+    // Every re-render tears down the previous slide's Quill instances (see
+    // this function's own top-of-file comment) — any pointer the fixed
+    // format toolbar was holding onto is now stale, so it's reset here
+    // unconditionally and only re-armed once a block on the NEW canvas
+    // actually receives a selection (below).
+    setFormatToolbarEnabled(false);
 
     els.slideCanvas.querySelectorAll('[data-rich-block]').forEach(container => {
         const blockId = container.dataset.richBlock;
         const block = (slide.blocks || []).find(b => b.id === blockId);
         if (!block) return;
 
-        const editor = new Quill(container, { theme: 'snow', modules: { toolbar: SLIDE_FIELD_TOOLBAR } });
+        // toolbar: false — no per-block/contextual/floating toolbar inside
+        // the canvas. All formatting goes through the one fixed toolbar
+        // docked in the header (wireFormatToolbar()), which this editor's
+        // selection-change handler below points at itself whenever it's
+        // the one focused.
+        const editor = new Quill(container, { theme: 'snow', modules: { toolbar: false } });
         editor.root.innerHTML = block.html || '';
         editor.history.clear();
 
@@ -1002,12 +1125,20 @@ function wireBlockRichFields(slide) {
             block.html = editor.root.innerHTML;
             hasUnsavedChanges = true;
             renderSlideThumbs(); // the first Text block's content drives the thumbnail label
+            if (activeQuill === editor) updateFormatToolbarState();
         });
         // Clicking into a Text block to edit it also selects it (so the
-        // block-toolbar shows and it visually reads as "selected"), without
-        // a full canvas re-render that would tear down this very editor.
+        // block-management toolbar shows and it visually reads as
+        // "selected") and hands this editor to the fixed format toolbar —
+        // without a full canvas re-render that would tear down this very
+        // editor.
         editor.on('selection-change', (range) => {
-            if (range && currentBlockId !== blockId) {
+            if (!range) return;
+            activeQuill = editor;
+            activeQuillRange = range;
+            setFormatToolbarEnabled(true);
+            updateFormatToolbarState();
+            if (currentBlockId !== blockId) {
                 currentBlockId = blockId;
                 els.slideCanvas.querySelectorAll('[data-block-id]').forEach(w => w.classList.toggle('lb-block-selected', w.dataset.blockId === blockId));
                 renderPropertiesPanel();
@@ -1028,6 +1159,11 @@ function wireBlockSelection(slide) {
         wrap.addEventListener('mousedown', (e) => {
             if (e.target.closest('[data-block-action]')) return; // handled below
             const id = wrap.dataset.blockId;
+            // A non-Text block has no Quill editor of its own to hand the
+            // fixed format toolbar to — disable it (its own Quill selection-
+            // change handler is what re-enables it, for a Text block).
+            const block = (slide.blocks || []).find(b => b.id === id);
+            if (block && block.type !== 'text') setFormatToolbarEnabled(false);
             if (id === currentBlockId) return;
             currentBlockId = id;
             els.slideCanvas.querySelectorAll('[data-block-id]').forEach(w => w.classList.toggle('lb-block-selected', w.dataset.blockId === id));

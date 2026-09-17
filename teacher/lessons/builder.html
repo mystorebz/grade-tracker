@@ -42,19 +42,15 @@
         .assignment-embed { display: inline-flex; align-items: center; gap: 6px; background: #eef4ff; border: 1px solid #c7d9fd; color: #2563eb; font-weight: 700; font-size: 12.5px; padding: 4px 10px 4px 8px; border-radius: 999px; cursor: pointer; user-select: none; }
         .assignment-embed:hover { background: #dbe8ff; }
 
-        /* Slide Deck rich-text fields (Title's Heading/Objective, Content's
-           Body — see builder.js's wireRichFields()). Each is its own small
-           Quill instance; Quill auto-generates the .ql-toolbar element
-           itself (it does not inherit the container div's own class), so
-           these are scoped generically to any Quill instance inside
-           #slideCanvas rather than by the .lb-rich-field class. */
-        #slideCanvas .ql-toolbar.ql-snow { border-color: #dce3ed; background: #f8fafb; border-radius: 0.5rem 0.5rem 0 0; padding: 5px 6px; }
-        #slideCanvas .ql-container.ql-snow { border-color: #dce3ed; border-radius: 0 0 0.5rem 0.5rem; font-family: 'DM Sans', sans-serif; font-size: 13.5px; }
+        /* Slide Deck Text blocks (builder.js's wireBlockRichFields()) are
+           created with `toolbar: false` — no per-block/contextual/floating
+           toolbar inside the canvas, ever; formatting goes through the one
+           fixed #slideFormatToolbar docked in the header instead. Quill
+           still renders a plain .ql-container/.ql-editor for the editing
+           surface itself, with no .ql-toolbar sibling to butt corners
+           against, so it gets fully rounded corners on all sides. */
+        #slideCanvas .ql-container.ql-snow { border-color: #dce3ed; border-radius: 0.5rem; font-family: 'DM Sans', sans-serif; font-size: 13.5px; }
         #slideCanvas .ql-editor { padding: 10px 12px; min-height: 44px; color: #0d1f35; line-height: 1.55; }
-        /* .lb-rich-field-heading IS preserved on the container div itself
-           (Quill augments that element in place rather than replacing it),
-           so this one can safely target it directly. */
-        #slideCanvas .lb-rich-field-heading.ql-container .ql-editor { font-size: 22px; font-weight: 700; }
 
         /* ── SLIDE DECK REDESIGN: fixed 16:9 stage, insertable blocks ────── */
         /* A real presentation surface — fixed aspect ratio, centered, capped
@@ -70,6 +66,21 @@
         .lb-toolbar-btn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; flex-shrink: 0; padding: 7px 11px; border-radius: 7px; font-size: 12px; font-weight: 700; color: #374f6b; background: transparent; border: 1px solid transparent; transition: background .12s, border-color .12s; }
         .lb-toolbar-btn:hover { background: #f4f7fb; border-color: #dce3ed; }
         .lb-toolbar-btn i { color: #2563eb; font-size: 11.5px; }
+
+        /* ── SLIDE DECK REDESIGN: fixed global format toolbar (#slideFormatToolbar
+           in the header) — see wireFormatToolbar()/wireBlockRichFields() in
+           builder.js. Icon-only buttons, denser than .lb-toolbar-btn since a
+           dozen of these sit in one row; .lb-format-btn-active marks the
+           current block's active formats (bold/italic/list/align/...). */
+        .lb-format-btn, .lb-format-color-btn { display: inline-flex; align-items: center; justify-content: center; width: 27px; height: 27px; border-radius: 6px; color: #374f6b; background: transparent; border: 1px solid transparent; font-size: 12px; flex-shrink: 0; transition: background .12s, border-color .12s, color .12s; cursor: pointer; }
+        .lb-format-btn:hover:not(:disabled), .lb-format-color-btn:hover { background: #f4f7fb; border-color: #dce3ed; }
+        .lb-format-btn:disabled { cursor: default; }
+        .lb-format-btn.lb-format-btn-active { background: #eef4ff; border-color: #2563eb; color: #2563eb; }
+        .lb-format-color-btn { position: relative; overflow: hidden; }
+        .lb-format-color-btn input[type="color"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; border: none; padding: 0; cursor: pointer; }
+        .lb-format-select { height: 27px; padding: 0 6px; border-radius: 6px; border: 1px solid transparent; background: transparent; color: #374f6b; font-size: 11.5px; font-weight: 700; flex-shrink: 0; cursor: pointer; }
+        .lb-format-select:hover:not(:disabled) { background: #f4f7fb; border-color: #dce3ed; }
+        #slideFormatToolbar.opacity-40 .lb-format-btn, #slideFormatToolbar.opacity-40 .lb-format-color-btn, #slideFormatToolbar.opacity-40 .lb-format-select { cursor: default; }
 
         .lb-block { position: relative; border: 1.5px solid transparent; border-radius: 8px; padding: 8px; margin-bottom: 14px; transition: border-color .12s, background .12s; cursor: default; }
         .lb-block:hover { background: #f8fafd; }
@@ -237,6 +248,48 @@
                     <button data-insert="assignment" class="lb-toolbar-btn" title="Insert Assignment">
                         <i class="fa-solid fa-clipboard-check"></i> Assignment
                     </button>
+
+                    <span class="w-px h-5 bg-[#dce3ed] mx-1.5 flex-shrink-0"></span>
+
+                    <!-- SLIDE DECK REDESIGN: the ONE fixed text-formatting toolbar,
+                         docked permanently in this header row — never a menu that pops
+                         up inside the slide. It always acts on whichever Text block is
+                         currently focused (builder.js's wireFormatToolbar()/
+                         wireBlockRichFields()); grayed out via .opacity-40 until a Text
+                         block is actually selected. -->
+                    <div id="slideFormatToolbar" class="flex items-center gap-0.5 flex-shrink-0 opacity-40 pointer-events-none">
+                        <select id="fmtHeaderSelect" class="lb-format-select" title="Text style">
+                            <option value="">Normal text</option>
+                            <option value="1">Heading 1</option>
+                            <option value="2">Heading 2</option>
+                            <option value="3">Heading 3</option>
+                        </select>
+                        <span class="w-px h-5 bg-[#dce3ed] mx-1"></span>
+                        <button data-fmt="bold" class="lb-format-btn" title="Bold"><i class="fa-solid fa-bold"></i></button>
+                        <button data-fmt="italic" class="lb-format-btn" title="Italic"><i class="fa-solid fa-italic"></i></button>
+                        <button data-fmt="underline" class="lb-format-btn" title="Underline"><i class="fa-solid fa-underline"></i></button>
+                        <button data-fmt="strike" class="lb-format-btn" title="Strikethrough"><i class="fa-solid fa-strikethrough"></i></button>
+                        <span class="w-px h-5 bg-[#dce3ed] mx-1"></span>
+                        <label class="lb-format-color-btn" title="Text color">
+                            <i class="fa-solid fa-font"></i>
+                            <input type="color" id="fmtColorInput" value="#0d1f35">
+                        </label>
+                        <label class="lb-format-color-btn" title="Highlight color">
+                            <i class="fa-solid fa-fill-drip"></i>
+                            <input type="color" id="fmtBgInput" value="#fff59d">
+                        </label>
+                        <span class="w-px h-5 bg-[#dce3ed] mx-1"></span>
+                        <button data-fmt-list="bullet" class="lb-format-btn" title="Bulleted list"><i class="fa-solid fa-list-ul"></i></button>
+                        <button data-fmt-list="ordered" class="lb-format-btn" title="Numbered list"><i class="fa-solid fa-list-ol"></i></button>
+                        <span class="w-px h-5 bg-[#dce3ed] mx-1"></span>
+                        <button data-fmt-align="" class="lb-format-btn" title="Align left"><i class="fa-solid fa-align-left"></i></button>
+                        <button data-fmt-align="center" class="lb-format-btn" title="Align center"><i class="fa-solid fa-align-center"></i></button>
+                        <button data-fmt-align="right" class="lb-format-btn" title="Align right"><i class="fa-solid fa-align-right"></i></button>
+                        <span class="w-px h-5 bg-[#dce3ed] mx-1"></span>
+                        <button data-fmt="link" class="lb-format-btn" title="Insert link"><i class="fa-solid fa-link"></i></button>
+                        <button data-fmt="clean" class="lb-format-btn" title="Clear formatting"><i class="fa-solid fa-text-slash"></i></button>
+                    </div>
+
                     <span class="flex-1"></span>
                     <div class="relative flex-shrink-0">
                         <button id="themeBtn" class="lb-toolbar-btn" title="Slide theme">
