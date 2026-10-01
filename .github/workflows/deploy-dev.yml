@@ -1,0 +1,74 @@
+name: Deploy dev to dev.connectusonline.org
+
+on:
+  push:
+    branches:
+      - dev
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-dev-hosting
+  cancel-in-progress: false
+
+env:
+  FIREBASE_PROJECT: dev-school-grade-tracker
+
+jobs:
+  deploy-hosting:
+    name: Firebase Hosting (dev-school-grade-tracker)
+    if: github.ref == 'refs/heads/dev' && github.repository == 'mystorebz/grade-tracker'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: development
+      url: https://dev.connectusonline.org
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Write .env.development from secrets (client keys only)
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.NEXT_PUBLIC_FIREBASE_API_KEY }}
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+          NEXT_PUBLIC_FIREBASE_DATABASE_URL: ${{ secrets.NEXT_PUBLIC_FIREBASE_DATABASE_URL }}
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+          NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}
+          NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID }}
+        run: |
+          umask 077
+          {
+            echo "NEXT_PUBLIC_APP_ENV=development"
+            for k in API_KEY AUTH_DOMAIN DATABASE_URL PROJECT_ID STORAGE_BUCKET MESSAGING_SENDER_ID APP_ID MEASUREMENT_ID; do
+              v="NEXT_PUBLIC_FIREBASE_$k"
+              echo "$v=${!v}"
+            done
+          } > .env.development
+
+      - name: Generate firebase-config.js (development only)
+        run: npm run config:generate -- --only=development
+
+      - name: Verify generated config targets dev project only
+        run: |
+          grep -q '"projectId": "dev-school-grade-tracker"' assets/js/firebase-config.js
+          if grep -q '"school-grade-tracker"' assets/js/firebase-config.js; then
+            echo "::error::Production project ID found in dev build"; exit 1
+          fi
+          rm -f .env.development
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV_SCHOOL_GRADE_TRACKER }}
+
+      - name: Deploy to Firebase Hosting (live channel)
+        run: npx --yes firebase-tools@14 deploy --only hosting --project "$FIREBASE_PROJECT" --non-interactive --message "dev ${GITHUB_SHA::7}"
