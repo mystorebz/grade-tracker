@@ -11,14 +11,10 @@ import { getFunctions, connectFunctionsEmulator }
 import { getDatabase, connectDatabaseEmulator }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-const firebaseConfig = {
-    apiKey:            "AIzaSyDTIREBdTGkVc1cWJRrG9q7YN_fv0XMr5w",
-    authDomain:        "school-grade-tracker.firebaseapp.com",
-    projectId:         "school-grade-tracker",
-    storageBucket:     "school-grade-tracker.firebasestorage.app",
-    messagingSenderId: "326406075140",
-    appId:             "1:326406075140:web:cff69a1ea0c20a66b21651"
-};
+// Environment-specific web config (production vs development), generated from
+// .env.production / .env.development by scripts/generate-firebase-config.mjs
+// and selected by hostname. See that file's header for the routing rules.
+import { firebaseConfig, FIREBASE_ENV } from './firebase-config.js';
 
 const app = initializeApp(firebaseConfig);
 
@@ -65,4 +61,4 @@ if (typeof location !== 'undefined' && ['localhost', '127.0.0.1'].includes(locat
 //     isTokenAutoRefreshEnabled: true
 // });
 
-console.log("Firebase initialized with Auth and offline caching.");
+console.log(`Firebase initialized (${FIREBASE_ENV}: ${firebaseConfig.projectId}) with Auth and offline caching.`);

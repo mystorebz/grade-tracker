@@ -1,0 +1,30 @@
+{
+  "name": "grade-tracker",
+  "private": true,
+  "description": "ConnectUs (connectusonline.org) — static site + Firebase. Prod: school-grade-tracker (main). Dev: dev-school-grade-tracker (dev).",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "setup:env": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-environments.ps1",
+    "config:generate": "node scripts/generate-firebase-config.mjs",
+    "config:check": "node scripts/generate-firebase-config.mjs --check",
+    "use:dev": "firebase use dev",
+    "use:prod": "firebase use prod",
+    "serve": "npx serve -p 3000 .",
+    "emulators": "firebase emulators:start --project dev-school-grade-tracker",
+
+    "guard:dev": "node scripts/assert-branch.mjs dev",
+    "guard:prod": "node scripts/assert-branch.mjs main",
+
+    "deploy:dev": "npm run guard:dev && npm run config:check && firebase deploy --project dev --non-interactive",
+    "deploy:dev:rules": "npm run guard:dev && firebase deploy --project dev --only firestore,storage,database --non-interactive",
+    "deploy:dev:functions": "npm run guard:dev && firebase deploy --project dev --only functions --non-interactive",
+    "deploy:dev:hosting": "npm run guard:dev && npm run config:check && firebase deploy --project dev --only hosting --non-interactive",
+
+    "deploy:prod": "npm run guard:prod && npm run config:check && firebase deploy --project prod --only firestore,storage,database,functions --non-interactive",
+    "deploy:prod:rules": "npm run guard:prod && firebase deploy --project prod --only firestore,storage,database --non-interactive",
+    "deploy:prod:functions": "npm run guard:prod && firebase deploy --project prod --only functions --non-interactive",
+    "deploy:prod:hosting": "npm run guard:prod && npm run config:check && firebase deploy --project prod --only hosting --non-interactive"
+  }
+}

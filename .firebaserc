@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "school-grade-tracker"
+    "default": "dev-school-grade-tracker",
+    "dev": "dev-school-grade-tracker",
+    "prod": "school-grade-tracker"
   }
 }

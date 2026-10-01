@@ -9,6 +9,35 @@
   "database": {
     "rules": "database.rules.json"
   },
+  "hosting": {
+    "public": ".",
+    "cleanUrls": false,
+    "trailingSlash": false,
+    "ignore": [
+      "**/.*",
+      "**/node_modules/**",
+      "**/*.log",
+      "firebase.json",
+      "firestore.rules",
+      "firestore.indexes.json",
+      "storage.rules",
+      "database.rules.json",
+      "package.json",
+      "package-lock.json",
+      "skills-lock.json",
+      "README.md",
+      "CNAME",
+      "paypal-test.html",
+      "functions/**",
+      "scripts/**",
+      "env-sync/**",
+      "migration/**",
+      "rules-tests/**",
+      "teacher-tests/**",
+      "exam-tests/**",
+      "Claude outputs/**"
+    ]
+  },
   "functions": [
     {
       "codebase": "default",

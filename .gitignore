@@ -16,3 +16,18 @@ skills-lock.json
 migration/cleanup-quote-test.js
 migration/migration-report.apply.json
 migration/migration-report.dry-run.json
+
+# ── Environments & credentials (never commit) ──────────────────────────────
+.env
+.env.*
+functions/.env
+functions/.env.*
+functions/.secret.local
+*-sa.json
+serviceAccount*.json
+service-account*.json
+env-sync/
+
+# ── Tooling ─────────────────────────────────────────────────────────────────
+node_modules/
+.firebase/
