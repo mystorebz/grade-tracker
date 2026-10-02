@@ -31,3 +31,6 @@ env-sync/
 # ── Tooling ─────────────────────────────────────────────────────────────────
 node_modules/
 .firebase/
+
+# QA seed credentials (functions/seed-test-accounts.js)
+functions/.qa-accounts.local

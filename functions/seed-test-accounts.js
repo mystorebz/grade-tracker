@@ -190,14 +190,27 @@ function decodeJwt(token) {
 
 // ── 4. SEED ─────────────────────────────────────────────────────────────────
 async function seed() {
-    const creds = {
-        project: PROJECT_ID,
-        createdAt: new Date().toISOString(),
-        admin: { schoolId: IDS.school, adminCode: `qa-${crypto.randomBytes(6).toString('hex')}` },
-        teacher: { teacherId: IDS.teacher, pin: pin4() },
-        student: { studentId: IDS.student, pin: pin4() },
-        parent: { parentId: IDS.parent, pin: pin4() },
-    };
+    // Re-seeding keeps existing credentials (and, via merge below, any data
+    // already populated on the QA profiles). Run --cleanup to start fresh.
+    let creds = null;
+    if (fs.existsSync(CREDS_FILE)) {
+        try {
+            const saved = JSON.parse(fs.readFileSync(CREDS_FILE, 'utf8'));
+            if (saved.project === PROJECT_ID && saved.admin && saved.teacher && saved.student && saved.parent) creds = saved;
+        } catch (_) { /* unreadable → regenerate */ }
+    }
+    const reused = !!creds;
+    if (!creds) {
+        creds = {
+            project: PROJECT_ID,
+            createdAt: new Date().toISOString(),
+            admin: { schoolId: IDS.school, adminCode: `qa-${crypto.randomBytes(6).toString('hex')}` },
+            teacher: { teacherId: IDS.teacher, pin: pin4() },
+            student: { studentId: IDS.student, pin: pin4() },
+            parent: { parentId: IDS.parent, pin: pin4() },
+        };
+    }
+    info(reused ? 'reusing existing credentials from .qa-accounts.local' : 'generated new credentials');
     const docs = buildDocs(creds);
 
     for (const p of Object.keys(docs)) await assertQaOwned(p);
@@ -214,7 +227,7 @@ async function seed() {
     }
 
     const batch = db.batch();
-    for (const [p, data] of Object.entries(docs)) batch.set(db.doc(p), data);
+    for (const [p, data] of Object.entries(docs)) batch.set(db.doc(p), data, { merge: true });
     await batch.commit();
     pass(`firestore ${Object.keys(docs).length} QA documents written`);
 
