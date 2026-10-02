@@ -16,6 +16,8 @@
  *     …/QA-SUBJ-MATH4/assignments/qa-asg-mult-w1/submissions/{studentId}   status 'graded'
  *     …/{subject}/lessons/{qa-lsn-*}                                       authored by T99-QA001
  *   students/{studentId}/grades/qa-grd-mult-w1                             gradebook record
+ *   + one graded assignment per remaining subject (new-model and the teacher's
+ *     legacy ds1–ds8 subjects), so every student has a grade in every subject
  */
 
 const PROJECT_ID = 'dev-school-grade-tracker';
@@ -257,7 +259,109 @@ async function main() {
     console.log(`[OK]   assignment: ${ASSIGNMENT.title} (semester ${semesterId})`);
     for (const [id, name, score] of results) console.log(`[OK]   graded ${id.padEnd(10)} ${String(name || '').padEnd(16)} ${score}/100`);
     for (const l of LESSONS) console.log(`[OK]   lesson ${SUBJECTS[l.subject].name}: ${l.title}`);
-    console.log(`[DONE] ${2 + 1 + students.length * 2 + LESSONS.length} docs written`);
+
+    await gradeEverySubject(students, semesterId);
+    console.log('[DONE]');
+}
+
+// ── EVERY SUBJECT: one graded assignment per subject, every student ─────────
+// Covers new-model subjects in QA-CLASS-01 AND the teacher's legacy embedded
+// subjects (teachers/T99-QA001.subjects[], e.g. the ds1–ds8 defaults), using
+// the same merge rule as utils.js loadTeacherSubjectsCache(): a legacy subject
+// is hidden when a new-model subject has the same name.
+// null = subject already graded above; unknown names get the generic entry.
+const SUBJECT_ASSIGNMENTS = {
+    '4th Grade Math': null,
+    '4th Grade Language Arts': { title: 'Nouns Identification Worksheet', type: 'Assignment', max: 20, instructions: 'Underline every noun and label it common, proper, or abstract.' },
+    'Mathematics': { title: 'Place Value to 100,000 Quiz', type: 'Quiz', max: 20, instructions: 'Write each number in standard, expanded, and word form.' },
+    'English Language Arts': { title: 'Reading Comprehension Check - Unit 1', type: 'Quiz', max: 25, instructions: 'Read the passage and answer the questions in complete sentences.' },
+    'Science': { title: 'States of Matter Lab Report', type: 'Project', max: 50, instructions: 'Record your observations of ice melting and water evaporating. Explain each change of state.' },
+    'Social Studies': { title: 'Map Skills: Districts of Belize', type: 'Assignment', max: 30, instructions: 'Label all six districts and their capitals. Add a compass rose and a key.' },
+    'Spanish': { title: 'Vocabulario: La Familia', type: 'Quiz', max: 20, instructions: 'Match each family word to its English meaning, then write three sentences about your family.' },
+    'Art': { title: 'Color Wheel Project', type: 'Project', max: 25, instructions: 'Paint a 12-part color wheel showing primary, secondary, and tertiary colors.' },
+    'Physical Education': { title: 'Fitness Circuit Assessment', type: 'Test', max: 20, instructions: 'Complete the five-station circuit: jumping jacks, sit-ups, shuttle run, skipping, and balance.' },
+    'Health & Family Life': { title: 'Healthy Plate Food Journal', type: 'Homework', max: 20, instructions: 'Log your meals for three days and sort each food into the healthy plate groups.' },
+};
+const GENERIC_ASSIGNMENT = { title: 'Unit 1 Check', type: 'Quiz', max: 20, instructions: 'Answer all questions. Show your work.' };
+const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+async function gradeEverySubject(students, semesterId) {
+    const teacherRef = db.collection('teachers').doc(AUTHOR.authorId);
+    const [teacherSnap, newSnap] = await Promise.all([teacherRef.get(), classRef.collection('subjects').get()]);
+    if (!teacherSnap.exists) throw new Error(`${teacherRef.path} not found. Run: node seed-test-accounts.js`);
+    if (teacherSnap.get('_qaSeed') !== true) throw new Error(`Refusing to modify untagged ${teacherRef.path}`);
+
+    const newSubjects = newSnap.docs.filter((d) => !d.get('archived')).map((d) => ({ id: d.id, name: d.get('name'), source: 'new' }));
+    const newNames = new Set(newSubjects.map((s) => s.name));
+    const legacyAll = teacherSnap.get('subjects') || [];
+    const legacySubjects = legacyAll.filter((s) => !s.archived && !newNames.has(s.name)).map((s) => ({ id: s.id, name: s.name, source: 'legacy' }));
+
+    const date = today();
+    const ts = nowIso();
+    const batch = db.batch();
+    const legacyAssignments = new Map(); // legacy subject id -> assignment object
+    const gradeRefs = [];
+    const summary = [];
+
+    for (const sub of [...newSubjects, ...legacySubjects]) {
+        const spec = Object.prototype.hasOwnProperty.call(SUBJECT_ASSIGNMENTS, sub.name) ? SUBJECT_ASSIGNMENTS[sub.name] : GENERIC_ASSIGNMENT;
+        if (!spec) continue;
+
+        const asgId = `qa-asg-${slug(sub.name)}-u1`;
+        const asg = {
+            ...TAG, id: asgId, title: spec.title, type: spec.type, maxScore: spec.max,
+            description: spec.instructions, instructions: spec.instructions, date, completed: true, createdAt: ts,
+        };
+
+        let asgRef = null;
+        if (sub.source === 'new') {
+            asgRef = classRef.collection('subjects').doc(sub.id).collection('assignments').doc(asgId);
+            batch.set(asgRef, asg);
+        } else {
+            legacyAssignments.set(sub.id, asg);
+        }
+
+        for (const st of students) {
+            const score = Math.round((spec.max * randInt(72, 100)) / 100);
+            const gRef = db.collection('students').doc(st.id).collection('grades').doc(`qa-grd-${asgId}`);
+            gradeRefs.push(gRef);
+            batch.set(gRef, {
+                ...TAG,
+                schoolId: SCHOOL, teacherId: AUTHOR.authorId, semesterId,
+                className: st.className || CLASS_NAME, subject: sub.name,
+                type: spec.type, date, title: spec.title,
+                score, max: spec.max, notes: '',
+                assignmentId: asgId, historyLogs: [], createdAt: ts,
+            });
+            if (asgRef) {
+                batch.set(asgRef.collection('submissions').doc(st.id), {
+                    ...TAG,
+                    studentId: st.id, studentName: st.name || '',
+                    assignmentId: asgId, assignmentTitle: spec.title, workType: spec.type,
+                    subjectId: sub.id, subjectName: sub.name,
+                    classId: CLASS_ID, className: CLASS_NAME,
+                    responseText: 'Completed.', linkUrl: null,
+                    status: 'graded', submittedAt: ts, updatedAt: ts,
+                });
+            }
+        }
+        summary.push(`${sub.name} (${sub.source}): ${spec.title} /${spec.max}`);
+    }
+
+    await assertWritable(gradeRefs);
+
+    if (legacyAssignments.size) {
+        const subjects = legacyAll.map((s) => {
+            const asg = legacyAssignments.get(s.id);
+            if (!asg) return s;
+            const others = (Array.isArray(s.assignments) ? s.assignments : []).filter((a) => a.id !== asg.id);
+            return { ...s, assignments: [...others, asg] };
+        });
+        batch.update(teacherRef, { subjects });
+    }
+
+    await batch.commit();
+    for (const line of summary) console.log(`[OK]   graded all ${students.length} students: ${line}`);
 }
 
 main().then(() => process.exit(0)).catch((e) => {
