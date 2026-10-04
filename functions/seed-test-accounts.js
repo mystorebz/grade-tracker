@@ -9,7 +9,10 @@
  *                                           quiz grading callable, async worksheet answers in Document lessons)
  *   node seed-test-accounts.js --cleanup   delete QA Auth users, Firestore trees, local credentials file
  *
- * Target: dev-school-grade-tracker ONLY (hard-refuses any other project).
+ * Target: dev-school-grade-tracker by default. PRODUCTION (school-grade-tracker)
+ *   only with --prod --confirm-production on every mode, e.g.
+ *     node seed-test-accounts.js --prod --confirm-production
+ *   Production credentials go to functions/.qa-accounts.prod.local (gitignored).
  * Auth:   Application Default Credentials (gcloud auth application-default login).
  *
  * Roles → production login paths (functions/index.js):
@@ -34,7 +37,12 @@ const crypto = require('node:crypto');
 const { isDeepStrictEqual } = require('node:util');
 
 // ── 1. TARGET GUARD ─────────────────────────────────────────────────────────
-const PROJECT_ID = 'dev-school-grade-tracker';
+const ON_PROD = process.argv.includes('--prod');
+if (ON_PROD && !process.argv.includes('--confirm-production')) {
+    console.error('[FAIL] Production QA accounts need --prod --confirm-production. Nothing was written.');
+    process.exit(2);
+}
+const PROJECT_ID = ON_PROD ? 'school-grade-tracker' : 'dev-school-grade-tracker';
 const REGION = 'us-central1';
 const ALLOWED_PROJECTS = new Set([PROJECT_ID]);
 
@@ -68,7 +76,7 @@ const IDS = Object.freeze({
 const NAMES = Object.freeze({ school: 'QA Test School', klass: 'QA Class 1', klass2: 'QA Class 2', student: 'QA Student', student2: 'QA Student Two' });
 const QA_UID = /^(QA-SCHOOL-|[TSP]99-QA)/;
 const TAG = Object.freeze({ _qaSeed: true, _seededBy: 'functions/seed-test-accounts.js' });
-const CREDS_FILE = path.join(__dirname, '.qa-accounts.local');
+const CREDS_FILE = path.join(__dirname, ON_PROD ? '.qa-accounts.prod.local' : '.qa-accounts.local');
 
 // Same hash functions as functions/index.js
 const sha256Lower = (t) => crypto.createHash('sha256').update(String(t).toLowerCase().trim(), 'utf8').digest('hex');
@@ -182,12 +190,12 @@ function readCreds() {
 
 function readApiKey() {
     if (process.env.QA_FIREBASE_API_KEY) return process.env.QA_FIREBASE_API_KEY;
-    const envFile = path.join(__dirname, '..', '.env.development');
+    const envFile = path.join(__dirname, '..', ON_PROD ? '.env.production' : '.env.development');
     if (fs.existsSync(envFile)) {
         const m = fs.readFileSync(envFile, 'utf8').match(/^NEXT_PUBLIC_FIREBASE_API_KEY=(.+)$/m);
         if (m && m[1].trim()) return m[1].trim();
     }
-    throw new Error('Dev web API key not found (set QA_FIREBASE_API_KEY or fill .env.development).');
+    throw new Error(`Web API key not found (set QA_FIREBASE_API_KEY or fill ${ON_PROD ? '.env.production' : '.env.development'}).`);
 }
 
 async function assertQaOwned(docPath) {
@@ -363,7 +371,9 @@ async function verifyPostRbac(idTokens) {
     const postsPath = `schools/${IDS.school}/classes/${IDS.klass}/subjects/QA-SUBJ-PROBE/posts`;
     const postId = `qa-probe-${Date.now().toString(36)}`;
     const studentPostId = `${postId}-student`;
-    const fields = (title) => ({ fields: { title: { stringValue: title }, _qaSeed: { booleanValue: true } } });
+    // authorId is required: firestore.rules only lets a class teacher create a
+    // post that names them as its author (RBAC fix, 2026-10-02).
+    const fields = (title) => ({ fields: { title: { stringValue: title }, authorId: { stringValue: IDS.teacher }, _qaSeed: { booleanValue: true } } });
 
     const call = async (method, token, url, body) => {
         const res = await fetch(url, {
@@ -770,10 +780,10 @@ async function cleanup() {
 
 // ── 7. CLI ──────────────────────────────────────────────────────────────────
 async function main() {
-    const args = process.argv.slice(2);
+    const args = process.argv.slice(2).filter((a) => a !== '--prod' && a !== '--confirm-production');
     const valid = args.every((a) => a === '--verify' || a === '--cleanup') && args.length <= 1;
     if (!valid) {
-        console.error('Usage: node seed-test-accounts.js [--verify | --cleanup]');
+        console.error('Usage: node seed-test-accounts.js [--verify | --cleanup] [--prod --confirm-production]');
         process.exit(2);
     }
     const mode = args[0] === '--verify' ? 'verify' : args[0] === '--cleanup' ? 'cleanup' : 'seed';
