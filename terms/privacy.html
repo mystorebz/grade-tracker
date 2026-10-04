@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Privacy Policy | ConnectUs</title>
+    <meta name="description" content="ConnectUs Privacy Policy: how the ConnectUs learning platform collects, protects, and deletes school and student data.">
     
     <link rel="icon" type="image/x-icon" href="../assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="../assets/images/favicon-32x32.png">
@@ -19,6 +20,10 @@
         .legal-content ul { list-style-type: disc; padding-left: 1.5rem; }
         .legal-content li { margin-bottom: 0.5rem; }
         .legal-content strong { color: #1e293b; font-weight: 800; }
+        .legal-content h3 { color: #1e293b; font-weight: 900; font-size: 1rem; margin-top: 1.5rem; margin-bottom: 0.4rem; }
+        .legal-content h3 + p { margin-top: 0; }
+        @media (min-width: 768px) { .legal-content p { text-align: justify; } }
+        .legal-content p.preamble { background: #eff6ff; border: 1px solid #dbeafe; border-radius: 0.75rem; padding: 1rem 1.25rem; text-align: left; }
     </style>
 </head>
 <body class="min-h-screen flex flex-col bg-[#f8faff] text-slate-800 antialiased">
@@ -48,52 +53,151 @@
 
             <div class="legal-content">
 
-                <p>At ConnectUs, we take the privacy and security of educational data seriously. This Privacy Policy outlines how we collect, use, and protect the information provided by schools, teachers, parents, and students using our platform.</p>
+                <p class="preamble">This Privacy Policy explains how ConnectUs collects, uses, protects, and deletes information in connection with the ConnectUs learning platform. It should be read together with the ConnectUs <a href="terms.html" class="text-blue-600 hover:underline font-bold">Terms of Service</a>; capitalized terms not defined here have the meanings given in the Terms of Service. <strong>ConnectUs never sells personal information, never uses it for advertising, and never uses Student content to train commercial artificial intelligence models.</strong></p>
 
-                <h2>1. Information We Collect</h2>
-                <p>We only collect the information necessary to provide our educational tools and maintain secure access to school data. This includes:</p>
+                <h2>1. Definitions, Regulatory Roles &amp; Legal Framework</h2>
+
+                <h3>1.1 Scope of Policy.</h3>
+                <p>This Policy applies to all personally identifiable information (&ldquo;<strong>PII</strong>&rdquo;) and education records that ConnectUs processes through the ConnectUs platform, portals, and related services (the &ldquo;<strong>Platform</strong>&rdquo;) on behalf of subscribing educational institutions (each, a &ldquo;<strong>School</strong>&rdquo;), and to information submitted through the ConnectUs public website (for example, contact and quote forms). &ldquo;<strong>School Data</strong>&rdquo; means all information that a School and its Authorized Users (Admins, Teachers, Students, and Parents) submit to, create in, or upload to the Platform.</p>
+
+                <h3>1.2 Data Controller and Data Processor.</h3>
+                <p>For School Data, the <strong>School is the Data Controller</strong> (or equivalent term under applicable law): it decides which information is entered into the Platform, who may access it, and for what educational purposes. <strong>ConnectUs is the Data Processor</strong> (or service provider): it processes School Data only on the School&rsquo;s documented instructions, as set out in the Terms of Service and through the School&rsquo;s configuration and use of the Platform, and for no other purpose. For information submitted through the ConnectUs public website and for account billing records, ConnectUs acts as an independent controller and handles that information as described in Sections 2.7 and 5.</p>
+
+                <h3>1.3 Compliance Framework.</h3>
+                <p>ConnectUs designs its practices to support Schools in meeting their obligations under applicable student data privacy laws, which may include the U.S. Family Educational Rights and Privacy Act (&ldquo;<strong>FERPA</strong>&rdquo;), the U.S. Children&rsquo;s Online Privacy Protection Act (&ldquo;<strong>COPPA</strong>&rdquo;), the EU and UK General Data Protection Regulation (&ldquo;<strong>GDPR</strong>&rdquo;), and the education and data protection laws of the School&rsquo;s own country or region. Each School remains responsible for determining which laws apply to it and for its own compliance; ConnectUs&rsquo;s commitments are those stated in this Policy and the Terms of Service.</p>
+
+                <h2>2. Categories of Data Collected</h2>
+
+                <h3>2.1 School-Provided Institutional Data.</h3>
+                <p>School name, School identifier, school type, country and region, subscription plan and Licensed Capacity, administrator contact names, email addresses, and telephone numbers, class names and structures, grading periods and calendars, grading scales and category weightings, and similar institutional configuration.</p>
+
+                <h3>2.2 Educator PII &amp; Work Product.</h3>
+                <p>Teacher and Admin names, personal IDs, email addresses, assigned classes and subjects, hashed sign-in PINs and access codes, teaching history and evaluations recorded by the School, and the instructional content educators create, including lessons, slides, documents, canvases, assignments, quizzes, answer keys, rubrics, comments, and feedback on Student work.</p>
+
+                <h3>2.3 Student PII &amp; Academic Records.</h3>
+                <p>Student names, Student IDs, class and School enrollment, enrollment status, hashed sign-in PINs, grades and scores (including per-question marks and auto-graded results), grade change history with the reason and time of each change, assignment submissions and drafts (including typed answers, links, uploaded files, and images), daily attendance status (Present, Absent, Late, or Excused) and who recorded it, character, behavior, and development evaluations, report cards, and teacher notes.</p>
+
+                <h3>2.4 Student Interactive &amp; Stream Content.</h3>
+                <p>Content Students create while participating in class, including Class Stream posts, comments, and answers to discussion questions; poll votes; live lesson responses, quiz entries, board notes, open responses, and interactions with collaborative canvases and documents; and the related timestamps and author identifiers. For discussion questions configured so that Students must answer before seeing classmates&rsquo; responses, the Platform records whether a Student has submitted an answer in order to apply that rule.</p>
+
+                <h3>2.5 Parent &amp; Guardian PII.</h3>
+                <p>Parent and guardian names, Parent IDs, email addresses and telephone numbers, hashed sign-in PINs, and the links between each Parent and the Student or Students they are authorized to view.</p>
+
+                <h3>2.6 Technical Telemetry &amp; Audit Logs.</h3>
+                <p>Authentication session tokens issued when a user signs in; records of administrative and academic actions (for example, who changed a grade or attendance record and when); and server and security logs maintained by ConnectUs and its infrastructure providers, which may include IP addresses, request timestamps, browser and device type, and error information. ConnectUs uses this information only to operate, secure, troubleshoot, and maintain the Platform. ConnectUs does not build behavioral profiles of users. Information stored in the user&rsquo;s own browser is described in Section 9.</p>
+
+                <h3>2.7 Website Inquiries &amp; Billing Records.</h3>
+                <p>When a person submits the ConnectUs contact or quote form, ConnectUs receives the information entered (such as name, title, school, email, telephone, enrollment range, staff count, and message). When a School subscribes, ConnectUs receives a subscription confirmation and subscriber identifier from PayPal; ConnectUs does not receive or store full payment card numbers, bank account details, or security codes.</p>
+
+                <h2>3. Zero Data Monetization &amp; Advertising Guarantee</h2>
+
+                <h3>3.1 No Sale or Rental of Data.</h3>
+                <p>ConnectUs does not and will not sell, rent, lease, trade, or otherwise disclose School Data or any PII for monetary or other valuable consideration.</p>
+
+                <h3>3.2 No Advertising or Profiling.</h3>
+                <p>ConnectUs does not display third-party advertising on the Platform, does not use School Data for targeted or behavioral advertising, and does not build profiles of Students for any purpose other than the educational purposes directed by the School.</p>
+
+                <h3>3.3 No Commercial AI Training.</h3>
+                <p>ConnectUs does not use Student content or other School Data to train, fine-tune, or improve generalized or commercial artificial intelligence or machine learning models, and does not permit its sub-processors to do so.</p>
+
+                <h3>3.4 Permitted Uses Only.</h3>
+                <p>ConnectUs uses School Data solely to provide, maintain, secure, support, and improve the Platform for the School; to send transactional messages (such as credential slips, PIN reset links, and account notices); to verify subscription status and enforce Licensed Capacity; and to comply with law. ConnectUs may use aggregated, de-identified information that cannot reasonably be used to identify any School or individual to measure and improve Platform performance.</p>
+
+                <h2>4. In-Product Role-Based Access Control</h2>
+
+                <h3>4.1 Multi-Tenant Isolation.</h3>
+                <p>All Schools are served from a shared, secure cloud platform. Separation between Schools is enforced by database-level, role-based access rules that are evaluated on every request against the signed-in user&rsquo;s verified role, School, and class assignments. A user at one School cannot read or modify another School&rsquo;s records.</p>
+
+                <h3>4.2 Admins.</h3>
+                <p>Admins can view and manage the records of their own School, including staff, classes, Students, Parents, grading periods, grades, and attendance, and can correct historical records and permanently delete accounts as described in the Terms of Service.</p>
+
+                <h3>4.3 Teachers.</h3>
+                <p>Teachers can view and manage records for the classes to which their School has assigned them, including those Students&rsquo; grades, submissions, attendance, and class content. Teachers cannot access classes they are not assigned to.</p>
+
+                <h3>4.4 Students.</h3>
+                <p>Students can view their own grades, submissions, attendance, and evaluations, and the class content of the classes in which they are enrolled. Students cannot view other Students&rsquo; grades, submissions, or attendance. Classmates can see one another&rsquo;s Class Stream posts and comments within the same class; for discussion questions configured to require an answer first, a Student cannot see classmates&rsquo; responses until the Student has submitted their own. Individual live lesson responses are visible to the Teacher; only content designed to be shared, such as collaborative board notes, is visible to classmates.</p>
+
+                <h3>4.5 Parents.</h3>
+                <p>Parents can view the grades, attendance, assignments, evaluations, and progress of the Students to whom their School has linked them, and cannot view information about other Students.</p>
+
+                <h3>4.6 ConnectUs Personnel.</h3>
+                <p>ConnectUs personnel access School Data only as necessary to provide support requested by the School, maintain and secure the Platform, or comply with law, and are bound by confidentiality obligations.</p>
+
+                <h2>5. Third-Party Infrastructure &amp; Sub-Processors</h2>
+
+                <h3>5.1 Sub-Processors.</h3>
+                <p>ConnectUs uses the following service providers to deliver the Platform. Each processes information only as needed to provide its service to ConnectUs.</p>
                 <ul>
-                    <li><strong>Institution Data:</strong> School names, administrator contact details, and institutional preferences.</li>
-                    <li><strong>User Account Information:</strong> Names, email addresses, phone numbers, and secure PINs utilized by teachers, parents, and students to access their respective portals.</li>
-                    <li><strong>Academic Data:</strong> Student rosters, grades, assignment notes, and progress reports entered by authorized school faculty.</li>
-                </ul>
-                <p>ConnectUs does <strong>not</strong> collect, store, or have access to payment card numbers, bank account details, or any other financial information. All payment data is handled exclusively by PayPal in accordance with their own privacy and security standards.</p>
-
-                <h2>2. How We Use Information</h2>
-                <p>The data collected on ConnectUs is strictly used to facilitate the operations of the subscribing school. We use this information to:</p>
-                <ul>
-                    <li>Provide real-time academic tracking and communication between teachers and parents.</li>
-                    <li>Generate smart reports and performance dashboards for school administrators.</li>
-                    <li>Send transactional emails such as credential slips, PIN reset links, and account notifications.</li>
-                    <li>Verify subscription status and enforce plan limits in accordance with your active PayPal subscription.</li>
-                </ul>
-                <p><strong>We do not sell, rent, or lease student or school data to third parties under any circumstances.</strong></p>
-
-                <h2>3. Data Security and Infrastructure</h2>
-                <p>Protecting student information is our highest priority. We implement robust security measures to ensure data integrity:</p>
-                <ul>
-                    <li><strong>Secure Cloud Infrastructure:</strong> ConnectUs runs on a secure cloud infrastructure where data separation is strictly enforced via database-level, role-based access rules. Each school's records are accessible only to that school's authorized users, and within a school, each user can reach only the data their role allows.</li>
-                    <li><strong>Role-Based Access:</strong> Every user signs in with role-specific credentials: school administrators with their School ID and admin code, teachers and students with their personal ID and PIN, and parents with their Parent ID and PIN. Student data is accessible only to the school's authorized administrators, the teachers assigned to that student's class, the student, and the student's linked parents or guardians.</li>
-                    <li><strong>Activity Logging:</strong> All grade modifications and system actions are time-stamped and logged to maintain full transparency for administrators.</li>
-                    <li><strong>Encrypted Credentials:</strong> All PINs and access codes are stored using industry-standard cryptographic hashing and are never stored in plain text.</li>
+                    <li><strong>Google Cloud / Google Firebase</strong> (Google LLC): website hosting, Cloud Firestore database storage, Cloud Storage for files, authentication, and server functions. School Data is primarily stored in data centers in the United States.</li>
+                    <li><strong>Google Gmail SMTP</strong> (Google LLC): delivery of transactional emails such as credential slips, PIN reset links, and account notices.</li>
+                    <li><strong>PayPal</strong> (PayPal Holdings, Inc. and affiliates): subscription payment processing. Payment information is collected directly by PayPal and governed by <a href="https://www.paypal.com/us/legalhub/privacy-full" class="text-blue-600 hover:underline" target="_blank" rel="noopener">PayPal&rsquo;s Privacy Statement</a>.</li>
+                    <li><strong>Unsplash API</strong> (Unsplash Inc.): stock image search inside the lesson editor. Only the Teacher&rsquo;s search terms and selections are sent to Unsplash; no Student information is shared. Selected images are copied into the School&rsquo;s own storage.</li>
+                    <li><strong>EmailJS</strong>: delivery of messages submitted through the ConnectUs public website contact form. No Platform School Data is sent through this service.</li>
                 </ul>
 
-                <h2>4. Third-Party Payment Processing</h2>
-                <p>ConnectUs uses <strong>PayPal</strong> as its exclusive payment processor for all subscription billing. When you subscribe to a ConnectUs plan:</p>
-                <ul>
-                    <li>Your payment information — including card details, billing address, and transaction history — is collected and processed directly by PayPal and is governed by <a href="https://www.paypal.com/us/legalhub/privacy-full" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline font-bold">PayPal's Privacy Policy</a>.</li>
-                    <li>ConnectUs receives only a subscription confirmation and subscriber identifier from PayPal to verify that your plan is active. We do not receive or store your full card number, bank details, or CVV.</li>
-                    <li>PayPal maintains its own security certifications and data protection standards independent of ConnectUs.</li>
-                </ul>
+                <h3>5.2 Content Delivery Networks.</h3>
+                <p>ConnectUs pages load standard fonts, icons, and code libraries from content delivery networks (including Google Fonts, cdnjs/Cloudflare, jsDelivr, and the Tailwind CSS CDN). As with any website resource, these providers receive the technical information needed to deliver the file, such as the requesting IP address and browser type. No School Data is sent to them.</p>
 
-                <h2>5. Data Retention and Deletion</h2>
-                <p>Schools retain ownership of their academic data. If a school cancels their ConnectUs subscription, we will securely hold the historical data for a 60-day grace period to allow administrators to request reactivation or a data export. Following this period, all student and institutional data associated with the account may be permanently and irretrievably deleted from our active servers.</p>
+                <h3>5.3 Changes to Sub-Processors.</h3>
+                <p>ConnectUs will update this Section before engaging a new sub-processor that processes School Data and, for material changes, will notify Schools in accordance with Section 10.</p>
 
-                <h2>6. Children's Privacy</h2>
-                <p>ConnectUs is designed for use by educational institutions and is operated under the supervision of school administrators. Student accounts — including those belonging to minors — are created and managed exclusively by authorized school staff. We do not knowingly collect personal information directly from children. All student data is provided and controlled by the subscribing school.</p>
+                <h2>6. Children&rsquo;s Privacy &amp; COPPA/FERPA Mechanics</h2>
 
-                <h2>7. Contact Us</h2>
-                <p>If you have any questions regarding this Privacy Policy, your school's data, or our security practices, please contact our support team at <strong>info@connectusonline.org</strong>.</p>
+                <h3>6.1 School Authorization and Parental Consent.</h3>
+                <p>Student accounts are created and managed exclusively by the School. ConnectUs does not knowingly collect PII directly from children outside of a School&rsquo;s authorized use of the Platform. Where a Student is under the age of thirteen (13), or under the higher age at which parental consent is required by local law, <strong>the School is responsible for obtaining any verifiable parental consent and providing any notices required by COPPA, GDPR, or other applicable law</strong> before creating the Student&rsquo;s account. Where permitted by law, the School may consent on Parents&rsquo; behalf for the use of the Platform solely in the educational context.</p>
+
+                <h3>6.2 FERPA School Official.</h3>
+                <p>For Schools subject to FERPA, ConnectUs acts as a &ldquo;school official&rdquo; with a &ldquo;legitimate educational interest&rdquo; in education records, operates under the School&rsquo;s direct control with respect to those records, uses them only for the purposes for which they were disclosed, and does not re-disclose them except as authorized by the School or permitted by FERPA.</p>
+
+                <h3>6.3 Parent and Student Rights Requests.</h3>
+                <p>Because the School controls Student records, Parents, guardians, and eligible Students who wish to review, correct, export, or delete Student information should contact their <strong>School Administrator</strong>, who can act on most requests directly in the Platform. If ConnectUs receives such a request directly, it will refer the requester to the School and assist the School in responding, unless applicable law requires otherwise.</p>
+
+                <h2>7. Data Retention, Export &amp; Permanent Deletion</h2>
+
+                <h3>7.1 Retention During the Subscription.</h3>
+                <p>ConnectUs retains School Data for as long as the School maintains an active subscription, or until the School deletes it, in order to provide the Platform.</p>
+
+                <h3>7.2 Post-Termination Export Window.</h3>
+                <p>After the end of the School&rsquo;s final paid subscription period, ConnectUs retains School Data in a suspended state for sixty (60) days. During that window the School may reactivate its subscription or request an export of its School Data in a commonly used, machine-readable format by contacting ConnectUs at the address in Section 10.</p>
+
+                <h3>7.3 Permanent Deletion.</h3>
+                <p>After the sixty (60) day window expires, ConnectUs permanently deletes the School&rsquo;s Data from its active production systems. Residual copies in routine backups maintained by ConnectUs or its infrastructure providers are deleted or overwritten on those providers&rsquo; standard backup cycles and are not restored or used except as required by law. ConnectUs may retain billing and transaction records, and any data that the law requires it to keep, for the period so required.</p>
+
+                <h3>7.4 Admin-Initiated Deletion.</h3>
+                <p>Admins can permanently delete Teacher and Student accounts and their associated records at any time using the Platform&rsquo;s administrative tools. Such deletions take effect immediately in the active production systems and cannot be reversed by ConnectUs. Schools may also request deletion of all School Data before the end of their subscription.</p>
+
+                <h2>8. Security Architecture &amp; Incident Response</h2>
+
+                <h3>8.1 Encryption.</h3>
+                <p>All traffic between users and the Platform is encrypted in transit using HTTPS/TLS (version 1.2 or higher). School Data is encrypted at rest by ConnectUs&rsquo;s cloud infrastructure provider using AES-256.</p>
+
+                <h3>8.2 Credentials.</h3>
+                <p>Sign-in PINs and administrator access codes are stored only as one-way SHA-256 cryptographic hashes, not in readable form. When a new Teacher or Student account is created, the newly generated PIN is held temporarily so that it can be delivered on the credential slip, and is automatically removed once the welcome message has been processed.</p>
+
+                <h3>8.3 Access Controls and Logging.</h3>
+                <p>Access to School Data is governed by the role-based rules in Section 4, enforced on ConnectUs&rsquo;s servers and database rather than only in the user interface. Grade changes are recorded with the time and the reason given, and attendance records note who recorded or corrected them.</p>
+
+                <h3>8.4 Incident Response.</h3>
+                <p>If ConnectUs confirms unauthorized access to, or acquisition, disclosure, or loss of, School Data in its possession or control, ConnectUs will notify the School&rsquo;s primary administrator contact without undue delay and in any event within <strong>seventy-two (72) hours</strong> of confirmation, describe the nature of the incident and the data affected, and take reasonable steps to contain and remediate it. As Data Controller, the School is responsible for any notifications to Students, Parents, staff, and authorities required by law, and ConnectUs will reasonably assist.</p>
+
+                <h3>8.5 No Absolute Guarantee.</h3>
+                <p>No method of transmission or storage is completely secure. ConnectUs maintains reasonable administrative, technical, and physical safeguards appropriate to the sensitivity of School Data, and Schools and users play an important role by keeping credentials confidential and removing access for people who leave the School.</p>
+
+                <h2>9. Cookies &amp; Local Storage Disclosure</h2>
+
+                <h3>9.1 Functional Storage Only.</h3>
+                <p>The Platform uses the browser&rsquo;s local storage, session storage, and IndexedDB only for functions that make the Platform work. These are: keeping a user signed in (the sign-in session and authentication token); remembering the last time a user viewed the Class Stream, so the &ldquo;New&rdquo; badge can be shown; caching a Teacher&rsquo;s class list and summary figures so pages load faster; saving a temporary backup of an unsent assignment answer so work is not lost if the page closes; and remembering simple display preferences. This information stays on the user&rsquo;s own device.</p>
+
+                <h3>9.2 No Tracking.</h3>
+                <p>ConnectUs does not use advertising cookies, third-party tracking pixels, cross-site tracking, or analytics that profile individual users. Clearing the browser&rsquo;s site data will sign the user out and reset these preferences.</p>
+
+                <h2>10. Policy Modifications &amp; Contact</h2>
+
+                <h3>10.1 Changes to This Policy.</h3>
+                <p>ConnectUs may update this Policy from time to time and will post the updated version with a new &ldquo;Last Updated&rdquo; date. For material changes, ConnectUs will notify each School&rsquo;s primary administrator contact at least thirty (30) days before the changes take effect. ConnectUs will not make material changes to how it uses previously collected Student information without the School&rsquo;s authorization.</p>
+
+                <h3>10.2 Contact.</h3>
+                <p>Questions about this Policy, data export or deletion requests, and security reports may be sent to <strong>privacy@connectusonline.org</strong>. Parents and Students should first contact their School Administrator, as described in Section 6.3.</p>
 
             </div>
             
