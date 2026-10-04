@@ -59,7 +59,8 @@ function ymd(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.
 function cacheEls() {
     ['dashLoader', 'dashError', 'dashContent', 'alertsList', 'feedList',
      'kpiLoader', 'kpiError', 'kpiSection', 'kpiSectionLabel',
-     'kpiOverallAvg', 'kpiOverallSub', 'kpiMissingBadge', 'kpiMissingText', 'subjectBreakdownList'
+     'kpiOverallAvg', 'kpiOverallSub', 'kpiMissingBadge', 'kpiMissingText', 'subjectBreakdownList',
+     'attentionBanner'
     ].forEach(id => { els[id] = document.getElementById(id); });
 }
 
@@ -72,7 +73,9 @@ function showFatalError(message) {
 function formatRelativeDate(iso) {
     if (!iso) return '';
     try {
-        const d = new Date(iso);
+        // A bare YYYY-MM-DD is a calendar date, not UTC midnight — parse it
+        // as local so it doesn't render as the previous day west of UTC.
+        const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(iso + 'T00:00:00') : new Date(iso);
         return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     } catch (e) { return iso; }
 }
@@ -111,7 +114,7 @@ async function loadOverviewKpis(child) {
     const childName = studentData.name || 'Student';
 
     if (!semId) {
-        return { childName, semesterName: null, overall: null, subjectBreakdown: [], missingCount: null };
+        return { childName, semesterName: null, overall: null, subjectBreakdown: [], missingCount: null, missingList: [], lowGrades: [] };
     }
 
     const teacherId = studentData.teacherId || null;
@@ -140,6 +143,12 @@ async function loadOverviewKpis(child) {
     }
 
     const grades = gSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    // Attention Required: every grade this period below the passing line.
+    const lowGrades = grades
+        .map(g => ({ ...g, pct: (typeof g.score === 'number' && Number(g.max) > 0) ? Math.round(g.score / Number(g.max) * 100) : null }))
+        .filter(g => g.pct !== null && g.pct < PASSING_PCT)
+        .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     const bySub = {};
     grades.forEach(g => {
         const sub = g.subject || 'Uncategorized';
@@ -160,6 +169,7 @@ async function loadOverviewKpis(child) {
     // Assignments page uses, over the same assignment/submission/grade
     // load path (assets/js/submissions.js + loadTeacherSubjectsCache()).
     let missingCount = null;
+    const missingList = [];
     try {
         if (teacherId) {
             const { subjectsCache, resolvedClasses } = await loadTeacherSubjectsCache(child.schoolId, teacherId, legacyTeacherData);
@@ -172,15 +182,17 @@ async function loadOverviewKpis(child) {
                     loadSubmissionsForAssignments(child.schoolId, assignments, child.studentId),
                     loadGradesIndexForStudent(child.schoolId, child.studentId)
                 ]);
-                missingCount = assignments.reduce((count, a) => {
+                assignments.forEach(a => {
                     const submission = subMap.get(a.id) || null;
                     const grade = gradeMap.get(a.id) || null;
                     const { category } = resolveAssignmentStatus({
                         grade, locked: !!a.locked, hasSubmission: !!submission,
                         submittedAt: submission?.submittedAt, dueDate: a.date,
                     });
-                    return category === 'missing' ? count + 1 : count;
-                }, 0);
+                    if (category === 'missing') missingList.push({ title: a.title || 'Untitled assignment', subject: a.subjectName || a.subject || '', dueDate: a.date });
+                });
+                missingList.sort((x, y) => (x.dueDate || '').localeCompare(y.dueDate || ''));
+                missingCount = missingList.length;
             } else {
                 missingCount = 0;
             }
@@ -189,7 +201,77 @@ async function loadOverviewKpis(child) {
         console.error('[Parent Dashboard] missing-work computation:', e);
     }
 
-    return { childName, semesterName, overall, subjectBreakdown, missingCount };
+    return { childName, semesterName, overall, subjectBreakdown, missingCount, missingList, lowGrades };
+}
+
+// ── MODULE 2: "ATTENTION REQUIRED" BANNER (active child) ─────────────────
+const PASSING_PCT = 65;
+const ATTENTION_LIMIT = 5;
+
+function formatDue(dateStr) {
+    if (!dateStr) return 'No due date';
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? new Date(dateStr + 'T00:00:00') : new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+    const label = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return days >= 1 ? `Due ${label} · ${days} day${days === 1 ? '' : 's'} overdue` : `Due ${label}`;
+}
+
+function renderAttention(kpi) {
+    const el = els.attentionBanner;
+    if (!el) return;
+    const missing = kpi.missingList || [];
+    const low = kpi.lowGrades || [];
+
+    if (!missing.length && !low.length) {
+        el.innerHTML = kpi.missingCount === null
+            ? ''
+            : `<div class="att-ok"><i class="fa-solid fa-circle-check"></i> ${escHtml(kpi.childName)} is all caught up — no missing work and no grades below ${PASSING_PCT}% this period.</div>`;
+        el.classList.toggle('hidden', kpi.missingCount === null);
+        return;
+    }
+
+    const more = (n, href, noun) => n > ATTENTION_LIMIT
+        ? `<a class="att-more" href="${href}">+${n - ATTENTION_LIMIT} more ${noun} <i class="fa-solid fa-arrow-right"></i></a>` : '';
+
+    const missingHtml = missing.length ? `
+        <div class="att-group">
+            <p class="att-group-title"><i class="fa-solid fa-clipboard-question"></i> Missing work <span class="att-count">${missing.length}</span></p>
+            <ul class="att-list">
+                ${missing.slice(0, ATTENTION_LIMIT).map(m => `
+                <li class="att-item">
+                    <div class="min-w-0"><p class="att-item-title">${escHtml(m.title)}</p><p class="att-item-meta">${escHtml(m.subject)}${m.subject ? ' · ' : ''}${escHtml(formatDue(m.dueDate))}</p></div>
+                    <span class="att-pill att-pill-missing">Not submitted</span>
+                </li>`).join('')}
+            </ul>
+            ${more(missing.length, '../assignments/assignments.html', 'missing')}
+        </div>` : '';
+
+    const lowHtml = low.length ? `
+        <div class="att-group">
+            <p class="att-group-title"><i class="fa-solid fa-arrow-trend-down"></i> Grades below ${PASSING_PCT}% <span class="att-count">${low.length}</span></p>
+            <ul class="att-list">
+                ${low.slice(0, ATTENTION_LIMIT).map(g => `
+                <li class="att-item">
+                    <div class="min-w-0"><p class="att-item-title">${escHtml(g.title || g.type || 'Graded item')}</p><p class="att-item-meta">${escHtml(g.subject || '')}${g.date ? ' · ' + escHtml(formatRelativeDate(g.date)) : ''}</p></div>
+                    <span class="att-pill att-pill-low">${g.score}/${g.max} · ${g.pct}%</span>
+                </li>`).join('')}
+            </ul>
+            ${more(low.length, '../grades/grades.html', 'low grades')}
+        </div>` : '';
+
+    el.innerHTML = `
+        <div class="att-banner" role="alert">
+            <div class="att-head">
+                <div class="att-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                <div>
+                    <p class="att-title">Attention Required</p>
+                    <p class="att-sub">${escHtml(kpi.childName)}: ${[missing.length ? `${missing.length} missing assignment${missing.length === 1 ? '' : 's'}` : '', low.length ? `${low.length} grade${low.length === 1 ? '' : 's'} below ${PASSING_PCT}%` : ''].filter(Boolean).join(' · ')}</p>
+                </div>
+            </div>
+            <div class="att-body">${missingHtml}${lowHtml}</div>
+        </div>`;
+    el.classList.remove('hidden');
 }
 
 function renderSubjectBreakdownRow(s) {
@@ -236,6 +318,8 @@ function renderKpis(kpi) {
     els.subjectBreakdownList.innerHTML = kpi.subjectBreakdown.length
         ? kpi.subjectBreakdown.map(renderSubjectBreakdownRow).join('')
         : `<p class="text-[12.5px] text-slate-400 font-semibold text-center py-4 m-0">No subjects graded yet this period.</p>`;
+
+    renderAttention(kpi);
 
     els.kpiLoader.classList.add('hidden');
     els.kpiSection.classList.remove('hidden');

@@ -13,8 +13,14 @@ import { initGradesPage } from '../../assets/js/render-grades.js';
 const session = requireAuth('parent', '../../student/login.html');
 const activeChild = session ? getActiveChild(session) : null;
 
-injectParentLayout('grades', 'Current Grades', "A read-only mirror of your child's gradebook");
+injectParentLayout('grades', 'Current Grades', "Your child's grades for the current period");
 
 if (activeChild) {
-    initGradesPage({ studentId: activeChild.studentId, schoolId: activeChild.schoolId });
+    initGradesPage({
+        studentId: activeChild.studentId,
+        schoolId: activeChild.schoolId,
+        // Each subject tile opens its own page (parent/grades/subject.html);
+        // the child travels in the URL so a reload/bookmark keeps it.
+        subjectHref: (subject) => `subject.html?${new URLSearchParams({ student: activeChild.studentId, subject }).toString()}`,
+    });
 }

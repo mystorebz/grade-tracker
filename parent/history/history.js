@@ -10,7 +10,7 @@ import { initHistoryPage } from '../../assets/js/render-history.js';
 const session = requireAuth('parent', '../../student/login.html');
 const activeChild = session ? getActiveChild(session) : null;
 
-injectParentLayout('history', 'Academic History', "A read-only mirror of your child's past semesters");
+injectParentLayout('history', 'Academic History', "Your child's past semesters");
 
 if (activeChild) {
     initHistoryPage({ studentId: activeChild.studentId, schoolId: activeChild.schoolId });

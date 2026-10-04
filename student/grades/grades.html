@@ -46,8 +46,6 @@
         .gb-print-btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); border-radius: 8px; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; transition: background 0.15s; font-family: inherit; white-space: nowrap; }
         .gb-print-btn:hover { background: rgba(255,255,255,0.22); }
 
-        /* ── Modal Overlay Only (Inner HTML is JS injected) ── */
-        .modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.7); backdrop-filter: blur(6px); z-index: 60; display: flex; align-items: center; justify-content: center; padding: 20px; }
 
         /* ── Loader ── */
         .page-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 20px; gap: 14px; }
@@ -78,7 +76,6 @@
             #layout-sidebar-container, #layout-topbar-container { display: none !important; }
             body { background: #fff !important; }
             .gb-print-btn { display: none !important; }
-            .modal-overlay { display: none !important; }
         }
     </style>
 </head>
@@ -122,8 +119,6 @@
 
         </div>
     </main>
-
-    <div id="typeModal" class="modal-overlay hidden"></div>
 
     <script type="module" src="grades.js"></script>
     

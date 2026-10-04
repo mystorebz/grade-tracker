@@ -242,14 +242,20 @@ async function main() {
     // 4. Lessons (Document format, same shape as assets/js/lessons.js createLesson())
     LESSONS.forEach((l, i) => {
         const s = SUBJECTS[l.subject];
+        // split lesson model (contentVersion 2): metadata doc + content/main
         batch.set(lessonRefs[i], {
             ...TAG,
             title: l.title, format: 'document', status: 'published',
             schoolId: SCHOOL, classId: CLASS_ID, className: CLASS_NAME,
             subjectId: s.id, subjectName: s.name,
             authorId: AUTHOR.authorId, authorName: AUTHOR.authorName,
+            slideCount: 1, contentVersion: 2,
+            createdAt: ts, updatedAt: ts, publishedAt: ts,
+        });
+        batch.set(lessonRefs[i].collection('content').doc('main'), {
+            ...TAG,
             slides: [{ id: rid('slide'), type: 'richtext', contentHtml: l.contentHtml }],
-            theme: 'general', createdAt: ts, updatedAt: ts, publishedAt: ts,
+            theme: 'general', updatedAt: ts,
         });
     });
 

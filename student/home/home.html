@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Family Dashboard | ConnectUs</title>
+    <title>Student Dashboard | ConnectUs</title>
 
     <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
@@ -26,7 +26,7 @@
         <div class="flex-1 overflow-y-auto p-7 md:p-10">
             <div id="view-overview" class="view-section w-full space-y-8">
 
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div class="stat-card bg-gradient-to-br from-indigo-600 to-indigo-800 p-8 rounded-3xl shadow-lg shadow-indigo-500/20 text-white border border-indigo-500/30 flex flex-col justify-between">
                         <div class="flex items-center justify-between mb-4">
                             <div class="bg-white/20 h-14 w-14 rounded-xl flex items-center justify-center text-2xl"><i class="fa-solid fa-graduation-cap"></i></div>
@@ -37,18 +37,18 @@
                         </h3>
                     </div>
 
-                    <div class="stat-card bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
-                        <div class="flex items-center gap-4 mb-6">
-                            <div class="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center text-2xl"><i class="fa-solid fa-check-double"></i></div>
-                            <div><h3 class="font-black text-slate-700 text-lg">Assignments</h3><p class="text-sm text-slate-400 font-bold uppercase tracking-wider">This Period</p></div>
+                    <div class="stat-card bg-white p-6 xl:p-8 rounded-3xl shadow-sm border border-slate-200 min-w-0">
+                        <div class="flex flex-col items-start gap-3 mb-4 min-w-0">
+                            <div class="w-12 h-12 flex-shrink-0 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-check-double"></i></div>
+                            <div class="min-w-0"><h3 class="font-black text-slate-700 text-base leading-tight">Assignments</h3><p class="text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">This Period</p></div>
                         </div>
                         <h3 id="dashTotalGrades" class="text-5xl font-black text-slate-800">0</h3>
                     </div>
 
-                    <div class="stat-card bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
-                        <div class="flex items-center gap-4 mb-6">
-                            <div class="w-14 h-14 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center text-2xl"><i class="fa-solid fa-bell"></i></div>
-                            <div><h3 class="font-black text-slate-700 text-lg">Recent Updates</h3><p class="text-sm text-slate-400 font-bold uppercase tracking-wider">Last 7 Days</p></div>
+                    <div class="stat-card bg-white p-6 xl:p-8 rounded-3xl shadow-sm border border-slate-200 min-w-0">
+                        <div class="flex flex-col items-start gap-3 mb-4 min-w-0">
+                            <div class="w-12 h-12 flex-shrink-0 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-bell"></i></div>
+                            <div class="min-w-0"><h3 class="font-black text-slate-700 text-base leading-tight">Recent Updates</h3><p class="text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">Last 7 Days</p></div>
                         </div>
                         <h3 id="dashRecentCount" class="text-5xl font-black text-slate-800">0</h3>
                     </div>

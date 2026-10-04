@@ -79,6 +79,30 @@
 
         .pd-empty { text-align: center; padding: 24px 10px; color: #94a3b8; font-size: 12.5px; font-weight: 700; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; }
 
+        /* ── Module 2: Attention Required banner ──────────────────────────── */
+        .att-banner { background:#fff; border:2px solid #fecaca; border-left:6px solid #dc2626; border-radius:14px; overflow:hidden; box-shadow:0 4px 16px rgba(220,38,38,0.08); }
+        .att-head { display:flex; align-items:center; gap:14px; padding:16px 20px; background:#fef2f2; border-bottom:1px solid #fee2e2; }
+        .att-icon { width:42px; height:42px; border-radius:12px; background:#dc2626; color:#fff; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
+        .att-title { font-size:16px; font-weight:900; color:#7f1d1d; margin:0; }
+        .att-sub { font-size:12.5px; font-weight:700; color:#991b1b; margin:2px 0 0; opacity:0.9; }
+        .att-body { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:0; }
+        .att-group { padding:14px 20px 16px; border-right:1px solid #f1f5f9; }
+        .att-group:last-child { border-right:none; }
+        .att-group-title { font-size:11px; font-weight:800; color:#64748b; text-transform:uppercase; letter-spacing:0.06em; margin:0 0 8px; display:flex; align-items:center; gap:7px; }
+        .att-count { background:#dc2626; color:#fff; border-radius:999px; padding:0 7px; font-size:10.5px; line-height:18px; letter-spacing:0; }
+        .att-list { list-style:none; margin:0; padding:0; }
+        .att-item { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid #f8fafc; }
+        .att-item:last-child { border-bottom:none; }
+        .att-item-title { font-size:13px; font-weight:800; color:#1e293b; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .att-item-meta { font-size:11.5px; font-weight:600; color:#64748b; margin:1px 0 0; }
+        .att-pill { flex-shrink:0; font-size:11px; font-weight:800; border-radius:999px; padding:3px 10px; white-space:nowrap; font-family:'DM Mono',monospace; }
+        .att-pill-missing { background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; font-family:'DM Sans',sans-serif; }
+        .att-pill-low { background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; }
+        .att-more { display:inline-flex; align-items:center; gap:6px; margin-top:8px; font-size:12px; font-weight:800; color:#7f1d3d; text-decoration:none; }
+        .att-more:hover { text-decoration:underline; }
+        .att-ok { display:flex; align-items:center; gap:10px; background:#ecfdf5; border:1px solid #a7f3d0; color:#047857; border-radius:12px; padding:12px 16px; font-size:13px; font-weight:700; }
+        @media (max-width: 767px) { .att-group { border-right:none; border-bottom:1px solid #f1f5f9; } }
+
         @media (max-width: 767px) {
             .pd-feed-card { flex-wrap: wrap; }
         }
@@ -98,6 +122,9 @@
                      PHASE 2: KPI WIDGETS — scoped to the active child
                      (sidebar Student Selector), primary content on this page.
                      ══════════════════════════════════════════════════════════ -->
+                <!-- MODULE 2: Attention Required — missing work + grades below 65% (active child) -->
+                <section id="attentionBanner" class="hidden" aria-live="polite"></section>
+
                 <section>
                     <div id="kpiLoader" class="page-loader">
                         <i class="fa-solid fa-circle-notch fa-spin"></i>

@@ -30,6 +30,8 @@
 
         .cs-toggle-btn { color: #64748b; }
         .cs-toggle-btn.cs-active { background: #fff; color: #1e1b4b; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+        @keyframes csPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+        .cs-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: csPulse 1.2s ease-in-out infinite; }
 
         @media (max-width: 767px) {
             .cs-topbar { padding: 20px; }
@@ -76,7 +78,12 @@
                 </div>
 
                 <div id="postListCount" class="hidden text-[11px] font-black text-slate-400 uppercase tracking-widest px-1"></div>
-                <div id="postList" class="space-y-3 pb-8"></div>
+                <div id="postList" class="space-y-3"></div>
+                <div class="pb-8 pt-1 text-center">
+                    <button id="loadOlderBtn" type="button" class="hidden bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 font-bold py-2 px-4 rounded-lg transition text-[12.5px] inline-flex items-center gap-2">
+                        <i class="fa-solid fa-clock-rotate-left text-[11px]"></i><span>Load Older Announcements</span>
+                    </button>
+                </div>
 
             </div>
         </div>

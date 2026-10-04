@@ -31,10 +31,12 @@
 // subscribeToLesson, which normalize a missing/legacy format to 'slides'
 // for backward compatibility with lessons created before this feature
 // existed) needed real changes.
-import { db } from './firebase-init.js';
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, runTransaction, query, where }
+import { db, functions } from './firebase-init.js';
+import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, runTransaction, query, where, writeBatch, deleteField }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { createPost } from './posts.js';
+import { STAGE, SCHEMA_VERSION, v2ToV3Content, v3ToV2Slides, slideFingerprint } from './lessons/canvas/model.js';
 
 export function genLessonId() {
     return 'lsn_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
@@ -55,6 +57,118 @@ export function genBlockId() {
 function lessonRef(schoolId, postContext, lessonId) {
     const { classId, subjectId } = postContext;
     return doc(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'lessons', lessonId);
+}
+
+// ── SPLIT LESSON MODEL (contentVersion 2) ────────────────────────────────
+// lessons/{lessonId}            metadata only: title, format, status, ids,
+//                               author, slideCount, timestamps — cheap to list.
+// lessons/{lessonId}/content/main   { slides, theme, updatedAt } — the heavy part.
+// Pre-split lessons (slides still on the main doc) keep working: every read
+// falls back to the main doc's slides/theme when content/main is missing, and
+// the first save moves them over (migrations/02-lesson-content.js does it in bulk).
+export const LESSON_CONTENT_VERSION = 3;
+
+// ── CANVAS SCHEMA v3 (per-slide documents) ───────────────────────────────
+//   content/main        { schemaVersion: 3, stage, theme, slideOrder, updatedAt }
+//   slides/{slideId}    one doc per slide (see lessons/canvas/model.js)
+//   doc/main            Document-format lessons: { html, blockId, updatedAt }
+// The current editor still works on the v2 slide array; this module converts
+// at the storage boundary (v3 → v2 on read, v2 → v3 on write), so v2-era
+// callers keep working while readers (viewer/presenter) consume v3 natively
+// via lesson.v3. Saves only write slide docs whose content actually changed.
+function lessonSlidesCollectionRef(schoolId, postContext, lessonId) {
+    const { classId, subjectId } = postContext;
+    return collection(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'lessons', lessonId, 'slides');
+}
+function lessonSlideRef(schoolId, postContext, lessonId, slideId) {
+    const { classId, subjectId } = postContext;
+    return doc(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'lessons', lessonId, 'slides', slideId);
+}
+function lessonDocMainRef(schoolId, postContext, lessonId) {
+    const { classId, subjectId } = postContext;
+    return doc(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'lessons', lessonId, 'doc', 'main');
+}
+
+// lessonId -> { order: [slideId], prints: Map(slideId -> fingerprint), docPrint: string|null }
+// What we last read/wrote, so a save only touches what changed.
+const savedV3State = new Map();
+
+function rememberV3(lessonId, conv) {
+    savedV3State.set(lessonId, {
+        order: [...conv.content.slideOrder],
+        prints: new Map(conv.slides.map((s) => [s.id, slideFingerprint(s)])),
+        docPrint: conv.doc ? JSON.stringify(conv.doc) : null,
+    });
+}
+
+async function readV3Parts(schoolId, postContext, lessonId, format) {
+    const [slidesSnap, docSnap] = await Promise.all([
+        format === 'document' ? Promise.resolve(null) : getDocs(lessonSlidesCollectionRef(schoolId, postContext, lessonId)),
+        format === 'document' ? getDoc(lessonDocMainRef(schoolId, postContext, lessonId)) : Promise.resolve(null),
+    ]);
+    const slidesById = new Map((slidesSnap ? slidesSnap.docs : []).map((d) => {
+        const { updatedAt, _mig03, ...rest } = d.data();
+        return [d.id, { ...rest, id: d.id }];
+    }));
+    const docData = docSnap && docSnap.exists() ? (({ updatedAt, _mig03, ...rest }) => rest)(docSnap.data()) : null;
+    return { slidesById, doc: docData };
+}
+
+// Stage the v3 writes for `slides` (v2 array) onto `batch`. Returns the
+// conversion and a commit hook that records the new saved state.
+async function stageV3Writes(batch, schoolId, postContext, lessonId, { slides, theme, format, now, fresh = false }) {
+    const conv = v2ToV3Content(slides, { theme, format });
+    let prev = fresh ? { order: [], prints: new Map(), docPrint: null, hadDoc: false } : savedV3State.get(lessonId);
+    if (!prev) {
+        // Unknown baseline (first save of a lesson not loaded in this tab): read the stored order.
+        const cs = await getDoc(lessonContentRef(schoolId, postContext, lessonId)).catch(() => null);
+        const c = cs && cs.exists() ? cs.data() : null;
+        prev = { order: c && c.schemaVersion === SCHEMA_VERSION && Array.isArray(c.slideOrder) ? c.slideOrder : [], prints: new Map(), docPrint: null, hadDoc: true };
+    }
+    let ops = 0;
+    for (const s of conv.slides) {
+        if (prev.prints.get(s.id) !== slideFingerprint(s)) { batch.set(lessonSlideRef(schoolId, postContext, lessonId, s.id), { ...s, updatedAt: now }); ops++; }
+    }
+    const keep = new Set(conv.content.slideOrder);
+    for (const id of prev.order) {
+        if (!keep.has(id)) { batch.delete(lessonSlideRef(schoolId, postContext, lessonId, id)); ops++; }
+    }
+    if (conv.doc) {
+        if (prev.docPrint !== JSON.stringify(conv.doc)) { batch.set(lessonDocMainRef(schoolId, postContext, lessonId), { ...conv.doc, updatedAt: now }); ops++; }
+    } else if (prev.docPrint || prev.hadDoc) {
+        batch.delete(lessonDocMainRef(schoolId, postContext, lessonId)); ops++;
+    }
+    // full replace: drops any v2 `slides` array still on content/main
+    batch.set(lessonContentRef(schoolId, postContext, lessonId), { ...conv.content, updatedAt: now }); ops++;
+    if (ops > 450) throw new Error(`This lesson has too many slides to save in one step (${ops} writes). Split it into two lessons.`);
+    return { conv, commit: () => rememberV3(lessonId, conv) };
+}
+
+function inferFormat(slides, fallback) {
+    if (fallback === 'document' || fallback === 'slides') return fallback;
+    return Array.isArray(slides) && slides[0] && slides[0].type === 'richtext' ? 'document' : 'slides';
+}
+
+function lessonContentRef(schoolId, postContext, lessonId) {
+    const { classId, subjectId } = postContext;
+    return doc(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'lessons', lessonId, 'content', 'main');
+}
+
+// Strip the heavy fields from a main-doc snapshot for list views.
+function toLessonMeta(id, data) {
+    const { slides, theme, ...meta } = data;
+    return {
+        id, ...meta,
+        format: normalizeFormat(data),
+        slideCount: Number.isInteger(data.slideCount) ? data.slideCount : (Array.isArray(slides) ? slides.length : 0),
+    };
+}
+
+// Merge main doc + content doc into the full lesson object every editor/player uses.
+function toFullLesson(id, data, content) {
+    const slides = content && Array.isArray(content.slides) ? content.slides : data.slides;
+    const theme = (content && content.theme) || data.theme || 'general';
+    return { id, ...data, theme, format: normalizeFormat(data), slides: normalizeLessonSlides(slides) || [] };
 }
 
 function lessonPrivateRef(schoolId, postContext, lessonId) {
@@ -446,10 +560,23 @@ function normalizeFormat(data) {
 
 // ── READ: one lesson's main document ─────────────────────────────────────
 export async function loadLesson(schoolId, postContext, lessonId) {
-    const snap = await getDoc(lessonRef(schoolId, postContext, lessonId));
+    const [snap, contentSnap] = await Promise.all([
+        getDoc(lessonRef(schoolId, postContext, lessonId)),
+        getDoc(lessonContentRef(schoolId, postContext, lessonId)).catch(() => null),
+    ]);
     if (!snap.exists()) return null;
     const data = snap.data();
-    return { id: snap.id, ...data, format: normalizeFormat(data), slides: normalizeLessonSlides(data.slides) };
+    const content = contentSnap && contentSnap.exists() ? contentSnap.data() : null;
+    if (content && content.schemaVersion === SCHEMA_VERSION) {
+        const format = normalizeFormat(data);
+        const { slidesById, doc: docData } = await readV3Parts(schoolId, postContext, lessonId, format);
+        const v2 = v3ToV2Slides({ content, slidesById, doc: docData, format });
+        rememberV3(lessonId, v2ToV3Content(v2, { theme: content.theme, format }));
+        const full = toFullLesson(snap.id, data, { slides: v2, theme: content.theme });
+        full.v3 = { stage: content.stage || { ...STAGE }, theme: content.theme || 'general', slideOrder: content.slideOrder || [], slidesById, doc: docData };
+        return full;
+    }
+    return toFullLesson(snap.id, data, content);
 }
 
 // ── READ: this teacher-only private doc (pacingNotes/standards) ─────────
@@ -466,10 +593,7 @@ export async function loadLessonPrivateNotes(schoolId, postContext, lessonId) {
 export async function loadLessonsForSubject(schoolId, postContext) {
     const { classId, subjectId } = postContext;
     const snap = await getDocs(collection(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'lessons'));
-    const lessons = snap.docs.map(d => {
-        const data = d.data();
-        return { id: d.id, ...data, format: normalizeFormat(data), slides: normalizeLessonSlides(data.slides) };
-    });
+    const lessons = snap.docs.map(d => toLessonMeta(d.id, d.data()));
     lessons.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
     return lessons;
 }
@@ -503,10 +627,7 @@ export async function loadPublishedLessonsForSubject(schoolId, postContext) {
         collection(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'lessons'),
         where('status', '==', 'published')
     ));
-    const lessons = snap.docs.map(d => {
-        const data = d.data();
-        return { id: d.id, ...data, format: normalizeFormat(data), slides: normalizeLessonSlides(data.slides) };
-    });
+    const lessons = snap.docs.map(d => toLessonMeta(d.id, d.data()));
     lessons.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
     return lessons;
 }
@@ -537,18 +658,49 @@ export async function loadLessonsForSubjects(schoolId, postContexts) {
 // 'slides' for any caller that doesn't pass one (keeps this function
 // backward-compatible with any future call site that forgets the option).
 export async function createLesson(schoolId, postContext, authorContext, { title, format }) {
+    const lesson = buildNewLesson(schoolId, postContext, authorContext, { title, format });
+    return insertLesson(schoolId, postContext, lesson);
+}
+
+// ── LOCAL DRAFT (no Firestore write) ─────────────────────────────────────
+// "New Lesson" builds the lesson in memory only (isNew: true). Nothing is
+// written until the teacher saves, publishes, or an autosave fires after a
+// real edit — see insertLesson() and builder.js persistDraft(). Returns the
+// same full shape loadLesson() does, with a client-generated id.
+export function buildNewLesson(schoolId, postContext, authorContext, { title, format } = {}) {
     const { classId, className, subjectId, subjectName } = postContext;
     const id = genLessonId();
     const now = new Date().toISOString();
     const resolvedFormat = format === 'document' ? 'document' : 'slides';
 
-    // A brand-new Slide Deck lesson starts on one blank slide seeded with a
-    // single empty text block (so the canvas never opens completely empty)
-    // rather than the old fixed 'title' slide type — see the "SLIDE DECK
-    // REDESIGN" comment on newSlide('blank') above.
+    // A brand-new Slide Deck lesson starts on a Title Slide — Title +
+    // Subtitle placeholder text boxes — matching how Google Slides' own
+    // "Untitled presentation" always opens, per Justine's explicit request.
+    // This is deliberately the same arrangement as builder.js's
+    // SLIDE_LAYOUTS.title (the "Title Slide" entry in the "Add Slide"
+    // layout gallery); it's just applied automatically here as the
+    // starting point instead of requiring the teacher to pick it.
+    //
+    // `role`/`placeholder` (not `html`) are what carry "Click to add
+    // title"/"Click to add subtitle" — a REAL Quill placeholder (see
+    // wireBlockRichFields() in builder.js), not literal saved text. html
+    // stays '' until the teacher actually types something. This matters:
+    // the old approach embedded the placeholder words as real HTML
+    // content, which meant an untouched slide would show the literal text
+    // "Click to add title" to students in the live session and viewer —
+    // role/placeholder can never leak that way, because live.js/viewer.js
+    // simply render nothing for an empty html field, exactly like a real
+    // empty text box.
     const firstSlideDeckSlide = newSlide('blank');
-    firstSlideDeckSlide.blocks.push(newBlock('text'));
+    const titleBlock = newBlock('text', { x: 10, y: 36, w: 80, h: 16 });
+    titleBlock.role = 'title';
+    titleBlock.placeholder = 'Click to add title';
+    const subtitleBlock = newBlock('text', { x: 15, y: 54, w: 70, h: 12 });
+    subtitleBlock.role = 'subtitle';
+    subtitleBlock.placeholder = 'Click to add subtitle';
+    firstSlideDeckSlide.blocks.push(titleBlock, subtitleBlock);
 
+    const slides = resolvedFormat === 'document' ? [newSlide('richtext')] : [firstSlideDeckSlide];
     const lesson = {
         title: (title || '').trim() || 'Untitled Lesson',
         format: resolvedFormat,
@@ -557,7 +709,7 @@ export async function createLesson(schoolId, postContext, authorContext, { title
         subjectId, subjectName,
         authorId: authorContext.authorId,
         authorName: authorContext.authorName,
-        slides: resolvedFormat === 'document' ? [newSlide('richtext')] : [firstSlideDeckSlide],
+        slides,
         // Slide Deck visual theme (accent color/icon — see builder.js's
         // THEMES config and its "Theme" button). Document lessons have no
         // canvas to theme, so this is meaningless there but harmless to
@@ -571,8 +723,32 @@ export async function createLesson(schoolId, postContext, authorContext, { title
         publishedAt: null
     };
 
-    await setDoc(lessonRef(schoolId, postContext, id), lesson);
-    return { id, ...lesson };
+    return { id, ...lesson, slideCount: slides.length, contentVersion: LESSON_CONTENT_VERSION, isNew: true };
+}
+
+// First write of a lesson (local draft → Firestore). Split write: metadata on
+// the lesson doc, slides/theme in content/main, one atomic batch. `lesson` is
+// a buildNewLesson() object, possibly edited (title/slides/theme).
+export async function insertLesson(schoolId, postContext, lesson) {
+    const now = new Date().toISOString();
+    const { id, isNew: _isNew, slides, theme, slideCount: _sc, contentVersion: _cv, v3: _v3, ...rest } = lesson;
+    const safeSlides = Array.isArray(slides) ? slides : [];
+    const meta = {
+        ...rest,
+        title: (rest.title || '').trim() || 'Untitled Lesson',
+        slideCount: safeSlides.length,
+        contentVersion: LESSON_CONTENT_VERSION,
+        createdAt: rest.createdAt || now,
+        updatedAt: now,
+    };
+    const batch = writeBatch(db);
+    batch.set(lessonRef(schoolId, postContext, id), meta);
+    const staged = await stageV3Writes(batch, schoolId, postContext, id, {
+        slides: safeSlides, theme: theme || 'general', format: inferFormat(safeSlides, rest.format), now, fresh: true,
+    });
+    await batch.commit();
+    staged.commit();
+    return { id, ...meta, slides: safeSlides, theme: theme || 'general' };
 }
 
 // ── WRITE: save the main lesson doc (title, slides, status) ──────────────
@@ -584,17 +760,30 @@ export async function createLesson(schoolId, postContext, authorContext, { title
 // block — the caller (builder.js's currentSlidesForSave()) is what decides
 // what `slides` actually contains before calling this.
 export async function saveLessonContent(schoolId, postContext, lessonId, { title, slides, theme }) {
-    const updates = {
+    const now = new Date().toISOString();
+    const meta = {
         title: (title || '').trim() || 'Untitled Lesson',
-        slides,
-        updatedAt: new Date().toISOString()
+        slideCount: Array.isArray(slides) ? slides.length : 0,
+        contentVersion: LESSON_CONTENT_VERSION,
+        updatedAt: now,
+        // move any pre-split heavy fields off the main doc
+        slides: deleteField(),
+        theme: deleteField(),
     };
-    // theme is optional here (not every caller — e.g. a Document lesson's
-    // save — has one to send) so it only touches the doc when actually
-    // provided, rather than ever writing `theme: undefined`.
-    if (theme) updates.theme = theme;
-    await updateDoc(lessonRef(schoolId, postContext, lessonId), updates);
-    return updates;
+    const batch = writeBatch(db);
+    // theme is optional for some callers (a Document save); keep the stored one then
+    let effectiveTheme = theme;
+    if (!effectiveTheme) {
+        const cs = await getDoc(lessonContentRef(schoolId, postContext, lessonId)).catch(() => null);
+        effectiveTheme = (cs && cs.exists() && cs.data().theme) || 'general';
+    }
+    const staged = await stageV3Writes(batch, schoolId, postContext, lessonId, {
+        slides, theme: effectiveTheme, format: inferFormat(slides), now, fresh: false,
+    });
+    batch.update(lessonRef(schoolId, postContext, lessonId), meta);
+    await batch.commit();
+    staged.commit();
+    return { title: meta.title, slides, theme: effectiveTheme, slideCount: meta.slideCount, updatedAt: now };
 }
 
 // ── WRITE: teacher-only pacing notes / standards ─────────────────────────
@@ -666,7 +855,15 @@ export async function deleteLesson(schoolId, postContext, lessonId) {
         // delete over.
         console.warn('[Lessons] deleteLesson: no private notes doc to remove (or it failed):', e);
     }
-    await deleteDoc(lessonRef(schoolId, postContext, lessonId));
+    const slidesSnap = await getDocs(lessonSlidesCollectionRef(schoolId, postContext, lessonId)).catch(() => null);
+    const batch = writeBatch(db);
+    (slidesSnap ? slidesSnap.docs : []).forEach((d) => batch.delete(d.ref));
+    batch.delete(lessonDocMainRef(schoolId, postContext, lessonId));
+    batch.delete(lessonContentRef(schoolId, postContext, lessonId));
+    batch.delete(lessonRef(schoolId, postContext, lessonId));
+    await batch.commit();
+    savedV3State.delete(lessonId);
+    await pruneLessonQuizKeys(schoolId, postContext, lessonId); // its quiz answer keys go too
 }
 
 // ── LIVE: one lesson's main doc, for the builder to reflect concurrent
@@ -674,74 +871,103 @@ export async function deleteLesson(schoolId, postContext, lessonId) {
 // Mirrors posts.js's subscribeToPostsForSubjects() cleanup contract exactly:
 // returns an unsubscribe function the caller MUST invoke when done.
 export function subscribeToLesson(schoolId, postContext, lessonId, onChange) {
-    return onSnapshot(lessonRef(schoolId, postContext, lessonId), (snap) => {
-        if (snap.exists()) {
-            const data = snap.data();
-            onChange({ id: snap.id, ...data, format: normalizeFormat(data), slides: normalizeLessonSlides(data.slides) });
+    // Two listeners (metadata + content/main), merged. Emits once both have
+    // reported at least once; a missing content doc means a pre-split lesson.
+    let meta = null, content = null, metaSeen = false, contentSeen = false;
+    let seq = 0;
+    const emit = async () => {
+        if (!(metaSeen && contentSeen && meta)) return;
+        if (content && content.schemaVersion === SCHEMA_VERSION) {
+            const mine = ++seq;
+            const format = normalizeFormat(meta);
+            const { slidesById, doc: docData } = await readV3Parts(schoolId, postContext, lessonId, format);
+            if (mine !== seq) return;
+            const full = toFullLesson(lessonId, meta, { slides: v3ToV2Slides({ content, slidesById, doc: docData, format }), theme: content.theme });
+            full.v3 = { stage: content.stage || { ...STAGE }, theme: content.theme || 'general', slideOrder: content.slideOrder || [], slidesById, doc: docData };
+            onChange(full);
+            return;
         }
-    }, (error) => {
-        console.error(`[Lessons] subscribeToLesson failed for ${lessonId}:`, error);
-    });
+        onChange(toFullLesson(lessonId, meta, content));
+    };
+    const onErr = (what) => (error) => {
+        console.error(`[Lessons] subscribeToLesson (${what}) failed for ${lessonId}:`, error);
+        if (what === 'content') { contentSeen = true; content = null; emit(); }
+    };
+    const unsubMeta = onSnapshot(lessonRef(schoolId, postContext, lessonId), (snap) => {
+        metaSeen = true;
+        meta = snap.exists() ? snap.data() : null;
+        emit();
+    }, onErr('meta'));
+    const unsubContent = onSnapshot(lessonContentRef(schoolId, postContext, lessonId), (snap) => {
+        contentSeen = true;
+        content = snap.exists() ? snap.data() : null;
+        emit();
+    }, onErr('content'));
+    return () => { unsubMeta(); unsubContent(); };
 }
 
 // ── PHASE 3: LIVE SESSION ENGINE — CRUD ──────────────────────────────────
 
-// Starts a new live session for a lesson (teacher action only — enforced by
-// firestore.rules, not just by which pages call this). teacherPositionId
-// starts pointed at the lesson's own first block, so a student who joins
-// before the teacher's first navigation still lands somewhere valid rather
-// than on a null position.
-//
-// RACE GUARD: two teacher tabs (or one teacher double-clicking "Go Live")
-// calling this concurrently, if each did its own read-then-write, could
-// both see "no active session" and each create a SEPARATE live_sessions
-// doc — splitting connected students across two sessions with no error
-// surfaced to either tab. Fixed by giving every lesson's live session a
-// FIXED, deterministic doc id ('current') instead of a random one, and
-// deciding "start fresh vs. resume" inside a single Firestore transaction
-// on that one document reference — transactions only support get() on
-// specific doc refs, not collection queries, which is exactly why this
-// needed a fixed id rather than the previous "list every session, filter
-// client-side" approach getActiveLiveSession() still uses for its own
-// (non-authoritative, read-only) resume check. Two concurrent calls now
-// both transact against the SAME document; Firestore's transaction retry
-// guarantees only one of them wins the "doesn't exist / already ended, so
-// create fresh" branch — the other sees the just-created doc and resumes
-// it instead, exactly like the intended-but-previously-racy behavior.
-export async function startLiveSession(schoolId, postContext, lessonId, authorContext) {
-    const ref = liveSessionRef(schoolId, postContext, lessonId, 'current');
-    const now = new Date().toISOString();
+// SESSION LIFECYCLE: every Go Live gets its own live_sessions/{autoId} doc,
+// so a new session always starts with an empty responses subcollection.
+// live_sessions/current is only a POINTER ({ sessionId, live }) that the
+// teacher dashboard transacts on (two tabs / a double click still resume one
+// session instead of starting two) and that student viewers listen to, so a
+// session starting, ending or restarting reaches them without a reload.
+// The pointer's endedAt is a non-null marker on purpose: firestore.rules
+// (responses need endedAt == null) and submitLessonQuizAnswer (rejects a
+// truthy endedAt) both refuse answers written under the pointer itself.
+const LIVE_POINTER_ID = 'current';
+const POINTER_MARK = 'pointer';
 
-    const result = await runTransaction(db, async (tx) => {
-        const snap = await tx.get(ref);
-        if (snap.exists() && !snap.data().endedAt) {
-            // Another concurrent call (or an already-running tab) already
-            // has this lesson live — resume it rather than overwrite its
-            // teacherPositionId back to null.
-            return { id: 'current', ...snap.data(), resumed: true };
-        }
-        const session = {
-            activeLessonId: lessonId,
-            teacherPositionId: null, // set by the caller once it knows the lesson's first block id — see live.js's init()
-            startedAt: now,
-            startedBy: authorContext?.authorId || null,
-            endedAt: null
-        };
-        tx.set(ref, session);
-        return { id: 'current', ...session, resumed: false };
-    });
-    return result;
+function pointerSessionId(data) {
+    if (!data) return null;
+    if (data.endedAt === POINTER_MARK) return data.live && data.sessionId ? data.sessionId : null;
+    return data.endedAt ? null : LIVE_POINTER_ID; // legacy single 'current' session doc
 }
 
-// Ends a live session — students' onSnapshot listeners see endedAt flip and
-// should stop trying to auto-follow the teacher (see viewer.js's
-// subscribeToLiveSession handling). The doc itself is left in place (not
-// deleted) so `responses` remains readable afterward — a teacher reviewing
-// what students submitted during a session that already ended is a
-// legitimate, expected use, not a leftover to clean up.
-export async function endLiveSession(schoolId, postContext, lessonId, sessionId) {
+export async function startLiveSession(schoolId, postContext, lessonId, authorContext) {
+    const pointerRef = liveSessionRef(schoolId, postContext, lessonId, LIVE_POINTER_ID);
+    const { classId, subjectId } = postContext;
+    const sessionsCol = collection(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'lessons', lessonId, 'live_sessions');
     const now = new Date().toISOString();
-    await updateDoc(liveSessionRef(schoolId, postContext, lessonId, sessionId), { endedAt: now });
+
+    return runTransaction(db, async (tx) => {
+        const pointer = await tx.get(pointerRef);
+        const activeId = pointerSessionId(pointer.exists() ? pointer.data() : null);
+        if (activeId) {
+            const activeSnap = activeId === LIVE_POINTER_ID ? pointer : await tx.get(liveSessionRef(schoolId, postContext, lessonId, activeId));
+            if (activeSnap.exists() && !activeSnap.data().endedAt) return { id: activeId, ...activeSnap.data(), resumed: true };
+        }
+        const newRef = doc(sessionsCol);
+        const session = {
+            activeLessonId: lessonId,
+            teacherPositionId: null, // set by live.js once it knows the first block id
+            startedAt: now,
+            startedBy: authorContext?.authorId || null,
+            endedAt: null,
+        };
+        tx.set(newRef, session);
+        tx.set(pointerRef, { sessionId: newRef.id, live: true, startedAt: now, updatedAt: now, endedAt: POINTER_MARK });
+        return { id: newRef.id, ...session, resumed: false };
+    });
+}
+
+// Ends a live session: the session doc keeps its responses (teachers review
+// them afterwards) and the pointer flips to not-live, so viewers lock at once.
+// extra: more session fields written with the end (live.js passes
+// revealedAnswers — the quiz keys, shown to students once answering is over).
+export async function endLiveSession(schoolId, postContext, lessonId, sessionId, extra = {}) {
+    const now = new Date().toISOString();
+    const pointerRef = liveSessionRef(schoolId, postContext, lessonId, LIVE_POINTER_ID);
+    const sessionRef = liveSessionRef(schoolId, postContext, lessonId, sessionId);
+    await runTransaction(db, async (tx) => {
+        const pointer = sessionId === LIVE_POINTER_ID ? null : await tx.get(pointerRef);
+        tx.update(sessionRef, { ...extra, endedAt: now });
+        if (pointer && pointer.exists() && pointer.data().sessionId === sessionId) {
+            tx.update(pointerRef, { live: false, updatedAt: now });
+        }
+    });
     return { endedAt: now };
 }
 
@@ -752,18 +978,36 @@ export async function updateLiveSessionPosition(schoolId, postContext, lessonId,
     await updateDoc(liveSessionRef(schoolId, postContext, lessonId, sessionId), { teacherPositionId });
 }
 
-// Finds the currently-active (not yet ended) live session for a lesson, if
-// any — used by viewer.js on load to decide whether to attach the live
-// listener at all, and by live.js's dashboard to decide whether to resume
-// instead of starting fresh. A single getDoc on the fixed 'current' doc id
-// (see startLiveSession()'s race-guard comment) rather than listing/
-// filtering/sorting the whole live_sessions collection — there is only ever
-// at most one live session per lesson now, so there is nothing to sort.
+// The lesson's currently-active session (or null), via the pointer.
+// The most recent session of this lesson, live or ended (null if none ever ran)
+// — the student viewer shows students their answers from it afterwards.
+export async function getLastLiveSessionId(schoolId, postContext, lessonId) {
+    const pointer = await getDoc(liveSessionRef(schoolId, postContext, lessonId, LIVE_POINTER_ID));
+    if (!pointer.exists()) return null;
+    const d = pointer.data();
+    if (d.endedAt === POINTER_MARK) return d.sessionId || null;
+    return LIVE_POINTER_ID; // legacy single 'current' session doc
+}
+
 export async function getActiveLiveSession(schoolId, postContext, lessonId) {
-    const snap = await getDoc(liveSessionRef(schoolId, postContext, lessonId, 'current'));
-    if (!snap.exists()) return null;
-    const data = snap.data();
-    return data.endedAt ? null : { id: 'current', ...data };
+    const pointer = await getDoc(liveSessionRef(schoolId, postContext, lessonId, LIVE_POINTER_ID));
+    const id = pointerSessionId(pointer.exists() ? pointer.data() : null);
+    if (!id) return null;
+    const snap = id === LIVE_POINTER_ID ? pointer : await getDoc(liveSessionRef(schoolId, postContext, lessonId, id));
+    if (!snap.exists() || snap.data().endedAt) return null;
+    return { id, ...snap.data() };
+}
+
+// Real-time: onChange(sessionId | null) whenever the lesson goes live, ends,
+// or restarts with a new session. Returns the unsubscribe function.
+export function subscribeToActiveLiveSession(schoolId, postContext, lessonId, onChange) {
+    let last;
+    return onSnapshot(liveSessionRef(schoolId, postContext, lessonId, LIVE_POINTER_ID), (snap) => {
+        const id = pointerSessionId(snap.exists() ? snap.data() : null);
+        if (id !== last) { last = id; onChange(id); }
+    }, (error) => {
+        console.error('[Lessons] subscribeToActiveLiveSession failed:', error);
+    });
 }
 
 // LIVE: the session document itself — teacherPositionId (drives student
@@ -815,10 +1059,13 @@ export function subscribeToLiveSession(schoolId, postContext, lessonId, sessionI
 // Every caller therefore needs at least a schoolId filter; a student
 // additionally needs the blockType filter for their own OR branch to be
 // provable.
-export function subscribeToLiveResponses(schoolId, postContext, lessonId, sessionId, onChange, callerRole) {
+// sharedType: which class-visible blockType a STUDENT lists — 'collaborative_board'
+// (whole-slide board) or 'board' (sticky-note board widget). firestore.rules
+// only lets students list those two types, and the query must filter on it.
+export function subscribeToLiveResponses(schoolId, postContext, lessonId, sessionId, onChange, callerRole, sharedType = 'collaborative_board') {
     const baseRef = liveResponsesCollectionRef(schoolId, postContext, lessonId, sessionId);
     const ref = callerRole === 'student'
-        ? query(baseRef, where('schoolId', '==', schoolId), where('blockType', '==', 'collaborative_board'))
+        ? query(baseRef, where('schoolId', '==', schoolId), where('blockType', '==', sharedType === 'board' ? 'board' : 'collaborative_board'))
         : query(baseRef, where('schoolId', '==', schoolId));
     return onSnapshot(ref, (snap) => {
         const responses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -856,17 +1103,154 @@ export function subscribeToLiveResponses(schoolId, postContext, lessonId, sessio
 // in firestore.rules rather than trusted to client-side rendering choices
 // alone (viewer.js's own choice to simply not render the prompt wall was
 // never a real security boundary on its own).
-export async function saveLiveResponse(schoolId, postContext, lessonId, sessionId, studentId, studentName, blockId, blockType, { answerText }) {
+// choiceIds: poll widgets (option ids). Quiz widgets never come through here —
+// they are graded server-side (submitLessonQuizAnswer below).
+export async function saveLiveResponse(schoolId, postContext, lessonId, sessionId, studentId, studentName, blockId, blockType, { answerText, choiceIds } = {}) {
     const now = new Date().toISOString();
     const record = {
         schoolId,
         studentId,
-        studentName: studentName || '',
+        studentName: String(studentName || ''),
         blockId,
         blockType,
-        answerText: (answerText || '').trim(),
+        // firestore.rules caps: board notes 280 chars, other answers 4000
+        answerText: String(answerText || '').trim().slice(0, blockType === 'board' ? 280 : 4000),
         submittedAt: now
     };
+    if (Array.isArray(choiceIds)) record.choiceIds = choiceIds.slice(0, 20).map(String);
     await setDoc(liveResponseRef(schoolId, postContext, lessonId, sessionId, `${studentId}_${blockId}`), record);
     return record;
+}
+
+
+// ── PHASE 4 STEP 4: canvas widgets ─────────────────────────────────────────
+// Spotlight one open-response answer on every student screen (teacher only —
+// the live session doc is teacher-writable). null clears it. Anonymous: the
+// session doc is readable by the whole class, so no student id / name / doc
+// id goes on it — only the widget id and the answer text.
+export async function setLiveSpotlight(schoolId, postContext, lessonId, sessionId, spotlight) {
+    await updateDoc(liveSessionRef(schoolId, postContext, lessonId, sessionId), {
+        spotlight: spotlight ? {
+            objectId: String(spotlight.objectId),
+            text: String(spotlight.text || '').slice(0, 2000), at: new Date().toISOString(),
+        } : null,
+    });
+}
+
+// ── Live activities (questions asked during a session; live-activity.js) ──
+// activities[] keeps everything asked this session; activityId is the open one.
+export async function openLiveActivity(schoolId, postContext, lessonId, sessionId, activity) {
+    const ref = liveSessionRef(schoolId, postContext, lessonId, sessionId);
+    await runTransaction(db, async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists()) throw new Error('The live session was not found.');
+        const data = snap.data();
+        if (data.endedAt) throw new Error('This live session has ended.');
+        const rec = { id: String(activity.id), type: String(activity.type), props: activity.props || {}, openedAt: new Date().toISOString() };
+        if (activity.slideId && typeof activity.x === 'number') {
+            Object.assign(rec, { slideId: String(activity.slideId), x: activity.x, y: activity.y, w: activity.w, h: activity.h, z: String(activity.z || 'zz') });
+        }
+        const list = (Array.isArray(data.activities) ? data.activities : []).filter((a) => a && a.id !== rec.id);
+        list.push(rec);
+        tx.update(ref, { activities: list.slice(-40), activityId: rec.id });
+    });
+}
+
+export async function closeLiveActivity(schoolId, postContext, lessonId, sessionId) {
+    await updateDoc(liveSessionRef(schoolId, postContext, lessonId, sessionId), { activityId: null });
+}
+
+// Quiz answer keys: work_answer_keys/{lessonId}_{objectId}. Staff-only
+// (firestore.rules); students never read this collection — the
+// submitLessonQuizAnswer Cloud Function grades with the Admin SDK.
+export function quizKeyId(lessonId, objectId) { return `${lessonId}_${objectId}`; }
+
+export async function saveQuizKey(schoolId, lessonId, objectId, correctIds) {
+    await setDoc(doc(db, 'work_answer_keys', quizKeyId(lessonId, objectId)), {
+        kind: 'lesson_quiz', schoolId, lessonId, objectId,
+        correct: (correctIds || []).map(String),
+        updatedAt: new Date().toISOString(),
+    });
+}
+
+export async function loadQuizKey(lessonId, objectId) {
+    try {
+        const snap = await getDoc(doc(db, 'work_answer_keys', quizKeyId(lessonId, objectId)));
+        return snap.exists() ? (snap.data().correct || []) : [];
+    } catch (e) {
+        return []; // not created yet (a get on a missing doc is still allowed) or no access
+    }
+}
+
+// ── Worksheet answers (activities inside a Document lesson) ───────────────
+// No live session: lessons/{lessonId}/responses/{studentId}_{objectId}, same
+// record shape and the same firestore.rules checks as live answers (own id +
+// real name, enrolled, size caps, one poll vote / quiz attempt), but gated on
+// the lesson being published instead of a session being open. Quiz answers go
+// through submitLessonQuizAnswer without a sessionId.
+function lessonResponseRef(schoolId, postContext, lessonId, responseId) {
+    const { classId, subjectId } = postContext;
+    return doc(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'lessons', lessonId, 'responses', responseId);
+}
+
+export async function saveLessonResponse(schoolId, postContext, lessonId, studentId, studentName, blockId, blockType, { answerText, choiceIds } = {}) {
+    const record = {
+        schoolId, studentId, studentName: String(studentName || ''), blockId, blockType,
+        answerText: String(answerText || '').trim().slice(0, blockType === 'board' ? 280 : 4000),
+        submittedAt: new Date().toISOString(),
+    };
+    if (Array.isArray(choiceIds)) record.choiceIds = choiceIds.slice(0, 20).map(String);
+    await setDoc(lessonResponseRef(schoolId, postContext, lessonId, `${studentId}_${blockId}`), record);
+    return record;
+}
+
+export async function loadMyLessonResponse(schoolId, postContext, lessonId, studentId, blockId) {
+    try {
+        const snap = await getDoc(lessonResponseRef(schoolId, postContext, lessonId, `${studentId}_${blockId}`));
+        return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+// Shared sticky notes of a document lesson (students: board notes only).
+export function subscribeToLessonBoardNotes(schoolId, postContext, lessonId, onChange) {
+    const { classId, subjectId } = postContext;
+    const q = query(collection(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'lessons', lessonId, 'responses'),
+        where('schoolId', '==', schoolId), where('blockType', '==', 'board'));
+    return onSnapshot(q, (snap) => onChange(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+        (error) => console.error('[Lessons] subscribeToLessonBoardNotes failed:', error));
+}
+
+// Deletes this lesson's answer keys whose quiz is no longer in its SAVED
+// content (students and teachers can't delete keys directly — firestore.rules).
+// → [{ objectId, correct }] for the keys removed. Never throws.
+const pruneQuizKeysFn = httpsCallable(functions, 'pruneLessonQuizKeys');
+export async function pruneLessonQuizKeys(schoolId, postContext, lessonId) {
+    try {
+        const res = await pruneQuizKeysFn({ schoolId, classId: postContext.classId, subjectId: postContext.subjectId, lessonId });
+        return (res.data && Array.isArray(res.data.deleted)) ? res.data.deleted : [];
+    } catch (e) {
+        console.warn('[Lessons] pruneLessonQuizKeys failed:', e);
+        return [];
+    }
+}
+
+const submitQuizFn = httpsCallable(functions, 'submitLessonQuizAnswer');
+// → { correct: boolean, choiceIds: string[] (the graded picks), alreadyAnswered?: boolean }
+export async function submitLessonQuizAnswer({ schoolId, classId, subjectId, lessonId, sessionId, objectId, choiceIds }) {
+    // sessionId omitted → worksheet answer (document lesson, no live session)
+    const res = await submitQuizFn(sessionId ? { schoolId, classId, subjectId, lessonId, sessionId, objectId, choiceIds } : { schoolId, classId, subjectId, lessonId, objectId, choiceIds });
+    return res.data;
+}
+
+// A student's own response to one live block/widget (per-document get — allowed
+// for the owning student by firestore.rules). null when they haven't answered.
+export async function loadMyLiveResponse(schoolId, postContext, lessonId, sessionId, studentId, blockId) {
+    try {
+        const snap = await getDoc(liveResponseRef(schoolId, postContext, lessonId, sessionId, `${studentId}_${blockId}`));
+        return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+    } catch (e) {
+        return null;
+    }
 }

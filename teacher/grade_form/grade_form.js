@@ -1261,6 +1261,9 @@ async function commitGrade() {
     const instructions   = instructionsEl ? instructionsEl.value.trim() : '';
 
     const semId = activeSemId || (rawSemesters[0]?.id || '');
+    // A grade with no grading period is invisible to every period-scoped
+    // view (Gradebook, Subjects, reports) — refuse it instead of orphaning it.
+    if (!semId) { alert('No grading period is set up yet. Ask your school admin to create one before entering grades.'); return; }
 
     if (!subject || !type || !title) { alert('Subject, grade type, and title are required.'); return; }
     if (isNaN(score) || isNaN(max) || max <= 0 || score < 0 || score > max) {
@@ -1269,6 +1272,17 @@ async function commitGrade() {
 
     const student   = teacherStudents.find(s => s.id === studentId);
     const className = student?.className || '';
+    // Subject-router pipeline: every grade carries its (classId, subjectId) so
+    // teacher/subjects/subject.html can read it with one collection-group query.
+    // Same-named subjects can exist in several classes, so the student's own
+    // class picks the subject; legacy subjects keep their id (matches migration 01).
+    const studentClassId = student?.classId
+        || (resolvedClassesCache.find(c => c.name === className) || {}).id || null;
+    const gradeSub = subjectsCache.find(s => s.name === subject && !s.archived && s.classId && s.classId === studentClassId)
+        || getSubjectByName(subject);
+    const gradeClassId = (gradeSub && gradeSub.classId) || studentClassId
+        || (gradeSub ? (resolvePostContext(gradeSub, resolvedClassesCache) || {}).classId : null) || null;
+    const gradeSubjectId = (gradeSub && gradeSub.id) || null;
 
     const btn = document.getElementById('saveGradeBtn');
     if (btn) {
@@ -1298,6 +1312,8 @@ async function commitGrade() {
             score,
             max,
             notes,
+            ...(gradeSubjectId ? { subjectId: gradeSubjectId } : {}),
+            ...(gradeClassId ? { classId: gradeClassId } : {}),
         };
 
         // PHASE 1 MILESTONE 5: assignmentId is the re-grade key — saveGrade()

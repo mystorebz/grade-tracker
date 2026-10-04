@@ -1,4 +1,5 @@
-import { db } from '../../assets/js/firebase-init.js';
+import { db, functions } from '../../assets/js/firebase-init.js';
+import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
 import { collection, query, where,
          getDocs, getDoc, doc,
          updateDoc, arrayRemove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
@@ -48,6 +49,9 @@ function renderTeacher(d) {
             <button onclick="window.restoreTeacher('${d.id}')" style="display:flex;align-items:center;gap:6px;padding:7px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:12.5px;font-weight:600;color:#15803d;cursor:pointer;transition:background 0.15s" onmouseover="this.style.background='#dcfce7'" onmouseout="this.style.background='#f0fdf4'">
                 <i class="fa-solid fa-rotate-left" style="font-size:11px"></i> Restore
             </button>
+            <button onclick="window.deleteTeacherPermanently('${d.id}')" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:#fff;border:1px solid #fecaca;border-radius:6px;font-size:12.5px;font-weight:600;color:#e11d48;cursor:pointer;transition:background 0.15s" onmouseover="this.style.background='#fff1f2'" onmouseout="this.style.background='#fff'">
+                <i class="fa-solid fa-trash" style="font-size:11px"></i> Delete
+            </button>
         </div>
     </div>`;
 }
@@ -80,6 +84,9 @@ function renderStudent(d) {
             </button>
             <button onclick="window.restoreStudent('${d.id}')" style="display:flex;align-items:center;gap:6px;padding:7px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:12.5px;font-weight:600;color:#15803d;cursor:pointer;transition:background 0.15s" onmouseover="this.style.background='#dcfce7'" onmouseout="this.style.background='#f0fdf4'">
                 <i class="fa-solid fa-rotate-left" style="font-size:11px"></i> Restore
+            </button>
+            <button onclick="window.deleteStudentPermanently('${d.id}')" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:#fff;border:1px solid #fecaca;border-radius:6px;font-size:12.5px;font-weight:600;color:#e11d48;cursor:pointer;transition:background 0.15s" onmouseover="this.style.background='#fff1f2'" onmouseout="this.style.background='#fff'">
+                <i class="fa-solid fa-trash" style="font-size:11px"></i> Delete
             </button>
         </div>
     </div>`;
@@ -182,6 +189,40 @@ window.restoreStudent = async function(id) {
     } catch (e) {
         console.error('restoreStudent:', e);
         alert('Failed to restore student. They may be enrolled at another school.');
+    }
+};
+
+// ── 6b. PERMANENT DELETE (server-side, Admin SDK) ───────────────────────
+// Students: permanentDeleteStudent deletes the record + grades + attendance.
+// Teachers: permanentDeleteTeacher removes this school's evaluations and
+// history from the registry record; the record and login are deleted only if
+// no other school is left on it. Grades the teacher entered are kept.
+const permanentDeleteStudentFn = httpsCallable(functions, 'permanentDeleteStudent');
+const permanentDeleteTeacherFn = httpsCallable(functions, 'permanentDeleteTeacher');
+
+window.deleteStudentPermanently = async function(id) {
+    const name = cachedStudents[id]?.name || 'this student';
+    if (!confirm(`Permanently delete ${name} and ALL their grades and attendance?\n\nWARNING: This action CANNOT be undone.`)) return;
+    try {
+        await permanentDeleteStudentFn({ studentId: id });
+        delete cachedStudents[id];
+        loadArchivedRecords();
+    } catch (e) {
+        console.error('deleteStudentPermanently:', e);
+        alert(`Failed to delete student: ${e.message || 'unknown error'}`);
+    }
+};
+
+window.deleteTeacherPermanently = async function(id) {
+    const name = cachedTeachers[id]?.name || 'this teacher';
+    if (!confirm(`Permanently delete ${name}'s record at this school, including your evaluations and teaching history?\n\nGrades they entered stay on the students' records. If they have no history at any other school, their account is deleted too.\n\nWARNING: This action CANNOT be undone.`)) return;
+    try {
+        await permanentDeleteTeacherFn({ teacherId: id });
+        delete cachedTeachers[id];
+        loadArchivedRecords();
+    } catch (e) {
+        console.error('deleteTeacherPermanently:', e);
+        alert(`Failed to delete teacher: ${e.message || 'unknown error'}`);
     }
 };
 

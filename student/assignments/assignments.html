@@ -35,8 +35,34 @@
         .overlay { transition: opacity 0.25s; }
         .side-panel { transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1); }
 
+        /* ── Focus page: one assignment, nothing else on screen ── */
+        body.asg-focus #layout-sidebar-container,
+        body.asg-focus #layout-topbar-container { display: none !important; }
+        body.asg-focus { background: #f6f7fb; }
+        .asg-focus-bar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 14px; padding: 12px 24px; background: rgba(255,255,255,.92); backdrop-filter: blur(8px); border-bottom: 1px solid #e2e8f0; }
+        .asg-focus-back { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-radius: 9px; font-size: 12.5px; font-weight: 800; color: #334155; background: #fff; border: 1px solid #e2e8f0; transition: background .15s, color .15s; }
+        .asg-focus-back:hover { background: #eef2ff; color: #3730a3; border-color: #c7d2fe; }
+        .asg-focus-back:focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; }
+        .asg-focus-subject { margin: 0; font-size: 11px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; color: #6366f1; }
+        .asg-save-state { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; color: #64748b; opacity: 0; transition: opacity .35s ease, color .2s; white-space: nowrap; }
+        .asg-save-state.is-visible { opacity: 1; }
+        .asg-save-state.is-quiet { opacity: .55; }
+        .asg-save-state::before { content: ''; width: 7px; height: 7px; border-radius: 999px; background: #10b981; }
+        .asg-save-state[data-state="saving"]::before { background: #f59e0b; animation: asg-pulse 1s ease-in-out infinite; }
+        .asg-save-state[data-state="pending"]::before { background: #10b981; }
+        .asg-save-state[data-state="local"] { color: #b45309; }
+        .asg-save-state[data-state="local"]::before { background: #f59e0b; }
+        @keyframes asg-pulse { 50% { opacity: .3; } }
+        .asg-focus-page { max-width: 820px; margin: 0 auto; padding: 36px 28px 80px; }
+        .asg-focus-head { padding-bottom: 20px; margin-bottom: 24px; border-bottom: 1px solid #e2e8f0; }
+        .asg-focus-head h1 { margin: 0; font-size: 28px; line-height: 1.2; font-weight: 800; letter-spacing: -.5px; color: #0f172a; }
+        .asg-focus-page #assignmentDetailBody { font-size: 15px; }
+
         @media (max-width: 767px) {
             .asg-topbar { padding: 20px; }
+            .asg-focus-bar { padding: 10px 16px; }
+            .asg-focus-page { padding: 24px 16px 64px; }
+            .asg-focus-head h1 { font-size: 22px; }
         }
     </style>
 </head>
@@ -49,6 +75,7 @@
 
         <div class="flex-1 overflow-y-auto">
 
+            <div id="assignmentListView">
             <div class="asg-topbar">
                 <h1>Assignments</h1>
                 <p>Everything your teacher has assigned — read the instructions and submit your work here</p>
@@ -88,26 +115,29 @@
                 </div>
 
             </div>
-        </div>
-    </main>
-
-    <!-- ── Assignment detail (slide-in side panel) ── -->
-    <div id="assignmentDetailOverlay" class="overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-end hidden opacity-0">
-        <div id="assignmentDetailInner" class="side-panel bg-[#f8fafc] w-full max-w-xl h-full shadow-2xl flex flex-col translate-x-full">
-            <div class="flex items-start justify-between gap-3 px-6 py-5 border-b border-slate-200 bg-white flex-shrink-0">
-                <div class="min-w-0">
-                    <p id="adSubjectLabel" class="text-[11px] font-black text-indigo-500 uppercase tracking-widest mb-1"></p>
-                    <h3 id="adTitle" class="text-lg font-black text-slate-800 leading-tight"></h3>
-                    <div id="adMetaRow" class="flex items-center gap-2 flex-wrap mt-2"></div>
-                </div>
-                <button onclick="closeAssignmentDetail()" class="w-9 h-9 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition flex-shrink-0">
-                    <i class="fa-solid fa-xmark text-lg"></i>
-                </button>
             </div>
 
-            <div class="flex-1 overflow-y-auto p-6 space-y-5" id="assignmentDetailBody"></div>
+            <!-- ── Assignment focus page (assignments.html?a={id}) ── -->
+            <div id="assignmentFocus" class="hidden min-h-full">
+                <div class="asg-focus-bar">
+                    <button type="button" onclick="closeAssignmentDetail()" class="asg-focus-back" aria-label="Back to all assignments">
+                        <i class="fa-solid fa-arrow-left"></i><span>Assignments</span>
+                    </button>
+                    <p id="adSubjectLabel" class="asg-focus-subject"></p>
+                    <span id="adSaveState" class="asg-save-state" role="status" aria-live="polite"></span>
+                    <span id="adTimer"></span>
+                    <span id="adXpSlot"></span>
+                </div>
+                <article class="asg-focus-page">
+                    <header class="asg-focus-head">
+                        <h1 id="adTitle"></h1>
+                        <div id="adMetaRow" class="flex items-center gap-2 flex-wrap mt-3"></div>
+                    </header>
+                    <div id="assignmentDetailBody" class="space-y-5"></div>
+                </article>
+            </div>
         </div>
-    </div>
+    </main>
 
     <script type="module" src="assignments.js"></script>
 </body>

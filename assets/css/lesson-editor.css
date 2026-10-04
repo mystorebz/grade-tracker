@@ -1,0 +1,372 @@
+/* Lesson editor styles (moved from teacher/lessons/builder.html so the editor
+   can mount inside teacher/subjects/subject.html). */
+/* Match Quill's editing surface to this app's own type scale/colors
+   instead of its default look, and give the custom assignment-card
+   embed a visual identity that reads as "not plain text". */
+#docEditor .ql-editor { font-family: 'DM Sans', sans-serif; font-size: 14.5px; color: #0d1f35; line-height: 1.6; min-height: 480px; }
+#docEditor .ql-editor h1 { font-size: 24px; font-weight: 700; }
+#docEditor .ql-editor h2 { font-size: 19px; font-weight: 700; }
+#docEditor .ql-editor h3 { font-size: 16px; font-weight: 700; }
+#docToolbar.ql-toolbar { border-color: #dce3ed; background: #f8fafb; border-radius: 0.75rem 0.75rem 0 0; }
+#docEditor.ql-container { border-color: #dce3ed; border-radius: 0 0 0.75rem 0.75rem; font-family: 'DM Sans', sans-serif; }
+.assignment-embed { display: inline-flex; align-items: center; gap: 6px; background: #eef4ff; border: 1px solid #c7d9fd; color: #2563eb; font-weight: 700; font-size: 12.5px; padding: 4px 10px 4px 8px; border-radius: 999px; cursor: pointer; user-select: none; }
+.assignment-embed:hover { background: #dbe8ff; }
+
+/* Slide Deck Text blocks (builder.js's wireBlockRichFields()) are
+   created with `toolbar: false` — no per-block/contextual/floating
+   toolbar inside the canvas, ever; formatting goes through the one
+   fixed #slideFormatToolbar docked in the header instead. Quill
+   still renders a plain .ql-container/.ql-editor for the editing
+   surface itself, with no .ql-toolbar sibling to butt corners
+   against, so it gets fully rounded corners on all sides. */
+#slideCanvas .ql-container.ql-snow { border-color: #dce3ed; border-radius: 0.5rem; font-family: 'DM Sans', sans-serif; font-size: 13.5px; }
+#slideCanvas .ql-editor { padding: 10px 12px; min-height: 44px; color: #0d1f35; line-height: 1.55; }
+/* "Click to add title" etc. — a REAL Quill placeholder (see
+   wireBlockRichFields()'s `placeholder:` option), never saved
+   content; Quill adds .ql-blank to .ql-editor whenever it's showing
+   one, and its own .ql-blank::before renders block.placeholder from
+   the data-placeholder attribute it sets. Overriding size/weight/
+   color/style per data-role (set in blockWrap()) is what makes an
+   empty Title box actually read like a title and not like Quill's
+   default small italic-gray placeholder — matching how a Google
+   Slides placeholder shape looks before you click into it. */
+.lb-block[data-role="title"] .ql-editor.ql-blank::before, .cv-ed-wrap[data-role="title"] .ql-editor.ql-blank::before { font-size: 2em; font-weight: 700; font-style: normal; color: #0d1f35; }
+.lb-block[data-role="subtitle"] .ql-editor.ql-blank::before, .cv-ed-wrap[data-role="subtitle"] .ql-editor.ql-blank::before { font-size: 16px; font-weight: 600; font-style: normal; color: #6b84a0; }
+.lb-block[data-role="heading"] .ql-editor.ql-blank::before, .cv-ed-wrap[data-role="heading"] .ql-editor.ql-blank::before { font-size: 1.5em; font-weight: 700; font-style: normal; color: #0d1f35; }
+.lb-block[data-role="body"] .ql-editor.ql-blank::before, .cv-ed-wrap[data-role="body"] .ql-editor.ql-blank::before { font-size: 13.5px; font-weight: 500; font-style: normal; color: #94a3b8; }
+
+/* ── SLIDE DECK REDESIGN: fixed 16:9 stage, insertable blocks ────── */
+/* A real presentation surface — fixed aspect ratio, centered, capped
+   width — instead of the old auto-height card that grew with content.
+   aspect-ratio keeps it exactly 16:9 responsively (no JS resize
+   listener needed); max-width keeps it from feeling oversized on a
+   wide monitor, same "professional spacing" Google Slides' own canvas
+   has, adapted to this app's own content width rather than copying
+   Slides' exact pixel dimensions. */
+.lb-stage-wrap { width: 100%; max-width: 860px; }
+/* FREE-FORM CANVAS: position:relative so every .lb-block child can be
+   positioned with left/top/width/height percentages (set inline by
+   builder.js, from that block's own x/y/w/h — see lessons.js's
+   BLOCK_DEFAULT_SIZE/ensureBlockLayout()) directly against this box,
+   exactly like a real PowerPoint/Slides canvas rather than a
+   document that flows top-to-bottom. overflow:hidden (not
+   overflow-y:auto, its old value) because content no longer grows
+   the stage — a block that runs long scrolls WITHIN its own box
+   instead (see .lb-block below). */
+/* overflow stays VISIBLE (not hidden) deliberately: a block's own
+   x/y/w/h are always clamped to [0,100]% in startBlockDrag() (see
+   builder.js), so the block itself never actually spills past the
+   stage edge — but its floating toolbar (positioned above the
+   block, top:-14px) and its resize handles (offset -5px past each
+   edge) DO extend slightly outside the block's own box, and for any
+   block sitting near the top/left edge (e.g. every title in the
+   slide-layout gallery's templates, which start around y:6%) that
+   puts the toolbar/handles just past the STAGE's edge too. With
+   overflow:hidden those got silently clipped — invisible and
+   unclickable, which is exactly the "the delete button is hidden"
+   bug. The generous p-8 padding around .lb-stage-wrap (see the
+   canvas wrapper below) gives that overflow room to actually show
+   without touching any other UI. */
+.lb-slide-stage { width: 100%; aspect-ratio: 16 / 9; overflow: visible; position: relative; padding: 36px 44px; border-top: 5px solid var(--lb-accent, #2563eb); box-sizing: border-box; }
+
+.lb-toolbar-btn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; flex-shrink: 0; padding: 7px 11px; border-radius: 7px; font-size: 12px; font-weight: 700; color: #374f6b; background: transparent; border: 1px solid transparent; transition: background .12s, border-color .12s; }
+.lb-toolbar-btn:hover { background: #f4f7fb; border-color: #dce3ed; }
+.lb-toolbar-btn i { color: #2563eb; font-size: 11.5px; }
+
+/* ── SLIDE DECK REDESIGN: fixed global format toolbar (#slideFormatToolbar
+   in the header) — see wireFormatToolbar()/wireBlockRichFields() in
+   builder.js. Icon-only buttons, denser than .lb-toolbar-btn since a
+   dozen of these sit in one row; .lb-format-btn-active marks the
+   current block's active formats (bold/italic/list/align/...). */
+.lb-format-btn, .lb-format-color-btn { display: inline-flex; align-items: center; justify-content: center; width: 27px; height: 27px; border-radius: 6px; color: #374f6b; background: transparent; border: 1px solid transparent; font-size: 12px; flex-shrink: 0; transition: background .12s, border-color .12s, color .12s; cursor: pointer; }
+.lb-format-btn:hover:not(:disabled), .lb-format-color-btn:hover { background: #f4f7fb; border-color: #dce3ed; }
+.lb-format-btn:disabled { cursor: default; }
+.lb-format-btn.lb-format-btn-active { background: #eef4ff; border-color: #2563eb; color: #2563eb; }
+.lb-format-color-btn { position: relative; overflow: hidden; }
+.lb-format-color-btn input[type="color"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; border: none; padding: 0; cursor: pointer; }
+.lb-format-select { height: 27px; padding: 0 6px; border-radius: 6px; border: 1px solid transparent; background: transparent; color: #374f6b; font-size: 11.5px; font-weight: 700; flex-shrink: 0; cursor: pointer; }
+.lb-format-select:hover:not(:disabled) { background: #f4f7fb; border-color: #dce3ed; }
+#slideFormatToolbar.opacity-40 .lb-format-btn, #slideFormatToolbar.opacity-40 .lb-format-color-btn, #slideFormatToolbar.opacity-40 .lb-format-select { cursor: default; }
+
+/* FREE-FORM CANVAS: a block is a positioned, resizable box — left/
+   top/width/height are set inline (percentages of .lb-slide-stage,
+   see builder.js's applyBlockLayoutStyle()), never by document
+   flow. overflow:auto lets a block whose content runs taller than
+   its own box scroll internally rather than pushing other blocks
+   around or growing the stage. cursor:move on the block itself
+   (not on its content) is the drag affordance; wireBlockDrag() in
+   builder.js only starts a move-drag when the mousedown target is
+   the block's own background, never its inner text/image/etc, so
+   editing still works normally. */
+.lb-block { position: absolute; border: 1.5px solid transparent; border-radius: 8px; padding: 6px; box-sizing: border-box; overflow: auto; transition: border-color .12s, background .12s; cursor: move; }
+.lb-block:hover { background: rgba(248,250,253,.9); }
+.lb-block.lb-block-selected { border-color: var(--lb-accent, #2563eb); background: rgba(248,250,253,.9); z-index: 2; }
+.lb-block-toolbar { position: absolute; top: -14px; right: 6px; display: none; align-items: center; gap: 2px; background: #0d1f35; border-radius: 6px; padding: 3px; box-shadow: 0 2px 6px rgba(13,31,53,.25); z-index: 5; }
+.lb-block:hover .lb-block-toolbar, .lb-block.lb-block-selected .lb-block-toolbar { display: flex; }
+.lb-block-toolbar button { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; color: #dce3ed; border-radius: 4px; font-size: 10.5px; transition: background .12s, color .12s; }
+.lb-block-toolbar button:hover { background: #2563eb; color: #fff; }
+
+/* Resize handles: 8 small squares around a SELECTED block's border
+   (corners resize both axes, edges resize one). Hidden unless the
+   block is selected — see wireBlockDrag()'s mousedown-on-handle
+   branch for the actual resize logic. */
+.lb-resize-handle { position: absolute; width: 9px; height: 9px; background: #fff; border: 1.5px solid var(--lb-accent, #2563eb); border-radius: 2px; z-index: 6; display: none; }
+.lb-block.lb-block-selected .lb-resize-handle { display: block; }
+.lb-resize-handle[data-handle="nw"] { top: -5px; left: -5px; cursor: nwse-resize; }
+.lb-resize-handle[data-handle="n"]  { top: -5px; left: calc(50% - 4.5px); cursor: ns-resize; }
+.lb-resize-handle[data-handle="ne"] { top: -5px; right: -5px; cursor: nesw-resize; }
+.lb-resize-handle[data-handle="e"]  { top: calc(50% - 4.5px); right: -5px; cursor: ew-resize; }
+.lb-resize-handle[data-handle="se"] { bottom: -5px; right: -5px; cursor: nwse-resize; }
+.lb-resize-handle[data-handle="s"]  { bottom: -5px; left: calc(50% - 4.5px); cursor: ns-resize; }
+.lb-resize-handle[data-handle="sw"] { bottom: -5px; left: -5px; cursor: nesw-resize; }
+.lb-resize-handle[data-handle="w"]  { top: calc(50% - 4.5px); left: -5px; cursor: ew-resize; }
+
+/* Applied to <body> for the duration of a block drag/resize so text
+   selection doesn't fire mid-drag and the cursor stays consistent
+   even when the pointer passes over other elements. */
+.lb-dragging, .lb-dragging * { user-select: none !important; }
+.lb-dragging { cursor: grabbing !important; }
+
+.lb-theme-swatch { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 7px 4px; border-radius: 7px; border: 1.5px solid transparent; transition: border-color .12s, background .12s; }
+.lb-theme-swatch:hover { background: #f4f7fb; }
+.lb-theme-swatch.lb-theme-selected { border-color: #2563eb; background: #eef4ff; }
+.lb-theme-swatch-dot { width: 18px; height: 18px; border-radius: 999px; }
+
+/* Bigger preview cards for the #themeGallery modal — same selection
+   language as .lb-theme-swatch (border+bg on the selected card) but
+   roomier, since this is a deliberate "come look and choose" gallery
+   now rather than a quick corner dropdown. */
+.lb-theme-card { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px 10px; border-radius: 10px; border: 2px solid #eef1f5; transition: border-color .12s, background .12s; cursor: pointer; }
+.lb-theme-card:hover { border-color: #dce3ed; background: #f8fafd; }
+.lb-theme-card.lb-theme-selected { border-color: #2563eb; background: #eef4ff; }
+.lb-theme-card-dot { width: 34px; height: 34px; border-radius: 999px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; }
+
+/* Slide-layout gallery (sidebar "Add Slide" popover) — compact cards
+   showing a tiny mock-slide icon + label, PowerPoint "New Slide"
+   style. See builder.js's SLIDE_LAYOUTS/renderSlideLayoutMenu(). */
+.lb-layout-card { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 6px; border-radius: 8px; border: 1.5px solid #eef1f5; transition: border-color .12s, background .12s; cursor: pointer; }
+.lb-layout-card:hover { border-color: #2563eb; background: #eef4ff; }
+.lb-layout-card i { font-size: 15px; color: #2563eb; }
+.lb-layout-card span { font-size: 10.5px; font-weight: 700; color: #374f6b; text-align: center; line-height: 1.2; }
+
+/* ── SLIDE DECK REDESIGN: live-preview sidebar thumbnails (Task #6) ──
+   A true scaled-down rendering of the slide's own blocks — Google-
+   Slides-style — instead of an icon + text label. Rendered at real
+   thumbnail size (no CSS transform/scale trick) since the sidebar's
+   width is fixed (see #slideThumbList's non-resizable 220px parent
+   in the layout above), so this ratio never needs to be recomputed
+   in JS. Text blocks reuse the `.ql-editor` class purely for Quill's
+   own em-based heading/paragraph typography rules (h1/h2/h3 sizes
+   are relative, so they shrink proportionally with the small base
+   font-size set inline) — same trick already used for the read-only
+   block display in viewer.js. */
+.slide-thumb-preview { aspect-ratio: 16 / 9; overflow: hidden; position: relative; }
+.slide-thumb-clip { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ── PHASE 4: CANVAS EDITOR (renderer stage + Moveable/Selecto) ─────────
+   #slideCanvasWrap is Moveable's control-box container (position:relative,
+   not scaled); the stage inside .cv-viewport is scale(k). min-width:100% +
+   max-content keeps the slide centred when it fits and scrollable when the
+   zoom makes it wider than the pane. */
+.lb-cv-wrap { position: relative; min-width: 100%; width: max-content; }
+.lb-cv-viewport { outline: 1px solid #dce3ed; box-shadow: 0 1px 3px rgba(13,31,53,.08); background: #fff; }
+.lb-cv-viewport .cv-stage { cursor: default; }
+.lb-cv-viewport .cv-obj:hover:not(.cv-editing) { outline: 2px dashed rgba(37,99,235,.35); outline-offset: 0; }
+.lb-cv-viewport .cv-obj.cv-editing { outline: 3px solid var(--cv-accent, #2563eb); cursor: text; }
+.lb-cv-viewport .cv-obj.cv-locked:hover { outline-color: rgba(148,163,184,.6); }
+.lb-cv-viewport .cv-obj-content { overflow: hidden; }
+.lb-cv-viewport .cv-empty { font-size: 26px; padding: 0 160px; text-align: center; pointer-events: none; }
+.cv-moveable { --moveable-color: #2563eb; }
+
+.cv-ed-wrap { width: 100%; height: 100%; padding: 6px; box-sizing: border-box; overflow: hidden; }
+.cv-ed-wrap .ql-container.ql-snow { border: none; height: 100%; font-family: 'DM Sans', sans-serif; font-size: 13.5px; }
+.cv-ed-wrap .ql-editor { font-family: 'DM Sans', sans-serif; font-size: 13.5px; color: #0d1f35; line-height: 1.55; padding: 10px 12px; height: 100%; overflow: hidden; position: relative; }
+.cv-ed-wrap .ql-editor.ql-blank::before { left: 12px; right: 12px; color: #94a3b8; font-style: italic; }
+.cv-ed-media { width: 100%; height: 100%; display: flex; flex-direction: column; }
+.cv-ed-media img { width: 100%; flex: 1; min-height: 0; object-fit: contain; border-radius: 8px; background: #f4f7fb; }
+.cv-ed-media iframe { width: 100%; flex: 1; min-height: 0; border: 0; border-radius: 8px; background: #000; pointer-events: none; }
+.cv-ed-placeholder { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; text-align: center; border: 1.5px dashed #dce3ed; border-radius: 8px; background: #f4f7fb; color: #9ab0c6; font-size: 11.5px; font-weight: 600; padding: 8px; }
+.cv-ed-caption { font-size: 11.5px; color: #6b84a0; font-weight: 600; text-align: center; margin: 6px 0 0; flex-shrink: 0; }
+.cv-ed-card { width: 100%; height: 100%; box-sizing: border-box; padding: 10px 12px; overflow: hidden; }
+.cv-ed-card .cv-ed-prompt { font-size: 13.5px; font-weight: 600; color: #0d1f35; line-height: 1.5; margin: 8px 0 6px; white-space: pre-wrap; }
+.cv-ed-card .cv-ed-choice { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #374f6b; font-weight: 600; padding: 5px 8px; border: 1px solid #dce3ed; border-radius: 6px; margin-bottom: 4px; background: #fff; }
+.cv-ed-card .cv-ed-choice i { color: #9ab0c6; font-size: 11px; }
+.cv-ed-card .cv-ed-muted { font-size: 11.5px; color: #9ab0c6; font-weight: 600; }
+
+.lb-arrange-btn { flex: 1; height: 30px; border-radius: 6px; border: 1px solid #dce3ed; background: #f4f7fb; color: #374f6b; font-size: 11.5px; transition: background .12s, border-color .12s, color .12s; }
+.lb-arrange-btn:hover { background: #eef4ff; border-color: #2563eb; color: #2563eb; }
+.lb-arrange-btn.lb-danger:hover { background: #fff0f3; border-color: #e31b4a; color: #e31b4a; }
+
+/* Canvas pane is its own stacking context: Moveable's control box (z-index
+   3000 internally) can never paint over the editor's modals/popovers. */
+#slideCanvasArea { isolation: isolate; }
+.cv-moveable { --bounds-color: #2563eb; }
+
+.lb-zoom-dd { height: 28px; padding: 0 8px 0 10px; border-radius: 6px; border: 1px solid #dce3ed; background: #fff; color: #374f6b; font-size: 11.5px; font-weight: 800; display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.lb-zoom-dd:hover { background: #f4f7fb; }
+.lb-zoom-item { display: block; width: 100%; text-align: left; padding: 6px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; color: #374f6b; }
+.lb-zoom-item:hover { background: #f4f7fb; color: #0d1f35; }
+.lb-zoom-item.lb-zoom-active { color: #2563eb; background: #eef4ff; }
+.lb-zoom-item.lb-menu-row { display: flex; align-items: center; gap: 10px; }
+
+/* Object settings inside the Format toolbar (image, activities, video…):
+   one row — each group is [LABEL control…]. */
+.lb-props-row { display: flex; align-items: center; gap: 16px; height: 100%; }
+.lb-props-row > .lb-pgroup { flex-shrink: 0; }
+.lb-pgroup { display: flex; flex-direction: row; align-items: center; gap: 6px; min-width: 0; }
+.lb-pgroup-title { font-size: 9.5px; font-weight: 800; color: #6b84a0; text-transform: uppercase; letter-spacing: .08em; white-space: nowrap; }
+.lb-pgroup-row { display: flex; align-items: center; gap: 6px; }
+.lb-pinput { height: 30px; padding: 0 9px; border: 1px solid #dce3ed; border-radius: 6px; background: #fff; font-size: 12.5px; color: #0d1f35; outline: none; min-width: 0; }
+.lb-pinput:focus, .lb-ptext:focus { border-color: #2563eb; }
+.lb-ptext { padding: 6px 9px; border: 1px solid #dce3ed; border-radius: 6px; background: #fff; font-size: 12.5px; color: #0d1f35; outline: none; resize: vertical; line-height: 1.45; }
+.lb-picon { width: 30px; height: 30px; flex-shrink: 0; border-radius: 6px; border: 1px solid #dce3ed; background: #f4f7fb; color: #374f6b; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; transition: background .12s, border-color .12s, color .12s; }
+.lb-picon:hover { background: #eef4ff; border-color: #2563eb; color: #2563eb; }
+.lb-picon.lb-danger:hover { background: #fff0f3; border-color: #e31b4a; color: #e31b4a; }
+.lb-picon.lb-on { background: #0d1f35; border-color: #0d1f35; color: #fff; }
+.lb-pbtn { height: 30px; padding: 0 11px; border-radius: 6px; border: 1px solid #dce3ed; background: #f4f7fb; color: #0d1f35; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.lb-pbtn:hover { background: #eef4ff; border-color: #2563eb; color: #2563eb; }
+.lb-pseg { display: inline-flex; background: #f4f7fb; border: 1px solid #dce3ed; border-radius: 7px; padding: 2px; }
+.lb-pseg button { height: 24px; padding: 0 10px; border-radius: 5px; font-size: 11.5px; font-weight: 700; color: #6b84a0; white-space: nowrap; }
+.lb-pseg button.lb-on { background: #fff; color: #0d1f35; box-shadow: 0 1px 2px rgba(13,31,53,.12); }
+.lb-phint { font-size: 11.5px; font-weight: 600; color: #9ab0c6; line-height: 1.4; white-space: nowrap; }
+.lb-perror { font-size: 11px; font-weight: 700; color: #e31b4a; }
+.lb-pkbd { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: #6b84a0; white-space: nowrap; }
+.lb-pkbd kbd { font-family: inherit; font-size: 10px; font-weight: 800; color: #374f6b; background: #f4f7fb; border: 1px solid #dce3ed; border-radius: 4px; padding: 1px 5px; }
+
+/* ── Narrow editor: collapse labels instead of crushing the slide ──────── */
+#builderView { container-type: inline-size; container-name: lbview; }
+.lb-center { container-type: inline-size; container-name: lbcenter; }
+.lbc-show, .lb-rail-label-short { display: none; }
+@container lbview (max-width: 900px) {
+    .lb-rail { width: 156px !important; }
+    .lb-rail-label { display: none; }
+    .lb-rail-label-short { display: inline; }
+}
+@container lbcenter (max-width: 620px) {
+    .lbc-hide { display: none; }
+    .lbc-show { display: inline-block; }
+    #lessonTitleInput, #docLessonTitleInput { min-width: 60px; }
+    .lb-toolbar-btn .lbc-label { display: none; }
+    #slideCanvasArea { padding: 16px !important; }
+}
+
+/* Shape / line style controls (Properties tab) */
+.lb-pcolor { position: relative; width: 30px; height: 30px; flex-shrink: 0; border-radius: 6px; border: 1px solid #dce3ed; background: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.lb-pcolor span { width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(13,31,53,.15); background-image: linear-gradient(45deg, #eef1f5 25%, transparent 25%, transparent 75%, #eef1f5 75%), linear-gradient(45deg, #eef1f5 25%, transparent 25%, transparent 75%, #eef1f5 75%); background-size: 8px 8px; background-position: 0 0, 4px 4px; }
+.lb-pcolor input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; border: 0; padding: 0; }
+.lb-prange { width: 110px; accent-color: #2563eb; }
+.lb-pval { font-size: 11px; font-weight: 800; color: #374f6b; min-width: 34px; font-variant-numeric: tabular-nums; }
+
+/* Image + activity properties (Phase 4 step 4) */
+.lb-pinput.lb-pinput-error { border-color: #e31b4a; background: #fff7f8; }
+.lb-pmini { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 800; color: #6b84a0; text-transform: uppercase; }
+.lb-picon.lb-good { background: #ecfdf5; border-color: #059669; color: #047857; }
+.lb-picon:disabled, .lb-pbtn:disabled { opacity: .45; cursor: default; }
+
+/* ── Focus Mode (full-window editor) — builder.js setFocusMode() ───────── */
+.lb-focus-btn { height: 36px; width: 36px; flex-shrink: 0; border-radius: 4px; border: 1px solid #dce3ed; background: #fff; color: #374f6b; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background .12s, color .12s, border-color .12s; }
+.lb-focus-btn:hover { background: #eef4ff; color: #2563eb; border-color: #bfd3fb; }
+.lb-focus-btn:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.lb-focus-btn[aria-pressed="true"] { background: #0d1f35; border-color: #0d1f35; color: #fff; }
+.lb-focus-btn[aria-pressed="true"]:hover { background: #2563eb; border-color: #2563eb; }
+
+.lesson-editor { --bg-color: #eef1f5; }
+.lesson-editor.editor-focus-mode {
+    position: fixed; inset: 0;
+    width: 100vw; height: 100vh;
+    margin: 0; padding: 0; max-width: none; max-height: none;
+    border: 0; border-radius: 0; box-shadow: none;
+    z-index: 9999;
+    background: var(--bg-color);
+}
+@supports (height: 100dvh) { .lesson-editor.editor-focus-mode { height: 100dvh; } }
+html.lb-focus-active, html.lb-focus-active body { overflow: hidden !important; }
+/* Editor modals are siblings of the root: lift them above the full-window editor. */
+html.lb-focus-active #themeOverlay,
+html.lb-focus-active #notesOverlay,
+html.lb-focus-active #assignmentPickerOverlay,
+html.lb-focus-active #assignmentViewOverlay,
+html.lb-focus-active #formatChoiceOverlay,
+html.lb-focus-active #importOptionsOverlay { z-index: 10010; }
+
+/* ══ EDITOR HEADER: menu bar + Format toolbar (Google Slides layout) ══════ */
+/* Header (menu bar, Save / Slideshow / Publish, formatting toolbar) stays
+   frozen at the top while the slide / document workspace below it scrolls. */
+.editor-header { position: sticky; top: 0; z-index: 100; }
+/* The editor root is its own stacking context, so the header's z-index only
+   competes inside the editor (app dropdowns and the editor modals stay on top). */
+.lesson-editor { isolation: isolate; }
+#lbStockOverlay { z-index: 200 !important; }
+/* row 1: title line + menus on the left, actions on the right */
+.lb-headbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 12px; padding: 6px 12px 2px 14px; align-items: center; }
+.lb-titleline { grid-column: 1; grid-row: 1; display: flex; align-items: center; gap: 10px; min-width: 0; height: 30px; }
+.lb-title-input { field-sizing: content; min-width: 9ch; max-width: min(100%, 520px); flex: 0 1 auto; text-overflow: ellipsis; }
+.lb-savemsg { font-size: 11.5px; font-weight: 600; color: #6b84a0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+.lb-headbar-actions { grid-column: 2; grid-row: 1 / span 2; display: flex; align-items: center; gap: 6px; }
+.lb-hbtn { height: 36px; padding: 0 12px; border-radius: 4px; border: 1px solid #dce3ed; background: #fff; color: #0d1f35; font-size: 12.5px; font-weight: 700;
+    display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; flex-shrink: 0; cursor: pointer; transition: background .12s, border-color .12s, color .12s; }
+.lb-hbtn:hover { background: #f4f7fb; }
+.lb-hbtn:focus-visible, .mb-btn:focus-visible, .mb-item:focus-visible, .lb-format-btn:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
+.lb-hbtn-icon { width: 36px; padding: 0; justify-content: center; color: #6b84a0; border-color: transparent; }
+.lb-hbtn-icon:hover { color: #2563eb; background: #eef4ff; }
+.lb-hbtn-primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+.lb-hbtn-primary:hover { background: #1d4ed8; border-color: #1d4ed8; }
+
+/* .menu-bar: File · Edit · View · Insert · Format · Slide · Arrange */
+.menu-bar { grid-column: 1; grid-row: 2; display: flex; align-items: center; gap: 0; height: 28px; margin-left: -6px; }
+.mb-btn { height: 26px; padding: 0 8px; border-radius: 4px; border: 0; background: transparent; color: #0d1f35; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.mb-btn:hover, .mb-btn[aria-expanded="true"] { background: #e8eef7; }
+.mb-panel { position: fixed; z-index: 70; min-width: 236px; max-height: calc(100vh - 24px); overflow-y: auto; background: #fff; border: 1px solid #dce3ed; border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(13,31,53,.18); padding: 6px 0; font-family: 'DM Sans', sans-serif; }
+.mb-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 14px 6px 12px; border: 0; background: transparent; text-align: left; color: #0d1f35; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.mb-item:hover:not(:disabled), .mb-item.mb-open, .mb-item:focus { background: #eef4ff; outline: none; }
+.mb-item:disabled { color: #a9b7c8; cursor: default; }
+.mb-item:disabled .mb-ico { color: #c7d2de; }
+.mb-ico { width: 16px; text-align: center; color: #374f6b; font-size: 12.5px; flex-shrink: 0; }
+.mb-check { color: #2563eb; }
+.mb-label { flex: 1; }
+.mb-kbd { font-size: 11.5px; color: #6b84a0; font-variant-numeric: tabular-nums; }
+.mb-arrow { font-size: 9px; color: #6b84a0; }
+.mb-sep { height: 1px; background: #eef1f5; margin: 5px 0; }
+.mb-hint { padding: 6px 14px; font-size: 11.5px; color: #9ab0c6; font-weight: 600; white-space: normal; max-width: 240px; }
+.mb-grid { display: grid; grid-template-columns: repeat(4, 44px); gap: 4px; padding: 6px 10px; }
+.mb-grid .mb-item { justify-content: center; padding: 0; height: 40px; border-radius: 6px; }
+
+/* row 2: .format-toolbar — fixed height; tools left, selection tools right */
+.format-toolbar { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 10px; border-top: 1px solid #eef1f5; background: #fff; }
+.format-toolbar.hidden { display: none; }
+.ft-fixed { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.ft-divider { width: 1px; height: 22px; background: #dce3ed; flex-shrink: 0; margin: 0 2px; }
+.format-context { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; overflow: visible; } /* never scrolls: toolbar.js moves what doesn't fit into "More" */
+.format-context > * { flex-shrink: 0; }
+.lb-format-btn { width: 30px; height: 30px; }
+.lb-format-btn.lb-format-dd { width: auto; padding: 0 5px; gap: 4px; }
+.lb-dd-caret { font-size: 7.5px; color: #9ab0c6; }
+.lb-format-btn:disabled { opacity: .4; }
+
+@container lbcenter (max-width: 760px) {
+    .lb-headbar-actions { grid-row: 1; }
+    .menu-bar { grid-column: 1 / -1; }
+    .lb-hbtn:not(.lb-hbtn-icon) { padding: 0 10px; }
+}
+@container lbcenter (max-width: 620px) {
+    .ft-insert-extra { display: none; }
+    .mb-btn { padding: 0 6px; font-size: 12.5px; }
+    .lb-savemsg { max-width: 110px; }
+}
+
+/* ══ DOCUMENT FORMAT: Google Docs page layout ══════════════════════════════ */
+.doc-workspace { background: #f8f9fa; padding: 0 16px; }
+/* the editor container is a physical US Letter page (8.5in × 11in, 1in margins) */
+#docEditor.doc-page, .doc-page {
+    max-width: 816px; min-height: 1056px; margin: 2rem auto; padding: 1in; box-sizing: border-box;
+    background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.12); border: 0; border-radius: 0;
+    font-family: 'DM Sans', sans-serif;
+}
+#docEditor.doc-page .ql-editor { padding: 0; min-height: calc(1056px - 2in); height: auto; overflow: visible; }
+/* header: back button in the title line (Slides has it in the slide rail) */
+.lb-back-btn { height: 28px; width: 28px; flex-shrink: 0; border-radius: 6px; border: 0; background: transparent; color: #6b84a0; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; cursor: pointer; margin-left: -6px; }
+.lb-back-btn:hover { background: #f4f7fb; color: #0d1f35; }
+.lb-back-btn:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
+#docFormatToolbar .lb-format-dd span { margin-left: 1px; }
+@media (max-width: 1100px) { .doc-workspace { padding: 0 8px; } #docEditor.doc-page { padding: 0.6in; } }

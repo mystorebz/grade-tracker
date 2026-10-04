@@ -87,7 +87,7 @@ function gwRow(page, categoryName) {
 
 async function openGradeWeights(page) {
     await page.locator('#openGradeWeightsBtn').click();
-    await expect(page.locator('#gradeWeightsModal')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+    await expect(page.locator('#gradeWeightsModal')).toBeVisible({ timeout: 10_000 });
 }
 
 test.describe('Phase 6: Gradebook', () => {
@@ -101,7 +101,7 @@ test.describe('Phase 6: Gradebook', () => {
         const row = gradebookRow(page, GRADEBOOK_EDIT_TITLE);
         await expect(row).toBeVisible({ timeout: 10_000 });
         await row.locator('button[title="Edit"]').click();
-        await expect(page.locator('#editGradeModal')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#editGradeModal')).toBeVisible({ timeout: 10_000 });
         await expect(page.locator('#ed-score')).toHaveValue('15');
         await expect(page.locator('#ed-max')).toHaveValue('20');
         await expect(page.locator('#reasonSection')).not.toHaveClass(/visible/);
@@ -116,12 +116,12 @@ test.describe('Phase 6: Gradebook', () => {
         await page.locator('#updateGradeBtn').click();
         await expect.poll(() => dialogMessage, { timeout: 5_000 }).toBe('A reason is required when changing the score.');
         // Modal is still open — nothing was saved.
-        await expect(page.locator('#editGradeModal')).not.toHaveClass(/hidden/);
+        await expect(page.locator('#editGradeModal')).toBeVisible();
 
         // Supplying a reason lets the same edit through.
         await page.locator('#ed-reason').fill('Re-graded missed question.');
         await page.locator('#updateGradeBtn').click();
-        await expect(page.locator('#editGradeModal')).toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#editGradeModal')).toBeHidden({ timeout: 10_000 });
 
         let doc = await getGradeDoc(STUDENT_GRADE_1_ID, GRADEBOOK_EDIT_GRADE_ID);
         expect(doc.score).toBe(18);
@@ -131,14 +131,14 @@ test.describe('Phase 6: Gradebook', () => {
 
         // -- Changing only the MAX (score unchanged) gates it just the same. -
         await gradebookRow(page, GRADEBOOK_EDIT_TITLE).locator('button[title="Edit"]').click();
-        await expect(page.locator('#editGradeModal')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#editGradeModal')).toBeVisible({ timeout: 10_000 });
         await expect(page.locator('#ed-score')).toHaveValue('18');
         await expect(page.locator('#ed-max')).toHaveValue('20');
         await page.locator('#ed-max').fill('22');
         await expect(page.locator('#reasonSection')).toHaveClass(/visible/);
         await page.locator('#ed-reason').fill('Max points corrected after review.');
         await page.locator('#updateGradeBtn').click();
-        await expect(page.locator('#editGradeModal')).toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#editGradeModal')).toBeHidden({ timeout: 10_000 });
 
         doc = await getGradeDoc(STUDENT_GRADE_1_ID, GRADEBOOK_EDIT_GRADE_ID);
         expect(doc.score).toBe(18);
@@ -147,10 +147,10 @@ test.describe('Phase 6: Gradebook', () => {
 
         // -- A no-op save (nothing changed) never demands a reason. ----------
         await gradebookRow(page, GRADEBOOK_EDIT_TITLE).locator('button[title="Edit"]').click();
-        await expect(page.locator('#editGradeModal')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#editGradeModal')).toBeVisible({ timeout: 10_000 });
         await expect(page.locator('#reasonSection')).not.toHaveClass(/visible/);
         await page.locator('#updateGradeBtn').click();
-        await expect(page.locator('#editGradeModal')).toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#editGradeModal')).toBeHidden({ timeout: 10_000 });
 
         doc = await getGradeDoc(STUDENT_GRADE_1_ID, GRADEBOOK_EDIT_GRADE_ID);
         expect(doc.score).toBe(18);
@@ -237,7 +237,7 @@ test.describe('Phase 6: Gradebook', () => {
         // Save & Recalculate persists it for real (not just in-memory modal
         // state) — closes the modal and the change survives a fresh load.
         await page.locator('#saveGwBtn').click();
-        await expect(page.locator('#gradeWeightsModal')).toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#gradeWeightsModal')).toBeHidden({ timeout: 10_000 });
 
         await openGradeWeights(page);
         await expect(gwRow(page, 'Makeup Quiz')).toBeVisible();

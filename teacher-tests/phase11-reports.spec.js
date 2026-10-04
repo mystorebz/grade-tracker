@@ -158,7 +158,7 @@ test.describe('Phase 11: Reports / Data Query Builder', () => {
         expect(message).toBe('Please select a target student to generate an individual report.');
 
         // Nothing rendered — the results area must still be hidden.
-        await expect(page.locator('#reportResultsArea')).toHaveClass(/hidden/);
+        await expect(page.locator('#reportResultsArea')).toBeHidden();
     });
 
     test('11.6 — "Select All" checks every checkbox in its grid and applies the checked visual state', async ({ page }) => {

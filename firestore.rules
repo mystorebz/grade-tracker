@@ -81,6 +81,92 @@ service cloud.firestore {
              request.auth.token.linkedSchoolIds.hasAny([schoolId]);
     }
 
+    // ── SUBJECT ROUTER RBAC HELPERS (classes/{c}/subjects/**) ────────────────
+    // Admin of the school, or a teacher assigned to THIS class (class doc
+    // teacherIds). Used for anything holding student work or class content
+    // writes (security lockdown 2026-10-03) — isStaffInSchool is school-wide.
+    function isClassStaff(schoolId, classId) {
+      return isSchoolAdmin(schoolId) || isClassTeacher(schoolId, classId);
+    }
+
+    function isStaffInSchool(schoolId) {
+      return isCallerInSchool(schoolId) &&
+             request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'];
+    }
+
+    function isOwnStudentId(studentId) {
+      return request.auth != null &&
+             request.auth.token.role == 'student' &&
+             request.auth.token.studentId == studentId;
+    }
+
+    // Student enrolled in THIS class. classId is the source of truth (roster
+    // PASS B); className is the fallback for older student docs without one.
+    function isStudentInClass(schoolId, classId) {
+      return isCallerInSchool(schoolId) &&
+             request.auth.token.role == 'student' &&
+             studentDocInClass(
+               get(/databases/$(database)/documents/students/$(request.auth.token.studentId)).data,
+               schoolId, classId);
+    }
+
+    function studentDocInClass(student, schoolId, classId) {
+      return student.get('currentSchoolId', '') == schoolId && (
+               student.get('classId', '') == classId ||
+               (student.get('classId', '') == '' &&
+                student.get('className', '') != '' &&
+                student.get('className', '') ==
+                  get(/databases/$(database)/documents/schools/$(schoolId)/classes/$(classId)).data.get('name', ''))
+             );
+    }
+
+    // School doc created in the same batch (onboarding bootstrap).
+    function isOnboardingBatch(schoolId) {
+      return !exists(/databases/$(database)/documents/schools/$(schoolId)) &&
+             existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
+             getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true;
+    }
+
+    // ── RBAC HELPERS (security patch 2026-10-03) ────────────────────────────
+    function isSchoolAdmin(schoolId) {
+      return isCallerInSchool(schoolId) &&
+             request.auth.token.role in ['super_admin', 'sub_admin'];
+    }
+
+    // Teacher assigned to THIS class via the class doc's teacherIds.
+    function isClassTeacher(schoolId, classId) {
+      return isCallerInSchool(schoolId) &&
+             request.auth.token.role == 'teacher' &&
+             classId is string && classId != '' &&
+             exists(/databases/$(database)/documents/schools/$(schoolId)/classes/$(classId)) &&
+             request.auth.token.teacherId in
+               get(/databases/$(database)/documents/schools/$(schoolId)/classes/$(classId)).data.get('teacherIds', []);
+    }
+
+    function studentData(studentId) {
+      return get(/databases/$(database)/documents/students/$(studentId)).data;
+    }
+
+    // Missing semesterId or semester doc = closed (fail-closed).
+    function isSemesterOpen(schoolId, semesterId) {
+      return semesterId is string &&
+             exists(/databases/$(database)/documents/schools/$(schoolId)/semesters/$(semesterId)) &&
+             get(/databases/$(database)/documents/schools/$(schoolId)/semesters/$(semesterId)).data.get('isLocked', false) != true;
+    }
+
+    // Hard lock for student submissions: assignment.locked or past closeAt
+    // (Firestore Timestamp). FAIL-CLOSED (2026-10-04): the assignment
+    // document must exist. Old-style assignments embedded in a teacher doc
+    // had no document, so they could never be locked; they were wiped from
+    // dev (functions/wipe-legacy-assignments.js), and a submission pointing
+    // at a missing or made-up assignment is now rejected.
+    function isAssignmentOpen(schoolId, classId, subjectId, assignmentId) {
+      let p = /databases/$(database)/documents/schools/$(schoolId)/classes/$(classId)/subjects/$(subjectId)/assignments/$(assignmentId);
+      return exists(p) &&
+             get(p).data.get('locked', false) != true &&
+             (get(p).data.get('closeAt', null) == null || request.time < get(p).data.closeAt);
+    }
+
     // ── 1. National Teacher Registry ──────────────────────────────────────
     match /teachers/{teacherId} {
       // GET: teacher is active at a verified school, OR currentSchoolId is
@@ -161,31 +247,46 @@ service cloud.firestore {
                         isSchoolActive(resource.data.currentSchoolId)) && !isParentCaller();
 
       match /grades/{gradeId} {
-        // READ: school active OR student released (history.js reads grades
-        //       for released students whose currentSchoolId is now empty).
-        //       Also explicit for a linked parent (Phase 3 Step 4) — same
-        //       "written out even though the broader grant already covers
-        //       it" reasoning as the get() rule on students/{studentId} above.
-        allow read: if get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId == null
-                    || get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId == ''
-                    || isSchoolActive(
-                         get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
-                       )
-                    || isLinkedParentOf(studentId, get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId);
+        // RBAC (security patch 2026-10-03). Every condition below is
+        // resource-independent so per-student list queries stay provable.
+        function gSchool() { return studentData(studentId).get('currentSchoolId', ''); }
 
-        // WRITE: school must be active (no grade entry after suspension).
-        //        Explicit parent-write-deny (Phase 3 Step 2) — this rule has
-        //        no identity check otherwise, so it's the one this guard is
-        //        actually load-bearing for.
-        allow create, update: if isSchoolActive(
-          get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
-        ) && !isParentCaller();
+        // Teacher scope = the student's current classId (roster source of truth).
+        function isGradeStaff() {
+          let s = studentData(studentId);
+          let sid = s.get('currentSchoolId', '');
+          return sid != '' && isSchoolActive(sid) &&
+                 (isSchoolAdmin(sid) || isClassTeacher(sid, s.get('classId', '')));
+        }
 
-        // DELETE: gradebook edit and permanentDeleteStudent both delete grades.
-        allow delete: if (isSchoolActive(
-          get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
-        ) || get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId == null
-          || get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId == '') && !isParentCaller();
+        // Released/archived student (currentSchoolId ''): read-only access for
+        // staff of a school the student was archived from (archives, history).
+        function isArchivingStaff() {
+          let s = studentData(studentId);
+          return s.get('currentSchoolId', '') == '' &&
+                 request.auth != null &&
+                 request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] &&
+                 request.auth.token.schoolId in s.get('archivedSchoolIds', []);
+        }
+
+        allow read: if isOwnStudentId(studentId)
+                    || isLinkedParentOf(studentId, gSchool())
+                    || isGradeStaff()
+                    || isArchivingStaff();
+
+        allow create: if isGradeStaff() &&
+                         request.resource.data.schoolId == gSchool() &&
+                         isSemesterOpen(gSchool(), request.resource.data.semesterId);
+
+        allow update: if isGradeStaff() &&
+                         request.resource.data.schoolId == resource.data.schoolId &&
+                         request.resource.data.semesterId == resource.data.semesterId &&
+                         isSemesterOpen(gSchool(), resource.data.semesterId);
+
+        // Permanent deletion of a student's grades goes through the
+        // permanentDeleteStudent callable (Admin SDK), not the client.
+        allow delete: if isGradeStaff() &&
+                         isSemesterOpen(gSchool(), resource.data.semesterId);
       }
 
       match /evaluations/{evalId} {
@@ -216,44 +317,43 @@ service cloud.firestore {
       // rule that checks the caller's actual identity, not just whether
       // their school is active.
       match /submissions/{submissionId} {
-        // READ: the school must be active, AND the caller is either the
-        //       owning student or a teacher/admin at that same school —
-        //       OR (Phase 3 Step 2) a linked parent of this student, same
-        //       "explicit is better than relying on a broader grant" pattern
-        //       as grades/evaluations above. Write rules below are already
-        //       denied to a parent by construction (they require either
-        //       request.auth.token.studentId == studentId, which a parent's
-        //       token never carries, or a teacher/admin role) so no
-        //       !isParentCaller() guard is needed on create/update here.
-        allow read: if (isSchoolActive(
-                        get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
-                      ) &&
-                      request.auth != null &&
-                      (request.auth.token.studentId == studentId ||
-                       (request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] &&
-                        request.auth.token.schoolId ==
-                          get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId)))
-                      || isLinkedParentOf(studentId, get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId);
+        function subSchool() { return studentData(studentId).get('currentSchoolId', ''); }
 
-        // CREATE: only the owning student, only while their school is active.
-        allow create: if isSchoolActive(
-                          get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
-                        ) &&
-                        request.auth != null &&
-                        request.auth.token.studentId == studentId;
+        // Admin of the student's school, or a teacher assigned to the
+        // student's CURRENT class (lockdown 2026-10-03; was any staff member
+        // of the school). Resource-independent, so list queries stay provable.
+        function isSubStaff() {
+          let s = studentData(studentId);
+          let sid = s.get('currentSchoolId', '');
+          return sid != '' && isClassStaff(sid, s.get('classId', ''));
+        }
 
-        // UPDATE: the owning student may keep editing their own submission
-        //         only while it isn't graded yet; a teacher/admin at that
-        //         school may update it any time (grading, comments).
-        allow update: if isSchoolActive(
-                          get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId
-                        ) &&
+        // Pointer fields are required so the hard lock can be resolved.
+        function isOpenForSubmission() {
+          let d = request.resource.data;
+          return d.classId is string && d.subjectId is string && d.assignmentId is string &&
+                 isStudentInClass(subSchool(), d.classId) &&
+                 isAssignmentOpen(subSchool(), d.classId, d.subjectId, d.assignmentId);
+        }
+
+        allow read: if (isSchoolActive(subSchool()) &&
                         request.auth != null &&
-                        ((request.auth.token.studentId == studentId &&
-                          resource.data.status != 'graded') ||
-                         (request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] &&
-                          request.auth.token.schoolId ==
-                            get(/databases/$(database)/documents/students/$(studentId)).data.currentSchoolId));
+                        (request.auth.token.studentId == studentId || isSubStaff()))
+                    || isLinkedParentOf(studentId, subSchool());
+
+        allow create: if isSchoolActive(subSchool()) &&
+                         isOwnStudentId(studentId) &&
+                         isOpenForSubmission();
+
+        allow update: if isSchoolActive(subSchool()) && (
+                           isSubStaff() ||
+                           (isOwnStudentId(studentId) &&
+                            resource.data.status != 'graded' &&
+                            request.resource.data.classId == resource.data.classId &&
+                            request.resource.data.subjectId == resource.data.subjectId &&
+                            request.resource.data.assignmentId == resource.data.assignmentId &&
+                            isOpenForSubmission())
+                         );
 
         allow delete: if false;
       }
@@ -502,11 +602,12 @@ service cloud.firestore {
     // interactive_prompt included, since only a teacher needs to see
     // individual students' private prompt answers.
     match /{path=**}/live_sessions/{sessionId}/responses/{responseId} {
+      // STEP 4b: staff only. In rules v2 this recursive match also applies to
+      // plain path queries, so a student grant here would bypass the class
+      // enrollment check on the nested responses rule (board reads).
       allow list: if request.auth != null &&
-                     resource.data.schoolId == request.auth.token.schoolId && (
-                       request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] ||
-                       resource.data.blockType == 'collaborative_board'
-                     );
+                     resource.data.schoolId == request.auth.token.schoolId &&
+                     request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'];
     }
 
     // ── 2f. COLLECTION-GROUP RULE — grades ──────────────────────────────────
@@ -545,10 +646,24 @@ service cloud.firestore {
     // the exam_submissions precedent; flagged as a follow-up if stricter
     // enforcement is wanted (denormalize isSchoolActive onto grade docs at
     // write time, same as exam_submissions).
+    // RBAC (grade lockdown 2026-10-03): admins of the grade's school may list
+    // school-wide; a TEACHER may only list grades whose classId is a class
+    // they are assigned to (schools/{schoolId}/classes/{classId}.teacherIds).
+    // The class lookup is keyed on resource.data.classId, so a teacher query
+    // must pin classId with an equality filter (workbench.js, subject-store.js)
+    // or it cannot be proven and is rejected. Grades without a classId are
+    // admin-only through this path. Single-document reads still go through
+    // the nested students/{studentId}/grades rule (student's own class).
     match /{path=**}/grades/{gradeId} {
       allow list: if request.auth != null &&
-                     request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] &&
-                     resource.data.schoolId == request.auth.token.schoolId;
+                     resource.data.schoolId == request.auth.token.schoolId &&
+                     (
+                       request.auth.token.role in ['super_admin', 'sub_admin'] ||
+                       (request.auth.token.role == 'teacher' &&
+                        resource.data.classId is string &&
+                        request.auth.token.teacherId in
+                          get(/databases/$(database)/documents/schools/$(request.auth.token.schoolId)/classes/$(resource.data.classId)).data.get('teacherIds', []))
+                     );
     }
 
     // ── 2g. National Parent Registry (Phase 3 Step 1) ───────────────────────
@@ -886,88 +1001,274 @@ service cloud.firestore {
         // ONLY that fanned-out path; this class-day document is admin/
         // teacher-only for both read and write.
         match /attendance/{attendanceId} {
-          allow read: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) && (
-            request.auth.token.role in ['super_admin', 'sub_admin'] ||
-            (request.auth.token.role == 'teacher' &&
-             request.auth.token.teacherId in
-               get(/databases/$(database)/documents/schools/$(schoolId)/classes/$(classId)).data.teacherIds)
-          );
+          function isAttStaff() {
+            return isSchoolAdmin(schoolId) || isClassTeacher(schoolId, classId);
+          }
+          // Doc ID = YYYY-MM-DD. Editable through the end of that day in any
+          // timezone (UTC midnight + 36h covers UTC-12). After that, only an
+          // admin may create, update or delete the record.
+          function isEditableDate() {
+            let p = attendanceId.split('-');
+            return attendanceId.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+                   request.time < timestamp.date(int(p[0]), int(p[1]), int(p[2])) + duration.value(36, 'h');
+          }
 
-          allow update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) && (
-            request.auth.token.role in ['super_admin', 'sub_admin'] ||
-            (request.auth.token.role == 'teacher' &&
-             request.auth.token.teacherId in
-               get(/databases/$(database)/documents/schools/$(schoolId)/classes/$(classId)).data.teacherIds)
-          );
+          allow read: if isSchoolActive(schoolId) && isAttStaff();
 
-          allow create: if (
-            isCallerInSchool(schoolId) && isSchoolActive(schoolId) && (
-              request.auth.token.role in ['super_admin', 'sub_admin'] ||
-              (request.auth.token.role == 'teacher' &&
-               request.auth.token.teacherId in
-                 get(/databases/$(database)/documents/schools/$(schoolId)/classes/$(classId)).data.teacherIds)
-            )
-          ) || (
-            !exists(/databases/$(database)/documents/schools/$(schoolId)) &&
-            existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
-            getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true
-          );
+          // Same date lock as update/delete: a teacher can only create a
+          // record for a date still inside its editable window; creating
+          // a past-day record is admin-only.
+          allow create: if (isSchoolActive(schoolId) && (
+                             isSchoolAdmin(schoolId) ||
+                             (isClassTeacher(schoolId, classId) && isEditableDate())
+                           )) ||
+                           isOnboardingBatch(schoolId);
+
+          allow update: if isSchoolActive(schoolId) && (
+                             isSchoolAdmin(schoolId) ||
+                             (isClassTeacher(schoolId, classId) && isEditableDate())
+                           );
+
+          allow delete: if isSchoolActive(schoolId) && (
+                             isSchoolAdmin(schoolId) ||
+                             (isClassTeacher(schoolId, classId) && isEditableDate())
+                           );
         }
 
         match /subjects/{subjectId} {
-          // READ (get + list, both needed — loadTeacherSubjectsCache()
-          // lists this whole subcollection per resolved class): split out
-          // from update/delete (this mandate) so the new parent branch
-          // grants read-only, never write. Subject documents are curriculum
-          // metadata (name, weighting) — the same "not private" premise the
-          // mandate applies to assignments below.
-          allow read: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) || isParentLinkedToSchool(schoolId);
-          allow update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
-          allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
-                           (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
-                            existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
-                            getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
+          // ── Subject router RBAC (feat(routing), 2026-10-02) ──────────────
+          // READ:  teacher/admin of this school; a student only for THEIR OWN
+          //        class; a parent with a linked child at this school
+          //        (parent Assignments page reads subjects/assignments directly).
+          // WRITE: teacher/admin of this school only. Previously any
+          //        same-school caller, students included, could create,
+          //        update or delete subjects and assignments. The onboarding
+          //        bootstrap create path (school created in the same batch)
+          //        is kept unchanged.
+          allow read: if (isSchoolActive(schoolId) &&
+                          (isStaffInSchool(schoolId) || isStudentInClass(schoolId, classId))) ||
+                         isParentLinkedToSchool(schoolId);
+          // Writes: admin or a teacher assigned to THIS class (lockdown 2026-10-03).
+          allow update, delete: if isSchoolActive(schoolId) && isClassStaff(schoolId, classId);
+          allow create: if (isSchoolActive(schoolId) && isClassStaff(schoolId, classId)) ||
+                           isOnboardingBatch(schoolId);
 
           match /assignments/{assignmentId} {
-            // READ (get + list): same split and same parent branch as
-            // subjects above — this is the actual assignment data (title,
-            // dueDate, instructions, points) the Parent Assignments page
-            // now reads directly instead of through the purged
-            // getParentAssignments Cloud Function.
-            allow read: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) || isParentLinkedToSchool(schoolId);
-            allow update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
-            allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
-                             (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
-                              existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
-                              getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
+            allow read: if (isSchoolActive(schoolId) &&
+                            (isStaffInSchool(schoolId) || isStudentInClass(schoolId, classId))) ||
+                           isParentLinkedToSchool(schoolId);
+            // Writes: admin or a teacher assigned to THIS class (lockdown 2026-10-03).
+            allow update, delete: if isSchoolActive(schoolId) && isClassStaff(schoolId, classId);
+            allow create: if (isSchoolActive(schoolId) && isClassStaff(schoolId, classId)) ||
+                             isOnboardingBatch(schoolId);
 
-            // ── submissions MUST remain strictly locked (this mandate) ──
-            // NOT the same school-scoped isParentLinkedToSchool() grant
-            // used above — that would let ANY parent at this school read
-            // EVERY child's submission, since the wildcard segment here
-            // ({studentId}) has nothing to do with which parent is asking.
-            // The doc ID at this path already IS the owning student's ID,
-            // so isLinkedParentOf(studentId, schoolId) — the same per-child
-            // check every other parent grant in this file uses (grades,
-            // evaluations, students/{studentId}/submissions) — narrows this
-            // to exactly "a parent may read their OWN linked child's
-            // submission," never a classmate's. Still no parent write.
+            // Doc ID == owning studentId. Staff: full access. Student: only
+            // their own doc, may only ever write status 'submitted'
+            // (saveSubmission() in assets/js/submissions.js) — grading and
+            // revision statuses are staff/Cloud Function only. Parent: read
+            // own linked child only. Nobody but staff deletes.
             match /submissions/{studentId} {
-              allow read: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) || isLinkedParentOf(studentId, schoolId);
-              allow update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
-              allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
-                               (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
-                                existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
-                                getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
+              // Hard lock: locked == true or past closeAt (Timestamp) rejects student writes.
+              function isOpenForSubmission() {
+                return isAssignmentOpen(schoolId, classId, subjectId, assignmentId);
+              }
+
+              // Staff = admin or a teacher assigned to THIS class (lockdown 2026-10-03).
+              allow read: if (isSchoolActive(schoolId) &&
+                              (isClassStaff(schoolId, classId) ||
+                               (isOwnStudentId(studentId) && isStudentInClass(schoolId, classId)))) ||
+                             isLinkedParentOf(studentId, schoolId);
+              allow create, update: if isSchoolActive(schoolId) && (
+                                      isClassStaff(schoolId, classId) ||
+                                      (isOwnStudentId(studentId) &&
+                                       isStudentInClass(schoolId, classId) &&
+                                       request.resource.data.studentId == studentId &&
+                                       request.resource.data.status == 'submitted' &&
+                                       isOpenForSubmission())
+                                    );
+              allow delete: if isSchoolActive(schoolId) && isClassStaff(schoolId, classId);
+            }
+
+            // PHASE 1B: unsent answers (assets/js/assignment-drafts.js).
+            // Doc ID == owning studentId. Student: own draft only, while
+            // enrolled; fixed fields; read/delete own. Staff: read.
+            match /drafts/{studentId} {
+              allow read: if isSchoolActive(schoolId) && (
+                             isClassStaff(schoolId, classId) ||
+                             (isOwnStudentId(studentId) && isStudentInClass(schoolId, classId)));
+              allow delete: if isSchoolActive(schoolId) &&
+                               isOwnStudentId(studentId) && isStudentInClass(schoolId, classId);
+              allow create, update: if isSchoolActive(schoolId) &&
+                                       isOwnStudentId(studentId) && isStudentInClass(schoolId, classId) &&
+                                       request.resource.data.keys().hasOnly(['studentId', 'assignmentId', 'fields', 'updatedAt', 'savedAt']) &&
+                                       request.resource.data.studentId == studentId &&
+                                       request.resource.data.assignmentId == assignmentId &&
+                                       request.resource.data.fields is map &&
+                                       request.resource.data.fields.size() <= 200 &&
+                                       request.resource.data.updatedAt is string &&
+                                       request.resource.data.savedAt == request.time;
             }
           }
 
+          // ── Class Stream posts: RBAC (fix(security), 2026-10-02) ─────────
+          // READ:  any student/teacher/admin whose token schoolId is THIS
+          //        school, or a parent with a linked child at this school
+          //        (isParentLinkedToSchool — parents carry no schoolId claim).
+          // WRITE: teacher, super_admin, sub_admin of THIS school only.
+          //        Previously any same-school caller (students included)
+          //        could create/update/delete posts. The onboarding bootstrap
+          //        create path is dropped: posts never exist at school
+          //        creation time.
           match /posts/{postId} {
-            allow read, update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId);
-            allow create: if (isCallerInSchool(schoolId) && isSchoolActive(schoolId)) ||
-                             (!exists(/databases/$(database)/documents/schools/$(schoolId)) &&
-                              existsAfter(/databases/$(database)/documents/schools/$(schoolId)) &&
-                              getAfter(/databases/$(database)/documents/schools/$(schoolId)).data.isVerified == true);
+            // READ: admins, teachers assigned to THIS class, students enrolled
+            // in THIS class, and parents whose token carries this classId in
+            // linkedClassIds (minted by mintParentToken). No school-wide reads.
+            // WRITE: admins, or the assigned teacher as the post's own author.
+            function isPostStaff() {
+              return isSchoolAdmin(schoolId) || isClassTeacher(schoolId, classId);
+            }
+
+            // MODULE 3 inline discussion: comments live in the post's own
+            // `comments` array. Only that one field may change on these paths.
+            function commentsOnlyChange() {
+              return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comments']);
+            }
+            // Exactly one comment appended, authored by the caller, nothing
+            // else in the array touched.
+            function appendsOneOwnComment(authorId, role) {
+              let before = resource.data.get('comments', []);
+              let after = request.resource.data.comments;
+              let c = after[after.size() - 1];
+              return after is list &&
+                     after.size() == before.size() + 1 &&
+                     after.size() <= 300 &&
+                     after.hasAll(before) &&
+                     !(c in before) &&
+                     c.keys().hasOnly(['id', 'text', 'authorId', 'authorName', 'role', 'createdAt']) &&
+                     c.authorId == authorId && c.role == role &&
+                     c.id is string && c.id.size() <= 64 &&
+                     c.text is string && c.text.size() > 0 && c.text.size() <= 1000 &&
+                     c.authorName is string && c.authorName.size() <= 80 &&
+                     c.createdAt is string;
+            }
+
+            // MODULE 3.5 open voting: votes is a map keyed by studentId.
+            function votesOnlyChange() {
+              return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes']);
+            }
+            // A student writes only their own entry, on an open poll, choosing
+            // one of the poll's options. Changing an existing vote needs
+            // poll.allowChange. They can never remove or edit anyone's vote.
+            function castsOwnVote(sid) {
+              let poll = resource.data.get('poll', {});
+              let before = resource.data.get('votes', {});
+              let after = request.resource.data.votes;
+              return resource.data.get('type', '') == 'poll' &&
+                     poll.get('closed', false) != true &&
+                     (poll.get('closesAt', null) == null || request.time < poll.closesAt) &&
+                     after is map &&
+                     after.diff(before).affectedKeys().hasOnly([sid]) &&
+                     (sid in after) &&
+                     (!(sid in before) || poll.get('allowChange', false) == true) &&
+                     after[sid].keys().hasOnly(['name', 'choice', 'at']) &&
+                     after[sid].choice is string &&
+                     after[sid].choice in poll.get('optionIds', []) &&
+                     after[sid].name is string && after[sid].name.size() <= 80 &&
+                     after[sid].at is string;
+            }
+
+            allow read: if isSchoolActive(schoolId) && (
+                            isPostStaff() ||
+                            isStudentInClass(schoolId, classId) ||
+                            (isParentLinkedToSchool(schoolId) &&
+                             request.auth.token.get('linkedClassIds', []).hasAny([classId]))
+                          );
+
+            allow create: if isSchoolActive(schoolId) && (
+                              isSchoolAdmin(schoolId) ||
+                              (isClassTeacher(schoolId, classId) &&
+                               request.resource.data.authorId == request.auth.token.teacherId)
+                            );
+
+            allow update: if isSchoolActive(schoolId) && (
+                              isSchoolAdmin(schoolId) ||
+                              (isClassTeacher(schoolId, classId) &&
+                               resource.data.authorId == request.auth.token.teacherId &&
+                               request.resource.data.authorId == resource.data.authorId) ||
+                              // any teacher of this class: comment or remove comments
+                              (isClassTeacher(schoolId, classId) &&
+                               request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comments', 'votes', 'poll'])) ||
+                              // enrolled student: append their own comment only (never on a
+                              // Question — answers go to the answers sub-collection below)…
+                              (isStudentInClass(schoolId, classId) && commentsOnlyChange() &&
+                               resource.data.get('type', '') != 'question' &&
+                               appendsOneOwnComment(request.auth.token.studentId, 'student')) ||
+                              // …or cast / change their own poll vote
+                              (isStudentInClass(schoolId, classId) && votesOnlyChange() &&
+                               castsOwnVote(request.auth.token.studentId))
+                            );
+
+            allow delete: if isSchoolActive(schoolId) && (
+                              isSchoolAdmin(schoolId) ||
+                              (isClassTeacher(schoolId, classId) &&
+                               resource.data.authorId == request.auth.token.teacherId)
+                            );
+
+            // ── Question answers: blind replies enforced HERE (2026-10-04) ──
+            // posts/{postId}/answers/{answerId} (assets/js/stream-answers.js).
+            //   Student answer: doc id == their studentId (one each, final).
+            //   Teacher/admin reply: doc id 't_…'.
+            // READ  staff of this class: everything.
+            //       student in class: their OWN answer always; everyone's
+            //       only if the question isn't blind OR their own answer
+            //       already exists (exists() on their own doc id).
+            //       parent: their linked child's own answer only.
+            // WRITE student: create own once. Staff: create replies, delete
+            //       any (moderation). Nobody updates.
+            match /answers/{answerId} {
+              function postData() {
+                return get(/databases/$(database)/documents/schools/$(schoolId)/classes/$(classId)/subjects/$(subjectId)/posts/$(postId)).data;
+              }
+              function isBlindQuestion() {
+                return postData().get('question', {}).get('blindReplies', false) == true;
+              }
+              function ownAnswerExists() {
+                return exists(/databases/$(database)/documents/schools/$(schoolId)/classes/$(classId)/subjects/$(subjectId)/posts/$(postId)/answers/$(request.auth.token.studentId));
+              }
+              function validAnswer(d) {
+                return d.keys().hasOnly(['text', 'authorId', 'authorName', 'role', 'createdAt']) &&
+                       d.text is string && d.text.size() > 0 && d.text.size() <= 1000 &&
+                       d.authorId is string && d.authorName is string && d.authorName.size() <= 80 &&
+                       d.createdAt is string;
+              }
+
+              allow read: if isSchoolActive(schoolId) && (
+                              isPostStaff() ||
+                              (isStudentInClass(schoolId, classId) && (
+                                 answerId == request.auth.token.studentId ||
+                                 !isBlindQuestion() ||
+                                 ownAnswerExists())) ||
+                              (isParentLinkedToSchool(schoolId) &&
+                               isLinkedParentOf(answerId, schoolId))
+                            );
+
+              allow create: if isSchoolActive(schoolId) &&
+                               postData().get('type', '') == 'question' &&
+                               validAnswer(request.resource.data) && (
+                                 (isStudentInClass(schoolId, classId) &&
+                                  answerId == request.auth.token.studentId &&
+                                  request.resource.data.authorId == answerId &&
+                                  request.resource.data.role == 'student') ||
+                                 (isPostStaff() &&
+                                  answerId.matches('t_[A-Za-z0-9]{4,40}') &&
+                                  request.resource.data.role == 'teacher' &&
+                                  (isSchoolAdmin(schoolId) ||
+                                   request.resource.data.authorId == request.auth.token.teacherId))
+                               );
+
+              allow update: if false;
+              allow delete: if isSchoolActive(schoolId) && isPostStaff();
+            }
           }
 
           // ── Lessons (Interactive Slide Decks) ─────────────────────────────
@@ -1019,9 +1320,101 @@ service cloud.firestore {
             // Students are NEVER granted read here, published or not — this
             // is intentionally NOT symmetric with the main lesson doc's
             // published-status carve-out above.
+            // ── Split lesson model: heavy payload (slides/blocks/theme) ──────
+            // lessons/{lessonId}/content/main. Same audience as the parent
+            // lesson doc: staff always; a same-school student only while the
+            // parent lesson is published (one get() on the parent).
+            match /content/{docId} {
+              allow read: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) && (
+                request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] ||
+                get(/databases/$(database)/documents/schools/$(schoolId)/classes/$(classId)/subjects/$(subjectId)/lessons/$(lessonId)).data.status == 'published'
+              );
+              allow create, update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) &&
+                                                request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'];
+            }
+
+            // ── Canvas schema v3: one doc per slide + Document body ──────────
+            // Same audience as content/main: staff always; a same-school
+            // student only while the parent lesson is published. `read`
+            // covers list, which the viewer uses to load all slides at once.
+            match /slides/{slideId} {
+              allow read: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) && (
+                request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] ||
+                get(/databases/$(database)/documents/schools/$(schoolId)/classes/$(classId)/subjects/$(subjectId)/lessons/$(lessonId)).data.status == 'published'
+              );
+              allow create, update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) &&
+                                                request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'];
+            }
+
+            match /doc/{docId} {
+              allow read: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) && (
+                request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] ||
+                get(/databases/$(database)/documents/schools/$(schoolId)/classes/$(classId)/subjects/$(subjectId)/lessons/$(lessonId)).data.status == 'published'
+              );
+              allow create, update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) &&
+                                                request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'];
+            }
+
             match /private/{docId} {
               allow read, create, update, delete: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) &&
                                                       request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'];
+            }
+
+            // ── STEP 3e: worksheet answers (activities inside a Document lesson) ──
+            // lessons/{lessonId}/responses/{studentId}_{objectId}. Answered any
+            // time the lesson is published — no live session. Same student
+            // checks as live answers: own id + real name (students/{id}),
+            // enrolled in this class, fixed field set, size caps, quiz never
+            // student-written (submitLessonQuizAnswer), one poll vote. Board
+            // notes are readable by students enrolled in this class.
+            match /responses/{responseId} {
+              function wsStaff() {
+                return request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'];
+              }
+              function wsLesson() {
+                return get(/databases/$(database)/documents/schools/$(schoolId)/classes/$(classId)/subjects/$(subjectId)/lessons/$(lessonId)).data;
+              }
+              function wsCallerName() {
+                return get(/databases/$(database)/documents/students/$(request.auth.token.studentId)).data.get('name',
+                       get(/databases/$(database)/documents/students/$(request.auth.token.studentId)).data.get('fullName', ''));
+              }
+              function wsValid(d) {
+                return d.keys().hasOnly(['schoolId', 'studentId', 'studentName', 'blockId', 'blockType', 'answerText', 'choiceIds', 'submittedAt']) &&
+                       d.keys().hasAll(['schoolId', 'studentId', 'studentName', 'blockId', 'blockType', 'answerText', 'submittedAt']) &&
+                       d.schoolId == schoolId &&
+                       d.studentId == request.auth.token.studentId &&
+                       d.studentName is string && d.studentName == wsCallerName() &&
+                       d.blockId is string && d.blockId.size() > 0 && d.blockId.size() <= 120 &&
+                       d.blockType in ['poll', 'open_response', 'board'] &&
+                       d.answerText is string && d.answerText.size() <= (d.blockType == 'board' ? 280 : 4000) &&
+                       d.submittedAt is string && d.submittedAt.size() <= 40 &&
+                       (!('choiceIds' in d) || (d.choiceIds is list && d.choiceIds.size() <= 20)) &&
+                       (d.blockType != 'poll' || ('choiceIds' in d && d.choiceIds.size() > 0 && d.answerText.size() == 0)) &&
+                       responseId == d.studentId + '_' + d.blockId;
+              }
+              function wsWriteAllowed() {
+                return isCallerInSchool(schoolId) && isSchoolActive(schoolId) &&
+                       request.auth.token.role == 'student' &&
+                       isStudentInClass(schoolId, classId) &&
+                       wsLesson().status == 'published' && wsLesson().get('format', '') == 'document' &&
+                       wsValid(request.resource.data);
+              }
+
+              allow get: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) && (
+                wsStaff() ||
+                (request.auth.token.role == 'student' && request.auth.token.studentId == responseId.split('_')[0])
+              );
+              allow list: if request.auth != null &&
+                             resource.data.schoolId == request.auth.token.schoolId && (
+                               wsStaff() ||
+                               (resource.data.blockType == 'board' && isStudentInClass(schoolId, classId))
+                             );
+              allow create: if wsWriteAllowed();
+              allow update: if wsWriteAllowed() &&
+                               resource.data.studentId == request.auth.token.studentId &&
+                               !(resource.data.blockType in ['quiz', 'poll']) &&
+                               resource.data.blockType == request.resource.data.blockType &&
+                               resource.data.blockId == request.resource.data.blockId;
             }
 
             // ── PHASE 3: LIVE SESSION ENGINE ──────────────────────────────
@@ -1065,72 +1458,81 @@ service cloud.firestore {
               // this pins both halves of the id to real, validated fields
               // rather than trusting client-supplied path segments alone.
               match /responses/{responseId} {
+                // ── STEP 4b: live response security ─────────────────────
+                // Doc id is always "<studentId>_<blockId>", built from the
+                // written doc's own fields. Quiz responses are written only by
+                // submitLessonQuizAnswer (Admin SDK) and are never writable by
+                // a student, including by re-typing the doc as another widget;
+                // a poll vote is final once cast. Every student write
+                // is capped in size, limited to a fixed field set, carries
+                // the caller's own studentId AND their real name from
+                // students/{studentId}, and requires enrollment in this
+                // class. Shared board notes are readable only by students
+                // enrolled in this class.
+                function isStaff() {
+                  return request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'];
+                }
+                function callerStudent() {
+                  return get(/databases/$(database)/documents/students/$(request.auth.token.studentId)).data;
+                }
+                function callerName() {
+                  return callerStudent().get('name', callerStudent().get('fullName', ''));
+                }
+                function answerCap(t) {
+                  return t == 'board' ? 280 : 4000;
+                }
+                function validStudentResponse(d) {
+                  return d.keys().hasOnly(['schoolId', 'studentId', 'studentName', 'blockId', 'blockType', 'answerText', 'choiceIds', 'submittedAt']) &&
+                         d.keys().hasAll(['schoolId', 'studentId', 'studentName', 'blockId', 'blockType', 'answerText', 'submittedAt']) &&
+                         d.schoolId == schoolId &&
+                         d.studentId == request.auth.token.studentId &&
+                         d.studentName is string && d.studentName == callerName() &&
+                         d.blockId is string && d.blockId.size() > 0 && d.blockId.size() <= 120 &&
+                         d.blockType in ['interactive_prompt', 'collaborative_board', 'poll', 'open_response', 'board'] &&
+                         d.answerText is string && d.answerText.size() <= answerCap(d.blockType) &&
+                         d.submittedAt is string && d.submittedAt.size() <= 40 &&
+                         (!('choiceIds' in d) || (d.choiceIds is list && d.choiceIds.size() <= 20)) &&
+                         // a poll needs at least one choice and no free text
+                         (d.blockType != 'poll' || ('choiceIds' in d && d.choiceIds.size() > 0 && d.answerText.size() == 0)) &&
+                         responseId == d.studentId + '_' + d.blockId;
+                }
+                function studentWriteAllowed() {
+                  return isCallerInSchool(schoolId) && isSchoolActive(schoolId) &&
+                         request.auth.token.role == 'student' &&
+                         isStudentInClass(schoolId, classId) &&
+                         validStudentResponse(request.resource.data) &&
+                         get(/databases/$(database)/documents/schools/$(schoolId)/classes/$(classId)/subjects/$(subjectId)/lessons/$(lessonId)/live_sessions/$(sessionId)).data.endedAt == null;
+                }
+
                 allow get: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) && (
-                  request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] ||
-                  request.auth.token.studentId == responseId.split('_')[0]
+                  isStaff() ||
+                  (request.auth.token.role == 'student' &&
+                   request.auth.token.studentId == responseId.split('_')[0])
                 );
 
-                // LIST: needed on top of the collection-group rule above
-                // (section 2e) — that rule only ever governs a
-                // collectionGroup('responses') query. lessons.js's
-                // subscribeToLiveResponses() does NOT do a collection-group
-                // query; it opens a plain onSnapshot(collection(...)) scoped
-                // to this exact nested path (schools/.../lessons/{lessonId}/
-                // live_sessions/{sessionId}/responses), which is a `list`
-                // against THIS match block, not the collection-group one.
-                // Without an explicit `allow list` here, that listener was
-                // denied outright for every caller, teacher included — found
-                // via live end-to-end testing.
-                //
-                // CORRECTED (second live-test pass): a first attempt at this
-                // rule gated on isCallerInSchool(schoolId) && isSchoolActive
-                // (schoolId), same as every other rule in this nested match
-                // block. That's wrong specifically for a LIST rule —
-                // isSchoolActive() calls get()/exists(), and per this file's
-                // own "queries are all or nothing" reasoning (see section 2b/
-                // 2d/2e's comments on why the exam_submissions and
-                // live_sessions/responses COLLECTION-GROUP rules never call
-                // get()/exists()), ANY get()/exists() call anywhere in a list
-                // rule's evaluation makes the whole query unprovable and
-                // Firestore denies it outright — confirmed live: a raw
-                // getDocs() on this exact path was denied even though the
-                // role/blockType logic below was already correct. GET/CREATE/
-                // UPDATE above are unaffected (per-document rules can call
-                // get() safely — that's a single lookup for a specific
-                // resource, not a query Firestore has to prove ahead of time),
-                // so only this LIST rule needed to change. Fixed the same way
-                // section 2e's collection-group rule already does it:
-                // schoolId is denormalized onto every response doc by
-                // saveLiveResponse() (lessons.js) specifically so this check
-                // never needs a get() lookup — compare resource.data.schoolId
-                // directly against the caller's own token instead.
+                // LIST: staff see everything; a student may list only the
+                // shared board notes, and only when enrolled in this class.
+                // The query must filter on schoolId and blockType (it does —
+                // lessons.js subscribeToLiveResponses()). get() calls on
+                // fixed paths (the caller's own student doc) are allowed in
+                // list rules; only conditions on resource.data must be
+                // provable from the query's filters.
                 allow list: if request.auth != null &&
                                resource.data.schoolId == request.auth.token.schoolId && (
-                                 request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] ||
-                                 resource.data.blockType == 'collaborative_board'
+                                 isStaff() ||
+                                 (resource.data.blockType in ['collaborative_board', 'board'] &&
+                                  isStudentInClass(schoolId, classId))
                                );
 
-                // LIVE SESSION LOCKDOWN: a student may only create/update a
-                // response while the ENCLOSING live_sessions/{sessionId} doc
-                // is still active (endedAt == null). This is a per-document
-                // create/update rule, not a list — per this match block's
-                // own comment above ("GET/CREATE/UPDATE above are
-                // unaffected... a single lookup for a specific resource, not
-                // a query Firestore has to prove ahead of time"), a get()
-                // call here is safe and costs nothing extra for query
-                // provability. Without this, the viewer.js UI lock (see
-                // isSessionLive() in assets/js/lessons/viewer.js) is only a
-                // convenience — a student could still write a late response
-                // straight through the SDK/console after the teacher ends
-                // the session, bypassing the disabled button entirely. This
-                // is what actually prevents that write, not just the UI.
-                allow create, update: if isCallerInSchool(schoolId) && isSchoolActive(schoolId) &&
-                                          request.auth.token.role == 'student' &&
-                                          request.resource.data.studentId == request.auth.token.studentId &&
-                                          request.resource.data.blockId is string &&
-                                          request.resource.data.blockType in ['interactive_prompt', 'collaborative_board'] &&
-                                          responseId == request.resource.data.studentId + '_' + request.resource.data.blockId &&
-                                          get(/databases/$(database)/documents/schools/$(schoolId)/classes/$(classId)/subjects/$(subjectId)/lessons/$(lessonId)/live_sessions/$(sessionId)).data.endedAt == null;
+                allow create: if studentWriteAllowed();
+
+                // UPDATE: own answer, same widget type. Quiz and poll
+                // answers are final once written (one vote / one attempt).
+                allow update: if studentWriteAllowed() &&
+                                 resource.data.studentId == request.auth.token.studentId &&
+                                 !(resource.data.blockType in ['quiz', 'poll']) &&
+                                 resource.data.blockType == request.resource.data.blockType &&
+                                 resource.data.blockId == request.resource.data.blockId;
               }
             }
           }
@@ -1356,6 +1758,32 @@ service cloud.firestore {
     // fallback.
     match /work_answer_keys/{assignmentId} {
       allow read, delete: if false;
+
+      // ── PHASE 4 STEP 4: lesson quiz widget keys ──────────────────────────
+      // Doc id = {lessonId}_{objectId}, kind 'lesson_quiz'. Staff of the
+      // owning school may read (the editor shows which option is correct)
+      // and write; students NEVER read — submitLessonQuizAnswer grades with
+      // the Admin SDK. get() on a missing key is denied (resource is null),
+      // which the editor treats as "no correct answer set yet".
+      allow get: if request.auth != null &&
+                    request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] &&
+                    resource.data.kind == 'lesson_quiz' &&
+                    resource.data.schoolId == request.auth.token.schoolId;
+      allow create, update: if request.auth != null &&
+                               request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] &&
+                               request.resource.data.kind == 'lesson_quiz' &&
+                               request.resource.data.schoolId == request.auth.token.schoolId &&
+                               isSchoolActive(request.resource.data.schoolId) &&
+                               assignmentId == request.resource.data.lessonId + '_' + request.resource.data.objectId &&
+                               request.resource.data.correct is list &&
+                               request.resource.data.correct.size() <= 20 &&
+                               request.resource.data.keys().hasOnly(['kind', 'schoolId', 'lessonId', 'objectId', 'correct', 'updatedAt']) &&
+                               (resource == null || (resource.data.kind == 'lesson_quiz' && resource.data.schoolId == request.auth.token.schoolId));
+      allow delete: if request.auth != null &&
+                       request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] &&
+                       resource.data.kind == 'lesson_quiz' &&
+                       resource.data.schoolId == request.auth.token.schoolId;
+
       // LIFT & SHIFT REFACTOR (Subjects Hub Universal Builder): update is now
       // allowed under the IDENTICAL conditions as create — same role/schoolId/
       // isSchoolActive/shape gate, just also evaluated when the doc already

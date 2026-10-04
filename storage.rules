@@ -54,6 +54,29 @@ service firebase.storage {
                       request.resource.size < 25 * 1024 * 1024;
     }
 
+    // Lesson canvas media (Phase 4 step 4 — tools/image.js, importStockImage).
+    // Images only, written as {objectId}.webp (or .jpg where the browser can't
+    // encode WebP). Read: anyone signed in to the SAME school (students view
+    // published lessons; download URLs carry their own token as well). Write /
+    // delete: teacher/admin of that school, images only, 15MB cap. Stock
+    // photos are written by importStockImage through the Admin SDK, which
+    // bypasses these rules by design.
+    match /schools/{schoolId}/lessons/{lessonId}/media/{fileName} {
+      allow read: if request.auth != null &&
+                     request.auth.token.schoolId == schoolId;
+
+      allow create, update: if request.auth != null &&
+                               request.auth.token.schoolId == schoolId &&
+                               request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'] &&
+                               fileName.matches('^[A-Za-z0-9_-]+[.](webp|jpg)$') &&
+                               request.resource.contentType.matches('image/(webp|jpeg)') &&
+                               request.resource.size < 15 * 1024 * 1024;
+
+      allow delete: if request.auth != null &&
+                       request.auth.token.schoolId == schoolId &&
+                       request.auth.token.role in ['teacher', 'super_admin', 'sub_admin'];
+    }
+
     // ── Deny everything else ────────────────────────────────────────────
     match /{allPaths=**} {
       allow read, write: if false;

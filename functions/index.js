@@ -8,6 +8,24 @@ const { sendMail, GMAIL_APP_PASSWORD } = require('./mailer');
 admin.initializeApp();
 const db = admin.firestore();
 
+// ── Environment-aware site URL for email links (2026-10-04) ──────────────────
+// Every link and logo in outgoing email uses SITE_URL, so mail sent by the dev
+// project points at the dev site (a reset link from dev now opens the dev
+// reset page, where its token actually exists) and mail from production
+// points at connectusonline.org. The project id comes from the Functions
+// runtime; anything unrecognised falls back to production, the old behaviour.
+const PROD_SITE_URL = 'https://connectusonline.org';
+const SITE_URLS = {
+    'dev-school-grade-tracker': 'https://dev-school-grade-tracker.web.app',
+    'school-grade-tracker': PROD_SITE_URL,
+};
+function currentProjectId() {
+    if (process.env.GCLOUD_PROJECT) return process.env.GCLOUD_PROJECT;
+    if (process.env.GCP_PROJECT) return process.env.GCP_PROJECT;
+    try { return JSON.parse(process.env.FIREBASE_CONFIG || '{}').projectId || ''; } catch (e) { return ''; }
+}
+const SITE_URL = SITE_URLS[currentProjectId()] || PROD_SITE_URL;
+
 // Admin portal: toLowerCase().trim() before hashing
 function sha256Lower(text) {
     return crypto.createHash('sha256').update(String(text).toLowerCase().trim(), 'utf8').digest('hex');
@@ -796,16 +814,372 @@ exports.mintParentToken = onCall({ region: 'us-central1' }, async (request) => {
     const linkedSchoolIds = [...new Set(linkedStudents.map(l => l.schoolId).filter(Boolean))];
     // --- END: linkedSchoolIds ---
 
+    // --- START: linkedClassIds ---
+    // Flat, deduplicated classIds of the linked children, so firestore.rules
+    // can scope Class Stream reads to a child's class (posts rule). Only a
+    // child whose current school still matches the link counts. Claims are
+    // fixed at sign-in: a class change shows up on the parent's next login.
+    // (Custom claims must stay under 1000 bytes in total.)
+    const studentRefs = linkedStudents
+        .filter(l => l && l.studentId)
+        .map(l => db.collection('students').doc(String(l.studentId)));
+    const studentSnaps = studentRefs.length ? await db.getAll(...studentRefs) : [];
+    const linkedClassIds = [...new Set(
+        studentSnaps
+            .filter(snap => snap.exists)
+            .map(snap => {
+                const d = snap.data();
+                const link = linkedStudents.find(l => l.studentId === snap.id);
+                return (link && d.currentSchoolId === link.schoolId && d.classId) ? d.classId : null;
+            })
+            .filter(Boolean)
+    )];
+    // --- END: linkedClassIds ---
+
     const token = await mintToken(normalizedId, {
         role:     'parent',
         parentId: normalizedId,
         linkedStudents,
         linkedSchoolIds,
+        linkedClassIds,
     });
 
     return { token };
 });
 // --- END: mintParentToken ---
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PARENT SELF-SERVICE (Module 2)
+//
+// parents/{parentId} is client-read-only (firestore.rules: no client
+// create/update/delete), so a parent changing their own PIN or contact info
+// goes through these Admin SDK callables. Identity comes ONLY from the
+// verified token minted by mintParentToken (role 'parent', parentId claim) —
+// never from request.data — so a parent can only ever touch their own record.
+// ═══════════════════════════════════════════════════════════════════════════════
+const PARENT_PIN_MAX_FAILURES = 5;
+const PARENT_PIN_LOCK_MINUTES = 15;
+
+function requireParentCaller(request) {
+    const token = request.auth && request.auth.token;
+    if (!token || token.role !== 'parent' || !token.parentId) {
+        throw new HttpsError('permission-denied', 'Parent sign-in required.');
+    }
+    if (request.auth.uid !== token.parentId) {
+        throw new HttpsError('permission-denied', 'Session does not match this parent account.');
+    }
+    return token.parentId;
+}
+
+function isWeakPin(pin) {
+    if (/^(\d)\1+$/.test(pin)) return true;                       // 1111, 000000
+    const asc = '0123456789', desc = '9876543210';
+    return asc.includes(pin) || desc.includes(pin);                // 1234, 4321, 012345
+}
+
+// --- START: changeParentPin ---
+exports.changeParentPin = onCall({ region: 'us-central1' }, async (request) => {
+    const parentId = requireParentCaller(request);
+    const currentPin = String((request.data && request.data.currentPin) || '').trim();
+    const newPin     = String((request.data && request.data.newPin) || '').trim();
+
+    if (!currentPin || !newPin) {
+        throw new HttpsError('invalid-argument', 'Current PIN and new PIN are required.');
+    }
+    if (!/^\d{4,6}$/.test(newPin)) {
+        throw new HttpsError('invalid-argument', 'New PIN must be 4 to 6 digits.');
+    }
+    if (newPin === currentPin) {
+        throw new HttpsError('invalid-argument', 'New PIN must be different from your current PIN.');
+    }
+    if (isWeakPin(newPin)) {
+        throw new HttpsError('invalid-argument', 'That PIN is too easy to guess. Avoid repeated or sequential digits.');
+    }
+
+    const parentRef = db.collection('parents').doc(parentId);
+
+    // Transaction so the failure counter can't be raced by parallel calls.
+    const outcome = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(parentRef);
+        if (!snap.exists) throw new HttpsError('not-found', 'Parent account not found.');
+        const data = snap.data();
+        if (data.archived) throw new HttpsError('permission-denied', 'Account archived. Contact your school administrator.');
+
+        const now = Date.now();
+        const lockedUntil = data.pinChangeLockedUntil ? Date.parse(data.pinChangeLockedUntil) : 0;
+        if (lockedUntil && lockedUntil > now) {
+            const mins = Math.ceil((lockedUntil - now) / 60000);
+            throw new HttpsError('resource-exhausted', `Too many incorrect attempts. Try again in ${mins} minute${mins === 1 ? '' : 's'}.`);
+        }
+
+        if (data.pin !== sha256Trim(currentPin)) {
+            const failures = (Number(data.pinChangeFailures) || 0) + 1;
+            const updates = { pinChangeFailures: failures };
+            if (failures >= PARENT_PIN_MAX_FAILURES) {
+                updates.pinChangeFailures = 0;
+                updates.pinChangeLockedUntil = new Date(now + PARENT_PIN_LOCK_MINUTES * 60000).toISOString();
+            }
+            tx.update(parentRef, updates);
+            return { ok: false, remaining: Math.max(0, PARENT_PIN_MAX_FAILURES - failures) };
+        }
+
+        const nowIso = new Date(now).toISOString();
+        tx.update(parentRef, {
+            pin: sha256Trim(newPin),
+            pinUpdatedAt: nowIso,
+            pinChangeFailures: 0,
+            pinChangeLockedUntil: null,
+            updatedAt: nowIso,
+        });
+        return { ok: true };
+    });
+
+    // Thrown outside the transaction so the failure-counter write commits.
+    if (!outcome.ok) {
+        throw new HttpsError('unauthenticated', outcome.remaining > 0
+            ? `Current PIN is incorrect. ${outcome.remaining} attempt${outcome.remaining === 1 ? '' : 's'} left.`
+            : `Current PIN is incorrect. PIN changes are locked for ${PARENT_PIN_LOCK_MINUTES} minutes.`);
+    }
+
+    console.log(`[changeParentPin] PIN changed for ${parentId}`);
+    return { success: true };
+});
+// --- END: changeParentPin ---
+
+// --- START: updateMyParentContact ---
+// Parent-initiated contact edit. Email is deduplicated per school
+// (parent_emails/{schoolId}_{email}, the same index linkOrCreateParent and
+// updateParentContact maintain), so an email change repoints the index for
+// EVERY school this parent is linked at, atomically.
+exports.updateMyParentContact = onCall({ region: 'us-central1' }, async (request) => {
+    const parentId = requireParentCaller(request);
+    const { name, email, phone } = request.data || {};
+
+    const updates = {};
+    if (typeof name === 'string') {
+        const n = name.trim();
+        if (!n) throw new HttpsError('invalid-argument', 'Name cannot be empty.');
+        if (n.length > 80) throw new HttpsError('invalid-argument', 'Name is too long.');
+        updates.name = n;
+    }
+    if (typeof phone === 'string') {
+        const ph = phone.trim();
+        if (ph && !/^[0-9+()\-.\s]{5,25}$/.test(ph)) throw new HttpsError('invalid-argument', 'Enter a valid phone number.');
+        updates.phone = ph;
+    }
+    let newEmail = null;
+    if (typeof email === 'string' && email.trim()) {
+        newEmail = normalizeParentEmail(email);
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail) || newEmail.length > 120) {
+            throw new HttpsError('invalid-argument', 'Enter a valid email address.');
+        }
+        updates.email = newEmail;
+    }
+    if (!Object.keys(updates).length) {
+        throw new HttpsError('invalid-argument', 'Nothing to update.');
+    }
+
+    const parentRef = db.collection('parents').doc(parentId);
+
+    await db.runTransaction(async (tx) => {
+        const snap = await tx.get(parentRef);
+        if (!snap.exists) throw new HttpsError('not-found', 'Parent account not found.');
+        const data = snap.data();
+        if (data.archived) throw new HttpsError('permission-denied', 'Account archived. Contact your school administrator.');
+
+        const oldEmail = data.email || '';
+        const schoolIds = [...new Set((Array.isArray(data.linkedStudents) ? data.linkedStudents : []).map(l => l.schoolId).filter(Boolean))];
+        const nowIso = new Date().toISOString();
+
+        if (newEmail && newEmail !== oldEmail && schoolIds.length) {
+            const newRefs = schoolIds.map(sid => db.collection('parent_emails').doc(`${sid}_${newEmail}`));
+            const oldRefs = oldEmail ? schoolIds.map(sid => db.collection('parent_emails').doc(`${sid}_${oldEmail}`)) : [];
+            const newSnaps = await Promise.all(newRefs.map(r => tx.get(r)));
+            const oldSnaps = await Promise.all(oldRefs.map(r => tx.get(r)));
+
+            if (newSnaps.some(s => s.exists && s.data().parentId !== parentId)) {
+                throw new HttpsError('already-exists', 'That email is already used by another parent account at your child\'s school.');
+            }
+            newRefs.forEach(r => tx.set(r, { parentId, createdAt: nowIso }));
+            oldSnaps.forEach((s, i) => { if (s.exists && s.data().parentId === parentId) tx.delete(oldRefs[i]); });
+        }
+
+        tx.update(parentRef, { ...updates, updatedAt: nowIso });
+    });
+
+    return { success: true, ...updates };
+});
+// --- END: updateMyParentContact ---
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FUNCTION: permanentDeleteStudent
+//
+// Hard-deletes a student record and its grades + attendance subcollections
+// via the Admin SDK. Grade deletes are blocked client-side by firestore.rules
+// for released students and locked semesters, so the Archives "Delete"
+// action must come through here. Caller must be an admin of the school the
+// student is at / was archived from, or a teacher who owns the student or is
+// assigned to the student's class. Active students must be archived first.
+// ═══════════════════════════════════════════════════════════════════════════════
+// --- START: permanentDeleteStudent ---
+exports.permanentDeleteStudent = onCall({ region: 'us-central1' }, async (request) => {
+    if (!request.auth) {
+        throw new HttpsError('unauthenticated', 'Authentication required.');
+    }
+
+    const { role, schoolId, teacherId } = request.auth.token || {};
+    if (!schoolId || !['super_admin', 'sub_admin', 'teacher'].includes(role)) {
+        throw new HttpsError('permission-denied', 'Staff only.');
+    }
+
+    const studentId = String((request.data && request.data.studentId) || '').trim();
+    if (!studentId) {
+        throw new HttpsError('invalid-argument', 'studentId is required.');
+    }
+
+    const schoolSnap = await db.collection('schools').doc(schoolId).get();
+    if (!schoolSnap.exists || schoolSnap.data().isVerified !== true) {
+        throw new HttpsError('failed-precondition', 'School is not active.');
+    }
+
+    const studentRef  = db.collection('students').doc(studentId);
+    const studentSnap = await studentRef.get();
+    if (!studentSnap.exists) {
+        throw new HttpsError('not-found', 'Student not found.');
+    }
+
+    const s           = studentSnap.data();
+    const current     = s.currentSchoolId || '';
+    const archivedIds = Array.isArray(s.archivedSchoolIds) ? s.archivedSchoolIds : [];
+
+    // Tenant check: at this school, or archived from it — never another school's student.
+    if (current && current !== schoolId) {
+        throw new HttpsError('permission-denied', 'Student belongs to another school.');
+    }
+    if (!current && !archivedIds.includes(schoolId)) {
+        throw new HttpsError('permission-denied', 'Student was not archived from this school.');
+    }
+    if (current === schoolId && s.enrollmentStatus === 'Active') {
+        throw new HttpsError('failed-precondition', 'Archive the student before deleting.');
+    }
+
+    if (role === 'teacher') {
+        let authorized = !!(teacherId && s.teacherId && s.teacherId === teacherId);
+        if (!authorized && s.classId) {
+            const classSnap = await db.doc(`schools/${schoolId}/classes/${s.classId}`).get();
+            authorized = classSnap.exists &&
+                         Array.isArray(classSnap.data().teacherIds) &&
+                         classSnap.data().teacherIds.includes(teacherId);
+        }
+        if (!authorized) {
+            throw new HttpsError('permission-denied', 'You are not assigned to this student.');
+        }
+    }
+
+    await db.recursiveDelete(studentRef.collection('grades'));
+    await db.recursiveDelete(studentRef.collection('attendance'));
+    await studentRef.delete();
+
+    console.log(`[permanentDeleteStudent] ${studentId} deleted by ${role}:${teacherId || request.auth.uid} @ ${schoolId}`);
+    return { ok: true, studentId };
+});
+// --- END: permanentDeleteStudent ---
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FUNCTION: permanentDeleteTeacher
+//
+// Admin-only. Removes THIS school's footprint from an archived teacher in the
+// National Teacher Registry: this school's evaluations of the teacher, this
+// school's teachingHistory snapshots, its entry in archivedSchoolIds, and any
+// stale teacherIds reference on this school's classes. Other schools' history
+// is never touched. If no school remains anywhere on the record (not active
+// anywhere, not archived anywhere, no other history), the registry record,
+// its remaining evaluations and the teacher's Auth login are deleted too.
+// Grades the teacher entered belong to students and are kept.
+// ═══════════════════════════════════════════════════════════════════════════════
+// --- START: permanentDeleteTeacher ---
+exports.permanentDeleteTeacher = onCall({ region: 'us-central1' }, async (request) => {
+    if (!request.auth) {
+        throw new HttpsError('unauthenticated', 'Authentication required.');
+    }
+    const { role, schoolId } = request.auth.token || {};
+    if (!schoolId || !['super_admin', 'sub_admin'].includes(role)) {
+        throw new HttpsError('permission-denied', 'Admins only.');
+    }
+
+    const teacherId = String((request.data && request.data.teacherId) || '').trim();
+    if (!teacherId) {
+        throw new HttpsError('invalid-argument', 'teacherId is required.');
+    }
+
+    const schoolSnap = await db.collection('schools').doc(schoolId).get();
+    if (!schoolSnap.exists || schoolSnap.data().isVerified !== true) {
+        throw new HttpsError('failed-precondition', 'School is not active.');
+    }
+
+    const teacherRef  = db.collection('teachers').doc(teacherId);
+    const teacherSnap = await teacherRef.get();
+    if (!teacherSnap.exists) {
+        throw new HttpsError('not-found', 'Teacher not found.');
+    }
+    const t           = teacherSnap.data();
+    const current     = t.currentSchoolId || '';
+    const archivedIds = Array.isArray(t.archivedSchoolIds) ? t.archivedSchoolIds : [];
+
+    if (current === schoolId) {
+        throw new HttpsError('failed-precondition', 'Archive the teacher before deleting.');
+    }
+    if (!archivedIds.includes(schoolId)) {
+        throw new HttpsError('permission-denied', 'Teacher was not archived from this school.');
+    }
+
+    // 1. This school's evaluations of the teacher.
+    const evalSnap = await teacherRef.collection('evaluations').where('schoolId', '==', schoolId).get();
+    let batch = db.batch();
+    let ops = 0;
+    for (const d of evalSnap.docs) {
+        batch.delete(d.ref);
+        if (++ops === 450) { await batch.commit(); batch = db.batch(); ops = 0; }
+    }
+
+    // 2. Stale class membership at this school (archive should already have
+    //    removed it; this is a safety net).
+    const classSnap = await db.collection('schools').doc(schoolId).collection('classes')
+        .where('teacherIds', 'array-contains', teacherId).get();
+    for (const d of classSnap.docs) {
+        batch.update(d.ref, { teacherIds: FieldValue.arrayRemove(teacherId) });
+        if (++ops === 450) { await batch.commit(); batch = db.batch(); ops = 0; }
+    }
+    if (ops) await batch.commit();
+
+    // 3. Decide: strip this school, or remove the record entirely.
+    const history          = Array.isArray(t.teachingHistory) ? t.teachingHistory : [];
+    const remainingHistory = history.filter(h => h && h.schoolId !== schoolId);
+    const remainingArchive = archivedIds.filter(id => id !== schoolId);
+    const fullyRemoved     = !current && remainingArchive.length === 0 && remainingHistory.length === 0;
+
+    if (fullyRemoved) {
+        await db.recursiveDelete(teacherRef.collection('evaluations'));
+        await teacherRef.delete();
+        if (t.email) {
+            await db.collection('registered_emails').doc(String(t.email).toLowerCase().trim()).delete().catch(() => {});
+        }
+        try {
+            await admin.auth().deleteUser(teacherId);
+        } catch (e) {
+            if (e.code !== 'auth/user-not-found') console.warn(`[permanentDeleteTeacher] auth delete ${teacherId}:`, e.message);
+        }
+    } else {
+        await teacherRef.update({
+            archivedSchoolIds: remainingArchive,
+            teachingHistory:   remainingHistory,
+        });
+    }
+
+    console.log(`[permanentDeleteTeacher] ${teacherId} ${fullyRemoved ? 'fully deleted' : 'removed from school'} by ${role}:${request.auth.uid} @ ${schoolId}`);
+    return { ok: true, teacherId, fullyRemoved };
+});
+// --- END: permanentDeleteTeacher ---
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FUNCTION 4: mintHQToken
@@ -1011,7 +1385,7 @@ exports.cancelPayPalSubscription = onCall({ region: 'us-central1', secrets: [GMA
               </p>
 
               <div style="text-align:center;margin-bottom:28px;">
-                <a href="https://connectusonline.org/pricing.html" style="display:inline-block;background:linear-gradient(135deg,#2563eb,#0ea5e9);color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;padding:14px 32px;border-radius:12px;box-shadow:0 4px 14px rgba(37,99,235,0.3);">
+                <a href="${SITE_URL}/pricing.html" style="display:inline-block;background:linear-gradient(135deg,#2563eb,#0ea5e9);color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;padding:14px 32px;border-radius:12px;box-shadow:0 4px 14px rgba(37,99,235,0.3);">
                   Resubscribe &rarr;
                 </a>
               </div>
@@ -1118,7 +1492,7 @@ function credentialRow(label, value, mono = false) {
     </tr>`;
 }
 
-const LOGO_URL = 'https://connectusonline.org/assets/images/logo.png';
+const LOGO_URL = `${SITE_URL}/assets/images/logo.png`;
 
 
 // --- START: onSchoolCreated ---
@@ -1133,7 +1507,7 @@ exports.onSchoolCreated = onDocumentCreated({ document: "schools/{schoolId}", se
     const adminId    = data.superAdminId  || 'N/A';
     const schoolName = data.schoolName    || 'Your School';
     const firstName  = data.contactName   ? data.contactName.split(' ')[0] : 'Administrator';
-    const loginLink  = 'https://connectusonline.org/admin/login.html';
+    const loginLink  = `${SITE_URL}/admin/login.html`;
 
     const body = `
       <h2 style="margin:0 0 8px;font-size:26px;font-weight:900;color:#0f172a;text-align:center;">Welcome to ConnectUs!</h2>
@@ -1228,7 +1602,7 @@ exports.onTeacherCreated = onDocumentCreated({ document: "teachers/{teacherId}",
     // side-channel field, which is deleted below immediately after the
     // email is queued.
     const pin       = data._tempPlaintextPin || 'See your administrator';
-    const loginLink = 'https://connectusonline.org/teacher/login.html';
+    const loginLink = `${SITE_URL}/teacher/login.html`;
 
     const body = `
       <h2 style="margin:0 0 8px;font-size:26px;font-weight:900;color:#0f172a;text-align:center;">You're on ConnectUs!</h2>
@@ -1330,7 +1704,7 @@ exports.onStudentCreated = onDocumentCreated({ document: "students/{studentId}",
     // only in this short-lived side-channel field, which is deleted below
     // immediately after the email is queued.
     const pin       = data._tempPlaintextPin || 'See your administrator';
-    const loginLink = 'https://connectusonline.org/student/login.html';
+    const loginLink = `${SITE_URL}/student/login.html`;
 
     const body = `
       <h2 style="margin:0 0 8px;font-size:26px;font-weight:900;color:#0f172a;text-align:center;">Welcome to ConnectUs!</h2>
@@ -1422,7 +1796,7 @@ exports.onParentCreated = onDocumentCreated({ document: "parents/{parentId}", se
     // this short-lived side-channel field, which is deleted below
     // immediately after the email is queued, same as every other role.
     const pin       = data._tempPlaintextPin || 'See your school administrator';
-    const loginLink = 'https://connectusonline.org/student/login.html';
+    const loginLink = `${SITE_URL}/student/login.html`;
 
     const body = `
       <h2 style="margin:0 0 8px;font-size:26px;font-weight:900;color:#0f172a;text-align:center;">Welcome to ConnectUs!</h2>
@@ -1516,7 +1890,7 @@ exports.onQuoteRequestCreated = onDocumentCreated({ document: "quote_requests/{r
       <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0;">
         <tr>
           <td style="text-align: center; padding: 40px 20px 10px 20px;">
-            <img src="https://connectusonline.org/assets/images/logo.png" alt="ConnectUs Logo" style="height: 55px; display: block; margin: 0 auto;">
+            <img src="${SITE_URL}/assets/images/logo.png" alt="ConnectUs Logo" style="height: 55px; display: block; margin: 0 auto;">
           </td>
         </tr>
         <tr>
@@ -1566,7 +1940,7 @@ exports.onQuoteRequestCreated = onDocumentCreated({ document: "quote_requests/{r
       <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0;">
         <tr>
           <td style="text-align: center; padding: 40px 20px 10px 20px;">
-            <img src="https://connectusonline.org/assets/images/logo.png" alt="ConnectUs Logo" style="height: 45px; display: block; margin: 0 auto;">
+            <img src="${SITE_URL}/assets/images/logo.png" alt="ConnectUs Logo" style="height: 45px; display: block; margin: 0 auto;">
           </td>
         </tr>
         <tr>
@@ -1625,7 +1999,7 @@ exports.onQuoteApproved = onDocumentUpdated({ document: "quote_requests/{reqId}"
     if (!justApproved && !manualResend) return null;
     if (!after.workEmail) return null;
 
-    const onboardingLink = `https://connectusonline.org/onboarding/onboarding.html?req=${reqId}`;
+    const onboardingLink = `${SITE_URL}/onboarding/onboarding.html?req=${reqId}`;
 
     const approvedHtml = `
     <!DOCTYPE html>
@@ -1640,7 +2014,7 @@ exports.onQuoteApproved = onDocumentUpdated({ document: "quote_requests/{reqId}"
                         <tr>
                             <td style="padding: 40px 40px 30px;">
                                 <div style="text-align: center; margin-bottom: 30px;">
-                                    <img src="https://connectusonline.org/assets/images/logo.png" alt="ConnectUs Logo" style="width: 70px; height: auto;">
+                                    <img src="${SITE_URL}/assets/images/logo.png" alt="ConnectUs Logo" style="width: 70px; height: auto;">
                                 </div>
                                 <h2 style="margin: 0 0 20px; font-size: 22px; font-weight: 800; color: #0f172a; text-align: center;">Account Approved!</h2>
                                 <p style="margin: 0 0 15px; font-size: 15px; line-height: 1.6; color: #475569;">Hello <strong>${after.firstName || 'there'}</strong>,</p>
@@ -1690,7 +2064,7 @@ exports.onPinResetRequested = onDocumentCreated({ document: "reset_vault/{tokenI
 
     if (!data || !data.email) return null;
 
-    const resetLink     = `https://connectusonline.org/onboarding/reset-pin.html?token=${tokenId}`;
+    const resetLink     = `${SITE_URL}/onboarding/reset-pin.html?token=${tokenId}`;
     const userName      = data.name      || 'ConnectUs User';
     const userRoleLabel = data.roleLabel || data.userType || 'Account';
 
@@ -1707,7 +2081,7 @@ exports.onPinResetRequested = onDocumentCreated({ document: "reset_vault/{tokenI
                         <tr>
                             <td style="padding: 40px 40px 30px;">
                                 <div style="text-align: center; margin-bottom: 30px;">
-                                    <img src="https://connectusonline.org/assets/images/logo.png" alt="ConnectUs Logo" style="width: 70px; height: auto;">
+                                    <img src="${SITE_URL}/assets/images/logo.png" alt="ConnectUs Logo" style="width: 70px; height: auto;">
                                 </div>
                                 <h2 style="margin: 0 0 20px; font-size: 22px; font-weight: 800; color: #1e3a8a; text-align: center;">Reset Your PIN</h2>
                                 <p style="margin: 0 0 15px; font-size: 15px; line-height: 1.6; color: #475569;">Hello <strong>${userName}</strong>,</p>
@@ -1739,7 +2113,7 @@ exports.onPinResetRequested = onDocumentCreated({ document: "reset_vault/{tokenI
             subject: "ConnectUs: Reset Your PIN",
             html: resetHtml
         });
-        console.log(`PIN Reset email sent successfully for Vault ID: ${tokenId}`);
+        console.log(`PIN Reset email sent successfully for Vault ID: ${tokenId} — link: ${SITE_URL}/onboarding/reset-pin.html?token=…`);
     } catch (error) {
         console.error(`Failed to send PIN Reset email for ${tokenId}:`, error);
     }
@@ -2049,7 +2423,7 @@ exports.onPayPalWebhook = onRequest({ region: 'us-central1', minInstances: 1, se
                     <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#fff;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06);">
                       <tr><td height="6" style="background:linear-gradient(to right,#10b981,#0ea5e9,#3b82f6);"></td></tr>
                       <tr><td style="padding:40px 40px 30px;text-align:center;">
-                        <img src="https://connectusonline.org/assets/images/logo.png" style="height:48px;margin-bottom:24px;display:block;margin-left:auto;margin-right:auto;">
+                        <img src="${SITE_URL}/assets/images/logo.png" style="height:48px;margin-bottom:24px;display:block;margin-left:auto;margin-right:auto;">
                         <h2 style="color:#0f172a;font-size:22px;font-weight:800;margin:0 0 16px;">Access Restored!</h2>
                         <p style="color:#475569;font-size:15px;line-height:1.6;margin:0 0 20px;">
                           Your ConnectUs subscription for <strong>${schoolName}</strong> has been reactivated successfully.
@@ -2078,7 +2452,7 @@ exports.onPayPalWebhook = onRequest({ region: 'us-central1', minInstances: 1, se
                           </tr>
                         </table>
 
-                        <a href="https://connectusonline.org/admin/login.html" style="display:inline-block;background:linear-gradient(135deg,#10b981,#0ea5e9);color:#fff;text-decoration:none;font-size:15px;font-weight:800;padding:14px 28px;border-radius:12px;box-shadow:0 4px 14px rgba(16,185,129,0.3);">
+                        <a href="${SITE_URL}/admin/login.html" style="display:inline-block;background:linear-gradient(135deg,#10b981,#0ea5e9);color:#fff;text-decoration:none;font-size:15px;font-weight:800;padding:14px 28px;border-radius:12px;box-shadow:0 4px 14px rgba(16,185,129,0.3);">
                           Log In to Your Portal &rarr;
                         </a>
                         <p style="color:#64748b;font-size:13px;margin:24px 0 0;line-height:1.6;">
@@ -2176,7 +2550,7 @@ exports.onPayPalWebhook = onRequest({ region: 'us-central1', minInstances: 1, se
                         <tr><td height="6" style="background:linear-gradient(to right,#10b981,#0ea5e9,#3b82f6);"></td></tr>
                         <tr>
                           <td style="text-align:center;padding:36px 40px 20px;">
-                            <img src="https://connectusonline.org/assets/images/logo.png" alt="ConnectUs" style="height:48px;display:block;margin:0 auto;">
+                            <img src="${SITE_URL}/assets/images/logo.png" alt="ConnectUs" style="height:48px;display:block;margin:0 auto;">
                           </td>
                         </tr>
                         <tr>
@@ -2222,7 +2596,7 @@ exports.onPayPalWebhook = onRequest({ region: 'us-central1', minInstances: 1, se
                             </table>
                             <p style="margin:0;font-size:13px;color:#64748b;line-height:1.6;">
                               You can view and manage this subscriber in the
-                              <a href="https://connectusonline.org/platform_dashboard/approvals/approvals.html" style="color:#2563eb;font-weight:800;">HQ Approvals Dashboard</a>.
+                              <a href="${SITE_URL}/platform_dashboard/approvals/approvals.html" style="color:#2563eb;font-weight:800;">HQ Approvals Dashboard</a>.
                             </p>
                           </td>
                         </tr>
@@ -2288,7 +2662,7 @@ exports.onPayPalWebhook = onRequest({ region: 'us-central1', minInstances: 1, se
                         <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#fff;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06);">
                           <tr><td height="6" style="background:linear-gradient(to right,#ef4444,#f97316);"></td></tr>
                           <tr><td style="padding:40px 40px 30px;text-align:center;">
-                            <img src="https://connectusonline.org/assets/images/logo.png" style="height:48px;margin-bottom:24px;display:block;margin-left:auto;margin-right:auto;">
+                            <img src="${SITE_URL}/assets/images/logo.png" style="height:48px;margin-bottom:24px;display:block;margin-left:auto;margin-right:auto;">
                             <h2 style="color:#0f172a;font-size:22px;font-weight:800;margin:0 0 16px;">Action Required: Subscription Suspended</h2>
                             <p style="color:#475569;font-size:15px;line-height:1.6;margin:0 0 20px;">
                               Your ConnectUs subscription for <strong>${school.schoolName || 'your school'}</strong> has been suspended due to a payment issue.
@@ -2355,7 +2729,7 @@ exports.onPayPalWebhook = onRequest({ region: 'us-central1', minInstances: 1, se
                     <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#fff;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06);">
                       <tr><td height="6" style="background:linear-gradient(to right,#f59e0b,#ef4444);"></td></tr>
                       <tr><td style="padding:40px 40px 30px;text-align:center;">
-                        <img src="https://connectusonline.org/assets/images/logo.png" style="height:48px;margin-bottom:24px;display:block;margin-left:auto;margin-right:auto;">
+                        <img src="${SITE_URL}/assets/images/logo.png" style="height:48px;margin-bottom:24px;display:block;margin-left:auto;margin-right:auto;">
                         <h2 style="color:#0f172a;font-size:22px;font-weight:800;margin:0 0 16px;">Payment Failed</h2>
                         <p style="color:#475569;font-size:15px;line-height:1.6;margin:0 0 20px;">
                           We were unable to process the renewal payment for your ConnectUs subscription for
@@ -2418,7 +2792,7 @@ exports.onPayPalWebhook = onRequest({ region: 'us-central1', minInstances: 1, se
                         <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#fff;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06);">
                           <tr><td height="6" style="background:linear-gradient(to right,#64748b,#94a3b8);"></td></tr>
                           <tr><td style="padding:40px 40px 30px;text-align:center;">
-                            <img src="https://connectusonline.org/assets/images/logo.png" style="height:48px;margin-bottom:24px;display:block;margin-left:auto;margin-right:auto;">
+                            <img src="${SITE_URL}/assets/images/logo.png" style="height:48px;margin-bottom:24px;display:block;margin-left:auto;margin-right:auto;">
                             <h2 style="color:#0f172a;font-size:22px;font-weight:800;margin:0 0 16px;">Subscription Cancelled</h2>
                             <p style="color:#475569;font-size:15px;line-height:1.6;margin:0 0 20px;">
                               Your ConnectUs subscription for <strong>${school.schoolName || 'your school'}</strong> has been cancelled.
@@ -2440,7 +2814,7 @@ exports.onPayPalWebhook = onRequest({ region: 'us-central1', minInstances: 1, se
                             <p style="color:#475569;font-size:15px;line-height:1.6;margin:0 0 24px;">
                               Changed your mind? You can resubscribe at any time — your school ID and all data will be right where you left it.
                             </p>
-                            <a href="https://connectusonline.org/pricing.html" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;font-size:15px;font-weight:800;padding:14px 28px;border-radius:12px;">
+                            <a href="${SITE_URL}/pricing.html" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;font-size:15px;font-weight:800;padding:14px 28px;border-radius:12px;">
                               Resubscribe Anytime &rarr;
                             </a>
                             <p style="color:#64748b;font-size:13px;margin:24px 0 0;line-height:1.6;">
@@ -2564,7 +2938,7 @@ exports.autoSuspendExpiredSchools = onSchedule(
                     <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#fff;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06);">
                       <tr><td height="6" style="background:linear-gradient(to right,#f59e0b,#ef4444);"></td></tr>
                       <tr><td style="padding:40px 40px 30px;text-align:center;">
-                        <img src="https://connectusonline.org/assets/images/logo.png" style="height:48px;margin-bottom:24px;display:block;margin-left:auto;margin-right:auto;">
+                        <img src="${SITE_URL}/assets/images/logo.png" style="height:48px;margin-bottom:24px;display:block;margin-left:auto;margin-right:auto;">
                         <h2 style="color:#0f172a;font-size:22px;font-weight:800;margin:0 0 16px;">Subscription Expired</h2>
                         <p style="color:#475569;font-size:15px;line-height:1.6;margin:0 0 16px;">
                           Your ConnectUs subscription for <strong>${school.schoolName}</strong> has expired and your school portal access has been suspended.
@@ -2572,7 +2946,7 @@ exports.autoSuspendExpiredSchools = onSchedule(
                         <p style="color:#475569;font-size:15px;line-height:1.6;margin:0 0 28px;">
                           To restore access, please resubscribe through our pricing page. Your School ID, Admin Code, and all data are preserved — no re-setup required.
                         </p>
-                        <a href="https://connectusonline.org/pricing.html" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;font-size:15px;font-weight:800;padding:14px 28px;border-radius:12px;">
+                        <a href="${SITE_URL}/pricing.html" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;font-size:15px;font-weight:800;padding:14px 28px;border-radius:12px;">
                           Resubscribe &rarr;
                         </a>
                         <p style="color:#94a3b8;font-size:12px;margin:24px 0 0;line-height:1.6;">
@@ -2612,7 +2986,7 @@ exports.autoSuspendExpiredSchools = onSchedule(
                 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:580px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
                   <tr><td height="6" style="background:linear-gradient(to right,#f59e0b,#ef4444,#dc2626);"></td></tr>
                   <tr><td style="text-align:center;padding:32px 40px 16px;">
-                    <img src="https://connectusonline.org/assets/images/logo.png" style="height:44px;display:block;margin:0 auto;">
+                    <img src="${SITE_URL}/assets/images/logo.png" style="height:44px;display:block;margin:0 auto;">
                   </td></tr>
                   <tr><td style="padding:0 40px 40px;">
                     <h2 style="margin:0 0 6px;font-size:20px;font-weight:900;color:#0f172a;">⚠ Auto-Suspend Report</h2>
@@ -2635,7 +3009,7 @@ exports.autoSuspendExpiredSchools = onSchedule(
                     <p style="margin:0;font-size:13px;color:#64748b;line-height:1.6;">
                       Suspension emails have been sent to each school's contact address.
                       You can review and manage these schools in the
-                      <a href="https://connectusonline.org/platform_dashboard/schools/schools.html" style="color:#2563eb;font-weight:800;">HQ School Directory</a>.
+                      <a href="${SITE_URL}/platform_dashboard/schools/schools.html" style="color:#2563eb;font-weight:800;">HQ School Directory</a>.
                     </p>
                   </td></tr>
                   <tr><td style="background:#f8fafc;padding:20px 40px;text-align:center;border-top:1px solid #e2e8f0;">
@@ -3620,3 +3994,31 @@ exports.autoGradeWorkSubmission = onDocumentWritten(
     }
 );
 // --- END: autoGradeWorkSubmission ---
+
+// --- START: onStreamPostDeleted ---
+// Stream Question answers live in posts/{postId}/answers (blind-reply
+// lockdown, 2026-10-04). Firestore never deletes a sub-collection along with
+// its parent document, so when a teacher/admin deletes a post, clear its
+// answers here instead of leaving orphaned student answers behind.
+const { onDocumentDeleted } = require("firebase-functions/v2/firestore");
+exports.onStreamPostDeleted = onDocumentDeleted(
+    "schools/{schoolId}/classes/{classId}/subjects/{subjectId}/posts/{postId}",
+    async (event) => {
+        const snap = event.data;
+        if (!snap) return null;
+        const answers = snap.ref.collection('answers');
+        const probe = await answers.limit(1).get();
+        if (probe.empty) return null;
+        await db.recursiveDelete(answers);
+        console.log(`[onStreamPostDeleted] Cleared answers for post ${event.params.postId}.`);
+        return null;
+    }
+);
+// --- END: onStreamPostDeleted ---
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 4 STEP 4: lesson canvas — stock photo library + quiz widget grading
+// (functions/src/*). Required last so admin.initializeApp() above has run.
+// ═══════════════════════════════════════════════════════════════════════════════
+Object.assign(exports, require('./src/searchStockImages'));
+Object.assign(exports, require('./src/lessonWidgets'));

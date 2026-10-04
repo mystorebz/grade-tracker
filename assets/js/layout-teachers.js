@@ -1,5 +1,6 @@
 import { logout, getSessionData } from './auth.js';
 import { initNotifications } from './notifications.js';
+import { initStreamBadge } from './stream-badge.js';
 
 /**
  * Injects the Teacher Sidebar and Topbar into the page.
@@ -53,7 +54,6 @@ export function injectTeacherLayout(activePageId, pageTitle, pageSub, showSearch
           <a href="../subjects/subjects.html"     id="nav-subjects"     class="nav-item"><i class="fa-solid fa-layer-group"></i><span>Subjects</span></a>
           <a href="../stream/stream.html"         id="nav-stream"       class="nav-item"><i class="fa-solid fa-bullhorn"></i><span>Class Stream</span></a>
           <a href="../gradebook/gradebook.html"   id="nav-gradebook"    class="nav-item"><i class="fa-solid fa-book"></i><span>Gradebook</span></a>
-          <a href="../lessons/builder.html"       id="nav-lessons"      class="nav-item"><i class="fa-solid fa-chalkboard-user"></i><span>Lesson Builder</span></a>
 
           <p class="nav-section-label">Reports & Analytics</p>
           <a href="../analytics/analytics.html"   id="nav-analytics"    class="nav-item"><i class="fa-solid fa-star-half-stroke"></i><span>My Evaluations</span></a>
@@ -153,6 +153,11 @@ export function injectTeacherLayout(activePageId, pageTitle, pageSub, showSearch
 
     // ── POPULATE TEACHER PROFILE DATA ────────────────────────────────────────
     const session = getSessionData('teacher');
+
+    // ── CLASS STREAM "NEW" BADGE (cached quick check, see stream-badge.js) ──
+    if (session && session.teacherId) {
+        initStreamBadge({ role: 'teacher', userId: session.teacherId, schoolId: session.schoolId, onStreamPage: activePageId === 'stream' });
+    }
     if (session && session.teacherData) {
         document.getElementById('displayTeacherName').textContent = session.teacherData.name || 'Teacher';
         document.getElementById('teacherAvatar').textContent = (session.teacherData.name || 'T').charAt(0).toUpperCase();

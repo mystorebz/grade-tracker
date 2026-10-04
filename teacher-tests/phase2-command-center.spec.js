@@ -69,7 +69,7 @@ async function loginAsTeacher(page, teacherId, pin) {
 // loader disappearing, since a teacher with zero students hides the loader
 // too but never reveals analyticsSection at all (see test 2.13 below).
 async function waitForCommandCenter(page) {
-    await expect(page.locator('#analyticsSection')).not.toHaveClass(/hidden/, { timeout: 15_000 });
+    await expect(page.locator('#analyticsSection')).toBeVisible({ timeout: 15_000 });
 }
 
 test.describe('Phase 2: Command Center dashboard', () => {
@@ -163,7 +163,7 @@ test.describe('Phase 2: Command Center dashboard', () => {
         // reveal itself with per-widget empty states instead, which would be
         // an equally valid (arguably nicer) design this test would then need
         // updating for.
-        await expect(page.locator('#analyticsSection')).toHaveClass(/hidden/);
+        await expect(page.locator('#analyticsSection')).toBeHidden();
         await expect(page.locator('#atRiskBanner')).toBeHidden();
 
         // The "Needs Attention" panel further down the page IS outside

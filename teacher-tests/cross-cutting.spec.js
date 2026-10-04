@@ -154,6 +154,21 @@ test.describe('Cross-Cutting Regressions', () => {
             // and never navigates to grade_form.html.
             await loginAsTeacher(page, TEACHER_XCUT_ID, TEACHER_XCUT_PIN);
             await gotoRoster(page);
+            // roster.js resolves isSemesterLocked from its OWN separate
+            // loadSemesters() call (checkLockStatus()), which runs
+            // independently of — and can finish after — the student-roster
+            // fetch that gotoRoster() above waits on. Clicking .row-btn-grade
+            // before that resolves hits quickGradeStudent() with
+            // isSemesterLocked still at its initial `false`, which takes the
+            // "not locked" branch and calls window.location.assign(...) to
+            // navigate straight to grade_form.html — no alert ever fires,
+            // and the resulting real navigation racing the in-flight click
+            // is the likely cause of the click() call itself hanging rather
+            // than the dialog. #topbarLockedBadge (assets/js/layout-
+            // teachers.js's shared topbar) is toggled visible by that same
+            // checkLockStatus() call, so waiting for it here confirms the
+            // client has actually observed the lock before we click.
+            await expect(page.locator('#topbarLockedBadge')).toBeVisible({ timeout: 10_000 });
             const rosterDialog = page.waitForEvent('dialog');
             await rosterRow(page, 'E2E XCut Boundary Student').locator('.row-btn-grade').click();
             const d1 = await rosterDialog;
@@ -212,7 +227,14 @@ test.describe('Cross-Cutting Regressions', () => {
         await gotoGradeForm(page);
         await page.locator('.gf-subject-btn', { hasText: SUBJECT_XCUT_NAME }).click();
         const lockedAsgBtn = page.locator('.gf-asg-btn', { hasText: ASSIGNMENT_XCUT_LOCKED_TITLE });
-        await expect(lockedAsgBtn.locator('text=Locked')).toBeVisible();
+        // NOTE: a bare text=Locked is a strict-mode violation here — the
+        // fixture's own title ("E2E XCut Locked Assignment", chosen for
+        // readability) contains "Locked" as a substring too, alongside the
+        // real lock badge span (grade_form.js's `.gf-asg-btn` rendering:
+        // `<span ...><i class="fa-lock">...Locked</span>`). Scoped to the
+        // badge specifically via its lock icon, which the title text never
+        // has.
+        await expect(lockedAsgBtn.locator('span:has(i.fa-lock)')).toBeVisible();
         await lockedAsgBtn.click();
         await page.locator('#agStudent').selectOption(STUDENT_XCUT_BOUNDARY_ID);
         await page.locator('#agScore').fill('85');
@@ -280,8 +302,23 @@ test.describe('Cross-Cutting Regressions', () => {
         await page.locator('#openGradeWeightsBtn').click();
         await expect(page.locator('#gradeWeightsModal')).toBeVisible();
         await expect(page.locator('#gwTotalWeight')).toContainText('100%');
-        const quizInput = page.locator('div', { has: page.locator('span', { hasText: 'Quiz' }) }).locator('input[type="number"]').first();
-        const testInput = page.locator('div', { has: page.locator('span', { hasText: 'Test' }) }).locator('input[type="number"]').first();
+        // NOTE: a bare `div:has(span:has-text("Quiz"))` matches every
+        // ANCESTOR div of that span too — including #gwList itself, which
+        // wraps every row. Chaining `.locator('input[type="number"]').first()`
+        // onto that then collapses to the very FIRST number input in the
+        // WHOLE modal (whichever grade type happens to be modalGradeTypes[0]),
+        // not the Quiz-specific one — so both quizInput and testInput could
+        // resolve to the SAME element, and the second .fill() silently
+        // overwrites the first instead of setting its own row. Confirmed as
+        // the cause of the real X.5 failure (Test's weight stayed at its
+        // original 50 instead of becoming 80). Scoped precisely via the
+        // label span's own row: gradebook.js renders each row as
+        // `<div (row)><div (icon+label span)></div><div (input)></div></div>`
+        // — the label and its input are sibling divs under one row div.
+        const quizInput = page.locator('span', { hasText: 'Quiz', exact: true })
+            .locator('xpath=../following-sibling::div[1]//input[@type="number"]');
+        const testInput = page.locator('span', { hasText: 'Test', exact: true })
+            .locator('xpath=../following-sibling::div[1]//input[@type="number"]');
         await quizInput.fill('20');
         await quizInput.dispatchEvent('input');
         await testInput.fill('80');

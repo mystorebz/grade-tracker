@@ -1,0 +1,330 @@
+<!-- Lesson editor fragment — injected by mountLessonEditor() (assets/js/lessons/builder.js).
+     Contains both builder views plus the editor-only overlays. -->
+<div id="lessonEditorRoot" class="lesson-editor flex-1 flex flex-col min-h-0 h-full">
+        <!-- ═══ SLIDE BUILDER VIEW (Slides-format lesson is open) ═══════════ -->
+        <div id="builderView" class="hidden flex-1 flex overflow-hidden">
+
+            <!-- ── LEFT: slide sidebar ─────────────────────────────────────── -->
+            <div class="lb-rail w-[220px] flex-shrink-0 h-full flex flex-col bg-white border-r border-[#dce3ed]">
+                <div class="p-3 border-b border-[#dce3ed] flex items-center justify-between">
+                    <button id="backToListBtn" class="text-[#6b84a0] hover:text-[#0d1f35] text-[12px] font-bold flex items-center gap-1.5">
+                        <i class="fa-solid fa-arrow-left text-[11px]"></i> All Lessons
+                    </button>
+                </div>
+                <div id="slideThumbList" class="flex-1 overflow-y-auto p-3 space-y-2"></div>
+                <!-- SLIDE DECK REDESIGN: "Add Slide" opens a small layout gallery
+                     (Blank / Title / Title + Content / Two Content / Title + Media)
+                     — PowerPoint's "New Slide" picture, adapted here — instead of
+                     always dropping in one empty blank slide. Each layout just
+                     pre-places starter blocks at sensible positions/sizes; nothing
+                     it creates is locked in afterward — every block on the new
+                     slide can still be moved, resized, edited or deleted like any
+                     other. See builder.js's SLIDE_LAYOUTS/addSlideFromLayout().
+                     Collaborative Board stays a separate, dedicated action — it's
+                     still the one special whole-slide type, not a layout choice. -->
+                <div class="p-3 border-t border-[#dce3ed] space-y-2">
+                    <!-- Split button, matching PowerPoint/Google Slides: the
+                         main button instantly inserts a sensible default
+                         slide (Title + Content — no dialog, no decision
+                         needed) exactly like Slides' own "+" does; the small
+                         chevron opens the SLIDE_LAYOUTS gallery for anyone
+                         who wants to pick a different starting arrangement
+                         instead. See builder.js's addSlideFromLayout()/
+                         wireAddSlideLayoutMenu(). -->
+                    <div class="relative flex gap-1.5">
+                        <button id="addSlideBtn" class="flex-1 min-w-0 bg-[#eef4ff] hover:bg-[#dbe8ff] text-[#2563eb] font-bold py-2.5 rounded text-[12.5px] flex items-center justify-center gap-2 transition">
+                            <i class="fa-solid fa-plus"></i> Add Slide
+                        </button>
+                        <button id="addSlideLayoutToggleBtn" type="button" title="Choose a layout" class="flex-shrink-0 w-9 bg-[#eef4ff] hover:bg-[#dbe8ff] text-[#2563eb] rounded transition flex items-center justify-center">
+                            <i class="fa-solid fa-chevron-down text-[10px]"></i>
+                        </button>
+                        <div id="addSlideLayoutMenu" class="hidden absolute bottom-full right-0 mb-1.5 w-full bg-white border border-[#dce3ed] rounded-lg shadow-lg z-20 p-2 grid grid-cols-2 gap-1.5"></div>
+                    </div>
+                    <button id="addCollabBoardBtn" class="w-full bg-white hover:bg-[#f4f7fb] text-[#374f6b] font-bold py-2.5 rounded text-[12.5px] flex items-center justify-center gap-2 transition border border-[#dce3ed]">
+                        <i class="fa-solid fa-people-group"></i> <span class="lb-rail-label">Add Collaboration Board</span><span class="lb-rail-label-short">Add Board</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- ── CENTER: slide canvas ────────────────────────────────────── -->
+            <div class="lb-center flex-1 flex flex-col h-full overflow-hidden min-w-0">
+
+                <!-- ═══ EDITOR HEADER (Google Slides layout) ═══════════════════════
+                     Row 1 · .menu-bar block: lesson title / status / save state, the
+                       File · Edit · View · Insert · Format · Slide · Arrange menus
+                       (builder.js MENU BAR section), and the actions on the right.
+                     Row 2 · .format-toolbar: fixed tools (undo/redo, zoom, insert) +
+                       #formatContext, the selection-driven tools (canvas/toolbar.js). -->
+                <header class="editor-header flex-shrink-0 bg-white border-b border-[#dce3ed]">
+                    <div class="lb-headbar">
+                        <div class="lb-titleline">
+                            <input id="lessonTitleInput" type="text" placeholder="Untitled Lesson" aria-label="Lesson title"
+                                class="lb-title-input text-[15px] font-bold text-[#0d1f35] border-none outline-none bg-transparent focus:bg-[#f4f7fb] rounded px-1 -ml-1">
+                            <span id="statusPill" class="text-[10px] font-black uppercase tracking-wide px-2.5 py-1 rounded-md flex-shrink-0 whitespace-nowrap"></span>
+                            <span id="saveMsg" class="lb-savemsg hidden" role="status" aria-live="polite"></span>
+                        </div>
+                        <nav id="menuBar" class="menu-bar" role="menubar" aria-label="Lesson editor menu">
+                            <button type="button" class="mb-btn" data-menu="file" role="menuitem" aria-haspopup="menu" aria-expanded="false">File</button>
+                            <button type="button" class="mb-btn" data-menu="edit" role="menuitem" aria-haspopup="menu" aria-expanded="false">Edit</button>
+                            <button type="button" class="mb-btn" data-menu="view" role="menuitem" aria-haspopup="menu" aria-expanded="false">View</button>
+                            <button type="button" class="mb-btn" data-menu="insert" role="menuitem" aria-haspopup="menu" aria-expanded="false">Insert</button>
+                            <button type="button" class="mb-btn" data-menu="format" role="menuitem" aria-haspopup="menu" aria-expanded="false">Format</button>
+                            <button type="button" class="mb-btn" data-menu="slide" role="menuitem" aria-haspopup="menu" aria-expanded="false">Slide</button>
+                            <button type="button" class="mb-btn" data-menu="arrange" role="menuitem" aria-haspopup="menu" aria-expanded="false">Arrange</button>
+                        </nav>
+                        <div class="lb-headbar-actions">
+                            <button id="notesBtn" type="button" class="lb-hbtn lb-hbtn-icon" title="Teacher notes (hidden from students)" aria-label="Teacher notes">
+                                <i class="fa-solid fa-note-sticky"></i>
+                            </button>
+                            <button id="saveBtn" type="button" class="lb-hbtn" title="Save draft (Ctrl+S)">
+                                <i class="fa-solid fa-floppy-disk"></i><span class="lbc-hide">Save</span>
+                            </button>
+                            <button id="slideshowBtn" type="button" class="lb-hbtn lb-hbtn-primary" title="Slideshow from this slide (Ctrl+Enter) — nothing is shared with students">
+                                <i class="fa-solid fa-display"></i><span class="lbc-hide">Slideshow</span>
+                            </button>
+                            <button id="publishBtn" type="button" class="bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold h-9 px-3.5 rounded transition text-[12.5px] flex items-center gap-2 whitespace-nowrap">
+                                <i class="fa-solid fa-paper-plane"></i> <span id="publishBtnLabel" class="lbc-hide">Publish</span>
+                            </button>
+                            <!-- Focus Mode: the editor covers the whole window (builder.js setFocusMode(); Esc exits) -->
+                            <button type="button" data-focus-toggle class="lb-focus-btn" title="Expand to full screen" aria-label="Expand to full screen" aria-pressed="false">
+                                <i class="fa-solid fa-expand"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="slideInsertToolbar" class="format-toolbar hidden" role="toolbar" aria-label="Editing tools">
+                        <div class="ft-fixed">
+                            <button id="canvasUndoBtn" type="button" class="lb-format-btn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><i class="fa-solid fa-rotate-left"></i></button>
+                            <button id="canvasRedoBtn" type="button" class="lb-format-btn" title="Redo (Ctrl+Y)" aria-label="Redo" disabled><i class="fa-solid fa-rotate-right"></i></button>
+                            <div class="relative">
+                                <button id="canvasZoomBtn" type="button" class="lb-zoom-dd" title="Zoom"><span id="canvasZoomLabel">Fit</span><i class="fa-solid fa-chevron-down text-[9px]"></i></button>
+                                <div id="canvasZoomGroup" class="hidden absolute left-0 top-full mt-1 w-32 bg-white border border-[#dce3ed] rounded-lg shadow-lg z-30 p-1">
+                                    <button data-zoom="fit" class="lb-zoom-item">Fit to window</button>
+                                    <button data-zoom="0.5" class="lb-zoom-item">50%</button>
+                                    <button data-zoom="0.75" class="lb-zoom-item">75%</button>
+                                    <button data-zoom="1" class="lb-zoom-item">100%</button>
+                                    <button data-zoom="1.5" class="lb-zoom-item">150%</button>
+                                    <button data-zoom="2" class="lb-zoom-item">200%</button>
+                                </div>
+                            </div>
+                            <span class="ft-divider"></span>
+                            <button data-insert="text" type="button" class="lb-format-btn" title="Text box" aria-label="Insert text box"><i class="fa-solid fa-font"></i></button>
+                            <div class="relative">
+                                <button id="insertImageBtn" type="button" class="lb-format-btn lb-format-dd" title="Insert image" aria-label="Insert image" aria-haspopup="true"><i class="fa-solid fa-image"></i><i class="fa-solid fa-chevron-down lb-dd-caret"></i></button>
+                                <div id="insertImageMenu" class="hidden absolute top-full left-0 mt-1.5 w-64 bg-white border border-[#dce3ed] rounded-lg shadow-lg z-30 overflow-hidden">
+                                    <button id="insertImageUploadRow" type="button" class="w-full text-left px-3 py-2.5 text-[12.5px] font-semibold text-[#0d1f35] hover:bg-[#f4f7fb] flex items-center gap-2 border-b border-[#f0f4f8]">
+                                        <i class="fa-solid fa-upload text-[#2563eb] w-4"></i> Upload from computer
+                                    </button>
+                                    <button id="insertImageStockRow" type="button" class="w-full text-left px-3 py-2.5 text-[12.5px] font-semibold text-[#0d1f35] hover:bg-[#f4f7fb] flex items-center gap-2 border-b border-[#f0f4f8]">
+                                        <i class="fa-solid fa-images text-[#2563eb] w-4"></i> Free photo library
+                                    </button>
+                                    <div class="p-2.5">
+                                        <label for="insertImageUrlInput" class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">By URL</label>
+                                        <div class="flex gap-1.5">
+                                            <input id="insertImageUrlInput" type="url" placeholder="https://example.com/photo.jpg" class="form-input flex-1 min-w-0 p-2 bg-white border border-[#dce3ed] rounded text-[12px] text-[#0d1f35] outline-none focus:border-[#2563eb]">
+                                            <button id="insertImageUrlBtn" type="button" class="bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold px-3 rounded text-[12px] transition flex-shrink-0">Insert</button>
+                                        </div>
+                                        <p class="text-[10.5px] text-[#9ab0c6] font-semibold mt-2 mb-0">Or paste an image (Ctrl/Cmd+V) anywhere on the slide.</p>
+                                    </div>
+                                </div>
+                                <input type="file" id="insertImageFileInput" accept="image/*" class="hidden">
+                            </div>
+                            <div class="relative">
+                                <button id="insertShapeBtn" type="button" class="lb-format-btn lb-format-dd" title="Insert shape" aria-label="Insert shape" aria-haspopup="true"><i class="fa-solid fa-shapes"></i><i class="fa-solid fa-chevron-down lb-dd-caret"></i></button>
+                                <div id="insertShapeMenu" class="hidden absolute top-full left-0 mt-1.5 w-[212px] bg-white border border-[#dce3ed] rounded-lg shadow-lg z-30 p-2">
+                                    <p class="text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5 px-0.5">Shapes</p>
+                                    <div id="insertShapeGrid" class="grid grid-cols-4 gap-1"></div>
+                                </div>
+                            </div>
+                            <div class="relative">
+                                <button id="insertLineBtn" type="button" class="lb-format-btn lb-format-dd" title="Insert line or arrow" aria-label="Insert line or arrow" aria-haspopup="true"><i class="fa-solid fa-arrow-right-long"></i><i class="fa-solid fa-chevron-down lb-dd-caret"></i></button>
+                                <div id="insertLineMenu" class="hidden absolute top-full left-0 mt-1.5 w-44 bg-white border border-[#dce3ed] rounded-lg shadow-lg z-30 p-1"></div>
+                            </div>
+                            <div class="relative ft-insert-extra">
+                                <button id="insertVideoBtn" type="button" class="lb-format-btn" title="Insert video" aria-label="Insert video" aria-haspopup="true"><i class="fa-solid fa-video"></i></button>
+                                <div id="insertVideoMenu" class="hidden absolute top-full left-0 mt-1.5 w-72 bg-white border border-[#dce3ed] rounded-lg shadow-lg z-30 p-2.5">
+                                    <label for="insertVideoUrlInput" class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">YouTube, Vimeo, or Google Drive link</label>
+                                    <div class="flex gap-1.5">
+                                        <input id="insertVideoUrlInput" type="url" placeholder="https://youtube.com/watch?v=..." class="form-input flex-1 min-w-0 p-2 bg-white border border-[#dce3ed] rounded text-[12px] text-[#0d1f35] outline-none focus:border-[#2563eb]">
+                                        <button id="insertVideoUrlBtn" type="button" class="bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold px-3 rounded text-[12px] transition flex-shrink-0">Insert</button>
+                                    </div>
+                                    <p id="insertVideoError" class="hidden text-[11px] font-bold text-[#e31b4a] mt-1.5 mb-0">Couldn't recognize that as a YouTube, Vimeo, or Google Drive link.</p>
+                                </div>
+                            </div>
+                            <div class="relative ft-insert-extra">
+                                <button id="insertWidgetBtn" type="button" class="lb-format-btn lb-format-dd" title="Insert a student activity (poll, quiz, open response, sticky-note board)" aria-label="Insert student activity" aria-haspopup="true"><i class="fa-solid fa-bolt"></i><i class="fa-solid fa-chevron-down lb-dd-caret"></i></button>
+                                <div id="insertWidgetMenu" class="hidden absolute top-full left-0 mt-1.5 w-64 bg-white border border-[#dce3ed] rounded-lg shadow-lg z-30 p-1"></div>
+                            </div>
+                        </div>
+                        <span class="ft-divider"></span>
+                        <div id="formatContext" class="format-context" aria-live="off"></div>
+                    </div>
+                </header>
+                <!-- Slide canvas: a fixed 16:9 "slide stage", centered, like a real
+                     presentation surface rather than an auto-height card. -->
+
+                <!-- Canvas slides mount the shared 1600×900 renderer stage here (zoomable,
+                     scrolls when larger than the pane); Collaborative Board slides use the
+                     legacy .lb-slide-stage look. Classes are swapped by builder.js. -->
+                <div id="slideCanvasArea" class="editor-workspace flex-1 overflow-auto p-8 bg-[#eef1f5] relative">
+                    <div id="slideCanvasWrap" class="lb-stage-wrap mx-auto">
+                        <div id="slideCanvas" class="lb-slide-stage bg-white rounded-xl shadow-sm border border-[#dce3ed]"></div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ═══ DOCUMENT BUILDER VIEW (Document-format lesson is open) ═════ -->
+        <div id="docBuilderView" class="lb-center hidden flex-1 flex-col h-full overflow-hidden">
+
+            <!-- ═══ EDITOR HEADER (same layout as the Slides header) ═══════════
+                 Row 1 · .lb-headbar: back · title / status / save state, the
+                   File · Edit · View · Insert · Format menus (#docMenuBar — builder.js
+                   MENU BAR section, Document models) and the actions on the right.
+                 Row 2 · .format-toolbar: fixed tools (undo/redo, insert) +
+                   #docFormatContext, the shared Format toolbar (canvas/toolbar.js).
+                 Sticky (.editor-header) so it stays frozen while the page scrolls. -->
+            <header class="editor-header doc-header flex-shrink-0 bg-white border-b border-[#dce3ed]">
+                <div class="lb-headbar">
+                    <div class="lb-titleline">
+                        <button id="docBackToListBtn" type="button" class="lb-back-btn" title="Back to all lessons" aria-label="Back to all lessons">
+                            <i class="fa-solid fa-arrow-left"></i>
+                        </button>
+                        <input id="docLessonTitleInput" type="text" placeholder="Untitled Lesson" aria-label="Lesson title"
+                            class="lb-title-input text-[15px] font-bold text-[#0d1f35] border-none outline-none bg-transparent focus:bg-[#f4f7fb] rounded px-1 -ml-1">
+                        <span id="docStatusPill" class="text-[10px] font-black uppercase tracking-wide px-2.5 py-1 rounded-md flex-shrink-0 whitespace-nowrap"></span>
+                        <span id="docSaveMsg" class="lb-savemsg hidden" role="status" aria-live="polite"></span>
+                    </div>
+                    <nav id="docMenuBar" class="menu-bar" role="menubar" aria-label="Document editor menu">
+                        <button type="button" class="mb-btn" data-menu="file" role="menuitem" aria-haspopup="menu" aria-expanded="false">File</button>
+                        <button type="button" class="mb-btn" data-menu="edit" role="menuitem" aria-haspopup="menu" aria-expanded="false">Edit</button>
+                        <button type="button" class="mb-btn" data-menu="view" role="menuitem" aria-haspopup="menu" aria-expanded="false">View</button>
+                        <button type="button" class="mb-btn" data-menu="insert" role="menuitem" aria-haspopup="menu" aria-expanded="false">Insert</button>
+                        <button type="button" class="mb-btn" data-menu="format" role="menuitem" aria-haspopup="menu" aria-expanded="false">Format</button>
+                    </nav>
+                    <div class="lb-headbar-actions">
+                        <button id="docNotesBtn" type="button" class="lb-hbtn lb-hbtn-icon" title="Teacher notes (hidden from students)" aria-label="Teacher notes">
+                            <i class="fa-solid fa-note-sticky"></i>
+                        </button>
+                        <button id="docSaveBtn" type="button" class="lb-hbtn" title="Save draft (Ctrl+S)">
+                            <i class="fa-solid fa-floppy-disk"></i><span class="lbc-hide">Save</span>
+                        </button>
+                        <!-- Document Present Mode (doc-present.js): full-screen, read-only page — nothing is shared with students -->
+                        <button id="docSlideshowBtn" type="button" class="lb-hbtn lb-hbtn-primary" title="Present this document full screen (Ctrl+Enter) — nothing is shared with students">
+                            <i class="fa-solid fa-display"></i><span class="lbc-hide">Slideshow</span>
+                        </button>
+                        <button id="docPublishBtn" type="button" class="bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold h-9 px-3.5 rounded transition text-[12.5px] flex items-center gap-2 whitespace-nowrap">
+                            <i class="fa-solid fa-paper-plane"></i> <span id="docPublishBtnLabel" class="lbc-hide">Publish</span>
+                        </button>
+                        <!-- Focus Mode: the editor covers the whole window (builder.js setFocusMode(); Esc exits) -->
+                        <button type="button" data-focus-toggle class="lb-focus-btn" title="Expand to full screen" aria-label="Expand to full screen" aria-pressed="false">
+                            <i class="fa-solid fa-expand"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="docFormatToolbar" class="format-toolbar" role="toolbar" aria-label="Editing tools">
+                    <div class="ft-fixed">
+                        <button id="docUndoBtn" type="button" class="lb-format-btn" data-doc-cmd="edit.undo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><i class="fa-solid fa-rotate-left"></i></button>
+                        <button id="docRedoBtn" type="button" class="lb-format-btn" data-doc-cmd="edit.redo" title="Redo (Ctrl+Y)" aria-label="Redo" disabled><i class="fa-solid fa-rotate-right"></i></button>
+                        <span class="ft-divider"></span>
+                        <button type="button" class="lb-format-btn" data-doc-cmd="insert.image" title="Insert image" aria-label="Insert image"><i class="fa-solid fa-image"></i></button>
+                        <button id="docInsertVideoBtn" type="button" class="lb-format-btn" data-doc-cmd="insert.video" title="Insert video" aria-label="Insert video"><i class="fa-solid fa-video"></i></button>
+                        <button type="button" class="lb-format-btn" data-doc-cmd="insert.hr" title="Insert horizontal line" aria-label="Insert horizontal line"><i class="fa-solid fa-minus"></i></button>
+                        <button type="button" class="lb-format-btn" data-doc-cmd="insert.assignment" title="Insert linked assignment" aria-label="Insert linked assignment"><i class="fa-solid fa-clipboard-check"></i></button>
+                        <div class="relative">
+                            <button id="docInsertWidgetBtn" type="button" class="lb-format-btn lb-format-dd" title="Insert a student activity (poll, quiz, open response)" aria-label="Insert student activity" aria-haspopup="true" aria-expanded="false"><i class="fa-solid fa-bolt"></i><i class="fa-solid fa-chevron-down lb-dd-caret"></i></button>
+                            <div id="docInsertWidgetMenu" class="hidden absolute top-full left-0 mt-1.5 w-64 bg-white border border-[#dce3ed] rounded-lg shadow-lg z-30 p-1"></div>
+                        </div>
+                        <button type="button" class="lb-format-btn lb-format-dd" data-doc-cmd="insert.page" title="Add a page break" aria-label="Add a page break"><i class="fa-solid fa-file-circle-plus"></i><span class="lbc-hide" style="font-size:11.5px;font-weight:700">Page</span></button>
+                    </div>
+                    <span class="ft-divider"></span>
+                    <div id="docFormatContext" class="format-context" aria-live="off"></div>
+                </div>
+            </header>
+
+            <!-- Scrolling workspace, Google Docs-style: a US Letter page
+                 (8.5in × 11in, 1in margins) on a light gray background. -->
+            <div id="docWorkspace" class="doc-workspace editor-workspace flex-1 overflow-y-auto">
+                <div id="docEditor" class="doc-page"></div>
+            </div>
+        </div>
+</div>
+
+    <div id="themeOverlay" class="hidden fixed inset-0 bg-black/40 z-30 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-lg">
+            <div class="p-4 border-b border-[#dce3ed] flex items-center justify-between">
+                <div>
+                    <h3 class="text-[14px] font-bold text-[#0d1f35] m-0">Slide Theme</h3>
+                    <p class="text-[11px] text-[#6b84a0] m-0">Pick a color & icon style for this lesson</p>
+                </div>
+                <button id="closeThemeBtn" class="text-[#6b84a0] hover:text-[#0d1f35] h-8 w-8 rounded flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="themeGallery" class="p-5 grid grid-cols-3 gap-3"></div>
+        </div>
+    </div>
+
+    <div id="assignmentPickerOverlay" class="hidden opacity-0 fixed inset-0 bg-black/40 z-30 flex items-center justify-center p-4 transition-opacity duration-[180ms]">
+        <div id="assignmentPickerPanel" class="scale-95 transition-transform duration-[180ms] bg-white rounded-xl shadow-xl w-full max-w-sm">
+            <div class="p-4 border-b border-[#dce3ed] flex items-center justify-between">
+                <div>
+                    <h3 class="text-[14px] font-bold text-[#0d1f35] m-0">Insert Linked Assignment</h3>
+                    <p class="text-[11px] text-[#6b84a0] m-0">Inserts a card students can open to submit their work</p>
+                </div>
+                <button id="closeAssignmentPickerBtn" class="text-[#6b84a0] hover:text-[#0d1f35] h-8 w-8 rounded flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-4">
+                <div id="assignmentPickerList" class="space-y-1.5 max-h-72 overflow-y-auto"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="assignmentViewOverlay" class="hidden opacity-0 fixed inset-0 bg-black/40 z-30 flex items-center justify-center p-4 transition-opacity duration-[180ms]">
+        <div id="assignmentViewPanel" class="scale-95 transition-transform duration-[180ms] bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div class="p-4 border-b border-[#dce3ed] flex items-center justify-between gap-3">
+                <div class="min-w-0">
+                    <h3 id="assignmentViewTitle" class="text-[14px] font-bold text-[#0d1f35] m-0 truncate">Assignment</h3>
+                    <p id="assignmentViewMeta" class="text-[11px] text-[#6b84a0] m-0"></p>
+                </div>
+                <button id="closeAssignmentViewBtn" class="shrink-0 text-[#6b84a0] hover:text-[#0d1f35] h-8 w-8 rounded flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-4">
+                <label class="block text-[10.5px] font-bold uppercase tracking-widest text-[#6b84a0] mb-1.5">Instructions (what students see)</label>
+                <textarea id="assignmentViewInstructions" rows="6" class="w-full border border-[#dce3ed] rounded-lg p-2.5 text-[13px] text-[#0d1f35] focus:outline-none focus:ring-2 focus:ring-[#2563eb]/30 focus:border-[#2563eb] resize-y"></textarea>
+                <p id="assignmentViewMsg" class="hidden text-[11px] font-semibold text-[#6b84a0] mt-2"></p>
+            </div>
+            <div class="p-4 pt-0 flex justify-end gap-2">
+                <button id="assignmentViewSaveBtn" class="bg-[#0d1f35] hover:bg-[#16324f] text-white font-bold py-2 px-4 rounded-sm transition text-[12px] uppercase tracking-widest">Save Instructions</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ TEACHER-ONLY NOTES MODAL (pacing notes + standards) ═══════════ -->
+    <div id="notesOverlay" class="hidden fixed inset-0 bg-black/40 z-30 flex items-center justify-center p-4">
+        <div id="notesInner" class="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div class="p-4 border-b border-[#dce3ed] flex items-center justify-between">
+                <div>
+                    <h3 class="text-[14px] font-bold text-[#0d1f35] m-0">Teacher-Only Notes</h3>
+                    <p class="text-[11px] text-[#6b84a0] m-0">Never visible to students — enforced by database rules</p>
+                </div>
+                <button id="closeNotesBtn" class="text-[#6b84a0] hover:text-[#0d1f35] h-8 w-8 rounded flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-4 space-y-4">
+                <div>
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">Pacing Notes</label>
+                    <textarea id="pacingNotesInput" rows="4" placeholder="e.g. Spend ~10 min on slide 3; most students stall on..."
+                        class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb] resize-none"></textarea>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-[#6b84a0] uppercase tracking-widest mb-1.5">State Standards <span class="normal-case font-semibold text-[#9ab0c6]">(comma-separated)</span></label>
+                    <input id="standardsInput" type="text" placeholder="e.g. NGSS MS-LS1-6, NGSS MS-LS1-7"
+                        class="form-input w-full p-2.5 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">
+                </div>
+            </div>
+            <div class="p-4 border-t border-[#dce3ed] flex justify-end gap-2">
+                <button id="cancelNotesBtn" class="text-[#6b84a0] hover:text-[#0d1f35] font-bold py-2 px-4 rounded text-[13px] transition">Cancel</button>
+                <button id="saveNotesBtn" class="bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-2 px-4 rounded transition text-[13px]">Save Notes</button>
+            </div>
+        </div>
+    </div>

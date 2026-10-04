@@ -1,17 +1,29 @@
-// ── PHASE 1 MILESTONE 6: ATTENDANCE (teacher write flow) ─────────────────
-// Roster-checklist UX, deliberately modeled on grade_form.js's roster list:
-// familiar to any teacher who has already used this app to enter grades.
-// The key difference from grading is the write shape — every student's
-// status for the day is held in memory (statusMap) and committed in ONE
-// setDoc when "Save Attendance" is clicked, via the shared
-// saveAttendanceForDate() helper in assets/js/attendance.js. That one write
-// per class per day is the whole point of the approved data model.
-import { db } from '../../assets/js/firebase-init.js';
-import { collection, getDocs, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+// ── MODULE 4: DAILY ROLL CALL (teacher) ──────────────────────────────────
+// One document per class per day (unchanged data model, see
+// assets/js/attendance.js):
+//   schools/{schoolId}/classes/{classId}/attendance/{YYYY-MM-DD}
+//   { date, classId, records: { [studentId]: { status, markedAt, markedBy } }, updatedAt, updatedBy }
+//
+// AUTOSAVE: every status tap writes immediately — a merge write of just that
+// student's entry (records.<studentId>), so there is no Save button and no
+// risk of one tap overwriting another. The first write of a day records the
+// whole roster (everyone defaults to Present) so a taken day is complete.
+//
+// LOCK (mirrors firestore.rules attendance block): teachers may edit today
+// only; past dates open read-only with a "Locked" badge. Admin tokens
+// (role super_admin / sub_admin) keep edit access to past dates. Future
+// dates can't be picked. The rules remain the real enforcement — a write
+// they reject is reverted on screen.
+//
+// Stored status values stay 'present' | 'absent' | 'tardy' | 'excused'
+// (reports, fan-out and the student/parent views read these). 'tardy' is
+// labelled "Late" in this UI.
+import { db, auth } from '../../assets/js/firebase-init.js';
+import { collection, doc, getDocs, setDoc, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { loadSchoolClasses, resolveClassNamesToIds } from '../../assets/js/utils.js';
-import { ATTENDANCE_STATUSES, loadAttendanceForDate, saveAttendanceForDate } from '../../assets/js/attendance.js';
+import { ATTENDANCE_STATUSES, loadAttendanceForDate } from '../../assets/js/attendance.js';
 
 // ── 1. AUTH & LAYOUT ──────────────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
@@ -20,18 +32,23 @@ if (session) {
 }
 
 // ── 2. STATE ──────────────────────────────────────────────────────────────
-let resolvedClasses = [];      // [{ id, name }] — this teacher's classes resolved against real class docs
+let resolvedClasses = [];   // [{ id, name }]
 let selectedClassId = '';
-let rosterForClass   = [];     // students on the roster for the selected class
-let statusMap        = {};     // { studentId: 'present' | 'absent' | 'tardy' | 'excused' }
-let existingDayDoc    = null;  // whatever loadAttendanceForDate() returned for the current class+date
-let dirty             = false; // true once the teacher has changed anything since the last save
+let rosterForClass  = [];   // active students in the selected class
+let statusMap       = {};   // { studentId: status } as shown on screen
+let dayExists       = false; // a doc for this class+date has been written
+let isAdmin         = false; // token role is super_admin / sub_admin
+let locked          = false; // current view is read-only
+let viewToken       = 0;     // bumps on every class/date change; stale async results are ignored
+let pendingWrites   = 0;
+
+const SAVE_TIMEOUT_MS = 2500;
 
 const STATUS_META = {
-    present: { label: 'Present', short: 'P', activeClass: 'bg-emerald-600 text-white border-emerald-600' },
-    absent:  { label: 'Absent',  short: 'A', activeClass: 'bg-red-600 text-white border-red-600' },
-    tardy:   { label: 'Tardy',   short: 'T', activeClass: 'bg-amber-500 text-white border-amber-500' },
-    excused: { label: 'Excused', short: 'E', activeClass: 'bg-slate-500 text-white border-slate-500' },
+    present: { label: 'Present', icon: 'fa-check',          dot: '#059669', on: 'bg-emerald-600 text-white border-emerald-600', chip: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+    absent:  { label: 'Absent',  icon: 'fa-xmark',          dot: '#dc2626', on: 'bg-red-600 text-white border-red-600',         chip: 'bg-red-50 text-red-700 border-red-200' },
+    tardy:   { label: 'Late',    icon: 'fa-clock',          dot: '#f59e0b', on: 'bg-amber-500 text-white border-amber-500',     chip: 'bg-amber-50 text-amber-700 border-amber-200' },
+    excused: { label: 'Excused', icon: 'fa-file-signature', dot: '#64748b', on: 'bg-slate-500 text-white border-slate-500',     chip: 'bg-slate-50 text-slate-600 border-slate-200' },
 };
 
 const els = {};
@@ -41,9 +58,21 @@ function escHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
-function todayStr() {
-    const d = new Date();
+function ymd(d) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function todayStr() { return ymd(new Date()); }
+function shiftDate(dateStr, days) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return ymd(new Date(y, m - 1, d + days));
+}
+function prettyDate(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function dayRef(classId, date) {
+    return doc(db, 'schools', session.schoolId, 'classes', classId, 'attendance', date);
 }
 
 // ── 3. INIT ───────────────────────────────────────────────────────────────
@@ -52,14 +81,21 @@ async function init() {
     cacheEls();
     wireEvents();
     els.attDate.value = todayStr();
+    els.attDate.max = todayStr();
 
-    try {
-        const classNames = session.teacherData.classes || [session.teacherData.className || ''];
-        const schoolClasses = await loadSchoolClasses(session.schoolId);
-        resolvedClasses = resolveClassNamesToIds(classNames, schoolClasses).resolved;
-    } catch (e) {
-        console.error('[Attendance] Failed to resolve classes:', e);
-    }
+    const [, adminFlag] = await Promise.all([
+        (async () => {
+            try {
+                const classNames = session.teacherData.classes || [session.teacherData.className || ''];
+                const schoolClasses = await loadSchoolClasses(session.schoolId);
+                resolvedClasses = resolveClassNamesToIds(classNames, schoolClasses).resolved;
+            } catch (e) {
+                console.error('[Attendance] Failed to resolve classes:', e);
+            }
+        })(),
+        resolveIsAdmin(),
+    ]);
+    isAdmin = adminFlag;
 
     if (!resolvedClasses.length) {
         showEmptyState('You have no active classes assigned. Contact your administrator to assign classes to your account.');
@@ -73,10 +109,30 @@ async function init() {
     await loadAndRender();
 }
 
+// Admin privilege comes from the live ID token's role claim (the same claim
+// firestore.rules' isSchoolAdmin() checks), never from localStorage.
+async function resolveIsAdmin() {
+    try {
+        if (auth.authStateReady) await auth.authStateReady();
+        if (!auth.currentUser) return false;
+        const { claims } = await auth.currentUser.getIdTokenResult();
+        return ['super_admin', 'sub_admin'].includes(claims.role) && claims.schoolId === session.schoolId;
+    } catch (e) {
+        console.error('[Attendance] token check:', e);
+        return false;
+    }
+}
+
 function cacheEls() {
-    ['classPicker', 'attDate', 'attLoader', 'attBody', 'attEmpty',
-     'markAllPresentBtn', 'saveAttendanceBtn', 'attSaveMsg', 'attLastSaved', 'attSummary'
+    ['classPicker', 'attDate', 'attPrevDay', 'attNextDay', 'attTodayBtn', 'attLoader', 'attBody', 'attEmpty',
+     'markAllPresentBtn', 'attSaveMsg', 'attLastSaved', 'attSummary', 'attLockBadge', 'attSaveState'
     ].forEach(id => { els[id] = document.getElementById(id); });
+}
+
+function setDate(dateStr) {
+    if (!dateStr) return;
+    els.attDate.value = dateStr > todayStr() ? todayStr() : dateStr;
+    loadAndRender();
 }
 
 function wireEvents() {
@@ -84,66 +140,72 @@ function wireEvents() {
         selectedClassId = els.classPicker.value;
         loadAndRender();
     });
-    els.attDate.addEventListener('change', () => loadAndRender());
-    els.markAllPresentBtn.addEventListener('click', () => {
-        rosterForClass.forEach(s => { statusMap[s.id] = 'present'; });
-        dirty = true;
-        renderRoster();
+    els.attDate.addEventListener('change', () => setDate(els.attDate.value));
+    els.attPrevDay.addEventListener('click', () => setDate(shiftDate(els.attDate.value || todayStr(), -1)));
+    els.attNextDay.addEventListener('click', () => setDate(shiftDate(els.attDate.value || todayStr(), 1)));
+    els.attTodayBtn.addEventListener('click', () => setDate(todayStr()));
+    els.markAllPresentBtn.addEventListener('click', markAllPresent);
+    els.attBody.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-status]');
+        if (!btn || btn.disabled) return;
+        setStatus(btn.dataset.studentId, btn.dataset.status);
     });
-    els.saveAttendanceBtn.addEventListener('click', saveAttendance);
+    window.addEventListener('beforeunload', (e) => {
+        if (pendingWrites > 0) { e.preventDefault(); e.returnValue = ''; }
+    });
 }
 
-function showEmptyState(message, opts) {
+function showEmptyState(message) {
     els.attLoader?.classList.add('hidden');
     els.attBody?.classList.add('hidden');
+    els.attSummary.innerHTML = '';
+    if (els.markAllPresentBtn) els.markAllPresentBtn.disabled = true;
     if (els.attEmpty) {
         els.attEmpty.textContent = message;
         els.attEmpty.classList.remove('hidden');
     }
-    // Roster/save controls otherwise stay live even with no roster loaded
-    // (they're outside attBody in the markup) — an uncached-while-offline
-    // date has no known-good statusMap to save, so make that explicit rather
-    // than leaving a clickable button that would silently no-op.
-    const disableControls = !!(opts && opts.disableControls);
-    if (els.saveAttendanceBtn) els.saveAttendanceBtn.disabled = disableControls;
-    if (els.markAllPresentBtn) els.markAllPresentBtn.disabled = disableControls;
 }
 
-// ── 4. LOAD ROSTER + EXISTING ATTENDANCE FOR THE SELECTED CLASS+DATE ─────
+// ── 4. LOAD ROSTER + THE DAY'S DOC ────────────────────────────────────────
 async function loadAndRender() {
     if (!selectedClassId || !els.attDate.value) return;
-
-    els.attEmpty?.classList.add('hidden');
-    els.attBody?.classList.add('hidden');
-    els.attLoader?.classList.remove('hidden');
-    els.attSaveMsg?.classList.add('hidden');
-    dirty = false;
-
+    const token = ++viewToken;
     const cls = resolvedClasses.find(c => c.id === selectedClassId);
     const date = els.attDate.value;
 
+    locked = date < todayStr() && !isAdmin;
+    els.attNextDay.disabled = date >= todayStr();
+    renderLockBadge(date);
+    setSaveState('idle');
+    els.attSaveMsg.classList.add('hidden');
+    els.attEmpty.classList.add('hidden');
+    els.attBody.classList.add('hidden');
+    els.attLoader.classList.remove('hidden');
+
     try {
-        const q = query(
-            collection(db, 'students'),
-            where('currentSchoolId', '==', session.schoolId),
-            where('enrollmentStatus', '==', 'Active')
-        );
-        const snap = await getDocs(q);
+        const [snap, dayDoc] = await Promise.all([
+            getDocs(query(collection(db, 'students'),
+                where('currentSchoolId', '==', session.schoolId),
+                where('enrollmentStatus', '==', 'Active'))),
+            loadAttendanceForDate(session.schoolId, selectedClassId, date),
+        ]);
+        if (token !== viewToken) return;
+
+        // Roster source of truth = the student's classId (className fallback
+        // for legacy records that predate classId).
         rosterForClass = snap.docs
             .map(d => ({ id: d.id, ...d.data() }))
-            .filter(s => s.teacherId === session.teacherId && s.className === cls?.name)
+            .filter(s => s.classId ? s.classId === selectedClassId : (!!cls && s.className === cls.name))
             .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-        existingDayDoc = await loadAttendanceForDate(session.schoolId, selectedClassId, date);
-
+        dayExists = !!dayDoc.updatedAt;
         statusMap = {};
-        rosterForClass.forEach(s => {
-            statusMap[s.id] = existingDayDoc.records?.[s.id]?.status || 'present';
-        });
-
-        els.attLastSaved.textContent = existingDayDoc.updatedAt
-            ? `Last saved ${new Date(existingDayDoc.updatedAt).toLocaleString()}`
-            : 'Not yet taken for this date';
+        // Untaken editable day: pre-fill Present (saved on the first tap).
+        // Untaken locked day: show everyone as Unmarked — nothing was recorded.
+        rosterForClass.forEach(s => { statusMap[s.id] = dayDoc.records?.[s.id]?.status || (dayExists || locked ? '' : 'present'); });
+        els.attLastSaved.textContent = dayExists
+            ? `Last updated ${new Date(dayDoc.updatedAt).toLocaleString()}`
+            : (locked ? 'Attendance was not taken on this date' : 'Not taken yet — tap a status to start');
 
         if (!rosterForClass.length) {
             showEmptyState(`No active students on the roster for ${cls?.name || 'this class'}.`);
@@ -152,184 +214,170 @@ async function loadAndRender() {
 
         els.attLoader.classList.add('hidden');
         els.attBody.classList.remove('hidden');
-        if (els.saveAttendanceBtn) els.saveAttendanceBtn.disabled = false;
-        if (els.markAllPresentBtn) els.markAllPresentBtn.disabled = false;
+        els.markAllPresentBtn.disabled = locked;
         renderRoster();
     } catch (e) {
+        if (token !== viewToken) return;
         console.error('[Attendance] loadAndRender:', e);
-        // A Firestore read (roster query or the attendance-day doc) can fail
-        // with code 'unavailable' for two different reasons: a genuine
-        // network/server problem, or — while offline — simply because this
-        // particular document was never cached locally (setDoc queues while
-        // offline, but getDoc/getDocs reject immediately for anything not
-        // already in the local cache). We only want to show the friendlier
-        // "you're offline" message for that second case, and we check the
-        // error's stable `.code` field rather than matching on message text,
-        // since Firestore doesn't guarantee that string stays put across SDK
-        // versions and a looser match could mask a real bug as "offline".
-        if (e && e.code === 'unavailable') {
-            showEmptyState('You are currently offline. Please reconnect to load attendance for this date.', { disableControls: true });
-        } else {
-            showEmptyState('Something went wrong loading attendance for this class/date. Please try again.', { disableControls: true });
-        }
+        showEmptyState(e && e.code === 'unavailable'
+            ? 'You are currently offline. Please reconnect to load attendance for this date.'
+            : 'Something went wrong loading attendance for this class/date. Please try again.');
     }
 }
 
 // ── 5. RENDER ─────────────────────────────────────────────────────────────
-function renderRoster() {
+function renderLockBadge(date) {
+    const b = els.attLockBadge;
+    const past = date < todayStr();
+    if (!past) { b.classList.add('hidden'); return; }
+    if (isAdmin) {
+        b.className = 'inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border bg-indigo-50 text-indigo-700 border-indigo-200';
+        b.innerHTML = '<i class="fa-solid fa-user-shield"></i> Past date · Admin edit';
+        b.title = '';
+    } else {
+        b.className = 'inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border bg-slate-100 text-slate-600 border-slate-300';
+        b.innerHTML = '<i class="fa-solid fa-lock"></i> Locked';
+        b.title = 'Past attendance is read-only. Ask an administrator to make corrections.';
+    }
+}
+
+function renderSummary() {
     const counts = { present: 0, absent: 0, tardy: 0, excused: 0 };
-    rosterForClass.forEach(s => { counts[statusMap[s.id]] = (counts[statusMap[s.id]] || 0) + 1; });
+    let unmarked = 0;
+    rosterForClass.forEach(s => {
+        const st = statusMap[s.id];
+        if (counts[st] !== undefined) counts[st]++; else unmarked++;
+    });
+    const chips = ATTENDANCE_STATUSES.map(st => `
+        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[13px] font-black ${STATUS_META[st].chip}">
+            <span class="w-2 h-2 rounded-full" style="background:${STATUS_META[st].dot}"></span>
+            ${STATUS_META[st].label}: <span class="font-mono" data-count="${st}">${counts[st]}</span>
+        </span>`).join('');
+    els.attSummary.innerHTML = `
+        <div class="flex flex-wrap items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5">
+            <span class="text-[11px] font-black uppercase tracking-wider text-slate-500 mr-1">${escHtml(prettyDate(els.attDate.value))}</span>
+            ${chips}
+            ${unmarked ? `<span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[13px] font-black bg-white text-slate-400 border-dashed border-slate-300">Unmarked: <span class="font-mono">${unmarked}</span></span>` : ''}
+            <span class="ml-auto text-[12px] font-bold text-slate-400">${rosterForClass.length} student${rosterForClass.length === 1 ? '' : 's'}</span>
+        </div>`;
+}
 
-    els.attSummary.innerHTML = ATTENDANCE_STATUSES.map(st => `
-        <span class="text-xs font-black text-slate-500">
-            <span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${st === 'present' ? '#059669' : st === 'absent' ? '#dc2626' : st === 'tardy' ? '#f59e0b' : '#64748b'}"></span>
-            ${counts[st] || 0} ${STATUS_META[st].label}
-        </span>`).join('<span class="text-slate-300">·</span>');
-
-    els.attBody.innerHTML = rosterForClass.map(s => `
-        <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-100 last:border-b-0">
-            <div class="min-w-0">
-                <p class="font-black text-slate-700 text-sm truncate">${escHtml(s.name)}</p>
-                <p class="text-[11px] text-slate-400 font-bold font-mono">${escHtml(s.id)}</p>
+function renderRoster() {
+    renderSummary();
+    els.attBody.innerHTML = rosterForClass.map(s => {
+        const current = statusMap[s.id];
+        return `
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-3.5" data-row="${escHtml(s.id)}">
+            <div class="flex items-center gap-2.5 mb-2.5">
+                <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-black flex-shrink-0" style="background:${current ? STATUS_META[current].dot : '#cbd5e1'}">${escHtml((s.name || '?').charAt(0).toUpperCase())}</div>
+                <div class="min-w-0">
+                    <p class="font-black text-slate-700 text-sm truncate m-0">${escHtml(s.name)}</p>
+                    <p class="text-[10.5px] text-slate-400 font-bold font-mono m-0">${escHtml(s.id)}</p>
+                </div>
             </div>
-            <div class="flex items-center gap-1.5 flex-shrink-0">
+            <div class="grid grid-cols-4 gap-1.5" role="radiogroup" aria-label="Attendance for ${escHtml(s.name)}">
                 ${ATTENDANCE_STATUSES.map(st => `
-                    <button type="button" onclick="setAttendanceStatus('${s.id}','${st}')"
-                        title="${STATUS_META[st].label}"
-                        class="w-9 h-9 rounded-lg border text-xs font-black transition ${statusMap[s.id] === st ? STATUS_META[st].activeClass : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'}">
-                        ${STATUS_META[st].short}
+                    <button type="button" data-student-id="${escHtml(s.id)}" data-status="${st}" role="radio" aria-checked="${current === st}"
+                        ${locked ? 'disabled' : ''}
+                        class="flex flex-col items-center justify-center gap-0.5 py-1.5 rounded-lg border text-[10.5px] font-black transition ${current === st ? STATUS_META[st].on : 'bg-white border-slate-200 text-slate-400'} ${locked ? 'cursor-not-allowed opacity-70' : (current === st ? '' : 'hover:border-slate-300 hover:text-slate-600')}">
+                        <i class="fa-solid ${STATUS_META[st].icon} text-[11px]"></i>${STATUS_META[st].label}
                     </button>`).join('')}
             </div>
-        </div>`).join('');
+        </div>`;
+    }).join('');
 }
 
-window.setAttendanceStatus = function(studentId, status) {
-    statusMap[studentId] = status;
-    dirty = true;
-    renderRoster();
-};
-
-// ── 6. SAVE (one write for the whole class+day) ──────────────────────────
-// setDoc() does not resolve optimistically against the local cache — even
-// with persistentLocalCache enabled, the promise only settles once the
-// server acknowledges the write. While offline that means it never settles
-// on its own. So the save is raced against a short timeout: if the server
-// hasn't ack'd within SAVE_TIMEOUT_MS we assume the write is queued locally
-// (Firestore will flush it once connectivity returns) and tell the teacher
-// that, rather than leaving the button spinning forever. The real promise
-// is never abandoned — it keeps running in the background, and if it
-// resolves (or rejects) later while the teacher is still on this same
-// class+date, the UI is reconciled to the true end state at that point.
-const SAVE_TIMEOUT_MS = 2500;
-
-function showToast(message, kind) {
-    let toast = document.getElementById('attOfflineToast');
-    if (!toast) {
-        toast = document.createElement('div');
-        toast.id = 'attOfflineToast';
-        toast.className = 'fixed bottom-6 right-6 z-50 max-w-xs px-4 py-3 rounded-xl shadow-lg text-sm font-bold transition-opacity duration-300';
-        document.body.appendChild(toast);
-    }
-    const palette = {
-        offline: 'bg-amber-500 text-white',
-        success: 'bg-emerald-600 text-white',
-        error:   'bg-red-600 text-white',
+// ── 6. AUTOSAVE ───────────────────────────────────────────────────────────
+function setSaveState(kind, text) {
+    const map = {
+        idle:    ['text-slate-400', locked ? 'Read-only' : 'Changes save automatically'],
+        saving:  ['text-slate-500', '<i class="fa-solid fa-circle-notch fa-spin mr-1"></i>Saving…'],
+        saved:   ['text-emerald-600', '<i class="fa-solid fa-check mr-1"></i>All changes saved'],
+        offline: ['text-amber-600', '<i class="fa-solid fa-wifi mr-1"></i>Saved offline · will sync'],
+        error:   ['text-red-600', '<i class="fa-solid fa-triangle-exclamation mr-1"></i>' + escHtml(text || 'Could not save')],
     };
-    toast.className = `fixed bottom-6 right-6 z-50 max-w-xs px-4 py-3 rounded-xl shadow-lg text-sm font-bold transition-opacity duration-300 ${palette[kind] || palette.offline}`;
-    toast.textContent = message;
-    toast.style.opacity = '1';
-    clearTimeout(window.__attToastTimer);
-    window.__attToastTimer = setTimeout(() => { toast.style.opacity = '0'; }, 4500);
+    const [cls, html] = map[kind] || map.idle;
+    els.attSaveState.className = `text-xs font-bold mt-1.5 ${cls}`;
+    els.attSaveState.innerHTML = html;
 }
 
-function applySavedResult(saved) {
-    existingDayDoc = saved;
-    dirty = false;
-    els.attLastSaved.textContent = `Last saved ${new Date(saved.updatedAt).toLocaleString()}`;
-}
-
-async function saveAttendance() {
-    if (!selectedClassId || !els.attDate.value || !rosterForClass.length) return;
+// Writes `changes` ({ studentId: status }) for the current class+date with
+// merge, so only those students' entries change. Past SAVE_TIMEOUT_MS
+// without a server ack the write is treated as queued offline (Firestore
+// flushes it on reconnect).
+async function writeRecords(changes, { onFail }) {
+    const classId = selectedClassId;
     const date = els.attDate.value;
-    const classIdAtSaveTime = selectedClassId;
-    const dateAtSaveTime = date;
-
-    els.saveAttendanceBtn.disabled = true;
-    els.saveAttendanceBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving...';
-
+    const token = viewToken;
     const now = new Date().toISOString();
     const records = {};
-    rosterForClass.forEach(s => {
-        records[s.id] = { status: statusMap[s.id], markedAt: now, markedBy: session.teacherId };
+    Object.entries(changes).forEach(([sid, status]) => {
+        records[sid] = { status, markedAt: now, markedBy: session.teacherId };
     });
 
-    const savePromise = saveAttendanceForDate(session.schoolId, selectedClassId, date, records, session.teacherId);
-    let settledWithinTimeout = false;
+    const payload = { date, classId, records, updatedAt: now, updatedBy: session.teacherId };
+    dayExists = true;
+    pendingWrites++;
+    setSaveState('saving');
 
-    // Whenever the real save eventually settles — whether that's within the
-    // timeout window or long after, once connectivity returns — reconcile
-    // state. If it settles AFTER the timeout branch already told the teacher
-    // "Saved Offline (Will Sync)", surface the now-confirmed outcome (only
-    // when they're still looking at this same class+date); if it settles
-    // within the window, the try/await below already reports it, so this
-    // handler just applies the result without re-announcing it.
-    savePromise.then(saved => {
-        applySavedResult(saved);
-        if (!settledWithinTimeout && selectedClassId === classIdAtSaveTime && els.attDate.value === dateAtSaveTime) {
-            els.attSaveMsg.textContent = 'Attendance saved.';
-            els.attSaveMsg.className = 'text-sm font-bold p-2.5 mt-2 rounded-xl text-center text-green-700 bg-green-100 border border-green-200';
-            els.attSaveMsg.classList.remove('hidden');
-            clearTimeout(window.__attSaveMsgTimer);
-            window.__attSaveMsgTimer = setTimeout(() => els.attSaveMsg.classList.add('hidden'), 3500);
-            showToast('Attendance synced.', 'success');
-        }
-    }).catch(e => {
-        console.error('[Attendance] saveAttendance (background):', e);
-        if (!settledWithinTimeout && selectedClassId === classIdAtSaveTime && els.attDate.value === dateAtSaveTime) {
-            els.attSaveMsg.textContent = 'Could not save attendance. Please try again.';
-            els.attSaveMsg.className = 'text-sm font-bold p-2.5 mt-2 rounded-xl text-center text-red-700 bg-red-100 border border-red-200';
-            els.attSaveMsg.classList.remove('hidden');
-        }
+    const write = setDoc(dayRef(classId, date), payload, { merge: true });
+    const timeout = new Promise(res => setTimeout(() => res('timeout'), SAVE_TIMEOUT_MS));
+    write.then(() => {
+        pendingWrites--;
+        if (token !== viewToken) return;
+        els.attLastSaved.textContent = `Last updated ${new Date(now).toLocaleString()}`;
+        if (!pendingWrites) setSaveState('saved');
+    }).catch(err => {
+        pendingWrites--;
+        console.error('[Attendance] autosave:', err);
+        if (token !== viewToken) return;
+        onFail();
+        setSaveState('error', err && err.code === 'permission-denied'
+            ? 'Not saved — this date is locked'
+            : 'Not saved — please try again');
     });
-
-    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('SAVE_TIMEOUT')), SAVE_TIMEOUT_MS));
-
-    try {
-        const saved = await Promise.race([savePromise, timeout]);
-        settledWithinTimeout = true;
-        applySavedResult(saved);
-
-        els.attSaveMsg.textContent = 'Attendance saved.';
-        els.attSaveMsg.className = 'text-sm font-bold p-2.5 mt-2 rounded-xl text-center text-green-700 bg-green-100 border border-green-200';
-        els.attSaveMsg.classList.remove('hidden');
-        clearTimeout(window.__attSaveMsgTimer);
-        window.__attSaveMsgTimer = setTimeout(() => els.attSaveMsg.classList.add('hidden'), 3500);
-
-        els.saveAttendanceBtn.disabled = false;
-        els.saveAttendanceBtn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-2"></i> Save Attendance';
-    } catch (e) {
-        if (e && e.message === 'SAVE_TIMEOUT') {
-            // Likely offline: the write is queued locally and will flush on
-            // reconnect (handled by the .then()/.catch() above). Don't leave
-            // the teacher staring at a spinner — tell them it's safe to move on.
-            dirty = false;
-            els.attSaveMsg.textContent = 'Saved Offline (Will Sync)';
-            els.attSaveMsg.className = 'text-sm font-bold p-2.5 mt-2 rounded-xl text-center text-amber-700 bg-amber-100 border border-amber-200';
-            els.attSaveMsg.classList.remove('hidden');
-            showToast('You appear to be offline. Attendance is saved on this device and will sync automatically once you’re back online. It’s safe to close this page.', 'offline');
-
-            els.saveAttendanceBtn.disabled = false;
-            els.saveAttendanceBtn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-2"></i> Save Attendance';
-        } else {
-            console.error('[Attendance] saveAttendance:', e);
-            els.attSaveMsg.textContent = 'Could not save attendance. Please try again.';
-            els.attSaveMsg.className = 'text-sm font-bold p-2.5 mt-2 rounded-xl text-center text-red-700 bg-red-100 border border-red-200';
-            els.attSaveMsg.classList.remove('hidden');
-
-            els.saveAttendanceBtn.disabled = false;
-            els.saveAttendanceBtn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-2"></i> Save Attendance';
-        }
+    if (await Promise.race([write.then(() => 'ok', () => 'err'), timeout]) === 'timeout' && token === viewToken && pendingWrites) {
+        setSaveState('offline');
     }
+}
+
+function setStatus(studentId, status) {
+    if (locked || !ATTENDANCE_STATUSES.includes(status) || statusMap[studentId] === status) return;
+    const firstWrite = !dayExists;
+    const before = { ...statusMap };
+    statusMap[studentId] = status;
+    renderRoster();
+
+    // First write of the day records the whole roster (defaults = Present)
+    // so the day is complete; afterwards only the tapped student is sent.
+    const changes = firstWrite ? { ...statusMap } : { [studentId]: status };
+    writeRecords(changes, {
+        onFail: () => {
+            statusMap[studentId] = before[studentId];
+            if (firstWrite) dayExists = false;
+            renderRoster();
+        },
+    });
+}
+
+function markAllPresent() {
+    if (locked || !rosterForClass.length) return;
+    const firstWrite = !dayExists;
+    const before = { ...statusMap };
+    const changes = {};
+    rosterForClass.forEach(s => {
+        if (firstWrite || statusMap[s.id] !== 'present') changes[s.id] = 'present';
+        statusMap[s.id] = 'present';
+    });
+    renderRoster();
+    if (!Object.keys(changes).length) { setSaveState('saved'); return; }
+    writeRecords(changes, {
+        onFail: () => {
+            Object.keys(changes).forEach(sid => { statusMap[sid] = before[sid]; });
+            if (firstWrite) dayExists = false;
+            renderRoster();
+        },
+    });
 }
 
 init();

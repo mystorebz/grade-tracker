@@ -90,7 +90,7 @@ async function createDisposableStudent(page, namePrefix) {
     const email = `e2e-disposable-${unique}@example.com`;
 
     await page.locator('button[onclick="openAddStudentModal()"]').click();
-    await expect(page.locator('#addStudentModal')).not.toHaveClass(/hidden/);
+    await expect(page.locator('#addStudentModal')).toBeVisible();
     await page.locator('#sName').fill(name);
     await page.locator('#sEmail').fill(email);
     await page.locator('#sClass').selectOption({ label: CLASS_ROSTER_NAME });
@@ -116,7 +116,7 @@ test.describe('Phase 3: Roster', () => {
         await gotoRoster(page);
 
         await page.locator('button[onclick="openAddStudentModal()"]').click();
-        await expect(page.locator('#addStudentModal')).not.toHaveClass(/hidden/);
+        await expect(page.locator('#addStudentModal')).toBeVisible();
 
         // -- No name --
         await page.locator('#saveStudentBtn').click();
@@ -176,10 +176,19 @@ test.describe('Phase 3: Roster', () => {
         await expect(page.locator('#classFilterWrap')).toBeVisible();
 
         // -- Search: partial name match --
-        await page.locator('#searchInput').fill('Risk');
+        // NOTE: #searchInput is not unique in the DOM — layout-teachers.js's
+        // injectTeacherLayout(..., showSearch=true) injects its OWN
+        // #topbarSearch > input#searchInput on every page that requests a
+        // topbar search, colliding with this page's own local
+        // .control-search-input (also id="searchInput"). Scoped to the
+        // page-local class, which is the one actually wired to
+        // filterStudents() via oninput — the topbar's copy has no handler
+        // of its own today. Flagged to the Lead Architect as a real
+        // duplicate-id bug in the app markup.
+        await page.locator('.control-search-input').fill('Risk');
         await expect(studentRow(page, 'E2E Roster Student Risk')).toBeVisible();
         await expect(studentRow(page, 'E2E Roster Student Good')).toBeHidden();
-        await page.locator('#searchInput').fill('');
+        await page.locator('.control-search-input').fill('');
 
         // -- Standing filter: exact 6-tier value set confirmed against
         //    assets/js/utils.js's standingText() (the QA plan assumed only
@@ -249,13 +258,13 @@ test.describe('Phase 3: Roster', () => {
         await gotoRoster(page);
 
         await studentRow(page, 'E2E Roster Student Good').locator('.row-btn-view').click();
-        await expect(page.locator('#studentPanel')).not.toHaveClass(/hidden/);
+        await expect(page.locator('#studentPanel')).toBeVisible();
         await page.locator('#tabBtnEvaluations').click();
 
         const evaluationsBefore = await page.locator('#evaluationsList > *').count();
 
         await page.locator('button:has-text("New Evaluation")').click();
-        await expect(page.locator('#evalModal')).not.toHaveClass(/hidden/);
+        await expect(page.locator('#evalModal')).toBeVisible();
 
         await page.locator('#evalType').selectOption('academic');
         await page.locator('#evalSemester').selectOption({ label: SEMESTER_NAME });
@@ -274,13 +283,13 @@ test.describe('Phase 3: Roster', () => {
         await page.locator('#btnSubmitEval').click();
         await expect.poll(() => dialogMessages.length).toBeGreaterThan(0);
         expect(dialogMessages[dialogMessages.length - 1]).toBe('Please rate all Academic Progress metrics.');
-        await expect(page.locator('#evalModal')).not.toHaveClass(/hidden/); // still open
+        await expect(page.locator('#evalModal')).toBeVisible(); // still open
 
         // Fill the missing rating and save for real.
         await page.locator('.rating-row[data-field="academicMastery"] .star-btn[data-val="4"]').click();
         await page.locator('#btnSubmitEval').click();
 
-        await expect(page.locator('#evalModal')).toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#evalModal')).toBeHidden({ timeout: 10_000 });
         await expect.poll(
             () => page.locator('#evaluationsList > *').count(),
             { timeout: 10_000 }
@@ -296,11 +305,17 @@ test.describe('Phase 3: Roster', () => {
         await gotoRoster(page);
 
         await studentRow(page, 'E2E Roster Student Good').locator('.row-btn-view').click();
-        await expect(page.locator('#studentPanel')).not.toHaveClass(/hidden/);
+        await expect(page.locator('#studentPanel')).toBeVisible();
         await page.locator('#tabBtnEvaluations').click();
 
-        await page.locator('button:has-text("Generate Report Card")').click();
-        await expect(page.locator('#reportCardModal')).not.toHaveClass(/hidden/);
+        // NOTE: a bare button:has-text("Generate Report Card") is a strict-
+        // mode violation — the modal's own confirm button reads "Save &
+        // Generate Report Card", which contains "Generate Report Card" as a
+        // substring, so it matches too. Scoped to the outline-styled
+        // trigger button's own class (btn-sharp-outline), which the
+        // confirm button (btn-sharp-primary) doesn't share.
+        await page.locator('button.btn-sharp-outline', { hasText: 'Generate Report Card' }).click();
+        await expect(page.locator('#reportCardModal')).toBeVisible();
 
         // -- 3.12 (partial): incomplete ratings block save on the Term type --
         await page.locator('#rcTypeTerm').click();
@@ -369,9 +384,9 @@ test.describe('Phase 3: Roster', () => {
         // -- 3.17: Internal archive --
         const internal = await createDisposableStudent(page, 'E2E Archive Internal');
         await studentRow(page, internal.name).locator('.row-btn-view').click();
-        await expect(page.locator('#studentPanel')).not.toHaveClass(/hidden/);
+        await expect(page.locator('#studentPanel')).toBeVisible();
         await page.locator('button:has-text("Archive This Student")').click();
-        await expect(page.locator('#archiveModal')).not.toHaveClass(/hidden/);
+        await expect(page.locator('#archiveModal')).toBeVisible();
         // #optArchive is the default-checked radio — no extra fields needed.
         await page.locator('#confirmArchiveBtn').click();
         await expect(studentRow(page, internal.name)).toHaveCount(0, { timeout: 15_000 }); // gone from the Active roster
@@ -388,9 +403,9 @@ test.describe('Phase 3: Roster', () => {
         await gotoRoster(page);
         const release = await createDisposableStudent(page, 'E2E Archive Release');
         await studentRow(page, release.name).locator('.row-btn-view').click();
-        await expect(page.locator('#studentPanel')).not.toHaveClass(/hidden/);
+        await expect(page.locator('#studentPanel')).toBeVisible();
         await page.locator('button:has-text("Archive This Student")').click();
-        await expect(page.locator('#archiveModal')).not.toHaveClass(/hidden/);
+        await expect(page.locator('#archiveModal')).toBeVisible();
         await page.locator('#optRelease').check();
 
         // Departure Reason is required — confirm the block before filling it.
@@ -428,9 +443,9 @@ test.describe('Phase 3: Roster', () => {
         //    owner and must leave teacherId blank + report it unresolved. --
         const promoted = await createDisposableStudent(page, 'E2E Promote Single');
         await studentRow(page, promoted.name).locator('.row-btn-view').click();
-        await expect(page.locator('#studentPanel')).not.toHaveClass(/hidden/);
+        await expect(page.locator('#studentPanel')).toBeVisible();
         await page.locator('button:has-text("Promote / Advance")').click();
-        await expect(page.locator('#promoteModal')).not.toHaveClass(/hidden/);
+        await expect(page.locator('#promoteModal')).toBeVisible();
 
         const promotedRow = page.locator('.promote-row', { hasText: promoted.name });
         await promotedRow.locator('input.promote-check').check();
@@ -454,15 +469,15 @@ test.describe('Phase 3: Roster', () => {
         // -- 3.21: "Repeat" keeps the student in the SAME class/roster --
         const repeated = await createDisposableStudent(page, 'E2E Promote Repeat');
         await studentRow(page, repeated.name).locator('.row-btn-view').click();
-        await expect(page.locator('#studentPanel')).not.toHaveClass(/hidden/);
+        await expect(page.locator('#studentPanel')).toBeVisible();
         await page.locator('button:has-text("Promote / Advance")').click();
-        await expect(page.locator('#promoteModal')).not.toHaveClass(/hidden/);
+        await expect(page.locator('#promoteModal')).toBeVisible();
 
         const repeatRow = page.locator('.promote-row', { hasText: repeated.name });
         await repeatRow.locator('input.promote-check').check();
         await repeatRow.locator('select.promote-dest').selectOption('__repeat__');
         await page.locator('#confirmPromoteBtn').click();
-        await expect(page.locator('#promoteModal')).toHaveClass(/hidden/, { timeout: 15_000 });
+        await expect(page.locator('#promoteModal')).toBeHidden({ timeout: 15_000 });
 
         const repeatedDoc = await getStudentDoc(repeated.id);
         expect(repeatedDoc.className).toBe(CLASS_ROSTER_NAME); // unchanged
@@ -489,7 +504,7 @@ test.describe('Phase 3: Roster', () => {
         await page.locator('#rosterMoreBtn').click();
         await expect(page.locator('#rosterMoreMenu')).toBeVisible();
         await page.locator('button:has-text("Promote Students")').click();
-        await expect(page.locator('#promoteModal')).not.toHaveClass(/hidden/);
+        await expect(page.locator('#promoteModal')).toBeVisible();
 
         const row1 = page.locator('.promote-row', { hasText: ticked1.name });
         const row2 = page.locator('.promote-row', { hasText: ticked2.name });

@@ -63,6 +63,14 @@ import {
     isQuestionOpenForRevision,
     resolveAssignmentStatus
 } from './submissions.js';
+import { startAssignmentDraft } from './assignment-drafts.js';
+import { uploadSubmissionAttachment as uploadWorkPhoto } from './submissions.js';
+import { reviewSummary, pdfFieldKey, normalizeTheme } from './assessment/engine-core.js';
+import { mountPdfAnswerSheet, collectPdfAnswers } from './assessment/pdf-worksheet.js';
+import {
+    applyTheme, clearTheme, mountK5Team, celebrate, startStrictGuard, openReviewScreen, jumpTo,
+    showWorkHtml, wireShowWork, readShowWork, startLiveClient, toast,
+} from './assessment/student-experience.js';
 
 // ── STATE ─────────────────────────────────────────────────────────────
 let pageStudentId = null;
@@ -74,6 +82,120 @@ let submissionsById = new Map(); // assignmentId -> submission | null
 let gradesById = new Map();      // assignmentId -> grade record | null
 let currentSubjectFilter = '';   // '' = All Subjects, else a subjectId
 let currentAssignmentId = null;  // assignment currently shown in the detail panel
+// FOCUS PAGE (student): when the page carries #assignmentFocus, an assignment
+// opens as its own distraction-free page at assignments.html?a={id} (Back /
+// the Assignments link return to the list) instead of the slide-in panel.
+// Pages without it (the Parent portal) keep the panel.
+let focusMode = false;
+let focusPushed = false;         // this page pushed the ?a= entry (so Back pops it)
+let activeDraft = null;          // assignment-drafts.js handle for the open assignment
+
+// ASSESSMENT ENGINE (themes, strict guard, live client, PDF sheet) for the open assignment
+let xp = { stopGuard: null, live: null, pdf: null };
+function stopExperience() {
+    if (xp.stopGuard) xp.stopGuard();
+    if (xp.live) xp.live.stop();
+    if (xp.pdf) xp.pdf.destroy();
+    xp = { stopGuard: null, live: null, pdf: null };
+    const slot = document.getElementById('adXpSlot'); if (slot) { slot.innerHTML = ''; slot.onclick = null; }
+}
+
+// Answer map for the review screen / teacher view: { key: value }
+function currentAnswers(a) {
+    const answers = {};
+    if (Array.isArray(a.questions)) {
+        collectStudentResponses(a, gradesById.get(a.id) || null).forEach((r) => {
+            answers[r.questionId] = r.responseText || r.attachmentUrl || '';
+        });
+    }
+    const pdf = collectPdfAnswers(els.assignmentDetailBody);
+    Object.entries(pdf).forEach(([id, v]) => { answers[pdfFieldKey(id)] = v === true ? 'true' : (v === false ? '' : v); });
+    return answers;
+}
+
+function submitExtras(a) {
+    const extras = {};
+    if (a.pdfWorksheet?.url) extras.pdfAnswers = collectPdfAnswers(els.assignmentDetailBody);
+    if (a.showWork) extras.workUploads = readShowWork(els.assignmentDetailBody);
+    return extras;
+}
+
+// Mount the PDF sheet + show-your-work zone into the freshly rendered body.
+function mountAssignmentExtras(a, submission, frozen) {
+    const body = els.assignmentDetailBody;
+    const locked = frozen || pageReadOnly;
+    if (a.pdfWorksheet?.url) {
+        const host = body.querySelector('[data-pdf-sheet]');
+        if (host) {
+            mountPdfAnswerSheet({ host, url: a.pdfWorksheet.url, fields: a.pdfWorksheet.fields || [], answers: submission?.pdfAnswers || {}, disabled: locked })
+                .then((h) => { xp.pdf = h; if (activeDraft) activeDraft.reapply(); });
+        }
+    }
+    if (a.showWork) {
+        const html = showWorkHtml({ uploads: submission?.workUploads || [], disabled: locked, title: a.category === 'assessment' ? 'Show your work' : 'Your photos' });
+        const anchor = document.getElementById('adSubmitBtn');
+        const wrap = document.createElement('div');
+        wrap.innerHTML = html;
+        if (anchor && anchor.parentElement && anchor.parentElement !== body) anchor.parentElement.insertBefore(wrap.firstElementChild, anchor);
+        else if (anchor) body.insertBefore(wrap.firstElementChild, anchor);
+        else body.appendChild(wrap.firstElementChild);
+        wireShowWork({ root: body, disabled: locked, upload: (blob) => uploadWorkPhoto(pageSchoolId, a, pageStudentId, 'work', blob) });
+    }
+}
+
+// Theme, strict guard and live command-center client (focus page only).
+function startExperience(a, frozen) {
+    stopExperience();
+    if (!focusMode) return;
+    const theme = applyTheme(a.theme);
+    const slot = document.getElementById('adXpSlot');
+    if (theme === 'k5' && slot && !pageReadOnly) mountK5Team({ host: slot, studentId: pageStudentId });
+    if (theme === 'strict' && slot) slot.innerHTML = '<span class="xp-strict-badge"><i class="fa-solid fa-shield-halved"></i> Secure mode</span>';
+    if (pageReadOnly || frozen) return;
+    xp.live = startLiveClient({
+        schoolId: pageSchoolId, assignment: a, studentId: pageStudentId, studentName: pageStudentName,
+        timerHost: document.getElementById('adTimer'),
+        onCollect: (reason) => forceSubmit(a, reason),
+    });
+    if (theme === 'strict') xp.stopGuard = startStrictGuard({ onViolation: (type) => xp.live && xp.live.logViolation(type) });
+}
+
+// Time ran out / teacher collected: submit whatever is there, then lock.
+async function forceSubmit(a, reason) {
+    if (currentAssignmentId !== a.id) return;
+    toast(reason === 'time' ? 'Time is up — your answers are being submitted.' : 'Your teacher collected the assessment — your answers are being submitted.');
+    try {
+        if (a.category === 'assessment' && Array.isArray(a.questions) && a.questions.length) await realSubmitAssessment({ force: true });
+        else await realSaveSubmission({ force: true });
+    } finally {
+        a.locked = true;
+        if (currentAssignmentId === a.id) window.openAssignmentDetail(a.id);
+    }
+}
+
+function reviewThen(a, submitFn) {
+    if (!focusMode) return submitFn();
+    const summary = reviewSummary({
+        questions: a.questions || [],
+        pdfFields: a.pdfWorksheet?.fields || [],
+        answers: currentAnswers(a),
+        showWork: !!a.showWork,
+        workUploads: readShowWork(els.assignmentDetailBody),
+    });
+    if (!summary.total) return submitFn();
+    openReviewScreen({
+        summary, theme: normalizeTheme(a.theme),
+        onJump: (key) => jumpTo(els.assignmentDetailBody, key),
+        onConfirm: () => submitFn(),
+    });
+}
+
+function stopDraft() {
+    if (activeDraft) { activeDraft.stop({ flush: true }); activeDraft = null; }
+}
+async function discardDraft() {
+    if (activeDraft) { const d = activeDraft; activeDraft = null; await d.discard(); }
+}
 
 const els = {};
 
@@ -137,6 +259,7 @@ export async function initAssignmentsPage({ studentId, schoolId, readOnly = fals
     pageReadOnly = !!readOnly;
 
     cacheEls();
+    focusMode = !!document.getElementById('assignmentFocus');
     wireEvents();
 
     // Fire-and-forget: paints the layout's school/semester header whenever
@@ -205,6 +328,10 @@ export async function initAssignmentsPage({ studentId, schoolId, readOnly = fals
         els.assignmentsLoader.classList.add('hidden');
         els.assignmentSections.classList.remove('hidden');
         renderList();
+        if (focusMode) {
+            window.addEventListener('popstate', syncFocusFromUrl);
+            syncFocusFromUrl();
+        }
     } catch (e) {
         console.error('[Assignments] initAssignmentsPage:', e);
         showEmptyState('Something went wrong loading assignments. Please try again later.');
@@ -214,7 +341,7 @@ export async function initAssignmentsPage({ studentId, schoolId, readOnly = fals
 function cacheEls() {
     ['subjectFilter', 'assignmentsLoader', 'assignmentsEmpty', 'assignmentSections',
      'todoCount', 'todoList', 'doneCount', 'doneList',
-     'adSubjectLabel', 'adTitle', 'adMetaRow', 'assignmentDetailBody'
+     'adSubjectLabel', 'adTitle', 'adMetaRow', 'assignmentDetailBody', 'assignmentFocus', 'assignmentListView'
     ].forEach(id => { els[id] = document.getElementById(id); });
 }
 
@@ -370,14 +497,80 @@ window.openAssignmentDetail = function(assignmentId) {
     // READONLY GATE: drawing canvases only ever exist in the editable
     // (student) form path — nothing to wire for a read-only viewer.
     if (!pageReadOnly) wireDetailFormEvents(a);
+    mountAssignmentExtras(a, submission, isSubmissionFrozen(a, gradesById));
+    // DRAFTS: unsent answers are kept locally + in drafts/{studentId} (assignment-drafts.js)
+    stopDraft();
+    if (!pageReadOnly && !isSubmissionFrozen(a, gradesById)) {
+        activeDraft = startAssignmentDraft({
+            root: els.assignmentDetailBody,
+            schoolId: pageSchoolId,
+            studentId: pageStudentId,
+            assignment: a,
+            submittedAt: submission?.updatedAt || submission?.submittedAt || null,
+            statusEl: document.getElementById('adSaveState'),
+        });
+    }
 
+    if (focusMode) { showFocus(a); startExperience(a, isSubmissionFrozen(a, gradesById)); return; }
     openOverlay('assignmentDetailOverlay', 'assignmentDetailInner', true);
 };
 
 window.closeAssignmentDetail = function() {
+    stopDraft();
+    stopExperience();
+    if (focusMode) {
+        if (focusPushed) { focusPushed = false; history.back(); return; } // popstate → syncFocusFromUrl
+        history.replaceState(null, '', urlForAssignment(null));
+        hideFocus();
+        return;
+    }
     closeOverlay('assignmentDetailOverlay', 'assignmentDetailInner', true);
     currentAssignmentId = null;
 };
+
+// ── FOCUS PAGE ────────────────────────────────────────────────────────
+function urlForAssignment(id) {
+    const p = new URLSearchParams(window.location.search);
+    if (id) p.set('a', id); else p.delete('a');
+    const q = p.toString();
+    return `${window.location.pathname}${q ? `?${q}` : ''}`;
+}
+
+function showFocus(a) {
+    if (new URLSearchParams(window.location.search).get('a') !== a.id) {
+        history.pushState({ asg: a.id }, '', urlForAssignment(a.id));
+        focusPushed = true;
+    }
+    document.body.classList.add('asg-focus');
+    els.assignmentListView?.classList.add('hidden');
+    els.assignmentFocus.classList.remove('hidden');
+    document.title = `${a.title || 'Assignment'} | ConnectUs`;
+    const scroller = els.assignmentFocus.closest('.overflow-y-auto');
+    if (scroller) scroller.scrollTop = 0;
+}
+
+function hideFocus() {
+    stopDraft();
+    stopExperience();
+    clearTheme();
+    currentAssignmentId = null;
+    document.body.classList.remove('asg-focus');
+    els.assignmentFocus.classList.add('hidden');
+    els.assignmentListView?.classList.remove('hidden');
+    document.title = 'Assignments | ConnectUs';
+}
+
+function syncFocusFromUrl() {
+    const id = new URLSearchParams(window.location.search).get('a');
+    const a = id ? assignmentsCache.find(x => x.id === id) : null;
+    if (a) {
+        if (currentAssignmentId !== a.id) window.openAssignmentDetail(a.id);
+        return;
+    }
+    if (id) history.replaceState(null, '', urlForAssignment(null)); // unknown / hidden assignment
+    focusPushed = false;
+    if (currentAssignmentId) hideFocus();
+}
 
 // Standard-work-only: teacher media attachments (Add Work's rich-attachment
 // model). Legacy assignments never have this field, so it renders nothing
@@ -432,12 +625,17 @@ function renderDetailBody(a) {
     const isAssessment = a.category === 'assessment' && Array.isArray(a.questions) && a.questions.length > 0;
 
     if (isAssessment) {
-        return renderGradeBlock(grade) + renderAssessmentSection(a, submission, frozen, grade);
+        // The builder saves instructions and teacher attachments for every
+        // category, so a question-based assignment shows them above its questions.
+        const intro = a.instructions
+            ? `<div>
+                <p class="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Instructions</p>
+                <div class="bg-white border border-slate-200 rounded-xl p-4 text-[13px] text-slate-700 whitespace-pre-wrap leading-relaxed">${escHtml(a.instructions)}</div>
+            </div>`
+            : '';
+        return intro + renderAssignmentAttachments(a.attachments) + renderPdfSheetHost(a) + renderGradeBlock(grade) + renderAssessmentSection(a, submission, frozen, grade);
     }
 
-    // Assessments never populate instructions/attachments (Add Work always
-    // writes '' / [] for category:'assessment'), so these two blocks are
-    // standard-work- and legacy-only in practice.
     const instructionsBlock = `
         <div>
             <p class="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Instructions</p>
@@ -506,7 +704,15 @@ function renderDetailBody(a) {
         </div>`;
     }
 
-    return instructionsBlock + attachmentsBlock + gradeBlock + submissionBlock + renderRemarksBlock(grade);
+    return instructionsBlock + attachmentsBlock + renderPdfSheetHost(a) + gradeBlock + submissionBlock + renderRemarksBlock(grade);
+}
+
+function renderPdfSheetHost(a) {
+    if (!a.pdfWorksheet?.url) return '';
+    return `<div>
+        <p class="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Worksheet</p>
+        <div data-pdf-sheet data-draft-async></div>
+    </div>`;
 }
 
 function wireDetailFormEvents(a) {
@@ -901,7 +1107,13 @@ async function resolveAttachmentUploads(a, responses) {
     }));
 }
 
-window.submitAssessmentResponses = async function() {
+window.submitAssessmentResponses = function() {
+    const a = assignmentsCache.find(x => x.id === currentAssignmentId);
+    if (!a || pageReadOnly) return;
+    reviewThen(a, () => realSubmitAssessment());
+};
+
+async function realSubmitAssessment({ force = false } = {}) {
     if (pageReadOnly) return; // READONLY GATE
     const a = assignmentsCache.find(x => x.id === currentAssignmentId);
     if (!a) return;
@@ -910,7 +1122,7 @@ window.submitAssessmentResponses = async function() {
     const grade = gradesById.get(a.id) || null;
 
     const raw = collectStudentResponses(a, grade);
-    const missing = validateAssessmentResponses(a, raw);
+    const missing = force ? [] : validateAssessmentResponses(a, raw);
     if (missing.length) {
         showMsg('adSubMsg', `Answer question${missing.length > 1 ? 's' : ''} ${missing.join(', ')} before submitting.`, true);
         return;
@@ -923,8 +1135,10 @@ window.submitAssessmentResponses = async function() {
 
     try {
         const resolved = await resolveAttachmentUploads(a, raw);
-        const record = await saveSubmission(pageSchoolId, a, pageStudentId, pageStudentName, { responses: resolved });
+        const record = await saveSubmission(pageSchoolId, a, pageStudentId, pageStudentName, { responses: resolved, ...submitExtras(a) });
         submissionsById.set(a.id, record);
+        await discardDraft();
+        if (normalizeTheme(a.theme) === 'k5' && focusMode) celebrate({ emoji: '🎉' });
 
         // Record the student's new answer + timestamp against whichever
         // question(s) were open for revision, directly on the grade doc's
@@ -966,7 +1180,14 @@ window.submitAssessmentResponses = async function() {
     }
 };
 
-window.saveMySubmission = async function() {
+window.saveMySubmission = function() {
+    const a = assignmentsCache.find(x => x.id === currentAssignmentId);
+    if (!a || pageReadOnly) return;
+    if (!a.pdfWorksheet?.url && !a.showWork) return realSaveSubmission();
+    reviewThen(a, () => realSaveSubmission());
+};
+
+async function realSaveSubmission({ force = false } = {}) {
     if (pageReadOnly) return; // READONLY GATE
     const a = assignmentsCache.find(x => x.id === currentAssignmentId);
     if (!a) return;
@@ -976,11 +1197,13 @@ window.saveMySubmission = async function() {
     const responseText = document.getElementById('adResponseText').value.trim();
     const linkUrl = document.getElementById('adLinkUrl').value.trim();
 
-    if (!responseText && !linkUrl) {
+    const extras = submitExtras(a);
+    const hasExtras = Object.keys(extras.pdfAnswers || {}).length > 0 || (extras.workUploads || []).length > 0;
+    if (!force && !responseText && !linkUrl && !hasExtras) {
         showMsg('adSubMsg', 'Add a response or a link before submitting.', true);
         return;
     }
-    if (linkUrl && !/^https?:\/\//i.test(linkUrl)) {
+    if (!force && linkUrl && !/^https?:\/\//i.test(linkUrl)) {
         showMsg('adSubMsg', 'Links must start with http:// or https://', true);
         return;
     }
@@ -991,8 +1214,10 @@ window.saveMySubmission = async function() {
     btn.disabled = true;
 
     try {
-        const record = await saveSubmission(pageSchoolId, a, pageStudentId, pageStudentName, { responseText, linkUrl });
+        const record = await saveSubmission(pageSchoolId, a, pageStudentId, pageStudentName, { responseText, linkUrl: /^https?:\/\//i.test(linkUrl) ? linkUrl : '', ...extras });
         submissionsById.set(a.id, record);
+        await discardDraft();
+        if (normalizeTheme(a.theme) === 'k5' && focusMode) celebrate({ emoji: '🎉' });
         renderList();
         // Re-render the panel so it reflects "Update Submission" + the new timestamp.
         window.openAssignmentDetail(a.id);

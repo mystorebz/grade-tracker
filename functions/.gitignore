@@ -1,2 +1,4 @@
 node_modules/
 *.local
+firestore-debug.log
+*.log

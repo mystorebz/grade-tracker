@@ -113,17 +113,20 @@
             <div id="dashBody" class="hidden grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 items-start">
 
                 <!-- ── Presentation column ──────────────────────────────── -->
-                <div>
+                <div id="presentColumn">
                     <div id="presentCanvas" class="mb-4"></div>
                     <div class="flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-5 py-3">
                         <button id="prevBlockBtn" class="text-slate-600 hover:text-slate-900 font-bold text-[13px] flex items-center gap-2 disabled:opacity-30 disabled:pointer-events-none">
                             <i class="fa-solid fa-chevron-left"></i> Previous
                         </button>
-                        <span id="blockCounter" class="text-[12px] font-black text-slate-400 uppercase tracking-widest"></span>
+                        <div id="presentFsHost" class="flex items-center gap-3">
+                            <span id="blockCounter" class="text-[12px] font-black text-slate-400 uppercase tracking-widest"></span>
+                        </div>
                         <button id="nextBlockBtn" class="text-slate-600 hover:text-slate-900 font-bold text-[13px] flex items-center gap-2 disabled:opacity-30 disabled:pointer-events-none">
                             Next <i class="fa-solid fa-chevron-right"></i>
                         </button>
                     </div>
+                    <div id="presenceStrip" hidden></div>
                 </div>
 
                 <!-- ── Live responses column (interactive blocks only) ──── -->

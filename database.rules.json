@@ -39,6 +39,96 @@
       }
     },
 
+    "assessmentLive": {
+      "$schoolId": {
+        "$assignmentId": {
+          ".read": "auth != null && auth.token.schoolId === $schoolId && (auth.token.role === 'teacher' || auth.token.role === 'super_admin' || auth.token.role === 'sub_admin')",
+
+          "control": {
+            ".read": "auth != null && auth.token.schoolId === $schoolId",
+            ".write": "auth != null && auth.token.schoolId === $schoolId && (auth.token.role === 'teacher' || auth.token.role === 'super_admin' || auth.token.role === 'sub_admin')",
+            "paused": { ".validate": "newData.isBoolean()" },
+            "extraMinutes": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 600" },
+            "collectAt": { ".validate": "newData.isNumber() && newData.val() <= now" },
+            "updatedAt": { ".validate": "newData.isNumber() && newData.val() <= now" },
+            "broadcast": {
+              ".validate": "newData.hasChildren(['id', 'text', 'at'])",
+              "id": { ".validate": "newData.isString() && newData.val().length <= 40" },
+              "text": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 280" },
+              "at": { ".validate": "newData.isNumber() && newData.val() <= now" },
+              "$other": { ".validate": false }
+            },
+            "$other": { ".validate": false }
+          },
+
+          "presence": {
+            "$studentId": {
+              ".read": "auth != null && auth.token.studentId === $studentId",
+              ".write": "auth != null && auth.token.role === 'student' && auth.token.studentId === $studentId && auth.token.schoolId === $schoolId",
+              ".validate": "newData.hasChildren(['name', 'state', 'at'])",
+              "name": { ".validate": "newData.isString() && newData.val().length <= 120" },
+              "state": { ".validate": "newData.isString() && (newData.val() === 'active' || newData.val() === 'away')" },
+              "at": { ".validate": "newData.isNumber() && newData.val() <= now" },
+              "lastViolation": { ".validate": "newData.isString() && newData.val().length <= 40" },
+              "$other": { ".validate": false }
+            }
+          },
+
+          "starts": {
+            "$studentId": {
+              ".read": "auth != null && auth.token.studentId === $studentId",
+              ".write": "auth != null && auth.token.role === 'student' && auth.token.studentId === $studentId && auth.token.schoolId === $schoolId && !data.exists()",
+              ".validate": "newData.isNumber() && newData.val() <= now + 60000 && newData.val() >= now - 60000"
+            }
+          },
+
+          "violations": {
+            "$studentId": {
+              "$violationId": {
+                ".write": "auth != null && auth.token.role === 'student' && auth.token.studentId === $studentId && auth.token.schoolId === $schoolId && !data.exists()",
+                ".validate": "newData.hasChildren(['type', 'at'])",
+                "type": { ".validate": "newData.isString() && newData.val().matches(/^(tab_switch|window_blur|copy|paste|cut|context_menu|exit_fullscreen)$/)" },
+                "at": { ".validate": "newData.isNumber() && newData.val() <= now" },
+                "$other": { ".validate": false }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "livePresence": {
+      "$schoolId": {
+        "$sessionId": {
+          ".read": "auth != null && auth.token.schoolId === $schoolId && (auth.token.role === 'teacher' || auth.token.role === 'super_admin' || auth.token.role === 'sub_admin')",
+
+          "$studentId": {
+            ".write": "auth != null && auth.token.role === 'student' && auth.token.studentId === $studentId && auth.token.schoolId === $schoolId",
+            ".validate": "newData.hasChildren(['online', 'name', 'initials', 'studentId', 'at'])",
+
+            "online": {
+              ".validate": "newData.isBoolean()"
+            },
+            "name": {
+              ".validate": "newData.isString() && newData.val().length <= 120"
+            },
+            "initials": {
+              ".validate": "newData.isString() && newData.val().length <= 3"
+            },
+            "studentId": {
+              ".validate": "newData.isString() && newData.val() === $studentId"
+            },
+            "at": {
+              ".validate": "newData.isNumber() && newData.val() <= now"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        }
+      }
+    },
+
     "$other": {
       ".read": false,
       ".write": false

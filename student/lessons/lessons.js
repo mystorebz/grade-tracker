@@ -157,7 +157,7 @@ function renderLessonCard(lesson) {
     const isDocument = lesson.format === 'document';
     const iconBg = isDocument ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-indigo-50 text-indigo-600 border-indigo-200';
     const icon = isDocument ? 'fa-file-lines' : 'fa-images';
-    const slideCount = (lesson.slides || []).length;
+    const slideCount = Number.isInteger(lesson.slideCount) ? lesson.slideCount : (lesson.slides || []).length;
     const metaLabel = isDocument ? 'Document' : `${slideCount} slide${slideCount === 1 ? '' : 's'}`;
 
     return `

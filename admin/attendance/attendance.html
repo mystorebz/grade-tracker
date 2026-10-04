@@ -31,7 +31,7 @@
                     <div class="w-11 h-11 bg-gradient-to-br from-indigo-500 to-blue-600 text-white rounded-2xl flex items-center justify-center text-lg shadow-md"><i class="fa-solid fa-calendar-check"></i></div>
                     <div>
                         <h2 class="font-black text-2xl text-slate-800 leading-tight">Attendance</h2>
-                        <p class="text-sm text-slate-400 font-semibold">View daily attendance across every class</p>
+                        <p class="text-sm text-slate-400 font-semibold">View and correct attendance for any class and any past date</p>
                     </div>
                 </div>
             </div>
@@ -50,7 +50,11 @@
                             <input type="date" id="attDate" class="form-input p-2.5 bg-white border border-slate-200 rounded-xl text-sm cursor-pointer">
                         </div>
                     </div>
-                    <p id="attDayMeta" class="text-xs text-slate-400 font-bold">—</p>
+                    <div class="text-right">
+                        <span class="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border bg-indigo-50 text-indigo-700 border-indigo-200"><i class="fa-solid fa-user-shield"></i> Admin · past dates editable</span>
+                        <p id="attSaveState" class="text-xs font-bold mt-1.5 text-slate-400" aria-live="polite">Changes save automatically</p>
+                        <p id="attDayMeta" class="text-[11px] text-slate-400 font-semibold mt-0.5">—</p>
+                    </div>
                 </div>
                 <div id="attSummary" class="flex flex-wrap items-center gap-4 mt-4"></div>
             </div>
@@ -60,6 +64,7 @@
             <p id="attEmpty" class="hidden text-sm font-bold text-slate-400 text-center bg-white border-2 border-dashed border-slate-200 rounded-2xl py-14 px-6"></p>
 
             <div id="attBody" class="hidden bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden"></div>
+            <p class="text-[11.5px] text-slate-400 font-semibold mt-3 text-center">Teachers can only change today's attendance. Corrections to past days made here are saved under your admin account and sync to students and parents automatically.</p>
 
         </div>
     </main>

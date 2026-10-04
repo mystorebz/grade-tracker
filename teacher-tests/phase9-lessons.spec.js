@@ -99,7 +99,7 @@ test.describe('Phase 9: Lesson Builder & Live Lessons', () => {
         // field.
         await expect(page.locator('#builderView')).toBeVisible();
         await expect(page.locator('#docBuilderView')).toBeHidden();
-        await expect(page.locator('#slideThumbList [data-slide-index]')).toHaveCount(1);
+        await expect(page.locator('#slideThumbList > [data-slide-index]')).toHaveCount(1);
         await expect(page.locator('#slideCanvas [data-field="heading"]')).toBeVisible();
         await expect(page.locator('#statusPill')).toHaveText('Draft');
 
@@ -131,7 +131,16 @@ test.describe('Phase 9: Lesson Builder & Live Lessons', () => {
         await lessonCard(page, LESSON_SLIDES_ID).locator('[data-action="open"]').click();
         await expect(page.locator('#builderView')).toBeVisible();
 
-        const thumbs = page.locator('#slideThumbList [data-slide-index]');
+        // NOTE: '#slideThumbList [data-slide-index]' (descendant combinator)
+        // is a strict-mode-safe but WRONG count here — builder.js's
+        // renderSlideThumb() puts data-slide-index on BOTH the outer
+        // .slide-thumb container AND its own nested delete-slide button
+        // (shown whenever there's more than 1 slide), so a descendant
+        // selector doubles every count once 2+ slides exist. Confirmed as
+        // the exact cause of the real "3 expected, 6 actual" failure.
+        // Scoped to the direct-child combinator so only the outer
+        // .slide-thumb containers match.
+        const thumbs = page.locator('#slideThumbList > [data-slide-index]');
         await expect(thumbs).toHaveCount(3);
         // Fixture order is A, B, C.
         await expect(thumbs.nth(0)).toContainText('Slide A');
@@ -158,7 +167,7 @@ test.describe('Phase 9: Lesson Builder & Live Lessons', () => {
         await page.reload();
         await expect(page.locator('#subjectSelect option').first()).not.toHaveText('Loading subjects…', { timeout: 15_000 });
         await lessonCard(page, LESSON_SLIDES_ID).locator('[data-action="open"]').click();
-        const reloadedThumbs = page.locator('#slideThumbList [data-slide-index]');
+        const reloadedThumbs = page.locator('#slideThumbList > [data-slide-index]');
         await expect(reloadedThumbs.nth(0)).toContainText('Slide C');
         await expect(reloadedThumbs.nth(1)).toContainText('Slide A');
         await expect(reloadedThumbs.nth(2)).toContainText('Slide B');
@@ -240,7 +249,10 @@ test.describe('Phase 9: Lesson Builder & Live Lessons', () => {
         await liveTab.waitForLoadState();
 
         const liveUrl = new URL(liveTab.url());
-        expect(liveUrl.pathname).toContain('/teacher/lessons/live.html');
+        // Same clean-URL caveat as phase14-deactivated.spec.js: npx serve
+        // can serve this at the extensionless /teacher/lessons/live path
+        // even though the dashboard's own golive link points at live.html.
+        expect(liveUrl.pathname).toMatch(/\/teacher\/lessons\/live(\.html)?$/);
         expect(liveUrl.searchParams.get('lessonId')).toBe(LESSON_LIVE_ID);
         expect(liveUrl.searchParams.get('classId')).toBe(CLASS_LESSON_ID);
         expect(liveUrl.searchParams.get('subjectId')).toBe(SUBJECT_LESSON_ID);

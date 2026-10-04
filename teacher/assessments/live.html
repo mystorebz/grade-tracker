@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Command Center | Teacher Portal | ConnectUs</title>
+
+    <link rel="icon" type="image/x-icon" href="../../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../assets/images/favicon-32x32.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../../assets/css/global.css">
+    <link rel="stylesheet" href="../../assets/css/teachers.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
+    <style>
+        [hidden] { display: none !important; }
+        body { font-family: 'DM Sans', sans-serif; }
+        .cc-stat { background: #fff; border: 1px solid #dce3ed; border-radius: 14px; padding: 12px 16px; }
+        .cc-stat b { display: block; font-size: 24px; color: #0d1f35; line-height: 1.1; }
+        .cc-stat span { font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #6b84a0; }
+        .cc-btn { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px; border-radius: 10px; font-size: 12.5px; font-weight: 800; border: 1px solid #dce3ed; background: #fff; color: #0d1f35; cursor: pointer; transition: background .15s, color .15s; white-space: nowrap; }
+        .cc-btn:hover { background: #eef4ff; }
+        .cc-btn:disabled { opacity: .45; cursor: not-allowed; }
+        .cc-btn-warn { background: #fffbeb; border-color: #fcd34d; color: #92400e; }
+        .cc-btn-warn[aria-pressed="true"] { background: #f59e0b; color: #fff; border-color: #f59e0b; }
+        .cc-btn-danger { background: #dc2626; border-color: #dc2626; color: #fff; }
+        .cc-btn-danger:hover { background: #b91c1c; }
+        .cc-btn:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+        .cc-table { width: 100%; border-collapse: collapse; }
+        .cc-table th { text-align: left; font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #6b84a0; padding: 10px 14px; border-bottom: 1px solid #e2e8f0; }
+        .cc-table td { padding: 10px 14px; border-bottom: 1px solid #f0f4f8; font-size: 13px; color: #0d1f35; vertical-align: middle; }
+        .cc-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 999px; }
+        .cc-chip::before { content: ''; width: 7px; height: 7px; border-radius: 99px; background: currentColor; }
+        .cc-working { color: #047857; background: #ecfdf5; }
+        .cc-away { color: #b91c1c; background: #fef2f2; }
+        .cc-offline { color: #64748b; background: #f1f5f9; }
+        .cc-submitted { color: #1d4ed8; background: #eff6ff; }
+        .cc-viol { font-size: 11.5px; font-weight: 800; color: #b91c1c; }
+        .cc-mono { font-family: 'DM Mono', monospace; font-size: 12.5px; }
+        .cc-av { width: 30px; height: 30px; border-radius: 99px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900; color: #fff; margin-right: 10px; flex: none; }
+        .cc-log li { font-size: 12px; padding: 6px 0; border-bottom: 1px solid #f0f4f8; color: #374f6b; }
+    </style>
+</head>
+<body class="flex w-full h-screen overflow-hidden bg-[#f4f7fb]">
+    <div id="layout-sidebar-container" class="flex-shrink-0 h-full z-20"></div>
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full overflow-hidden">
+        <div id="layout-topbar-container" class="flex-shrink-0 z-10"></div>
+        <div class="flex-1 overflow-y-auto p-6 md:p-8 view-section">
+            <div class="max-w-6xl mx-auto">
+                <div id="ccLoading" class="py-24 text-center text-[#9ab0c6] text-[13px] font-bold"><i class="fa-solid fa-spinner fa-spin text-[#2563eb] text-2xl block mb-3"></i>Loading command center…</div>
+                <div id="ccError" class="py-20 text-center" hidden><p id="ccErrorMsg" class="font-bold text-[#374f6b] text-[14px] m-0"></p></div>
+
+                <div id="ccBody" hidden>
+                    <header class="flex flex-wrap items-end justify-between gap-4 border-b-2 border-[#0d1f35] pb-4 mb-5">
+                        <div class="min-w-0">
+                            <p class="text-[11px] font-black uppercase tracking-widest text-rose-600 m-0"><i class="fa-solid fa-tower-broadcast mr-1"></i>Live command center</p>
+                            <h1 id="ccTitle" class="text-2xl font-bold text-[#0d1f35] m-0 mt-1 truncate"></h1>
+                            <p id="ccMeta" class="text-xs text-[#6b84a0] m-0 mt-1"></p>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" id="ccPause" class="cc-btn cc-btn-warn" aria-pressed="false"><i class="fa-solid fa-pause"></i><span>Pause all</span></button>
+                            <button type="button" id="ccAddTime" class="cc-btn"><i class="fa-solid fa-clock-rotate-left"></i>+5 min</button>
+                            <button type="button" id="ccCollect" class="cc-btn cc-btn-danger"><i class="fa-solid fa-box-archive"></i>Force collect</button>
+                        </div>
+                    </header>
+
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+                        <div class="cc-stat"><b id="ccWorking">0</b><span>Working</span></div>
+                        <div class="cc-stat"><b id="ccAway">0</b><span>Away</span></div>
+                        <div class="cc-stat"><b id="ccSubmitted">0</b><span>Submitted</span></div>
+                        <div class="cc-stat"><b id="ccViolations">0</b><span>Violations</span></div>
+                        <div class="cc-stat"><b id="ccExtra">+0</b><span>Extra minutes</span></div>
+                    </div>
+
+                    <form id="ccBroadcastForm" class="flex flex-wrap gap-2 mb-5">
+                        <label for="ccBroadcast" class="sr-only">Broadcast a message</label>
+                        <input id="ccBroadcast" maxlength="280" autocomplete="off" placeholder="Broadcast to every student — e.g. “Hint: check question 3”" class="flex-1 min-w-[240px] h-[38px] px-3 rounded-[10px] border border-[#dce3ed] bg-white text-[13px]">
+                        <button type="submit" class="cc-btn"><i class="fa-solid fa-bullhorn"></i>Send</button>
+                    </form>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-5 items-start">
+                        <div class="bg-white rounded-xl border border-[#dce3ed] overflow-x-auto">
+                            <table class="cc-table">
+                                <thead><tr><th>Student</th><th>Status</th><th>Time left</th><th>Integrity</th></tr></thead>
+                                <tbody id="ccRows"></tbody>
+                            </table>
+                        </div>
+                        <aside class="bg-white rounded-xl border border-[#dce3ed] p-4">
+                            <p class="text-[11px] font-black uppercase tracking-widest text-[#6b84a0] m-0 mb-2">Activity</p>
+                            <ul id="ccLog" class="cc-log list-none p-0 m-0"><li class="text-[#9ab0c6]">Nothing yet.</li></ul>
+                            <button type="button" id="ccReset" class="cc-btn mt-4 w-full justify-center"><i class="fa-solid fa-rotate"></i>Reset live controls</button>
+                        </aside>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+    <script type="module" src="live.js"></script>
+</body>
+</html>

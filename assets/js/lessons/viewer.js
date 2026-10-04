@@ -1,8 +1,9 @@
 // ── INTERACTIVE STUDENT LESSON VIEWER ─────────────────────────────────────
 // Reads one lesson (Slides or Document format) and renders it read-only,
 // with embedded assignments completable in place. Mirrors the Teacher
-// Builder's rendering logic for each slide type / the Document's Quill
-// content, but every control here is view-only — nothing in this file ever
+// Builder's rendering logic for each slide type / renders Documents with the
+// editor's own Tiptap schema (document.js createDocumentViewer), but every
+// control here is view-only — nothing in this file ever
 // writes to a lesson document, and it never touches the lessons/{id}/private
 // subcollection (pacingNotes/standards are teacher-only; firestore.rules
 // denies students that path outright regardless of publish status — see
@@ -11,7 +12,9 @@
 // doc, gated by loadLesson()'s own status == 'published' requirement,
 // enforced server-side).
 import { db } from '../../../assets/js/firebase-init.js';
-import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { doc, getDoc, getDocs, collection } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { SCHEMA_VERSION, v3ToV2Slides, v3ObjectToV2Block } from './canvas/model.js';
+import { mountStage, renderSlide, NATIVE_TYPES } from './canvas/renderer.js';
 import { requireAuth } from '../../../assets/js/auth.js';
 import { injectStudentLayout } from '../../../assets/js/layout-student.js';
 import { loadTeacherSubjectsCache, getTeacherDocRef, openOverlay, closeOverlay, showMsg, loadSchoolHeaderInfo } from '../../../assets/js/utils.js';
@@ -23,12 +26,23 @@ import {
     isSubmissionFrozen
 } from '../../../assets/js/submissions.js';
 import {
-    getActiveLiveSession,
+    subscribeToActiveLiveSession,
+    getLastLiveSessionId,
     subscribeToLiveSession,
     subscribeToLiveResponses,
     saveLiveResponse,
-    normalizeLessonSlides
+    normalizeLessonSlides,
+    loadMyLiveResponse,
+    submitLessonQuizAnswer,
+    saveLessonResponse,
+    loadMyLessonResponse,
+    subscribeToLessonBoardNotes
 } from '../../../assets/js/lessons.js';
+import { WIDGET_TYPES, widgetState, updateWidgetLive, bindWidgetEvents, restoreWidgetDrafts } from './canvas/tools/interactive.js';
+import { createDocumentViewer } from './document.js';
+import { setupLiveFullscreen } from './live-fullscreen.js';
+import { createStudentPresence } from './live-presence.js';
+import { paintActivity, injectActivityCss, openActivity, pinCardToBox, withActivity } from './live-activity.js';
 
 // ── 1. AUTHENTICATION & LAYOUT ──────────────────────────────────────────────
 const session = requireAuth('student', '../login.html');
@@ -54,7 +68,8 @@ const urlSubjectName = params.get('subjectName') || '';
 let lesson = null;             // the loaded lesson doc (format, slides[], etc.)
 let postContext = null;        // { classId, className, subjectId, subjectName } — resolved once, reused for every submissions.js call
 let currentSlideIndex = 0;     // Slides format only
-let quillViewer = null;        // Document format's read-only Quill instance
+let canvasStage = null;        // v3 renderer stage handle for the current slide (null on v2 lessons)
+let docViewer = null;          // Document format's read-only Tiptap viewer (document.js)
 let assignmentsById = new Map(); // linkedAssignmentId -> the real assignment record (for the submission panel)
 let gradesById = new Map();      // assignmentId -> grade record | null
 let currentPanelAssignmentId = null; // assignment currently open in the slide-in panel
@@ -64,14 +79,22 @@ let loadedMediaSlideIds = new Set(); // video block ids whose iframe has already
 let liveSessionId = null;          // this lesson's currently-active live session, if any
 let liveSessionData = null;        // { teacherPositionId, endedAt, ... } — last snapshot
 let unsubLiveSession = null;       // subscribeToLiveSession()'s unsubscribe
+let unsubActiveSession = null;     // subscribeToActiveLiveSession()'s unsubscribe (session start / end / restart)
 let unsubLiveResponses = null;     // subscribeToLiveResponses()'s unsubscribe — re-registered per block, same as the teacher dashboard
 let liveResponsesForCurrentBlock = []; // collaborative_board's shared wall for whichever block is on screen
+// Phase 4 step 4 widgets (poll / quiz / open_response / board canvas objects)
+let currentV3Slide = null;           // the v3 slide on screen (widgets need its objects) — incl. a live activity placed on it
+let baseV3Slide = null;              // the same slide as saved in the lesson
+let myWidgetResponses = new Map();   // objectId → this student's own response (loaded on demand)
+let widgetResponses = [];            // shared board-widget notes for the slide on screen
+let unsubWidgetResponses = null;
+let unbindWidgets = null;
 let mySubmittedBlockIds = new Set(); // interactive_prompt/collaborative_board block ids this student has already answered this session (so a re-render doesn't blow away an in-progress unsent draft)
 
 // ── LIVE SESSION LOCKDOWN: single source of truth for "is this session
 // still accepting submissions right now" ─────────────────────────────────
-// liveSessionId is set once at page load (init(), below) and NEVER cleared
-// afterward — it stays truthy for the rest of the page's life even after
+// liveSessionId is set when a session starts (switchLiveSession(), below) and
+// is NOT cleared when it ends — it stays truthy for the rest of the page's life even after
 // the teacher ends the session, since it also doubles as "this lesson HAD a
 // session, so keep showing read-only session UI (the ended banner, a
 // collaborative board's frozen wall)" rather than reverting to the plain
@@ -99,47 +122,6 @@ function escHtml(str) {
 
 function localStorageKey(lessonId) {
     return `connectus_lesson_progress_${lessonId}`;
-}
-
-// ── ASSIGNMENT EMBED BLOT (read-only viewer) ─────────────────────────────
-// Mirrors builder.js's registerAssignmentBlot() exactly. Quill's own
-// DOM-to-Delta normalization pass (confirmed via diagnostic logging to run
-// asynchronously, on the very next tick after any root.innerHTML mutation)
-// only preserves elements it has a registered Blot for — anything else gets
-// flattened to plain text on that pass, regardless of how the initial HTML
-// was assembled. builder.js registers this Blot and never sees the embed
-// get flattened; this file never registered it, which is the actual root
-// cause of the flattening bug (building the HTML string before Quill saw it
-// was necessary but not sufficient on its own). Registering it here, before
-// the read-only Quill instance is constructed, is what's actually needed.
-let assignmentBlotRegistered = false;
-
-function registerAssignmentBlot() {
-    if (assignmentBlotRegistered || !window.Quill) return;
-    const Embed = Quill.import('blots/embed');
-
-    class AssignmentBlot extends Embed {
-        static create(value) {
-            const node = super.create();
-            node.setAttribute('contenteditable', 'false');
-            node.setAttribute('data-assignment-id', value.id || '');
-            node.setAttribute('data-assignment-title', value.title || '');
-            node.innerHTML = buildAssignmentEmbedInnerHtml(value.id || '', value.title || 'Assignment');
-            return node;
-        }
-        static value(node) {
-            return {
-                id: node.getAttribute('data-assignment-id') || '',
-                title: node.getAttribute('data-assignment-title') || ''
-            };
-        }
-    }
-    AssignmentBlot.blotName = 'assignmentEmbed';
-    AssignmentBlot.tagName = 'span';
-    AssignmentBlot.className = 'assignment-embed';
-
-    Quill.register(AssignmentBlot);
-    assignmentBlotRegistered = true;
 }
 
 // ── 4. INITIALIZATION ───────────────────────────────────────────────────────
@@ -200,7 +182,31 @@ async function init() {
         // comment above), so it has to call this explicitly rather than
         // getting it "for free" the way builder.js/live.js do. See
         // lessons.js's migrateLegacySlide() for the full rationale.
-        lesson = { id: snap.id, ...data, format: data.format === 'document' ? 'document' : 'slides', slides: normalizeLessonSlides(data.slides) };
+        // Split lesson model: slides/theme live in lessons/{id}/content/main
+        // (readable by students only while the lesson is published). Pre-split
+        // lessons still carry slides on the main doc — fall back to those.
+        const contentSnap = await getDoc(doc(snap.ref, 'content', 'main')).catch(() => null);
+        const content = contentSnap && contentSnap.exists() ? contentSnap.data() : null;
+        const isV3 = !!(content && content.schemaVersion === SCHEMA_VERSION);
+        let slidesSrc = content && Array.isArray(content.slides) ? content.slides : data.slides;
+        let v3 = null;
+        if (isV3) {
+            // Canvas schema v3: per-slide docs (slides/{slideId}) + doc/main for Documents.
+            const isDoc = data.format === 'document';
+            const [slidesSnap, docSnap] = await Promise.all([
+                isDoc ? null : getDocs(collection(snap.ref, 'slides')),
+                isDoc ? getDoc(doc(snap.ref, 'doc', 'main')).catch(() => null) : null,
+            ]);
+            const slidesById = new Map((slidesSnap ? slidesSnap.docs : []).map(d => [d.id, { ...d.data(), id: d.id }]));
+            const docData = docSnap && docSnap.exists() ? docSnap.data() : null;
+            if (isDoc || slidesById.size || !(content.slideOrder || []).length) {
+                slidesSrc = v3ToV2Slides({ content, slidesById, doc: docData, format: isDoc ? 'document' : 'slides' });
+                v3 = { stage: content.stage, theme: content.theme || 'general', slidesById };
+            }
+            // else: slideOrder points at slides that don't exist (yet) → fall through to v2 data, if any
+        }
+        lesson = { id: snap.id, ...data, theme: (content && content.theme) || data.theme || 'general', format: data.format === 'document' ? 'document' : 'slides', slides: normalizeLessonSlides(slidesSrc) || [] };
+        lesson.v3 = v3;
         postContext = { classId: urlClassId, className: data.className || '', subjectId: urlSubjectId, subjectName: data.subjectName || urlSubjectName };
 
         // ── Resolve this student's real assignment records ───────────────
@@ -249,15 +255,9 @@ async function init() {
         // one running right now. Non-fatal if this fails — the lesson still
         // renders and functions exactly as a normal, non-live lesson; only
         // auto-follow/live-response features are unavailable.
-        try {
-            const active = await getActiveLiveSession(session.schoolId, postContext, urlLessonId);
-            if (active) {
-                liveSessionId = active.id;
-                joinLiveSession();
-            }
-        } catch (e) {
-            console.error('[Lesson Viewer] Failed to check for an active live session:', e);
-        }
+        // Real-time: the teacher may go live (or end and restart) at any
+        // point after this page loads — no reload needed.
+        unsubActiveSession = subscribeToActiveLiveSession(session.schoolId, postContext, urlLessonId, switchLiveSession);
     } catch (e) {
         console.error('[Lesson Viewer] init:', e);
         showError('Something went wrong loading this lesson. Please try again later.');
@@ -292,10 +292,10 @@ function wireEvents() {
 
     els.lvCloseAssignmentBtn.addEventListener('click', closeAssignmentPanel);
 
-    // Event delegation for assignment-embed clicks: both the Slide canvas
-    // and the Quill document body re-render/re-parse their innerHTML
-    // wholesale, so listeners are attached once at a stable ancestor rather
-    // than re-wired after every render.
+    // Event delegation for assignment-embed clicks: the Slide canvas
+    // re-renders wholesale and the Document viewer's cards are node views,
+    // so listeners are attached once at a stable ancestor rather than
+    // re-wired after every render.
     els.lvSlideCanvas.addEventListener('click', onEmbeddedContentClick);
     els.docViewerEditor.addEventListener('click', onEmbeddedContentClick);
 }
@@ -414,9 +414,27 @@ function renderSlideCanvas() {
     const slide = currentSlide();
     if (!slide) { els.lvSlideCanvas.innerHTML = ''; return; }
 
-    els.lvSlideCanvas.innerHTML = slide.type === 'collaborative_board'
-        ? renderCollaborativeBoardHtml(slide)
-        : renderBlankSlideHtml(slide);
+    const v3Slide = lesson.v3 && slide.type !== 'collaborative_board' ? lesson.v3.slidesById.get(slide.id) : null;
+    if (canvasStage) { canvasStage.destroy(); canvasStage = null; }
+    if (v3Slide && v3Slide.kind === 'canvas') {
+        // Schema v3: shared 1600×900 renderer; block markup (prompts, assignment
+        // cards, lazy media) still comes from this page, so wiring below is unchanged.
+        els.lvSlideCanvas.innerHTML = '<div class="lv-v3-wrap" style="width:100%;"></div>';
+        canvasStage = mountStage(els.lvSlideCanvas.firstElementChild, { stage: lesson.v3.stage, theme: lesson.v3.theme });
+        baseV3Slide = v3Slide;
+        currentV3Slide = withActivity(v3Slide, currentStudentActivity());
+        paintV3Slide();
+        setupWidgetsForSlide(currentV3Slide);
+        syncStudentActivity();
+    } else {
+        baseV3Slide = null;
+        currentV3Slide = null;
+        setupWidgetsForSlide(null);
+        syncStudentActivity();
+        els.lvSlideCanvas.innerHTML = slide.type === 'collaborative_board'
+            ? renderCollaborativeBoardHtml(slide)
+            : renderBlankSlideHtml(slide);
+    }
 
     // Lazy-load: a video block's <iframe> is only ever inserted once this
     // exact slide becomes the active one (here, right after it's rendered
@@ -640,7 +658,7 @@ async function submitLiveResponse(item, answerText) {
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; }
 
     try {
-        const studentName = session.studentData?.name || '';
+        const studentName = session.studentData?.name || session.studentData?.fullName || '';
         await saveLiveResponse(session.schoolId, postContext, lesson.id, liveSessionId, session.studentId, studentName, item.id, item.type, { answerText: text });
         mySubmittedBlockIds.add(item.id);
         const msg = scope?.querySelector('[data-live-msg]');
@@ -693,6 +711,220 @@ function registerBlockResponsesListener(blockId, blockType) {
     }, 'student');
 }
 
+// ── PHASE 4 STEP 4: CANVAS WIDGETS (student side) ────────────────────────
+// Quiz answers the teacher's screen put on the session when it ended.
+function revealedFor(id) {
+    const r = liveSessionData && liveSessionData.endedAt && liveSessionData.revealedAnswers;
+    return r && Array.isArray(r[id]) ? r[id] : [];
+}
+
+// ── half-typed answers (open response / sticky note) ──
+// Kept per lesson + session in sessionStorage, so a slide change, a re-render
+// or a reload never throws away what a student was typing.
+const widgetDrafts = {
+    _key() { return liveSessionId && lesson ? `gt-wdraft:${lesson.id}:${liveSessionId}` : null; },
+    _read() { try { const k = this._key(); return k ? JSON.parse(sessionStorage.getItem(k) || '{}') : {}; } catch (e) { return {}; } },
+    _write(o) { try { const k = this._key(); if (k) sessionStorage.setItem(k, JSON.stringify(o)); } catch (e) { /* storage off */ } },
+    get(id) { const v = this._read()[id]; return typeof v === 'string' ? v : undefined; },
+    set(id, text) { const o = this._read(); o[id] = String(text).slice(0, 4000); this._write(o); },
+    delete(id) { const o = this._read(); delete o[id]; this._write(o); },
+};
+
+function restoreDrafts() {
+    if (!isSessionLive()) return;
+    restoreWidgetDrafts(els.lvSlideCanvas, widgetDrafts);
+    if (activityCard) restoreWidgetDrafts(activityCard, widgetDrafts);
+}
+
+function widgetCtx(obj) {
+    return {
+        correctIds: revealedFor(obj.id),
+        state: widgetState({ sessionId: liveSessionId, sessionData: liveSessionData }),
+        mine: myWidgetResponses.get(obj.id) || null,
+        responses: obj.type === 'board' ? widgetResponses : [],
+        spotlight: liveSessionData && liveSessionData.spotlight ? liveSessionData.spotlight : null,
+    };
+}
+
+function paintV3Slide() {
+    if (!canvasStage || !currentV3Slide) return;
+    renderSlide(canvasStage, currentV3Slide, {
+        mode: 'student',
+        renderContent: (obj) => (NATIVE_TYPES.has(obj.type) ? undefined : renderLiveBlockDisplayHtml(v3ObjectToV2Block(obj))),
+        widgetContext: widgetCtx,
+    });
+    refreshWidgets(false);
+    restoreDrafts();
+}
+
+// Re-render widget shells whose structure changed, then refresh live regions.
+function refreshWidgets(repaint = true) {
+    if (!canvasStage || !currentV3Slide) return;
+    if (repaint) { paintV3Slide(); return; }
+    (currentV3Slide.objects || []).forEach(obj => {
+        if (!WIDGET_TYPES.has(obj.type)) return;
+        const node = canvasStage.nodes.get(obj.id);
+        if (node) updateWidgetLive(node.el, obj, 'student', widgetCtx(obj));
+    });
+}
+
+function setupWidgetsForSlide(v3Slide) {
+    if (unsubWidgetResponses) { unsubWidgetResponses(); unsubWidgetResponses = null; }
+    widgetResponses = [];
+    if (!unbindWidgets && els.lvSlideCanvas) {
+        unbindWidgets = bindWidgetEvents(els.lvSlideCanvas, {
+            drafts: widgetDrafts,
+            getObject: (id) => (currentV3Slide?.objects || []).find(o => o.id === id) || null,
+            onSubmit: submitWidget,
+        });
+    }
+    const widgets = (v3Slide?.objects || []).filter(o => WIDGET_TYPES.has(o.type));
+    if (!widgets.length || !liveSessionId) return;
+    // own answers (so a returning student sees what they already sent)
+    const missing = widgets.filter(w => !myWidgetResponses.has(w.id));
+    if (missing.length) {
+        Promise.all(missing.map(w => loadMyLiveResponse(session.schoolId, postContext, lesson.id, liveSessionId, session.studentId, w.id)
+            .then(r => { if (r) myWidgetResponses.set(w.id, r); })))
+            .then(() => { if (currentV3Slide === v3Slide) refreshWidgets(); });
+    }
+    const boardIds = new Set(widgets.filter(w => w.type === 'board').map(w => w.id));
+    if (boardIds.size) {
+        unsubWidgetResponses = subscribeToLiveResponses(session.schoolId, postContext, lesson.id, liveSessionId, (responses) => {
+            widgetResponses = responses.filter(r => boardIds.has(r.blockId));
+            widgetResponses.filter(r => r.studentId === session.studentId).forEach(r => myWidgetResponses.set(r.blockId, r));
+            refreshWidgets(false);
+        }, 'student', 'board');
+    }
+}
+
+async function submitWidget(obj, payload) {
+    if (!isSessionLive()) throw new Error('This live session has ended.');
+    if (obj.type === 'quiz') {
+        const res = await submitLessonQuizAnswer({
+            schoolId: session.schoolId, classId: postContext.classId, subjectId: postContext.subjectId,
+            lessonId: lesson.id, sessionId: liveSessionId, objectId: obj.id, choiceIds: payload.choiceIds,
+        });
+        // the server returns the picks it actually graded (or the earlier attempt's)
+        myWidgetResponses.set(obj.id, { choiceIds: Array.isArray(res.choiceIds) ? res.choiceIds : payload.choiceIds, correct: res.correct === true });
+    } else {
+        const studentName = session.studentData?.name || session.studentData?.fullName || '';
+        const rec = await saveLiveResponse(session.schoolId, postContext, lesson.id, liveSessionId, session.studentId, studentName, obj.id, obj.type, payload);
+        myWidgetResponses.set(obj.id, rec);
+    }
+    refreshWidgets();
+    paintStudentActivity();
+}
+
+// ── LIVE ACTIVITIES (questions the teacher asks during the session) ──────
+// The open one (session.activityId) shows as a card over the lesson — inside
+// lessonViewerRoot, so it stays visible in full screen. It answers through
+// submitWidget() like any lesson widget. "Hide" folds it to its title bar.
+let activityCard = null;
+let activityShownId = null;
+let activityNotes = [];
+let unsubActivityNotes = null;
+let activityMinimized = false;
+let unbindActivity = null;
+
+function currentStudentActivity() {
+    return liveSessionId && liveSessionData ? openActivity(liveSessionData) : null;
+}
+
+function ensureActivityCard() {
+    if (activityCard) return activityCard;
+    injectActivityCss();
+    const root = els.lessonViewerRoot;
+    activityCard = document.createElement('section');
+    activityCard.className = 'lact-card lact-student';
+    activityCard.setAttribute('role', 'region');
+    activityCard.setAttribute('aria-label', 'Question from your teacher');
+    activityCard.innerHTML = `<div class="lact-card-bar"><span class="lact-live-dot" aria-hidden="true"></span><span class="lact-grow" aria-live="assertive">Question from your teacher</span><button type="button" data-min aria-expanded="true">Hide</button></div><div class="lact-card-body" data-body></div>`;
+    root.appendChild(activityCard); // inside the full-screen element
+    // sits over the slide itself (or the document page area), never outside it
+    pinCardToBox(activityCard, () => {
+        const target = lesson && lesson.format === 'document'
+            ? els.lvDocView
+            : (els.lvSlideCanvas && (els.lvSlideCanvas.querySelector('.cv-viewport, .lv-slide-card') || els.lvSlideCanvas));
+        return target ? target.getBoundingClientRect() : null;
+    });
+    activityCard.querySelector('[data-min]').addEventListener('click', () => {
+        activityMinimized = !activityMinimized;
+        paintStudentActivity();
+    });
+    unbindActivity = bindWidgetEvents(activityCard.querySelector('[data-body]'), {
+        drafts: widgetDrafts,
+        getObject: (id) => { const a = currentStudentActivity(); return a && a.id === id ? a : null; },
+        onSubmit: submitWidget,
+    });
+    return activityCard;
+}
+
+// true when the open activity is drawn on the slide on screen (no card needed)
+function activityOnStage(act) {
+    return !!(act && baseV3Slide && act.slideId === baseV3Slide.id && typeof act.x === 'number');
+}
+
+function syncStudentActivity() {
+    const act = currentStudentActivity();
+    // keep the slide on screen in step: activity added to / removed from it
+    if (baseV3Slide && canvasStage) {
+        const next = withActivity(baseV3Slide, act);
+        const shownIds = (currentV3Slide?.objects || []).map(o => o.id).join('|');
+        const nextIds = (next.objects || []).map(o => o.id).join('|');
+        currentV3Slide = next;
+        if (shownIds !== nextIds) { paintV3Slide(); setupWidgetsForSlide(currentV3Slide); }
+    }
+    // a card only when it can't be drawn on the slide on screen (document
+    // lessons, older slides, or the student is on a different slide)
+    const cardId = act && !activityOnStage(act) ? act.id : null;
+    if (cardId !== activityShownId) {
+        activityShownId = cardId;
+        activityNotes = [];
+        activityMinimized = false;
+        if (unsubActivityNotes) { unsubActivityNotes(); unsubActivityNotes = null; }
+        if (cardId) {
+            ensureActivityCard();
+            const body = activityCard.querySelector('[data-body]');
+            body.innerHTML = ''; body.__lactKey = null;
+            if (!myWidgetResponses.has(cardId)) {
+                loadMyLiveResponse(session.schoolId, postContext, lesson.id, liveSessionId, session.studentId, cardId)
+                    .then(r => { if (r && activityShownId === cardId) { myWidgetResponses.set(cardId, r); paintStudentActivity(); } });
+            }
+            if (act.type === 'board') {
+                unsubActivityNotes = subscribeToLiveResponses(session.schoolId, postContext, lesson.id, liveSessionId, (responses) => {
+                    activityNotes = responses.filter(r => r.blockId === cardId);
+                    activityNotes.filter(r => r.studentId === session.studentId).forEach(r => myWidgetResponses.set(r.blockId, r));
+                    paintStudentActivity();
+                }, 'student', 'board');
+            }
+        }
+    }
+    paintStudentActivity();
+}
+
+function paintStudentActivity() {
+    const act = currentStudentActivity();
+    if (activityOnStage(act)) refreshWidgets(false); // drawn on the slide itself
+    if (!act || act.id !== activityShownId) {
+        if (activityCard) activityCard.classList.add('hidden');
+        return;
+    }
+    ensureActivityCard();
+    activityCard.classList.remove('hidden');
+    activityCard.classList.toggle('lact-min', activityMinimized);
+    const minBtn = activityCard.querySelector('[data-min]');
+    minBtn.textContent = activityMinimized ? 'Show' : 'Hide';
+    minBtn.setAttribute('aria-expanded', String(!activityMinimized));
+    paintActivity(activityCard.querySelector('[data-body]'), act, 'student', {
+        state: widgetState({ sessionId: liveSessionId, sessionData: liveSessionData }),
+        mine: myWidgetResponses.get(act.id) || null,
+        responses: act.type === 'board' ? activityNotes : [],
+        spotlight: liveSessionData && liveSessionData.spotlight ? liveSessionData.spotlight : null,
+        correctIds: revealedFor(act.id),
+    });
+    restoreWidgetDrafts(activityCard, widgetDrafts);
+}
+
 // ── PHASE 3: JOIN A LIVE SESSION + AUTO-FOLLOW ───────────────────────────
 // Subscribes to the session doc itself. Every time teacherPositionId
 // changes, this student's screen jumps to match — Slides format navigates
@@ -700,13 +932,81 @@ function registerBlockResponsesListener(blockId, blockType) {
 // no discrete positions) has nothing to auto-follow to, so this is a no-op
 // there beyond the "session ended" banner, which still applies to both
 // formats.
+// A new session id: drop the previous session's listeners and answers, then
+// join it. null (not live) leaves the joined session's own listener to show
+// "ended" and lock the page.
+// No live session right now: once per page, open the lesson's last (ended)
+// session read-only so students see what they answered and the correct quiz
+// answers. A session that starts later replaces it as usual.
+let reviewChecked = false;
+let reviewing = false;
+function switchLiveSession(id) {
+    if (!id && !liveSessionId && !reviewChecked) {
+        reviewChecked = true;
+        getLastLiveSessionId(session.schoolId, postContext, lesson.id).then((last) => {
+            if (!last || liveSessionId) return;
+            reviewing = true;
+            liveSessionId = last;
+            joinLiveSession();
+        }).catch((e) => console.warn('[Lesson Viewer] last session lookup:', e));
+        return;
+    }
+    if (!id || id === liveSessionId) return;
+    reviewing = false;
+    syncPresence(false);
+    if (unsubLiveSession) { unsubLiveSession(); unsubLiveSession = null; }
+    if (unsubLiveResponses) { unsubLiveResponses(); unsubLiveResponses = null; }
+    if (unsubWidgetResponses) { unsubWidgetResponses(); unsubWidgetResponses = null; }
+    liveSessionData = null;
+    myWidgetResponses = new Map();
+    widgetResponses = [];
+    liveResponsesForCurrentBlock = [];
+    mySubmittedBlockIds = new Set();
+    liveSessionId = id;
+    syncStudentActivity();
+    joinLiveSession();
+}
+
+// Full screen control for live lessons — added the first time this page
+// joins a live session (a lesson read on its own has no Full screen button).
+let liveFullscreen = null;
+function ensureLiveFullscreen() {
+    if (liveFullscreen) return;
+    liveFullscreen = setupLiveFullscreen({
+        target: document.getElementById('lessonViewerRoot'),
+        buttonHost: document.getElementById('lvHeadActions'),
+        stage: lesson.format === 'document' ? null : els.lvSlideCanvas,
+        tone: 'dark',
+    });
+}
+
+// Presence (RTDB): this student shows on the teacher's roster while the
+// session is live; onDisconnect() removes them server-side if the socket drops.
+let presence = null;
+function syncPresence(live) {
+    if (!live) { if (presence) presence.leave(); return; }
+    if (!presence) {
+        presence = createStudentPresence({
+            schoolId: session.schoolId,
+            studentId: session.studentId,
+            name: session.studentData?.name || session.studentData?.fullName || '',
+        });
+    }
+    presence.join(liveSessionId);
+}
+
+let endedPaintedFor = null;
 function joinLiveSession() {
     unsubLiveSession = subscribeToLiveSession(session.schoolId, postContext, lesson.id, liveSessionId, (data) => {
         const wasLive = isSessionLive();
         liveSessionData = data;
+        if (!data.endedAt) { ensureLiveFullscreen(); liveFullscreen.setAvailable(true); }
+        else if (liveFullscreen) liveFullscreen.setAvailable(false); // nothing live to follow any more
+        syncPresence(!data.endedAt && !reviewing);
+        syncStudentActivity();
 
         if (data.endedAt) {
-            showLiveBanner('🔴 Live Session Ended - Read Only', /* ended */ true);
+            showLiveBanner(reviewing ? 'Last live session — showing your answers (read only)' : '🔴 Live Session Ended - Read Only', /* ended */ true);
             if (unsubLiveResponses) { unsubLiveResponses(); unsubLiveResponses = null; }
             // LIVE SESSION LOCKDOWN: re-render the slide that's on screen
             // RIGHT NOW so it locks immediately, the moment the teacher ends
@@ -717,18 +1017,26 @@ function joinLiveSession() {
             // would otherwise call again until the student next navigates).
             // Skipped for Document format, which has no slide canvas to
             // re-render — the banner above is the only UI that format needs.
-            if (wasLive && lesson.format !== 'document') renderSlideCanvas();
+            // (also once for a session opened for review, so answers / correct answers show)
+            if ((wasLive || endedPaintedFor !== liveSessionId) && lesson.format !== 'document') {
+                endedPaintedFor = liveSessionId;
+                renderSlideCanvas();
+            }
             return;
         }
 
+        if (!wasLive) showLiveBanner('Following your teacher live.');
         if (lesson.format === 'document') return; // no discrete position to follow
 
         const targetIndex = lesson.slides.findIndex(s => s.id === data.teacherPositionId);
         if (targetIndex >= 0 && targetIndex !== currentSlideIndex) {
             goToSlide(targetIndex, /* skipSave */ true); // don't clobber this student's own saved resume position with the teacher's live position
+        } else if (!wasLive) {
+            renderSlideCanvas(); // just went live: unlock this slide's answer forms
+        } else {
+            refreshWidgets(); // spotlight changes, etc.
         }
     });
-    showLiveBanner('Following your teacher live.');
 }
 
 function showLiveBanner(text, ended = false) {
@@ -766,40 +1074,35 @@ function mountLazyMediaFrame(frameEl) {
     frameEl.innerHTML = `<iframe src="${escHtml(embedUrl)}" allowfullscreen loading="lazy"></iframe>`;
 }
 
-// ── 7. DOCUMENT FORMAT (Quill read-only + Table of Contents) ─────────────
-function renderDocumentView() {
+// ── 7. DOCUMENT FORMAT (Tiptap read-only + Table of Contents) ────────────
+// The saved HTML is mounted with the teacher editor's own schema
+// (document.js createDocumentViewer), on the same US Letter page, so every
+// font, size, colour, spacing and block renders exactly as designed.
+// Assignment cards get this page's live status pill (node view, refreshed
+// by refreshDocumentEmbedStatuses()), videos are real players mounted as
+// they scroll near, and activity cards are read-only until step 3e.
+async function renderDocumentView() {
     els.lvDocView.classList.remove('hidden');
     els.lvDocView.classList.add('flex');
     els.lvSlideCount.classList.add('hidden');
 
     const block = lesson.slides[0] || { contentHtml: '' };
-
-    // MUST happen before `new Quill(...)` below — Quill's async DOM
-    // normalization pass only preserves elements it has a registered Blot
-    // for (see registerAssignmentBlot() above for why).
-    registerAssignmentBlot();
-
-    quillViewer = new Quill(els.docViewerEditor, {
-        theme: 'snow',
-        readOnly: true,
-        modules: { toolbar: false }
-    });
-    // The embed's live status pill is baked into the HTML string BEFORE it
-    // ever reaches Quill's root — not patched onto the embed node afterward.
-    // Quill wires up its own MutationObserver the moment it's constructed;
-    // mutating a child of an already-mounted node later (as the old
-    // reviveAssignmentEmbeds() did, via node.innerHTML =) gave that
-    // observer a change to react to. Building the finished string first AND
-    // having a registered Blot for assignment-embed together are what keep
-    // Quill's own DOM-to-Delta normalization from collapsing it to plain
-    // text on the next tick.
-    quillViewer.root.innerHTML = reviveAssignmentEmbedsHtml(block.contentHtml || '');
-    // Quill's read-only mode still leaves its root contenteditable="false"
-    // wrapper focusable/selectable for text — that's fine and expected
-    // (students can still select/copy text); only the assignment embed
-    // itself is ever behaviorally special, via the click delegation wired
-    // in wireEvents() rather than anything Quill-specific here.
-    lazifyDocumentMedia();
+    try {
+        docViewer = await createDocumentViewer({
+            element: els.docViewerEditor,
+            html: block.contentHtml || '',
+            renderAssignment: (id, title) => buildAssignmentEmbedInnerHtml(id, title),
+            lazyRoot: els.lvDocView,
+            renderWidget: (dom, obj) => renderDocWidget(dom, obj),
+        });
+    } catch (e) {
+        console.error('[Lesson Viewer] document viewer failed to load:', e);
+        els.docViewerEditor.innerHTML = `<div class="bg-rose-50 border border-rose-200 rounded-xl p-4 text-[12.5px] font-bold text-rose-600">This lesson couldn't be displayed. Please reload the page.</div>`;
+        return;
+    }
+    if (docViewer.isEmpty()) {
+        els.docViewerEditor.insertAdjacentHTML('beforeend', '<p class="lv-doc-empty">This lesson has no content yet.</p>');
+    }
     buildTableOfContents();
 
     // Progress persistence for Document format: since there's no discrete
@@ -816,7 +1119,7 @@ function renderDocumentView() {
     } catch (e) {
         console.warn('[Lesson Viewer] Could not read saved document progress:', e);
     }
-    const headings = els.docViewerEditor.querySelectorAll('h1, h2, h3');
+    const headings = docViewer.headings();
     if (resumeHeadingIndex >= 0 && headings[resumeHeadingIndex]) {
         // Deferred a tick so layout has settled before scrolling.
         requestAnimationFrame(() => headings[resumeHeadingIndex].scrollIntoView({ block: 'start' }));
@@ -828,7 +1131,7 @@ function renderDocumentView() {
         // Debounced so scrolling doesn't hammer localStorage on every frame.
         clearTimeout(scrollSaveTimer);
         scrollSaveTimer = setTimeout(() => {
-            const headingsNow = els.docViewerEditor.querySelectorAll('h1, h2, h3');
+            const headingsNow = docViewer ? docViewer.headings() : [];
             let closestIndex = -1;
             headingsNow.forEach((h, i) => {
                 if (h.getBoundingClientRect().top - els.lvDocView.getBoundingClientRect().top <= 80) closestIndex = i;
@@ -843,49 +1146,11 @@ function renderDocumentView() {
     updateProgressBar();
 }
 
-// Quill's saved HTML for an assignmentEmbed node is exactly what
-// AssignmentBlot.create() produced in the Teacher Builder — a
-// contenteditable="false" span carrying data-assignment-id/
-// data-assignment-title, with static clipboard-icon + title markup inside.
-// That markup already looks right; this just re-marks each one as
-// clickable in this read-only context and layers a live submission-status
-// pill on top (Submitted/Not submitted), which the teacher-side editable
-// version never shows since a teacher has no submission of their own.
-//
-// Operates on the raw HTML STRING, via a detached <template> (never
-// attached to the document, never touched by Quill) — not on the live
-// nodes inside quillViewer.root. Quill wires a MutationObserver onto its
-// root the moment it's constructed; patching an embed node's innerHTML
-// after that (the previous approach) gave that observer a live mutation
-// to react to, and Quill's DOM-to-Delta normalization doesn't know what
-// an assignment-embed span is, so it flattened it to plain text. Building
-// the finished string here and handing Quill fully-formed content exactly
-// once (see renderDocumentView()) avoids that entirely.
-function reviveAssignmentEmbedsHtml(html) {
-    const template = document.createElement('template');
-    template.innerHTML = html;
-    template.content.querySelectorAll('.assignment-embed[data-assignment-id]').forEach(node => {
-        const assignmentId = node.getAttribute('data-assignment-id');
-        const title = node.getAttribute('data-assignment-title') || 'Assignment';
-        node.innerHTML = buildAssignmentEmbedInnerHtml(assignmentId, title);
-    });
-    return template.innerHTML;
-}
-
-// Re-renders the Document view's embed status pills after a grade/submission
-// may have changed (panel closed, or a submission just saved). Always
-// rebuilds from lesson.slides[0].contentHtml — the untouched, originally
-// saved string — rather than patching whatever's currently live in
-// quillViewer.root, for the same reason renderDocumentView() builds the
-// full string before ever handing it to Quill: patching an embed node's
-// innerHTML on an already-mounted Quill root is what caused the embed to
-// get flattened to plain text in the first place (Quill's own DOM
-// normalization reacts to that live mutation and doesn't recognize the
-// assignment-embed span). One full, pre-built reassignment sidesteps that.
+// Re-renders the Document view's assignment status pills after a grade /
+// submission may have changed (panel closed, or a submission just saved):
+// each card is a node view built from buildAssignmentEmbedInnerHtml().
 function refreshDocumentEmbedStatuses() {
-    if (!quillViewer) return;
-    const block = lesson.slides[0] || { contentHtml: '' };
-    quillViewer.root.innerHTML = reviveAssignmentEmbedsHtml(block.contentHtml || '');
+    docViewer?.refreshAssignments();
 }
 
 function renderAssignmentEmbedHtml(linkedAssignmentId) {
@@ -919,48 +1184,15 @@ function buildAssignmentEmbedInnerHtml(assignmentId, title) {
     return `<i class="fa-solid fa-clipboard-check"></i><span>${escHtml(title)}</span>${statusHtml}`;
 }
 
-// Lazy-load for Document format's own media: any <iframe> present in saved
-// Quill HTML (a student never sees an <iframe> in the *editor* — Quill's
-// ql-video embed produces one on save) is stripped of its live src at
-// render time and wrapped in the same lazy-mount pattern the Slide Deck
-// uses, keyed to actual viewport visibility via IntersectionObserver rather
-// than "current slide" (Document format has no discrete slide concept —
-// visibility on scroll is the equivalent signal).
-function lazifyDocumentMedia() {
-    const iframes = els.docViewerEditor.querySelectorAll('iframe');
-    if (!iframes.length) return;
-
-    const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (!entry.isIntersecting) return;
-            const wrapper = entry.target;
-            const src = wrapper.getAttribute('data-src');
-            if (src && !wrapper.querySelector('iframe')) {
-                wrapper.innerHTML = `<iframe src="${escHtml(src)}" allowfullscreen loading="lazy"></iframe>`;
-            }
-            observer.unobserve(wrapper);
-        });
-    }, { root: els.lvDocView, rootMargin: '200px' });
-
-    iframes.forEach(iframe => {
-        const src = iframe.src;
-        const wrapper = document.createElement('div');
-        wrapper.className = 'lv-lazy-media';
-        wrapper.setAttribute('data-src', src);
-        iframe.replaceWith(wrapper);
-        observer.observe(wrapper);
-    });
-}
-
 // ── 8. TABLE OF CONTENTS (Document format only) ──────────────────────────
 function buildTableOfContents() {
-    const headings = [...els.docViewerEditor.querySelectorAll('h1, h2, h3')];
+    const headings = docViewer ? docViewer.headings() : [];
     if (!headings.length) {
         els.lvTocList.innerHTML = `<p class="text-[11.5px] text-slate-400 font-semibold">No headings in this document yet.</p>`;
         return;
     }
+    // (headings are the viewer's own DOM: read, never modified)
     els.lvTocList.innerHTML = headings.map((h, i) => {
-        h.id = h.id || `lv-heading-${i}`;
         const isSub = h.tagName === 'H2' || h.tagName === 'H3';
         return `<a class="lv-toc-link${isSub ? ' lv-toc-h2' : ''}" data-toc-index="${i}">${escHtml(h.textContent)}</a>`;
     }).join('');
@@ -1124,7 +1356,7 @@ function wireAssignmentPanelForm(a) {
         btn.disabled = true;
 
         try {
-            const studentName = session.studentData?.name || '';
+            const studentName = session.studentData?.name || session.studentData?.fullName || '';
             const record = await saveSubmission(session.schoolId, a, session.studentId, studentName, { responseText, linkUrl });
             els.lvAssignmentBody.innerHTML = renderAssignmentPanelBody(a, record);
             wireAssignmentPanelForm(a);
@@ -1149,9 +1381,97 @@ function wireAssignmentPanelForm(a) {
 // net for whichever one is still live when the student actually leaves this
 // page. Same cleanup contract as teacher/exams/live.js and this feature's
 // own teacher-side dashboard (lessons/live.js).
+// ── WORKSHEET ACTIVITIES (Document lessons) ──────────────────────────────
+// Polls, quiz questions, open responses and sticky-note boards inside a
+// document are answered whenever the student reads it — no live session.
+// Answers: lessons/{id}/responses (lessons.js saveLessonResponse); quizzes are
+// graded by submitLessonQuizAnswer without a session. One vote / attempt,
+// open responses and notes can be updated; half-typed text is kept.
+const docWidgets = new Map();   // objectId → { dom, obj }
+const docAnswers = new Map();   // objectId → this student's saved answer
+let docBoardNotes = [];
+let unsubDocBoard = null;
+let docWidgetsBound = false;
+const docDrafts = {
+    _key() { return lesson ? `gt-wdraft:${lesson.id}:doc` : null; },
+    _read() { try { const k = this._key(); return k ? JSON.parse(sessionStorage.getItem(k) || '{}') : {}; } catch (e) { return {}; } },
+    _write(o) { try { const k = this._key(); if (k) sessionStorage.setItem(k, JSON.stringify(o)); } catch (e) { /* storage off */ } },
+    get(id) { const v = this._read()[id]; return typeof v === 'string' ? v : undefined; },
+    set(id, text) { const o = this._read(); o[id] = String(text).slice(0, 4000); this._write(o); },
+    delete(id) { const o = this._read(); delete o[id]; this._write(o); },
+};
+
+function docWidgetCtx(obj) {
+    return {
+        state: 'live', // worksheet: always open
+        mine: docAnswers.get(obj.id) || null,
+        responses: obj.type === 'board' ? docBoardNotes : [],
+        spotlight: null,
+        correctIds: [],
+    };
+}
+
+function paintDocWidget(id) {
+    const w = docWidgets.get(id);
+    if (!w || !w.dom.isConnected) return;
+    paintActivity(w.dom, w.obj, 'student', docWidgetCtx(w.obj));
+    restoreWidgetDrafts(w.dom, docDrafts);
+}
+
+function renderDocWidget(dom, obj) {
+    injectActivityCss();
+    docWidgets.set(obj.id, { dom, obj });
+    if (!docWidgetsBound && els.docViewerEditor) {
+        docWidgetsBound = true;
+        bindWidgetEvents(els.docViewerEditor, {
+            drafts: docDrafts,
+            getObject: (id) => (docWidgets.get(id) || {}).obj || null,
+            onSubmit: submitDocWidget,
+        });
+    }
+    // node views are created synchronously inside the editor; paint on the next tick
+    setTimeout(() => paintDocWidget(obj.id), 0);
+    if (!docAnswers.has(obj.id)) {
+        loadMyLessonResponse(session.schoolId, postContext, lesson.id, session.studentId, obj.id)
+            .then((r) => { if (r) { docAnswers.set(obj.id, r); paintDocWidget(obj.id); } });
+    }
+    if (obj.type === 'board' && !unsubDocBoard) {
+        unsubDocBoard = subscribeToLessonBoardNotes(session.schoolId, postContext, lesson.id, (notes) => {
+            docBoardNotes = notes;
+            notes.filter(n => n.studentId === session.studentId).forEach(n => docAnswers.set(n.blockId, n));
+            docWidgets.forEach((w, id) => { if (w.obj.type === 'board') paintDocWidget(id); });
+        });
+    }
+}
+
+async function submitDocWidget(obj, payload) {
+    if (obj.type === 'quiz') {
+        const res = await submitLessonQuizAnswer({
+            schoolId: session.schoolId, classId: postContext.classId, subjectId: postContext.subjectId,
+            lessonId: lesson.id, objectId: obj.id, choiceIds: payload.choiceIds,
+        });
+        docAnswers.set(obj.id, { choiceIds: Array.isArray(res.choiceIds) ? res.choiceIds : payload.choiceIds, correct: res.correct === true });
+    } else {
+        const studentName = session.studentData?.name || session.studentData?.fullName || '';
+        const rec = await saveLessonResponse(session.schoolId, postContext, lesson.id, session.studentId, studentName, obj.id, obj.type, payload);
+        docAnswers.set(obj.id, rec);
+    }
+    paintDocWidget(obj.id);
+}
+
 window.addEventListener('pagehide', () => {
+    syncPresence(false);
+    if (unsubDocBoard) { unsubDocBoard(); unsubDocBoard = null; }
+    if (unsubActivityNotes) { unsubActivityNotes(); unsubActivityNotes = null; }
+    if (unsubWidgetResponses) { unsubWidgetResponses(); unsubWidgetResponses = null; }
+    if (unsubActiveSession) { unsubActiveSession(); unsubActiveSession = null; }
     if (unsubLiveSession) { unsubLiveSession(); unsubLiveSession = null; }
     if (unsubLiveResponses) { unsubLiveResponses(); unsubLiveResponses = null; }
+});
+// back/forward cache restore: the listeners above are gone, but the page is
+// still on screen — put this student back on the roster
+window.addEventListener('pageshow', (e) => {
+    if (e.persisted && isSessionLive() && !reviewing) syncPresence(true);
 });
 
 init();

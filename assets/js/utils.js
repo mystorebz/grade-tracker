@@ -277,10 +277,13 @@ export async function loadTeacherSubjectsCache(schoolId, teacherId, legacyTeache
         console.error('[loadTeacherSubjectsCache] Failed to resolve classes:', e);
     }
 
-    for (const cls of resolvedClasses) {
+    // All classes, and every subject's assignments, are fetched concurrently
+    // (was one sequential round trip per class + per subject: ~2.7 s for 10
+    // subjects). Result order is unchanged: class order, then subject order.
+    const perClass = await Promise.all(resolvedClasses.map(async (cls) => {
         try {
             const snap = await getDocs(collection(db, 'schools', schoolId, 'classes', cls.id, 'subjects'));
-            for (const d of snap.docs) {
+            return await Promise.all(snap.docs.map(async (d) => {
                 const subject = { id: d.id, classId: cls.id, className: cls.name, _source: 'new', assignments: [], ...d.data() };
                 try {
                     const asgSnap = await getDocs(collection(db, 'schools', schoolId, 'classes', cls.id, 'subjects', subject.id, 'assignments'));
@@ -288,12 +291,14 @@ export async function loadTeacherSubjectsCache(schoolId, teacherId, legacyTeache
                 } catch (e) {
                     console.error(`[loadTeacherSubjectsCache] Failed to load assignments for subject "${subject.name}":`, e);
                 }
-                subjectsCache.push(subject);
-            }
+                return subject;
+            }));
         } catch (e) {
             console.error(`[loadTeacherSubjectsCache] Failed to load subjects for class "${cls.name}":`, e);
+            return [];
         }
-    }
+    }));
+    perClass.forEach(list => subjectsCache.push(...list));
 
     const newNames = new Set(subjectsCache.map(s => s.name));
     ((legacyTeacherData && legacyTeacherData.subjects) || []).forEach(s => {

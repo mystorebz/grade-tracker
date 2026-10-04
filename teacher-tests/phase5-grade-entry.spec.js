@@ -102,7 +102,7 @@ function rosterBtn(page, studentName) {
 
 async function selectSubjectUI(page, name) {
     await subjectBtn(page, name).click();
-    await expect(page.locator('#assignmentPickerSection')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+    await expect(page.locator('#assignmentPickerSection')).toBeVisible({ timeout: 10_000 });
 }
 
 test.describe('Phase 5: Grade Entry', () => {
@@ -114,26 +114,26 @@ test.describe('Phase 5: Grade Entry', () => {
         await gotoGradeForm(page);
 
         // -- Step 1 only, initially. --------------------------------------
-        await expect(page.locator('#subjectPickerSection')).not.toHaveClass(/hidden/);
-        await expect(page.locator('#assignmentPickerSection')).toHaveClass(/hidden/);
-        await expect(page.locator('#gradingSection')).toHaveClass(/hidden/);
+        await expect(page.locator('#subjectPickerSection')).toBeVisible();
+        await expect(page.locator('#assignmentPickerSection')).toBeHidden();
+        await expect(page.locator('#gradingSection')).toBeHidden();
 
         // -- Step 1 -> 2. ----------------------------------------------------
         await selectSubjectUI(page, SUBJECT_GRADE_NAME);
-        await expect(page.locator('#subjectPickerSection')).toHaveClass(/hidden/);
-        await expect(page.locator('#gradingSection')).toHaveClass(/hidden/);
+        await expect(page.locator('#subjectPickerSection')).toBeHidden();
+        await expect(page.locator('#gradingSection')).toBeHidden();
         await expect(page.locator('#assignmentPickerSubject')).toHaveText(SUBJECT_GRADE_NAME);
 
         // "Change subject" returns to step 1.
         await page.locator('button', { hasText: 'Change subject' }).click();
-        await expect(page.locator('#subjectPickerSection')).not.toHaveClass(/hidden/);
-        await expect(page.locator('#assignmentPickerSection')).toHaveClass(/hidden/);
+        await expect(page.locator('#subjectPickerSection')).toBeVisible();
+        await expect(page.locator('#assignmentPickerSection')).toBeHidden();
 
         // -- Step 1 -> 2 -> 3, via a REAL prepared assignment. ---------------
         await selectSubjectUI(page, SUBJECT_GRADE_NAME);
         await assignmentBtn(page, ASSIGNMENT_STANDARD_TITLE).click();
-        await expect(page.locator('#assignmentPickerSection')).toHaveClass(/hidden/);
-        await expect(page.locator('#gradingSection')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#assignmentPickerSection')).toBeHidden();
+        await expect(page.locator('#gradingSection')).toBeVisible({ timeout: 10_000 });
 
         // A real assignment's title/type/max come in locked (read-only /
         // disabled + the gf-locked visual treatment) — not freely editable.
@@ -143,17 +143,17 @@ test.describe('Phase 5: Grade Entry', () => {
         await expect(page.locator('#agType')).toBeDisabled();
         await expect(page.locator('#agMax')).toHaveValue('20');
         // "Post to Class" only makes sense for a brand-new manual entry.
-        await expect(page.locator('#postToClassBtn')).toHaveClass(/hidden/);
+        await expect(page.locator('#postToClassBtn')).toBeHidden();
 
         // "Switch / Reset" returns all the way to step 1.
         await page.locator('button', { hasText: 'Switch / Reset' }).click();
-        await expect(page.locator('#subjectPickerSection')).not.toHaveClass(/hidden/);
-        await expect(page.locator('#gradingSection')).toHaveClass(/hidden/);
+        await expect(page.locator('#subjectPickerSection')).toBeVisible();
+        await expect(page.locator('#gradingSection')).toBeHidden();
 
         // -- Step 1 -> 2 -> 3 again, this time via "Type one manually". ------
         await selectSubjectUI(page, SUBJECT_GRADE_NAME);
         await page.locator('button', { hasText: 'Type one manually' }).click();
-        await expect(page.locator('#gradingSection')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#gradingSection')).toBeVisible({ timeout: 10_000 });
 
         // A manual entry starts fully blank and freely editable.
         await expect(page.locator('#agTitle')).toHaveValue('');
@@ -161,7 +161,7 @@ test.describe('Phase 5: Grade Entry', () => {
         expect(await page.locator('#agTitle').evaluate(el => el.readOnly)).toBe(false);
         await expect(page.locator('#agType')).toBeEnabled();
         await expect(page.locator('#agMax')).toHaveValue('100');
-        await expect(page.locator('#postToClassBtn')).not.toHaveClass(/hidden/);
+        await expect(page.locator('#postToClassBtn')).toBeVisible();
     });
 
     test('5.2 — Manual entry: "Post to Class" converts it into a real, persisted assignment template with no grade written', async ({ page }) => {
@@ -171,7 +171,7 @@ test.describe('Phase 5: Grade Entry', () => {
 
         await selectSubjectUI(page, SUBJECT_GRADE_NAME);
         await page.locator('button', { hasText: 'Type one manually' }).click();
-        await expect(page.locator('#gradingSection')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#gradingSection')).toBeVisible({ timeout: 10_000 });
 
         const uniqueTitle = `E2E Manual Entry ${Date.now()}`;
         await page.locator('#agTitle').fill(uniqueTitle);
@@ -179,13 +179,13 @@ test.describe('Phase 5: Grade Entry', () => {
         const chosenType = await page.locator('#agType').inputValue();
         await page.locator('#agMax').fill('40');
 
-        await expect(page.locator('#postToClassBtn')).not.toHaveClass(/hidden/);
+        await expect(page.locator('#postToClassBtn')).toBeVisible();
         await page.locator('#postToClassBtn').click();
 
-        await expect(page.locator('#gradeSavedBanner')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#gradeSavedBanner')).toBeVisible({ timeout: 10_000 });
         await expect(page.locator('#gradeSavedBannerTitle')).toContainText(`"${uniqueTitle}" was posted to the class.`);
         // Now a real template — "Post to Class" no longer applies.
-        await expect(page.locator('#postToClassBtn')).toHaveClass(/hidden/);
+        await expect(page.locator('#postToClassBtn')).toBeHidden();
 
         const created = await findAssignmentDoc(CLASS_GRADE_ID, SUBJECT_GRADE_ID, uniqueTitle);
         expect(created).not.toBeNull();
@@ -211,7 +211,7 @@ test.describe('Phase 5: Grade Entry', () => {
 
         await selectSubjectUI(page, SUBJECT_GRADE_NAME);
         await assignmentBtn(page, ASSIGNMENT_ASSESS_TITLE).click();
-        await expect(page.locator('#gradingSection')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#gradingSection')).toBeVisible({ timeout: 10_000 });
 
         // Pick the student with a real, already-auto-graded submission.
         await rosterBtn(page, 'E2E Grade Student One').click();
@@ -249,19 +249,19 @@ test.describe('Phase 5: Grade Entry', () => {
 
         await selectSubjectUI(page, SUBJECT_GRADE_NAME);
         await assignmentBtn(page, ASSIGNMENT_ASSESS_TITLE).click();
-        await expect(page.locator('#gradingSection')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#gradingSection')).toBeVisible({ timeout: 10_000 });
         await rosterBtn(page, 'E2E Grade Student One').click();
         await expect(page.locator('#gfResponseViewer')).not.toContainText('Loading submission', { timeout: 10_000 });
 
         // Request a revision on the free-response question.
         await page.locator(`.pq-revision-toggle[data-question-id="${QUESTION_FR_ID}"]`).check();
         const promptBox = page.locator(`#pqRevisionPrompt_${QUESTION_FR_ID}`);
-        await expect(promptBox).not.toHaveClass(/hidden/);
+        await expect(promptBox).toBeVisible();
         const revisionPrompt = 'Please add more detail on the energy conversion.';
         await promptBox.locator('.pq-revision-prompt-input').fill(revisionPrompt);
 
         await page.locator('#saveGradeBtn').click();
-        await expect(page.locator('#gradeSavedBanner')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#gradeSavedBanner')).toBeVisible({ timeout: 10_000 });
 
         const subAfterRequest = await getSubmissionDoc(CLASS_GRADE_ID, SUBJECT_GRADE_ID, ASSIGNMENT_ASSESS_ID, STUDENT_GRADE_1_ID);
         expect(subAfterRequest.status).toBe('revision_requested');
@@ -280,7 +280,7 @@ test.describe('Phase 5: Grade Entry', () => {
 
         await page.locator(`.pq-revision-toggle[data-question-id="${QUESTION_FR_ID}"]`).uncheck();
         await page.locator('#saveGradeBtn').click();
-        await expect(page.locator('#gradeSavedBanner')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#gradeSavedBanner')).toBeVisible({ timeout: 10_000 });
 
         const subAfterResolve = await getSubmissionDoc(CLASS_GRADE_ID, SUBJECT_GRADE_ID, ASSIGNMENT_ASSESS_ID, STUDENT_GRADE_1_ID);
         expect(subAfterResolve.status).toBe('graded');
@@ -301,14 +301,14 @@ test.describe('Phase 5: Grade Entry', () => {
 
         await selectSubjectUI(page, SUBJECT_GRADE_NAME);
         await assignmentBtn(page, ASSIGNMENT_STANDARD_TITLE).click();
-        await expect(page.locator('#gradingSection')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#gradingSection')).toBeVisible({ timeout: 10_000 });
         await rosterBtn(page, 'E2E Grade Student One').click();
         await expect(page.locator('#agMax')).toHaveValue('20');
 
         // Negative score clamps to 0, with the exact (curly-apostrophe) hint.
         await page.locator('#agScore').fill('-5');
         await expect(page.locator('#agScore')).toHaveValue('0');
-        await expect(page.locator('#agScoreHint')).not.toHaveClass(/hidden/);
+        await expect(page.locator('#agScoreHint')).toBeVisible();
         await expect(page.locator('#agScoreHint')).toContainText('Score can’t be negative.');
 
         // Over-max score clamps to the max, with its own exact hint.
@@ -318,7 +318,7 @@ test.describe('Phase 5: Grade Entry', () => {
 
         // A perfectly in-range score clears the hint.
         await page.locator('#agScore').fill('18');
-        await expect(page.locator('#agScoreHint')).toHaveClass(/hidden/);
+        await expect(page.locator('#agScoreHint')).toBeHidden();
 
         // Empty score at submit time is a HARD block — commitGrade()'s own
         // isNaN(score) guard, via a real blocking alert (not just the live
@@ -330,7 +330,7 @@ test.describe('Phase 5: Grade Entry', () => {
 
         await expect.poll(() => dialogMessage, { timeout: 5_000 }).toBe('Please enter valid score and max values.');
         // Nothing committed — still sitting on the same grading panel.
-        await expect(page.locator('#gradingSection')).not.toHaveClass(/hidden/);
+        await expect(page.locator('#gradingSection')).toBeVisible();
         await expect(page.locator('#agTitle')).toHaveValue(ASSIGNMENT_STANDARD_TITLE);
     });
 
@@ -341,7 +341,7 @@ test.describe('Phase 5: Grade Entry', () => {
 
         await selectSubjectUI(page, SUBJECT_GRADE_NAME);
         await assignmentBtn(page, ASSIGNMENT_STANDARD_TITLE).click();
-        await expect(page.locator('#gradingSection')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#gradingSection')).toBeVisible({ timeout: 10_000 });
 
         // Read the ACTUAL rendered roster order — see this file's header
         // comment on why this doesn't hard-code an assumed order.
@@ -358,7 +358,7 @@ test.describe('Phase 5: Grade Entry', () => {
         await rosterBtn(page, lastName).click();
         await page.locator('#agScore').fill('15');
         await page.locator('#saveGradeBtn').click();
-        await expect(page.locator('#gradeSavedBanner')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#gradeSavedBanner')).toBeVisible({ timeout: 10_000 });
 
         // Selection wrapped to the first-listed student — its roster row is
         // now the highlighted/active one.

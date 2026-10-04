@@ -89,7 +89,13 @@ test.describe('Phase 14: Deactivated Account', () => {
     test('14.6 — no session redirects to the teacher login page', async ({ page }) => {
         forwardBrowserLogs(page);
         await page.goto('/teacher/deactivated/deactivated.html');
-        await page.waitForURL(/\/teacher\/login\.html$/, { timeout: 10_000 });
+        // (\.html)? — same reasoning as the shared loginAsTeacher() helper
+        // above (line 69): npx serve serves this app's pages at extensionless
+        // clean-URL paths even though window.location.replace() in the
+        // source navigates with the literal .html suffix, so the URL the
+        // browser actually lands on can go either way. Confirmed as the
+        // real cause of this test's failure against the live app.
+        await page.waitForURL(/\/teacher\/login(\.html)?$/, { timeout: 10_000 });
     });
 
     test('14.1 — a teacher archived mid-session is redirected here in real time, landing on a page with no navigation chrome', async ({ page }) => {
@@ -102,7 +108,8 @@ test.describe('Phase 14: Deactivated Account', () => {
         await setTeacherArchived(TEACHER_DEACT_ID, true);
 
         // The client redirects itself — no reload, no further action from this test.
-        await page.waitForURL(/\/teacher\/deactivated\/deactivated\.html$/, { timeout: 15_000 });
+        // (\.html)? — see the login.html note above; same clean-URL behavior.
+        await page.waitForURL(/\/teacher\/deactivated\/deactivated(\.html)?$/, { timeout: 15_000 });
 
         await expect(page.locator('#layout-sidebar-container')).toHaveCount(0);
         await expect(page.locator('#layout-topbar-container')).toHaveCount(0);
@@ -134,18 +141,24 @@ test.describe('Phase 14: Deactivated Account', () => {
         expect(historyText).toContain('Fall 2024');
         expect(historyText).toContain('Grade 5A');
         expect(historyText).toContain('22 students');
-        expect(historyText).toContain('Math: 82%');
-        expect(historyText).toContain('Science: 77%');
+        // Case-insensitive: the subject-average pills render inside a span
+        // carrying Tailwind's `uppercase` class (deactivated.html's history
+        // rendering), so innerText() reflects the CSS-transformed
+        // "MATH: 82%" / "SCIENCE: 77%" rather than the source's mixed case.
+        expect(historyText).toMatch(/math: 82%/i);
+        expect(historyText).toMatch(/science: 77%/i);
         expect(historyText).toContain('E2E Prior School Beta');
-        expect(historyText).toContain('English');
-        expect(historyText).toContain('History');
+        // Same uppercase-pill CSS as the subject-average badges above — the
+        // plain-subjects[] fallback pills share the same `uppercase` class.
+        expect(historyText).toMatch(/english/i);
+        expect(historyText).toMatch(/history/i);
 
         // Evaluations: sorted most-recent-first, first one expanded by default.
         const evalText = await page.locator('#evalList').innerText();
         expect(evalText).toContain('Commendation');
         expect(evalText).toContain('Principal X');
-        await expect(page.locator('#eval-body-eval-e2e-deact-1')).not.toHaveClass(/hidden/);
-        await expect(page.locator('#eval-body-eval-e2e-deact-2')).toHaveClass(/hidden/);
+        await expect(page.locator('#eval-body-eval-e2e-deact-1')).toBeVisible();
+        await expect(page.locator('#eval-body-eval-e2e-deact-2')).toBeHidden();
 
         // Strictly read-only: zero editable form controls anywhere on the page.
         await expect(page.locator('input, textarea, select')).toHaveCount(0);

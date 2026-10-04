@@ -14,7 +14,7 @@ import { initAssignmentsPage } from '../../assets/js/render-assignments.js';
 const session = requireAuth('parent', '../../student/login.html');
 const activeChild = session ? getActiveChild(session) : null;
 
-injectParentLayout('assignments', 'Assignments', "A read-only mirror of your child's assignment list");
+injectParentLayout('assignments', 'Assignments', "Your child's assignments, submissions and grades");
 
 if (activeChild) {
     initAssignmentsPage({ studentId: activeChild.studentId, schoolId: activeChild.schoolId, readOnly: true });

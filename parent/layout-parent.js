@@ -13,8 +13,9 @@
 // Every parent page must still <link> assets/css/student.css itself (same
 // as every student page already does) — this module only injects the DOM
 // and the theme override, not the stylesheet link.
-import { db } from '../assets/js/firebase-init.js';
+import { db, functions } from '../assets/js/firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
 import { logout, requireAuth } from '../assets/js/auth.js';
 
 const ACTIVE_CHILD_KEY = 'connectus_parent_activeChild';
@@ -111,7 +112,7 @@ export async function fillParentHeader(session) {
 
 /**
  * Injects the Parent Portal sidebar and topbar.
- * @param {string} activePageId - 'dashboard' | 'assignments' | 'grades' | 'history' | 'attendance' | 'evaluations' | 'reports'
+ * @param {string} activePageId - 'dashboard' | 'assignments' | 'portfolio' | 'grades' | 'history' | 'attendance' | 'evaluations' | 'reports'
  * @param {string} pageTitle - topbar title
  * @param {string} pageSub - topbar subtitle
  */
@@ -173,6 +174,7 @@ export function injectParentLayout(activePageId, pageTitle, pageSub) {
 
           <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-3 mt-6 mb-2">Selected Student</p>
           <a href="../assignments/assignments.html" id="nav-assignments" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-clipboard-list w-5 text-base opacity-70"></i> Assignments</a>
+          <a href="../portfolio/portfolio.html" id="nav-portfolio" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-images w-5 text-base opacity-70"></i> Portfolio</a>
           <a href="../grades/grades.html" id="nav-grades" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-book-open w-5 text-base opacity-70"></i> Current Grades</a>
           <a href="../history/history.html" id="nav-history" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-clock-rotate-left w-5 text-base opacity-70"></i> Academic History</a>
           <a href="../attendance/attendance.html" id="nav-attendance" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-left font-bold text-sm text-slate-400"><i class="fa-solid fa-calendar-check w-5 text-base opacity-70"></i> Attendance</a>
@@ -181,6 +183,9 @@ export function injectParentLayout(activePageId, pageTitle, pageSub) {
         </nav>
 
         <div class="p-4 border-t border-white/5 space-y-3">
+          <button id="parentSettingsBtn" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white transition font-black text-sm border border-white/10">
+            <i class="fa-solid fa-user-gear"></i> Account Settings
+          </button>
           <button id="logoutBtn" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 text-slate-300 hover:bg-amber-500 hover:text-white transition font-black text-sm border border-white/10 hover:border-amber-500">
             <i class="fa-solid fa-power-off"></i> Log Out
           </button>
@@ -200,9 +205,6 @@ export function injectParentLayout(activePageId, pageTitle, pageSub) {
             <h1 id="topbarTitle" class="text-lg md:text-xl font-black text-slate-800 leading-none">${pageTitle}</h1>
             <p id="topbarSub" class="text-xs text-slate-400 font-semibold mt-0.5 hidden sm:block">${pageSub}</p>
           </div>
-        </div>
-        <div class="flex items-center gap-2 md:gap-4">
-          <span class="text-[11px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg" style="background:rgba(127,29,61,0.08);color:#7f1d3d;border:1px solid rgba(127,29,61,0.18)"><i class="fa-solid fa-eye mr-1.5"></i>Read-Only</span>
         </div>
       </header>
     `;
@@ -227,6 +229,9 @@ export function injectParentLayout(activePageId, pageTitle, pageSub) {
         logout('../../student/login.html');
     });
 
+    // ── 5b. ACCOUNT SETTINGS (PIN + contact) ─────────────────────────────
+    document.getElementById('parentSettingsBtn').addEventListener('click', () => openParentSettings(session));
+
     // ── 6. MOBILE SIDEBAR TOGGLE ──────────────────────────────────────────
     const sidebar = document.getElementById('sidebar');
     const toggleBtn = document.getElementById('sidebarToggle');
@@ -249,4 +254,152 @@ export function injectParentLayout(activePageId, pageTitle, pageSub) {
     }
 
     return session;
+}
+
+
+// ── ACCOUNT SETTINGS MODAL (Module 2: parent self-service) ───────────────
+// parents/{parentId} is client-read-only, so both forms go through Admin
+// SDK callables (functions/index.js): updateMyParentContact and
+// changeParentPin. Identity comes from the parent's verified token there,
+// never from anything this form sends.
+const SETTINGS_CSS = `
+#parentSettingsModal { position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center; padding:16px; background:rgba(15,23,42,0.55); }
+#parentSettingsModal.hidden { display:none; }
+.ps-box { width:100%; max-width:480px; max-height:calc(100vh - 32px); overflow-y:auto; background:#fff; border-radius:16px; box-shadow:0 24px 60px rgba(15,23,42,0.3); font-family:'DM Sans',sans-serif; }
+.ps-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; background:linear-gradient(120deg,#3f0d1f,#7f1d3d); color:#fff; border-radius:16px 16px 0 0; }
+.ps-head h2 { font-size:16px; font-weight:800; margin:0; }
+.ps-close { background:rgba(255,255,255,0.12); border:none; color:#fff; width:32px; height:32px; border-radius:8px; cursor:pointer; }
+.ps-section { padding:18px 22px; border-bottom:1px solid #f1f5f9; }
+.ps-section:last-child { border-bottom:none; }
+.ps-title { font-size:11px; font-weight:800; color:#7f1d3d; text-transform:uppercase; letter-spacing:0.08em; margin:0 0 12px; }
+.ps-field { margin-bottom:10px; }
+.ps-field label { display:block; font-size:11px; font-weight:800; color:#64748b; margin-bottom:4px; }
+.ps-field input { width:100%; padding:10px 12px; border:1px solid #cbd5e1; border-radius:10px; font-size:14px; font-family:inherit; color:#0f172a; outline:none; }
+.ps-field input:focus { border-color:#f59e0b; box-shadow:0 0 0 3px rgba(245,158,11,0.15); }
+.ps-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.ps-btn { display:inline-flex; align-items:center; gap:8px; padding:10px 16px; border:none; border-radius:10px; background:#7f1d3d; color:#fff; font-weight:800; font-size:13px; cursor:pointer; font-family:inherit; }
+.ps-btn:disabled { opacity:0.6; cursor:not-allowed; }
+.ps-msg { font-size:12.5px; font-weight:700; margin:10px 0 0; padding:8px 10px; border-radius:8px; }
+.ps-msg.ok { background:#ecfdf5; color:#047857; }
+.ps-msg.err { background:#fef2f2; color:#b91c1c; }
+.ps-hint { font-size:11.5px; color:#94a3b8; font-weight:600; margin:0 0 10px; }
+@media (max-width:480px) { .ps-row { grid-template-columns:1fr; } }
+`;
+
+function ensureSettingsModal() {
+    if (document.getElementById('parentSettingsModal')) return;
+    const style = document.createElement('style');
+    style.textContent = SETTINGS_CSS;
+    document.head.appendChild(style);
+
+    const wrap = document.createElement('div');
+    wrap.id = 'parentSettingsModal';
+    wrap.className = 'hidden';
+    wrap.setAttribute('role', 'dialog');
+    wrap.setAttribute('aria-modal', 'true');
+    wrap.innerHTML = `
+      <div class="ps-box">
+        <div class="ps-head">
+          <h2><i class="fa-solid fa-user-gear" style="margin-right:8px;"></i>Account Settings</h2>
+          <button type="button" class="ps-close" data-ps-close aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form class="ps-section" id="psContactForm" novalidate>
+          <p class="ps-title">Contact Details</p>
+          <div class="ps-field"><label for="psName">Full name</label><input id="psName" type="text" maxlength="80" autocomplete="name"></div>
+          <div class="ps-field"><label for="psEmail">Email</label><input id="psEmail" type="email" maxlength="120" autocomplete="email"></div>
+          <div class="ps-field"><label for="psPhone">Phone</label><input id="psPhone" type="tel" maxlength="25" autocomplete="tel"></div>
+          <button type="submit" class="ps-btn" id="psContactBtn"><i class="fa-solid fa-floppy-disk"></i> Save Contact Details</button>
+          <p class="ps-msg hidden" id="psContactMsg"></p>
+        </form>
+        <form class="ps-section" id="psPinForm" novalidate>
+          <p class="ps-title">Change PIN</p>
+          <p class="ps-hint">4–6 digits. Avoid repeated or sequential numbers like 1111 or 1234.</p>
+          <div class="ps-field"><label for="psCurPin">Current PIN</label><input id="psCurPin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password"></div>
+          <div class="ps-row">
+            <div class="ps-field"><label for="psNewPin">New PIN</label><input id="psNewPin" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password"></div>
+            <div class="ps-field"><label for="psNewPin2">Confirm new PIN</label><input id="psNewPin2" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password"></div>
+          </div>
+          <button type="submit" class="ps-btn" id="psPinBtn"><i class="fa-solid fa-key"></i> Change PIN</button>
+          <p class="ps-msg hidden" id="psPinMsg"></p>
+        </form>
+      </div>`;
+    document.body.appendChild(wrap);
+
+    const close = () => wrap.classList.add('hidden');
+    wrap.addEventListener('click', (e) => { if (e.target === wrap || e.target.closest('[data-ps-close]')) close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !wrap.classList.contains('hidden')) close(); });
+
+    const showMsg = (id, text, ok) => {
+        const el = document.getElementById(id);
+        el.textContent = text;
+        el.className = `ps-msg ${ok ? 'ok' : 'err'}`;
+    };
+    const busy = (btn, on, label) => { btn.disabled = on; if (label) btn.innerHTML = label; };
+    const errText = (e, fallback) => (e && e.code && String(e.code).startsWith('functions/') && e.message && e.message !== 'internal') ? e.message : fallback;
+
+    document.getElementById('psContactForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('psContactBtn');
+        const name = document.getElementById('psName').value.trim();
+        const email = document.getElementById('psEmail').value.trim();
+        const phone = document.getElementById('psPhone').value.trim();
+        if (!name) return showMsg('psContactMsg', 'Name cannot be empty.', false);
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showMsg('psContactMsg', 'Enter a valid email address.', false);
+
+        const original = btn.innerHTML;
+        busy(btn, true, '<i class="fa-solid fa-spinner fa-spin"></i> Saving…');
+        try {
+            await httpsCallable(functions, 'updateMyParentContact')({ name, email, phone });
+            showMsg('psContactMsg', 'Contact details saved.', true);
+            const nameEl = document.getElementById('displayParentName');
+            if (nameEl) nameEl.textContent = name;
+        } catch (err) {
+            console.error('[Parent Settings] updateMyParentContact:', err);
+            showMsg('psContactMsg', errText(err, 'Could not save your details. Please try again.'), false);
+        }
+        busy(btn, false, original);
+    });
+
+    document.getElementById('psPinForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('psPinBtn');
+        const cur = document.getElementById('psCurPin').value.trim();
+        const np = document.getElementById('psNewPin').value.trim();
+        const np2 = document.getElementById('psNewPin2').value.trim();
+        if (!cur) return showMsg('psPinMsg', 'Enter your current PIN.', false);
+        if (!/^\d{4,6}$/.test(np)) return showMsg('psPinMsg', 'New PIN must be 4 to 6 digits.', false);
+        if (np !== np2) return showMsg('psPinMsg', 'New PINs do not match.', false);
+        if (np === cur) return showMsg('psPinMsg', 'New PIN must be different from your current PIN.', false);
+
+        const original = btn.innerHTML;
+        busy(btn, true, '<i class="fa-solid fa-spinner fa-spin"></i> Updating…');
+        try {
+            await httpsCallable(functions, 'changeParentPin')({ currentPin: cur, newPin: np });
+            showMsg('psPinMsg', 'PIN changed. Use your new PIN next time you sign in.', true);
+            ['psCurPin', 'psNewPin', 'psNewPin2'].forEach(id => { document.getElementById(id).value = ''; });
+        } catch (err) {
+            console.error('[Parent Settings] changeParentPin:', err);
+            showMsg('psPinMsg', errText(err, 'Could not change your PIN. Please try again.'), false);
+        }
+        busy(btn, false, original);
+    });
+}
+
+async function openParentSettings(session) {
+    if (!session) return;
+    ensureSettingsModal();
+    ['psContactMsg', 'psPinMsg'].forEach(id => document.getElementById(id).className = 'ps-msg hidden');
+    document.getElementById('parentSettingsModal').classList.remove('hidden');
+    try {
+        const snap = await getDoc(doc(db, 'parents', session.parentId));
+        if (snap.exists()) {
+            const d = snap.data();
+            document.getElementById('psName').value = d.name || '';
+            document.getElementById('psEmail').value = d.email || '';
+            document.getElementById('psPhone').value = d.phone || '';
+        }
+    } catch (e) {
+        console.error('[Parent Settings] load contact:', e);
+    }
+    document.getElementById('psName').focus();
 }

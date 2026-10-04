@@ -87,28 +87,36 @@ test.describe('Phase 12: My Evaluations', () => {
         const cards = page.locator('#evalKpiCards > div');
         await expect(cards).toHaveCount(4);
 
+        // NOTE: each card's .lbl (but not its .sub text) renders through
+        // analytics.js's inline `text-transform:uppercase` style, and
+        // Playwright's innerText() — unlike textContent() — reflects the
+        // CSS-computed rendered text, so it actually reads back
+        // "AVERAGE RATING" etc. rather than the mixed-case source string.
+        // Matched case-insensitively below rather than hard-coding the
+        // uppercased form, so this keeps working if the CSS ever changes.
+
         // 3 evals: ratings 4.5, 3.5, 2.0 -> avg (10/3).toFixed(1) = '3.3'.
         const avgCard = await cards.nth(0).innerText();
         expect(avgCard).toContain('3.3');
         expect(avgCard).toContain('/ 5');
-        expect(avgCard).toContain('Average Rating');
+        expect(avgCard).toMatch(/average rating/i);
 
         const countCard = await cards.nth(1).innerText();
         expect(countCard).toContain('3');
         expect(countCard).toContain('evaluations on record');
-        expect(countCard).toContain('Total Evaluations');
+        expect(countCard).toMatch(/total evaluations/i);
 
         // schoolIds across the 3 fixture evals: SCHOOL_ID (x2), EVAL_PREV_SCHOOL_ID (x1) -> 2 distinct.
         const schoolsCard = await cards.nth(2).innerText();
         expect(schoolsCard).toContain('2');
         expect(schoolsCard).toContain('schools on record');
-        expect(schoolsCard).toContain('Schools Evaluated At');
+        expect(schoolsCard).toMatch(/schools evaluated at/i);
 
         // Sorted by date desc, evals[0] = EVAL_RECENT -> recommendedAction 'Commendation'.
         const latestCard = await cards.nth(3).innerText();
         expect(latestCard).toContain('Commendation');
         expect(latestCard).toContain('Latest recommendation');
-        expect(latestCard).toContain('Latest Action');
+        expect(latestCard).toMatch(/latest action/i);
     });
 
     test('12.2 — category bars: shown for categories with at least one score, hidden for one with none', async ({ page }) => {
@@ -116,7 +124,7 @@ test.describe('Phase 12: My Evaluations', () => {
         await loginAsTeacher(page, TEACHER_EVAL_ID, TEACHER_EVAL_PIN);
         await gotoAnalytics(page);
 
-        await expect(page.locator('#categorySection')).not.toHaveClass(/hidden/);
+        await expect(page.locator('#categorySection')).toBeVisible();
 
         const barsText = await page.locator('#categoryBars').innerText();
         // Positive cases: classroomManagement avg (5+3)/2=4 -> 80%; curriculumDelivery
@@ -140,7 +148,7 @@ test.describe('Phase 12: My Evaluations', () => {
         await expect(page.locator('#evalList')).toContainText('No evaluations found for this period.');
         // catData.length === 0 -> renderCategories() returns early, the
         // section's default 'hidden' class from analytics.html is never removed.
-        await expect(page.locator('#categorySection')).toHaveClass(/hidden/);
+        await expect(page.locator('#categorySection')).toBeHidden();
     });
 
     test('12.3 — the period filter narrows the evaluation list', async ({ page }) => {

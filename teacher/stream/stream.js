@@ -2,8 +2,17 @@
 import { requireAuth } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
 import { showMsg, loadTeacherSubjectsCache } from '../../assets/js/utils.js';
-import { resolvePostContext, loadPostsForSubject, createPost, updatePost, deletePost, createLessonLinkedPost } from '../../assets/js/posts.js';
+import { resolvePostContext, createPost, updatePost, deletePost, createLessonLinkedPost,
+         createPostFeed, resolveActiveTermWindow, displayPostText } from '../../assets/js/posts.js';
+import { injectCommentCss, commentsSectionHtml, commentPillHtml, renderPreservingDrafts, handleCommentEvent } from '../../assets/js/stream-comments.js';
+import { discussionUrl, focusPostFromUrl, openPostFromCardClick } from '../../assets/js/stream-discussion.js';
 import { loadLessonsForSubject } from '../../assets/js/lessons.js';
+import { injectPollCss, pollHtml, handlePollEvent } from '../../assets/js/stream-polls.js';
+import { watchAnswers, answersView, stopAllAnswerWatches } from '../../assets/js/stream-answers.js';
+import { POLL_MIN_OPTIONS, POLL_MAX_OPTIONS } from '../../assets/js/posts.js';
+import { db } from '../../assets/js/firebase-init.js';
+import { reportStreamActivity, cacheStreamContexts } from '../../assets/js/stream-badge.js';
+import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // ── 1. AUTHENTICATION & LAYOUT ──────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
@@ -20,6 +29,42 @@ let postsCache = [];          // every post for currentSubject, newest-first
 let currentView = 'stream';   // 'stream' | 'lessonPlans'
 let editingPostId = null;     // postId being edited, or null for a new post
 let lessonsCache = [];        // this subject's lessons (for the "Stream a Lesson" modal), loaded lazily on first open
+// MODULE 3: live, semester-scoped, paginated feed for the selected subject.
+let feed = null;              // createPostFeed() handle — stop() on subject change / page leave
+let feedHasMore = false;
+let feedReady = false;
+let termWindow = { semesterId: null, sinceIso: null };
+
+function stopFeed() { if (feed) { feed.stop(); feed = null; } }
+
+// MODULE 3.5: composer post type + class rosters for poll "Not voted yet".
+let composerType = 'announcement';   // 'announcement' | 'poll' | 'question'
+let editingType = null;              // type of the post being edited (locked)
+const rosterByClass = new Map();     // classId -> { list: [{id,name}] } | 'loading'
+
+// Active students of a class — same membership test as the gradebook and
+// firestore.rules: classId first, className fallback for older records.
+function ensureRoster(classId, className) {
+    if (!classId || rosterByClass.has(classId)) return;
+    rosterByClass.set(classId, 'loading');
+    getDocs(query(collection(db, 'students'), where('currentSchoolId', '==', session.schoolId), where('enrollmentStatus', '==', 'Active')))
+        .then(snap => {
+            const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                .filter(s => s.classId ? s.classId === classId : (!!className && s.className === className))
+                .map(s => ({ id: s.id, name: s.name || s.id }))
+                .sort((a, b) => a.name.localeCompare(b.name));
+            rosterByClass.set(classId, { list });
+            renderPostList();
+        })
+        .catch(e => { console.error('[Stream] roster:', e); rosterByClass.set(classId, { list: null }); });
+}
+
+function rosterFor(classId) {
+    const r = rosterByClass.get(classId);
+    return r && r !== 'loading' ? r.list : null;
+}
+window.addEventListener('pagehide', stopFeed);
+window.addEventListener('pagehide', stopAllAnswerWatches);
 
 const els = {};
 
@@ -75,14 +120,24 @@ async function init() {
 
     cacheEls();
     wireEvents();
+    injectCommentCss();
     setView('stream');
 
     els.subjectSelect.innerHTML = '<option value="">Loading subjects…</option>';
-    const result = await loadTeacherSubjectsCache(session.schoolId, session.teacherId, session.teacherData);
+    const [result, term] = await Promise.all([
+        loadTeacherSubjectsCache(session.schoolId, session.teacherId, session.teacherData),
+        resolveActiveTermWindow(session.schoolId),
+    ]);
+    termWindow = term;
     subjectsCache = result.subjectsCache;
     resolvedClasses = result.resolvedClasses;
+    // Sidebar badge: remember this teacher's subjects for the cross-page check.
+    cacheStreamContexts(subjectsCache.filter(s => !s.archived).map(s => resolvePostContext(s, resolvedClasses)).filter(Boolean));
 
     renderSubjectOptions();
+    // Back from a discussion page: reopen the same subject, then focus the post.
+    const wantSubject = new URLSearchParams(location.search).get('subject');
+    if (wantSubject && [...els.subjectSelect.options].some(o => o.value === wantSubject)) els.subjectSelect.value = wantSubject;
     await onSubjectChange();
 }
 
@@ -93,7 +148,9 @@ function cacheEls() {
      'savePostBtn', 'savePostBtnLabel', 'cancelEditBtn',
      'postListCount', 'postList',
      'streamLessonBtn', 'streamLessonModalOverlay', 'closeStreamLessonModalBtn',
-     'streamLessonModalMsg', 'streamLessonList'
+     'streamLessonModalMsg', 'streamLessonList', 'loadOlderBtn',
+     'postTypeField', 'pollFields', 'questionFields', 'pollOptionList', 'addPollOptionBtn',
+     'pollAllowChange', 'pollClosesAt', 'questionBlind'
     ].forEach(id => { els[id] = document.getElementById(id); });
 }
 
@@ -107,6 +164,26 @@ function wireEvents() {
     els.cancelEditBtn.addEventListener('click', resetComposer);
 
     els.postList.addEventListener('click', onPostListClick);
+    els.postList.addEventListener('keydown', (e) => handleCommentEvent(e, commentCfg()));
+    els.loadOlderBtn.addEventListener('click', onLoadOlder);
+
+    document.querySelectorAll('[data-post-type]').forEach(btn =>
+        btn.addEventListener('click', () => setComposerType(btn.dataset.postType)));
+    els.addPollOptionBtn.addEventListener('click', () => {
+        const values = readPollOptionInputs();
+        if (values.length >= POLL_MAX_OPTIONS) return;
+        renderPollOptionInputs([...values, '']);
+        els.pollOptionList.querySelector('.poll-option-row:last-child input')?.focus();
+    });
+    els.pollOptionList.addEventListener('click', (e) => {
+        const rm = e.target.closest('[data-remove-option]');
+        if (!rm) return;
+        const values = readPollOptionInputs();
+        if (values.length <= POLL_MIN_OPTIONS) return;
+        values.splice(Number(rm.dataset.removeOption), 1);
+        renderPollOptionInputs(values);
+    });
+    injectPollCss();
 
     els.streamLessonBtn.addEventListener('click', openStreamLessonModal);
     els.closeStreamLessonModalBtn.addEventListener('click', closeStreamLessonModal);
@@ -130,6 +207,9 @@ async function onSubjectChange() {
     const subjectId = els.subjectSelect.value;
     currentSubject = subjectsCache.find(s => s.id === subjectId) || null;
     resetComposer();
+    stopFeed();
+    feedHasMore = false;
+    feedReady = false;
     lessonsCache = []; // invalidate — re-fetched lazily next time the modal opens for this subject
 
     if (!currentSubject) {
@@ -149,14 +229,43 @@ async function onSubjectChange() {
     }
 
     setComposerEnabled(true);
+    postsCache = [];
     els.postList.innerHTML = '<div class="text-center py-10 text-[#9ab0c6] text-[13px] font-bold"><i class="fa-solid fa-spinner fa-spin text-[#2563eb] text-2xl mb-3 block"></i>Loading posts…</div>';
-    try {
-        postsCache = await loadPostsForSubject(session.schoolId, currentPostContext);
-    } catch (e) {
-        console.error('[Stream] loadPostsForSubject:', e);
-        postsCache = [];
+
+    // Live listener: newest 20 posts of the active term (+ pinned), so a
+    // post from another tab or device (e.g. a "Live now" bulletin) appears
+    // without a refresh. Older posts load on demand (Load Older button).
+    feed = createPostFeed(session.schoolId, [currentPostContext], {
+        sinceIso: termWindow.sinceIso,
+        onChange: (list, { hasMore, ready }) => {
+            postsCache = list;
+            feedHasMore = hasMore;
+            feedReady = ready;
+            if (ready) reportStreamActivity(list); // sidebar badge
+            if (ready) renderPostList();
+        },
+    });
+}
+
+async function onLoadOlder() {
+    if (!feed) return;
+    const label = els.loadOlderBtn.querySelector('span');
+    els.loadOlderBtn.disabled = true;
+    label.textContent = 'Loading…';
+    try { await feed.loadOlder(); } finally {
+        els.loadOlderBtn.disabled = false;
+        label.textContent = 'Load Older Announcements';
     }
-    renderPostList();
+}
+
+function commentCfg() {
+    return {
+        schoolId: session.schoolId,
+        findPost: (id) => postsCache.find(p => p.id === id) || null,
+        author: { authorId: session.teacherId, authorName: session.teacherData.name, role: 'teacher' },
+        rerender: renderPostList,
+        onPatched: (postId, comments) => feed && feed.patchLocal(postId, { comments }),
+    };
 }
 
 function setComposerEnabled(enabled, message) {
@@ -188,8 +297,48 @@ function setView(view) {
 // lessonDate/objectives for any patch whose type isn't 'lesson_plan', so
 // letting this always-'announcement' composer edit one of those posts would
 // silently destroy its lesson-plan-specific fields.
+// ── 7a. POST TYPE (Announcement | Poll | Question) ───────────────────────
+function setComposerType(type) {
+    composerType = ['poll', 'question'].includes(type) ? type : 'announcement';
+    const btns = [...document.querySelectorAll('[data-post-type]')];
+    setToggleActive(btns.find(b => b.dataset.postType === composerType), btns);
+    const editingPoll = editingPostId && editingType === 'poll';
+    els.pollFields.classList.toggle('hidden', composerType !== 'poll' || editingPoll);
+    els.questionFields.classList.toggle('hidden', composerType !== 'question');
+    els.postTitle.placeholder = composerType === 'poll' ? 'e.g. Where should we go for our class trip?'
+        : composerType === 'question' ? 'e.g. What should we build for the science fair?'
+        : "e.g. Reminder about Friday's quiz";
+    els.postBody.placeholder = composerType === 'poll' ? 'Add any details for the poll (optional)…'
+        : composerType === 'question' ? 'Add context for the question (optional)…'
+        : 'Write your announcement...';
+}
+
+function readPollOptionInputs() {
+    return [...els.pollOptionList.querySelectorAll('input')].map(i => i.value);
+}
+
+function renderPollOptionInputs(values) {
+    const list = values.length >= POLL_MIN_OPTIONS ? values : [...values, ...Array(POLL_MIN_OPTIONS - values.length).fill('')];
+    els.pollOptionList.innerHTML = list.map((v, i) => `
+        <div class="poll-option-row flex items-center gap-2">
+            <span class="w-6 text-center text-[11px] font-bold text-[#9ab0c6]">${i + 1}</span>
+            <input type="text" maxlength="120" value="${escHtml(v)}" placeholder="Choice ${i + 1}" class="form-input flex-1 p-2 bg-white border border-[#dce3ed] rounded text-[13px] text-[#0d1f35] outline-none focus:border-[#2563eb]">
+            <button type="button" data-remove-option="${i}" class="text-[#9ab0c6] hover:text-[#e31b4a] h-8 w-8 rounded flex items-center justify-center ${list.length <= POLL_MIN_OPTIONS ? 'invisible' : ''}" title="Remove choice" aria-label="Remove choice ${i + 1}"><i class="fa-solid fa-xmark text-xs"></i></button>
+        </div>`).join('');
+    els.addPollOptionBtn.classList.toggle('hidden', list.length >= POLL_MAX_OPTIONS);
+}
+
 function resetComposer() {
     editingPostId = null;
+    editingType = null;
+    if (els.postTypeField) {
+        els.postTypeField.classList.remove('hidden');
+        renderPollOptionInputs(['', '']);
+        els.pollAllowChange.checked = false;
+        els.pollClosesAt.value = '';
+        els.questionBlind.checked = false;
+        setComposerType('announcement');
+    }
     els.composerTitle.textContent = 'New Post';
     els.savePostBtnLabel.textContent = 'Post';
     els.cancelEditBtn.classList.add('hidden');
@@ -207,6 +356,12 @@ function beginEditPost(post) {
     els.postTitle.value = post.title || '';
     els.postBody.value = post.body || '';
     els.postPinned.checked = !!post.pinned;
+    // Type is fixed once posted. Poll choices/settings are managed on the
+    // card itself (Close/Reopen, Reset Votes) so existing votes stay valid.
+    editingType = ['poll', 'question'].includes(post.type) ? post.type : 'announcement';
+    els.postTypeField.classList.add('hidden');
+    els.questionBlind.checked = !!(post.question && post.question.blindReplies);
+    setComposerType(editingType);
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -221,12 +376,32 @@ async function savePost() {
         return;
     }
 
+    const type = editingPostId ? editingType : composerType;
     const postData = {
-        type: 'announcement',
+        type,
         title,
         body,
-        pinned: els.postPinned.checked
+        pinned: els.postPinned.checked,
     };
+    if (!editingPostId) postData.semesterId = termWindow.semesterId;
+    if (type === 'question') postData.question = { blindReplies: els.questionBlind.checked };
+    if (type === 'poll' && !editingPostId) {
+        const options = readPollOptionInputs().map(v => v.trim()).filter(Boolean);
+        if (options.length < POLL_MIN_OPTIONS) {
+            showMsg('composerMsg', `A poll needs at least ${POLL_MIN_OPTIONS} choices.`, true);
+            return;
+        }
+        if (new Set(options.map(o => o.toLowerCase())).size !== options.length) {
+            showMsg('composerMsg', 'Each poll choice must be different.', true);
+            return;
+        }
+        const closesAt = els.pollClosesAt.value ? new Date(els.pollClosesAt.value) : null;
+        if (closesAt && closesAt.getTime() <= Date.now()) {
+            showMsg('composerMsg', 'The closing time must be in the future.', true);
+            return;
+        }
+        postData.poll = { options, allowChange: els.pollAllowChange.checked, closesAt };
+    }
 
     const prevLabel = els.savePostBtnLabel.textContent;
     els.savePostBtn.disabled = true;
@@ -239,8 +414,7 @@ async function savePost() {
             if (idx !== -1) postsCache[idx] = { ...postsCache[idx], ...updates };
         } else {
             const authorContext = { authorId: session.teacherId, authorName: session.teacherData.name };
-            const newPost = await createPost(session.schoolId, currentPostContext, authorContext, postData);
-            postsCache.unshift(newPost);
+            await createPost(session.schoolId, currentPostContext, authorContext, postData); // live feed renders it
         }
         resetComposer();
         renderPostList();
@@ -340,11 +514,10 @@ async function onStreamLessonListClick(e) {
         btn.innerHTML = 'Sharing…';
         try {
             const authorContext = { authorId: session.teacherId, authorName: session.teacherData.name };
-            const newPost = await createLessonLinkedPost(session.schoolId, currentPostContext, authorContext, {
+            await createLessonLinkedPost(session.schoolId, currentPostContext, authorContext, {
                 lessonId: lesson.id,
                 lessonTitle: lesson.title
-            });
-            postsCache.unshift(newPost);
+            }); // live feed renders it
             closeStreamLessonModal();
             setView('stream');
             showMsg('composerMsg', `Shared "${lesson.title || 'Untitled Lesson'}" to the stream.`, false);
@@ -380,41 +553,83 @@ function renderPostList() {
     const label = currentView === 'lessonPlans' ? 'lesson plan' : 'post';
     els.postListCount.textContent = `${posts.length} ${label}${posts.length === 1 ? '' : 's'}`;
 
+    if (els.loadOlderBtn) els.loadOlderBtn.classList.toggle('hidden', !(feedReady && feedHasMore && currentView === 'stream'));
+
     if (!posts.length) {
         els.postList.innerHTML = `<div class="text-center py-10 text-[#9ab0c6] text-[13px] font-bold bg-white rounded-xl border border-[#dce3ed]">
-            ${currentSubject ? `No ${label}s yet for this subject.` : 'Select a subject above to see its stream.'}
+            ${currentSubject ? `No ${label}s yet for this subject${termWindow.semesterName ? ` in ${escHtml(termWindow.semesterName)}` : ''}.` : 'Select a subject above to see its stream.'}
         </div>`;
         return;
     }
 
-    els.postList.innerHTML = posts.map(renderPostCard).join('');
+    renderPreservingDrafts(els.postList, () => { els.postList.innerHTML = posts.map(renderPostCard).join(''); });
+    focusPostFromUrl(els.postList);
 }
+
+// System-generated posts: a live session bulletin, or a lesson shared /
+// published from the Lesson Builder. Rendered distinctly with a CTA.
+function liveUrl(post) {
+    return `../lessons/live.html?${new URLSearchParams({ lessonId: post.linkedLessonId, classId: post.classId, subjectId: post.subjectId, subjectName: post.subjectName || '' }).toString()}`;
+}
+
+function renderSystemBanner(post) {
+    if (post.type === 'live_session') {
+        return post.live
+            ? `<div class="mt-3 flex items-center gap-2 flex-wrap">
+                   <span class="inline-flex items-center gap-1.5 text-[10.5px] font-black uppercase tracking-wider text-white bg-[#e31b4a] px-2 py-1 rounded"><span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>Live now</span>
+                   <a href="${escHtml(liveUrl(post))}" class="inline-flex items-center gap-1.5 bg-[#0d1f35] hover:bg-[#2563eb] text-white font-bold py-1.5 px-3 rounded transition text-[12px]"><i class="fa-solid fa-tower-broadcast text-[10px]"></i>Return to Live Presenter</a>
+               </div>`
+            : `<div class="mt-3"><span class="inline-flex items-center gap-1.5 text-[10.5px] font-black uppercase tracking-wider text-[#6b84a0] bg-[#f0f4f8] px-2 py-1 rounded border border-[#dce3ed]"><i class="fa-solid fa-circle-stop text-[9px]"></i>Session ended${post.endedAt ? ' · ' + escHtml(formatDate(post.endedAt)) : ''}</span></div>`;
+    }
+    if (post.linkedLessonId) {
+        return `<div class="mt-3"><span class="inline-flex items-center gap-1.5 text-[10.5px] font-black uppercase tracking-wider text-[#2563eb] bg-[#eef4ff] px-2 py-1 rounded border border-[#c7d9fd]"><i class="fa-solid fa-person-chalkboard text-[10px]"></i>Lesson post · students see an Open Lesson button</span></div>`;
+    }
+    return '';
+}
+
+function displayTitle(post) { return displayPostText(post).title; }
 
 function renderPostCard(post) {
     const isLessonPlan = post.type === 'lesson_plan';
-    const iconBg = isLessonPlan ? 'bg-[#fef3c7] text-[#92400e] border-[#fde68a]' : 'bg-[#eef4ff] text-[#2563eb] border-[#c7d9fd]';
-    const icon = isLessonPlan ? 'fa-calendar-days' : 'fa-bullhorn';
+    const isLive = post.type === 'live_session';
+    const isLiveNow = isLive && post.live;
+    const iconBg = isLiveNow ? 'bg-[#fff0f3] text-[#e31b4a] border-[#fecaca]'
+        : isLive || post.linkedLessonId ? 'bg-[#eef4ff] text-[#2563eb] border-[#c7d9fd]'
+        : isLessonPlan ? 'bg-[#fef3c7] text-[#92400e] border-[#fde68a]' : 'bg-[#eef4ff] text-[#2563eb] border-[#c7d9fd]';
+    const icon = isLive ? 'fa-tower-broadcast' : post.linkedLessonId ? 'fa-person-chalkboard' : isLessonPlan ? 'fa-calendar-days'
+        : post.type === 'poll' ? 'fa-square-poll-horizontal' : post.type === 'question' ? 'fa-circle-question' : 'fa-bullhorn';
+    if (post.type === 'poll') ensureRoster(post.classId, post.className);
+    const cardTone = isLiveNow ? 'border-[#fecaca] ring-2 ring-[#fecaca]/60' : (isLive || post.linkedLessonId) ? 'border-[#c7d9fd]' : 'border-[#dce3ed]';
+    const isQuestion = post.type === 'question';
+    // Answers live in posts/{postId}/answers (live listener per question).
+    if (isQuestion) watchAnswers(session.schoolId, post, { role: 'teacher', id: session.teacherId }, renderPostList);
+    const href = discussionUrl(post);
+    const text = displayPostText(post);
 
     return `
-    <div class="post-card bg-white rounded-xl shadow-sm border border-[#dce3ed] p-4" data-post-id="${escHtml(post.id)}">
+    <div class="post-card bg-white rounded-xl shadow-sm border ${cardTone} p-4" data-post-id="${escHtml(post.id)}" data-open-href="${escHtml(href)}">
         <div class="flex items-start justify-between gap-3">
             <div class="flex items-start gap-3 min-w-0">
                 <div class="w-8 h-8 rounded ${iconBg} border flex items-center justify-center flex-shrink-0 mt-0.5">
                     <i class="fa-solid ${icon} text-sm"></i>
                 </div>
-                <div class="min-w-0">
+                <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2 flex-wrap">
                         ${post.pinned ? '<i class="fa-solid fa-thumbtack text-[10px] text-[#e31b4a]" title="Pinned"></i>' : ''}
-                        <p class="font-bold text-[#0d1f35] text-[14px] m-0">${escHtml(post.title) || (isLessonPlan ? 'Untitled Lesson' : 'Announcement')}</p>
+                        <p class="font-bold text-[#0d1f35] text-[14px] m-0"><a class="cs-title-link" href="${escHtml(href)}">${escHtml(text.title) || (isLessonPlan ? 'Untitled Lesson' : 'Announcement')}</a></p>
                         ${isLessonPlan && post.lessonDate ? `<span class="text-[10.5px] font-bold bg-[#fef3c7] text-[#92400e] px-2 py-0.5 rounded border border-[#fde68a]">${escHtml(formatDate(post.lessonDate))}</span>` : ''}
+                        ${post.subjectName ? `<span class="text-[10.5px] font-bold bg-[#f0f4f8] text-[#6b84a0] px-2 py-0.5 rounded">${escHtml(post.subjectName)}</span>` : ''}
                     </div>
-                    ${post.body ? `<p class="text-[12.5px] text-[#374f6b] mt-1.5 mb-0 whitespace-pre-wrap">${escHtml(post.body)}</p>` : ''}
-                    ${isLessonPlan && post.objectives ? `<p class="text-[11.5px] text-[#6b84a0] mt-1.5 mb-0"><span class="font-bold">Objectives:</span> ${escHtml(post.objectives)}</p>` : ''}
-                    <p class="text-[10.5px] text-[#9ab0c6] font-semibold mt-2 mb-0">${escHtml(post.authorName || '')} · ${escHtml(formatDate(post.createdAt))}</p>
+                    <p class="text-[10.5px] text-[#9ab0c6] font-semibold mt-1 mb-0">${escHtml(post.authorName || '')} · ${escHtml(formatDate(post.createdAt))}</p>
+                    ${text.body ? `<p class="text-[12.5px] text-[#374f6b] mt-1.5 mb-0 cs-clamp">${escHtml(text.body)}</p>` : ''}
+                    ${post.type === 'question' && post.question && post.question.blindReplies ? '<p class="mt-2 mb-0"><span class="inline-flex items-center gap-1.5 text-[10.5px] font-black uppercase tracking-wider text-[#6b84a0] bg-[#f0f4f8] px-2 py-1 rounded border border-[#dce3ed]"><i class="fa-solid fa-eye-slash text-[9px]"></i>Blind replies · students see answers after posting their own</span></p>' : ''}
+                    ${pollHtml(post, { role: 'teacher', roster: rosterFor(post.classId) })}
+                    ${renderSystemBanner(post)}
+                    ${isQuestion ? '' : commentPillHtml(post, href)}
                 </div>
             </div>
             <div class="flex items-center gap-1 flex-shrink-0">
-                ${isLessonPlan ? '' : `
+                ${isLessonPlan || isLive ? '' : `
                 <button data-action="edit" class="text-[#6b84a0] hover:text-[#2563eb] hover:bg-[#eef4ff] h-7 w-7 rounded flex items-center justify-center transition" title="Edit">
                     <i class="fa-solid fa-pen text-xs"></i>
                 </button>`}
@@ -423,10 +638,14 @@ function renderPostCard(post) {
                 </button>
             </div>
         </div>
+        ${isQuestion ? commentsSectionHtml(answersView(post), { canComment: true, canDelete: () => true, discussionUrl }) : ''}
     </div>`;
 }
 
 async function onPostListClick(e) {
+    if (openPostFromCardClick(e)) return; // card body → full post page (edit/delete are buttons, so excluded)
+    if (await handlePollEvent(e, { schoolId: session.schoolId, findPost: (id) => postsCache.find(p => p.id === id) || null })) return;
+    if (await handleCommentEvent(e, commentCfg())) return;
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
     const card = e.target.closest('[data-post-id]');
@@ -441,7 +660,7 @@ async function onPostListClick(e) {
         if (!confirm(`Delete "${post.title || (post.type === 'lesson_plan' ? 'this lesson plan' : 'this announcement')}"? This cannot be undone.`)) return;
         try {
             await deletePost(session.schoolId, currentPostContext, postId);
-            postsCache = postsCache.filter(p => p.id !== postId);
+            postsCache = postsCache.filter(p => p.id !== postId); // listener confirms
             if (editingPostId === postId) resetComposer();
             renderPostList();
         } catch (err) {

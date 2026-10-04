@@ -2,7 +2,7 @@ import { db } from '../../assets/js/firebase-init.js';
 import { collection, query, where, getDocs, getDoc, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
-import { openOverlay, closeOverlay, showMsg, gradeColorClass, gradeFill, letterGrade, downloadCSV, calculateWeightedAverage, resolveGradeWeights, saveTeacherWeightingEverywhere } from '../../assets/js/utils.js';
+import { openOverlay, closeOverlay, showMsg, gradeColorClass, gradeFill, letterGrade, downloadCSV, calculateWeightedAverage, resolveGradeWeights, saveTeacherWeightingEverywhere, loadSchoolClasses, resolveClassNamesToIds } from '../../assets/js/utils.js';
 
 // ── 1. AUTH & LAYOUT ─────────────────────────────────────────────────────────
 const session = requireAuth('teacher', '../login.html');
@@ -24,6 +24,17 @@ let originalMax      = null;
 let sfStudentValue = '';
 let sfSubjectValue = '';
 let sfTypeValue    = '';
+
+// Roster source of truth: the teacher's active class (classId), never the
+// student doc's teacherId — a teacher can share students' teacherId across
+// classes, which leaked other classes' students into this grid.
+let teacherClasses   = [];     // [{ id, name }]
+let activeClass      = null;   // { id, name } | null (null = legacy fallback)
+
+// Category (grade type) collapse state. collapseDefault applies to every
+// category without an explicit per-category override.
+let collapseDefault  = true;
+const catOverrides   = new Map();
 
 // ── THE "PERFECT 100" DEFAULT SYLLABUS ──
 const DEFAULT_GRADE_TYPES = [
@@ -135,11 +146,19 @@ async function init() {
     }), (val) => { sfTypeValue = val; applyGradebookFilters(); });
     
     sfStudent = buildSearchableFilter('student', [], (val) => { sfStudentValue = val; applyGradebookFilters(); });
-    sfSubject = buildSearchableFilter('subject', [], (val) => { sfSubjectValue = val; applyGradebookFilters(); });
 
     document.getElementById('updateGradeBtn').addEventListener('click', saveEditedGrade);
 
-    await Promise.all([loadSemestersAndLockStatus(), loadStudents()]);
+    document.getElementById('gbCollapseAllBtn')?.addEventListener('click', toggleAllCategories);
+    document.getElementById('gbClassSelect')?.addEventListener('change', (e) => {
+        activeClass = teacherClasses.find(c => c.id === e.target.value) || null;
+        try { localStorage.setItem(activeClassStorageKey(), activeClass?.id || ''); } catch (_) {}
+        allGradesCache = null;
+        sfStudentValue = ''; if (sfStudent) sfStudent.clear();
+        loadStudents().then(loadGradebook);
+    });
+
+    await Promise.all([loadSemestersAndLockStatus(), loadTeacherClasses().then(loadStudents)]);
     await loadGradebook();
 }
 
@@ -195,11 +214,58 @@ function checkLockStatus() {
     }
 }
 
-// ── 6. LOAD STUDENTS ──────────────────────────────────────────────────────────
+// ── 6. CLASSES & STUDENTS ─────────────────────────────────────────────────────
+function activeClassStorageKey() { return `connectus_gb_class_${session.schoolId}_${session.teacherId}`; }
+
+// Teacher's classes = classes named on the teacher doc (classes[] / className)
+// plus any class document listing this teacher in teacherIds.
+async function loadTeacherClasses() {
+    try {
+        const schoolClasses = await loadSchoolClasses(session.schoolId);
+        const names = session.teacherData.classes || [session.teacherData.className || ''];
+        const byId = new Map();
+        resolveClassNamesToIds(names, schoolClasses).resolved.forEach(c => byId.set(c.id, { id: c.id, name: c.name }));
+        schoolClasses
+            .filter(c => Array.isArray(c.teacherIds) && c.teacherIds.includes(session.teacherId))
+            .forEach(c => byId.set(c.id, { id: c.id, name: c.name || c.id }));
+        teacherClasses = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+    } catch (e) {
+        console.error('[Gradebook] loadTeacherClasses:', e);
+        teacherClasses = [];
+    }
+
+    let savedId = '';
+    try { savedId = localStorage.getItem(activeClassStorageKey()) || ''; } catch (_) {}
+    activeClass = teacherClasses.find(c => c.id === savedId) || teacherClasses[0] || null;
+
+    const sel  = document.getElementById('gbClassSelect');
+    const wrap = document.getElementById('gbClassWrap');
+    if (sel && wrap) {
+        sel.innerHTML = teacherClasses.map(c => `<option value="${escHtml(c.id)}"${c.id === activeClass?.id ? ' selected' : ''}>${escHtml(c.name)}</option>`).join('');
+        wrap.style.display = teacherClasses.length > 1 ? 'flex' : 'none';
+    }
+    if (!activeClass) console.warn('[Gradebook] No class resolved for this teacher — falling back to legacy teacherId roster.');
+}
+
+// Same membership test as firestore.rules studentDocInClass(): classId is the
+// source of truth; className is the fallback for older student docs only.
+function studentInActiveClass(s) {
+    if (!activeClass) return s.teacherId === session.teacherId;
+    if (s.classId) return s.classId === activeClass.id;
+    return !!s.className && s.className === activeClass.name;
+}
+
+function gradeInActiveClass(g) {
+    if (!activeClass) return true;
+    if (g.classId) return g.classId === activeClass.id;
+    if (g.className) return g.className === activeClass.name;
+    return true;
+}
+
 async function loadStudents() {
     try {
         const stuSnap = await getDocs(query(collection(db, 'students'), where('currentSchoolId', '==', session.schoolId), where('enrollmentStatus', '==', 'Active')));
-        allStudentsCache = stuSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => d.teacherId === session.teacherId);
+        allStudentsCache = stuSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(studentInActiveClass);
         studentMap = {};
         allStudentsCache.forEach(s => { studentMap[s.id] = s.name; });
 
@@ -212,7 +278,7 @@ async function loadStudents() {
 
 // ── 7. GRADE CACHE ────────────────────────────────────────────────────────────
 async function getAllGrades(semId) {
-    if (allGradesCache && allGradesCache.semId === semId) return allGradesCache.grades;
+    if (allGradesCache && allGradesCache.semId === semId && allGradesCache.classId === (activeClass?.id || '')) return allGradesCache.grades;
     const all = [];
     await Promise.all(allStudentsCache.map(async s => {
         try {
@@ -222,17 +288,17 @@ async function getAllGrades(semId) {
                 where('semesterId', '==', semId)
             );
             const snap = await getDocs(q);
-            snap.forEach(d => all.push({ id: d.id, studentId: s.id, studentName: s.name, ...d.data() }));
+            snap.forEach(d => { const g = { id: d.id, studentId: s.id, studentName: s.name, ...d.data() }; if (gradeInActiveClass(g)) all.push(g); });
         } catch (e) {}
     }));
-    allGradesCache = { semId, grades: all };
+    allGradesCache = { semId, classId: activeClass?.id || '', grades: all };
     return all;
 }
 
 // ── 8. LOAD GRADEBOOK ─────────────────────────────────────────────────────────
 async function loadGradebook() {
     const tbody = document.getElementById('gradebookTableBody');
-    tbody.innerHTML = `<tr><td colspan="8"><div class="gb-empty"><i class="fa-solid fa-spinner fa-spin" style="color:#0ea871;"></i><p>Loading gradebook…</p></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="99"><div class="gb-empty"><i class="fa-solid fa-spinner fa-spin" style="color:#0ea871;"></i><p>Loading gradebook…</p></div></td></tr>`;
 
     const semId = document.getElementById('activeSemester')?.value;
     if (!semId) { renderGradebook(); return; }
@@ -254,17 +320,13 @@ async function loadGradebook() {
     // Grading completeness summary (awareness only — never alters grades/averages)
     try { computeCompleteness(grades, semId); } catch (e) { console.error('[Gradebook] completeness:', e); }
 
-    if (sfSubject) {
-        const subjSet = [...new Set(grades.map(g => g.subject || 'Uncategorized'))].sort();
-        sfSubject.setItems(subjSet.map(s => ({ id: s, label: s })));
-    }
+    renderSubjectTabs(grades);
 
     renderGradebook();
 }
 
 // ── 9. RENDER ─────────────────────────────────────────────────────────────────
 function renderGradebook() {
-    const tbody = document.getElementById('gradebookTableBody');
     const fText = (document.getElementById('gbSearchInput')?.value || '').toLowerCase();
     
     let rows = allGradesCache?.grades || [];
@@ -272,9 +334,6 @@ function renderGradebook() {
     if (sfSubjectValue) rows = rows.filter(g => g.subject   === sfSubjectValue);
     if (sfTypeValue)    rows = rows.filter(g => g.type      === sfTypeValue);
     if (fText)          rows = rows.filter(g => (g.title || '').toLowerCase().includes(fText));
-
-    const countEl = document.getElementById('gbRecordCount');
-    if (countEl) countEl.innerHTML = `<div class="gb-count-dot"></div><span>${rows.length} record${rows.length !== 1 ? 's' : ''}</span>`;
 
     const allRows = allGradesCache?.grades || [];
     const stuGrps = {};
@@ -326,37 +385,243 @@ function renderGradebook() {
     const lockedBar = document.getElementById('gbLockedBar');
     if (lockedBar) lockedBar.classList.toggle('hidden', !isSemesterLocked);
 
-    if (!rows.length) {
-        tbody.innerHTML = `<tr><td colspan="8"><div class="gb-empty"><i class="fa-solid fa-folder-open"></i><p>${allRows.length ? 'No grades match the selected filters.' : 'No grades logged yet for this period.'}</p></div></td></tr>`;
+    renderGradeGrid(rows);
+}
+
+// ── 9a. SUBJECT TABS ─────────────────────────────────────────────────────────
+function renderSubjectTabs(grades) {
+    const el = document.getElementById('gbSubjectTabs');
+    if (!el) return;
+    const counts = {};
+    (grades || []).forEach(g => { const k = g.subject || 'Uncategorized'; counts[k] = (counts[k] || 0) + 1; });
+    const subjects = Object.keys(counts).sort((a, b) => a.localeCompare(b));
+    if (sfSubjectValue && !counts[sfSubjectValue]) { sfSubjectValue = ''; collapseDefault = true; catOverrides.clear(); }
+
+    const tab = (value, label, n) => `<button type="button" class="gb-subj-tab${sfSubjectValue === value ? ' is-active' : ''}" onclick="selectGradebookSubject('${encodeURIComponent(value)}')">${escHtml(label)}${n !== null ? `<span class="gb-subj-count">${n}</span>` : ''}</button>`;
+    el.innerHTML = tab('', 'All Subjects', (grades || []).length) + subjects.map(s => tab(s, s, counts[s])).join('');
+}
+
+// All Subjects opens collapsed (category averages only); a single subject
+// opens expanded. Per-category overrides reset on every subject switch.
+window.selectGradebookSubject = function(encoded) {
+    sfSubjectValue = decodeURIComponent(encoded);
+    collapseDefault = sfSubjectValue === '';
+    catOverrides.clear();
+    renderSubjectTabs(allGradesCache?.grades || []);
+    renderGradebook();
+};
+
+function isCatCollapsed(name) { return catOverrides.has(name) ? catOverrides.get(name) : collapseDefault; }
+
+window.toggleGradebookCategory = function(encoded) {
+    const name = decodeURIComponent(encoded);
+    catOverrides.set(name, !isCatCollapsed(name));
+    renderGradebook();
+};
+
+let lastRenderedCats = [];
+function toggleAllCategories() {
+    const anyExpanded = lastRenderedCats.some(c => !isCatCollapsed(c.name));
+    collapseDefault = anyExpanded;
+    catOverrides.clear();
+    renderGradebook();
+}
+
+// ── 9b. STUDENT × ASSIGNMENT MATRIX (grouped by category) ────────────────────
+// Column identity: assignmentId when the grade carries one; legacy/manual
+// grades without one are grouped by subject + title + type + max.
+function gradeColumnKey(g) {
+    if (g.assignmentId) return `a:${g.assignmentId}`;
+    const norm = v => String(v ?? '').trim().toLowerCase();
+    return `l:${norm(g.subject)}|${norm(g.title)}|${norm(g.type)}|${norm(g.max)}`;
+}
+
+function pctBadgeClass(pct) {
+    return pct >= 90 ? 'gg-a' : pct >= 80 ? 'gg-b' : pct >= 70 ? 'gg-c' : pct >= 65 ? 'gg-d' : 'gg-f';
+}
+function pctTone(pct) {
+    if (pct === null || pct === undefined) return '';
+    return pct >= 90 ? 'gb-tone-a' : pct >= 80 ? 'gb-tone-b' : pct >= 70 ? 'gb-tone-c' : pct >= 65 ? 'gb-tone-d' : 'gb-tone-f';
+}
+function gradePct(g) { return g.percentage !== undefined ? g.percentage : (g.max ? g.score / g.max * 100 : null); }
+
+function buildGradeMatrix(rows) {
+    const colMap  = new Map();
+    const cellMap = new Map();
+
+    rows.forEach(g => {
+        const key = gradeColumnKey(g);
+        if (!colMap.has(key)) {
+            colMap.set(key, { key, title: g.title || 'Untitled', subject: g.subject || 'Uncategorized', type: g.type || 'Uncategorized', maxes: new Set(), date: g.date || '' });
+        }
+        const col = colMap.get(key);
+        col.maxes.add(g.max ?? '?');
+        if (g.date && (!col.date || g.date < col.date)) col.date = g.date;
+
+        const cellKey = `${g.studentId}::${key}`;
+        if (!cellMap.has(cellKey)) cellMap.set(cellKey, []);
+        cellMap.get(cellKey).push(g);
+    });
+
+    cellMap.forEach(list => list.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+
+    // Categories follow the teacher's weighting order; unknown types go last.
+    const weights = getGradeTypes();
+    const order = weights.map(t => String(t.name || '').toLowerCase());
+    const weightOf = name => (weights.find(t => String(t.name || '').toLowerCase() === name.toLowerCase()) || {}).weight;
+    const catMap = new Map();
+    colMap.forEach(c => { if (!catMap.has(c.type)) catMap.set(c.type, []); catMap.get(c.type).push(c); });
+    const cats = [...catMap.entries()].map(([name, cols]) => ({
+        name,
+        weight: weightOf(name),
+        cols: cols.sort((a, b) => (a.date || '').localeCompare(b.date || '') || a.subject.localeCompare(b.subject) || a.title.localeCompare(b.title)),
+    })).sort((a, b) => {
+        const ia = order.indexOf(a.name.toLowerCase()), ib = order.indexOf(b.name.toLowerCase());
+        return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib) || a.name.localeCompare(b.name);
+    });
+    const cols = cats.flatMap(c => c.cols);
+
+    return { cols, cats, cellMap };
+}
+
+// Mean % of every grade the student has in this category (current view).
+function categoryAverage(studentId, cat, cellMap) {
+    const pcts = [];
+    cat.cols.forEach(c => (cellMap.get(`${studentId}::${c.key}`) || []).forEach(g => { const p = gradePct(g); if (p !== null) pcts.push(p); }));
+    return pcts.length ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length) : null;
+}
+
+// Weighted average over the subject in view (all subjects = overall).
+function studentViewAverage(studentId) {
+    let list = (allGradesCache?.grades || []).filter(g => g.studentId === studentId);
+    if (sfSubjectValue) list = list.filter(g => g.subject === sfSubjectValue);
+    const avg = list.length ? calculateWeightedAverage(list, getGradeTypes()) : null;
+    return avg !== null ? Math.round(avg) : null;
+}
+
+function viewAverageLabel() { return sfSubjectValue ? `${sfSubjectValue} Avg` : 'Overall Avg'; }
+
+function getViewStudents() {
+    let students = [...allStudentsCache].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    if (sfStudentValue) students = students.filter(s => s.id === sfStudentValue);
+    return students;
+}
+
+function renderGradeGrid(rows) {
+    const thead = document.getElementById('gradebookTableHead');
+    const tbody = document.getElementById('gradebookTableBody');
+    gradeDetailCache = {};
+
+    const students = getViewStudents();
+    const { cols, cats, cellMap } = buildGradeMatrix(rows);
+    lastRenderedCats = cats;
+
+    const countEl = document.getElementById('gbRecordCount');
+    if (countEl) countEl.innerHTML = `<div class="gb-count-dot"></div><span>${students.length} student${students.length !== 1 ? 's' : ''} · ${cols.length} assignment${cols.length !== 1 ? 's' : ''} · ${rows.length} grade${rows.length !== 1 ? 's' : ''}</span>`;
+
+    const btn = document.getElementById('gbCollapseAllBtn');
+    if (btn) {
+        const anyExpanded = cats.some(c => !isCatCollapsed(c.name));
+        btn.innerHTML = anyExpanded
+            ? `<i class="fa-solid fa-compress"></i> Collapse categories`
+            : `<i class="fa-solid fa-expand"></i> Expand categories`;
+        btn.style.display = cats.length ? '' : 'none';
+    }
+
+    const missingFor = (c) => students.filter(s => !cellMap.has(`${s.id}::${c.key}`)).length;
+
+    const row1 = cats.map(cat => {
+        const collapsed = isCatCollapsed(cat.name);
+        return `<th class="gb-cat-head${collapsed ? ' is-collapsed' : ''}" colspan="${collapsed ? 1 : cat.cols.length}">
+            <button type="button" class="gb-cat-toggle" onclick="toggleGradebookCategory('${encodeURIComponent(cat.name)}')" title="${collapsed ? 'Expand' : 'Collapse'} ${escHtml(cat.name)}">
+                <i class="fa-solid fa-chevron-${collapsed ? 'right' : 'down'}"></i>
+                <span class="gb-cat-name">${escHtml(cat.name)}</span>
+                <span class="gb-cat-meta">${cat.cols.length}${cat.weight !== undefined ? ` · ${cat.weight}%` : ''}</span>
+            </button>
+        </th>`;
+    }).join('');
+
+    const row2 = cats.map(cat => isCatCollapsed(cat.name)
+        ? `<th class="gb-col-head gb-cat-avg-head" title="Average of all ${escHtml(cat.name)} grades">Avg</th>`
+        : cat.cols.map(c => {
+            const maxLabel = c.maxes.size === 1 ? [...c.maxes][0] : 'varies';
+            const miss = missingFor(c);
+            return `<th class="gb-col-head" title="${escHtml(c.title)} — ${escHtml(c.subject)} · ${escHtml(c.type)}${c.date ? ' · ' + escHtml(c.date) : ''}">
+                <p class="gb-col-title">${escHtml(c.title)}</p>
+                <p class="gb-col-max">/${escHtml(String(maxLabel))}${sfSubjectValue ? '' : ` · ${escHtml(c.subject)}`}</p>
+                ${miss ? `<p class="gb-col-missing">${miss} missing</p>` : ''}
+            </th>`;
+        }).join('')
+    ).join('');
+
+    thead.innerHTML = cats.length
+        ? `<tr><th class="gb-sticky-col" rowspan="2">Student</th>${row1}<th class="gb-avg-head" rowspan="2">${escHtml(viewAverageLabel())}</th></tr><tr class="gb-head-row2">${row2}</tr>`
+        : `<tr><th class="gb-sticky-col">Student</th></tr>`;
+
+    const visibleCols = cats.reduce((n, c) => n + (isCatCollapsed(c.name) ? 1 : c.cols.length), 0);
+    const colspan = visibleCols + 2;
+    const allRows = allGradesCache?.grades || [];
+
+    if (!students.length) {
+        tbody.innerHTML = `<tr><td colspan="${colspan}"><div class="gb-empty"><i class="fa-solid fa-user-slash"></i><p>No active students in ${escHtml(activeClass?.name || 'this class')}.</p></div></td></tr>`;
+        return;
+    }
+    if (!cols.length) {
+        tbody.innerHTML = `<tr><td colspan="${colspan}"><div class="gb-empty"><i class="fa-solid fa-folder-open"></i><p>${allRows.length ? 'No grades match the selected filters.' : 'No grades logged yet for this period.'}</p></div></td></tr>`;
         return;
     }
 
-    gradeDetailCache = {};
+    tbody.innerHTML = students.map(s => {
+        const missing = cols.filter(c => !cellMap.has(`${s.id}::${c.key}`)).length;
+        const initial = (s.name || '?').charAt(0).toUpperCase();
+        const avg = studentViewAverage(s.id);
 
-    tbody.innerHTML = rows.sort((a, b) => (b.date || '').localeCompare(a.date || '')).map((g, idx) => {
-        gradeDetailCache[g.id] = g;
-        const pct = g.max ? Math.round(g.score / g.max * 100) : null;
-        const letter = pct !== null ? letterGrade(pct) : '—';
-        const badgeCls = pct >= 90 ? 'gg-a' : pct >= 80 ? 'gg-b' : pct >= 70 ? 'gg-c' : pct >= 65 ? 'gg-d' : 'gg-f';
-        const barColor = pct >= 90 ? '#10b981' : pct >= 80 ? '#3b82f6' : pct >= 70 ? '#14b8a6' : pct >= 65 ? '#f59e0b' : '#ef4444';
-        const initial = (g.studentName || '?').charAt(0).toUpperCase();
+        const cells = cats.map(cat => {
+            if (isCatCollapsed(cat.name)) {
+                const ca = categoryAverage(s.id, cat, cellMap);
+                return ca === null
+                    ? `<td class="gb-cell gb-cat-avg gb-cell-missing" title="No ${escHtml(cat.name)} grades"><span>-</span></td>`
+                    : `<td class="gb-cell gb-cat-avg ${pctTone(ca)}" title="${escHtml(cat.name)} average">${ca}%</td>`;
+            }
+            return cat.cols.map(c => {
+                const list = cellMap.get(`${s.id}::${c.key}`);
+                if (!list) return `<td class="gb-cell gb-cell-missing" title="${escHtml(s.name || 'Student')}: no grade for ${escHtml(c.title)}"><span>-</span></td>`;
 
-        const actionBtns = isSemesterLocked
-            ? `<span style="font-size:10px;color:#9ab0c6;font-weight:700;"><i class="fa-solid fa-lock"></i></span>`
-            : `<button onclick="openEditGradeModal('${g.studentId}','${g.id}')" class="gb-row-btn gb-btn-edit" title="Edit"><i class="fa-solid fa-pen"></i></button>
-               <button onclick="deleteGrade('${g.studentId}','${g.id}')" class="gb-row-btn gb-btn-delete" title="Delete"><i class="fa-solid fa-trash-can"></i></button>`;
+                list.forEach(g => { gradeDetailCache[g.id] = g; });
+                const g   = list[0];
+                const pct = g.max ? Math.round(g.score / g.max * 100) : null;
+                const dup = list.length > 1 ? `<span class="gb-cell-dup" title="${list.length} grades recorded — showing the newest">${list.length}</span>` : '';
+                const actions = isSemesterLocked ? '' : `<div class="gb-cell-actions">
+                        <button onclick="openEditGradeModal('${g.studentId}','${g.id}')" class="gb-row-btn gb-btn-edit" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                        <button onclick="deleteGrade('${g.studentId}','${g.id}')" class="gb-row-btn gb-btn-delete" title="Delete"><i class="fa-solid fa-trash-can"></i></button>
+                    </div>`;
+                return `<td class="gb-cell ${pctTone(pct)}">
+                    <button class="gb-cell-score" onclick="openAssignmentModal('${g.id}')" title="${pct !== null ? pct + '% · ' + letterGrade(pct) : ''}${g.notes ? ' · has teacher notes' : ''}">${g.score}<span class="gb-cell-max">/${g.max || '?'}</span></button>${dup}${actions}
+                </td>`;
+            }).join('');
+        }).join('');
 
         return `<tr class="gb-row">
-            <td style="color:#9ab0c6;font-size:11px;font-family:'DM Mono',monospace;">${String(idx+1).padStart(2,'0')}</td>
-            <td><div class="gb-student-cell"><div class="gb-student-init">${initial}</div><span class="gb-student-name">${escHtml(g.studentName||'Unknown')}</span></div></td>
-            <td><span class="gb-subject-badge">${escHtml(g.subject||'—')}</span></td>
-            <td><p class="gb-title">${escHtml(g.title||'—')}</p><p class="gb-date">${g.date||''}</p></td>
-            <td><span class="gb-type-badge">${escHtml(g.type||'—')}</span></td>
-            <td class="tc"><span class="gb-score">${g.score}<span style="color:#9ab0c6;"> / ${g.max||'?'}</span></span></td>
-            <td class="tc"><div class="gb-grade-wrap"><span class="gb-grade-badge ${badgeCls}">${pct!==null?pct+'%':'—'} · ${letter}</span><div class="gb-bar-bg"><div class="gb-bar-fill" style="width:${Math.min(pct||0,100)}%;background:${barColor};"></div></div></div></td>
-            <td class="tr"><div style="display:flex;align-items:center;justify-content:flex-end;gap:5px;"><button onclick="openAssignmentModal('${g.id}')" class="gb-row-btn gb-btn-view" title="View"><i class="fa-solid fa-eye"></i></button>${actionBtns}</div></td>
+            <td class="gb-sticky-col">
+                <div class="gb-student-cell">
+                    <div class="gb-student-init">${initial}</div>
+                    <div style="min-width:0;">
+                        <span class="gb-student-name">${escHtml(s.name || 'Unknown')}</span>
+                        ${missing ? `<div class="gb-stu-missing">${missing} missing</div>` : ''}
+                    </div>
+                </div>
+            </td>
+            ${cells}
+            <td class="gb-avg-cell" style="color:${avg !== null ? gradeColor(avg) : '#9ab0c6'};">${avg !== null ? `${avg}% <span class="gb-avg-letter">${letterGrade(avg)}</span>` : '-'}</td>
         </tr>`;
     }).join('');
+
+    // Second header row sticks directly under the first.
+    requestAnimationFrame(() => {
+        const r1 = thead.querySelector('tr');
+        const h = r1 ? r1.getBoundingClientRect().height : 0;
+        thead.querySelectorAll('.gb-head-row2 th').forEach(th => { th.style.top = h + 'px'; });
+    });
 }
 
 window.applyGradebookFilters = function() { renderGradebook(); };
@@ -587,22 +852,69 @@ function getFilteredRows() {
     return rows;
 }
 
+// Same matrix the on-screen grid renders: current class, subject tab and
+// filters; newest grade per cell; category averages; view average.
+function getMatrixExportData() {
+    const rows = getFilteredRows();
+    const students = getViewStudents();
+    const { cols, cats, cellMap } = buildGradeMatrix(rows);
+    const colMaxLabel = c => c.maxes.size === 1 ? String([...c.maxes][0]) : 'varies';
+
+    const matrix = students.map(s => ({
+        student: s,
+        avg: studentViewAverage(s.id),
+        cats: cats.map(cat => ({
+            avg: categoryAverage(s.id, cat, cellMap),
+            cells: cat.cols.map(c => {
+                const list = cellMap.get(`${s.id}::${c.key}`);
+                if (!list) return null;
+                const g = list[0];
+                return { score: g.score, max: g.max, pct: g.max ? Math.round(g.score / g.max * 100) : null, count: list.length };
+            }),
+        })),
+    }));
+
+    return { students, cols, cats, matrix, colMaxLabel, gradeCount: rows.length };
+}
+
+// CSV is always the full detail: every assignment, a category average after
+// each category, then the view average.
 window.exportGradebookCSV = function() {
-    downloadCSV([
-        ['Student','Subject','Assignment','Type','Date','Score','Max','%','Letter','Notes'],
-        ...getFilteredRows().map(g => {
-            const p = g.max ? Math.round(g.score/g.max*100) : null;
-            return [g.studentName, g.subject||'', g.title||'', g.type||'', g.date||'',
-                    g.score, g.max||'', p!==null?p+'%':'', p!==null?letterGrade(p):'', g.notes||''];
-        })
-    ], `${session.schoolId}_gradebook.csv`);
+    const { cats, matrix, colMaxLabel } = getMatrixExportData();
+    const header = ['Student Name', ...cats.flatMap(cat => [...cat.cols.map(c => `${c.title} (${colMaxLabel(c)})`), `${cat.name} Average`]), viewAverageLabel().replace(/ Avg$/, ' Average')];
+    const body = matrix.map(r => [
+        r.student.name || 'Unknown',
+        ...r.cats.flatMap(rc => [...rc.cells.map(cell => cell ? cell.score : '-'), rc.avg !== null ? `${rc.avg}%` : '-']),
+        r.avg !== null ? `${r.avg}%` : '-'
+    ]);
+    const semName = document.getElementById('activeSemester')?.selectedOptions?.[0]?.text || '';
+    const parts = [activeClass?.name, sfSubjectValue, semName].filter(Boolean).map(t => t.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, ''));
+    downloadCSV([header, ...body], `${session.schoolId}_gradebook${parts.length ? '_' + parts.join('_') : ''}.csv`);
 };
 
+// Print mirrors the screen: collapsed categories print as one average column.
 window.printGradebook = function() {
-    const rows = getFilteredRows().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    const { students, cols, cats, matrix, colMaxLabel, gradeCount } = getMatrixExportData();
     const semName = document.getElementById('activeSemester')?.options[document.getElementById('activeSemester')?.selectedIndex]?.text || '';
     const schoolName = session.schoolName || session.schoolId;
-    
+    const tone = p => p === null ? '' : p >= 75 ? 'hi' : p >= 65 ? 'mid' : 'lo';
+    const visible = cats.reduce((n, c) => n + (isCatCollapsed(c.name) ? 1 : c.cols.length), 0);
+
+    const head1 = `<tr><th class="stu" rowspan="2">Student</th>${cats.map(cat =>
+        `<th class="cat" colspan="${isCatCollapsed(cat.name) ? 1 : cat.cols.length}">${escHtml(cat.name)}${cat.weight !== undefined ? ` <span class="cw">${cat.weight}%</span>` : ''}</th>`
+    ).join('')}<th class="avg" rowspan="2">${escHtml(viewAverageLabel())}</th></tr>`;
+    const head2 = `<tr>${cats.map(cat => isCatCollapsed(cat.name)
+        ? `<th><div class="ct">Average</div></th>`
+        : cat.cols.map(c => `<th><div class="ct">${escHtml(c.title)}</div><div class="cx">/${escHtml(colMaxLabel(c))}${sfSubjectValue ? '' : ' · ' + escHtml(c.subject)}</div></th>`).join('')
+    ).join('')}</tr>`;
+
+    const bodyRows = matrix.map(r => `<tr><td class="stu">${escHtml(r.student.name || 'Unknown')}</td>${r.cats.map((rc, i) => isCatCollapsed(cats[i].name)
+        ? (rc.avg !== null ? `<td class="mono ${tone(rc.avg)}">${rc.avg}%</td>` : `<td class="miss">-</td>`)
+        : rc.cells.map(cell => cell
+            ? `<td class="mono ${tone(cell.pct)}">${cell.score}<span class="mx">/${cell.max ?? '?'}</span>${cell.count > 1 ? '<sup>×' + cell.count + '</sup>' : ''}</td>`
+            : `<td class="miss">-</td>`).join('')
+    ).join('')}<td class="avg mono ${tone(r.avg)}">${r.avg !== null ? r.avg + '% · ' + letterGrade(r.avg) : '-'}</td></tr>`).join('');
+
     const w = window.open('', '_blank');
     w.document.write(`
     <!DOCTYPE html>
@@ -613,41 +925,48 @@ window.printGradebook = function() {
         <style>
             @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=DM+Mono:wght@400&display=swap');
             *{box-sizing:border-box;margin:0;padding:0;}
-            body{font-family:'DM Sans',sans-serif;padding:40px 48px;color:#0d1f35;}
-            .header{display:flex;flex-direction:column;align-items:center;margin-bottom:28px;padding-bottom:20px;border-bottom:2px solid #0d1f35;}
-            .logo{max-height:44px;max-width:160px;object-fit:contain;margin-bottom:10px;}
+            body{font-family:'DM Sans',sans-serif;padding:32px 36px;color:#0d1f35;}
+            .header{display:flex;flex-direction:column;align-items:center;margin-bottom:20px;padding-bottom:14px;border-bottom:2px solid #0d1f35;}
+            .logo{max-height:40px;max-width:160px;object-fit:contain;margin-bottom:8px;}
             .doc-title{font-size:16px;font-weight:700;margin-bottom:4px;}
             .meta{font-size:11px;color:#6b84a0;}
-            table{width:100%;border-collapse:collapse;font-size:12px;}
-            th{padding:9px 12px;background:#0d1f35;color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;text-align:left;}
-            td{padding:9px 12px;border-bottom:1px solid #e8edf2;}
+            table{width:100%;border-collapse:collapse;font-size:10.5px;table-layout:auto;}
+            thead{display:table-header-group;}
+            tr{page-break-inside:avoid;break-inside:avoid;}
+            th{padding:6px 6px;background:#0d1f35;color:#fff;font-weight:700;text-align:center;vertical-align:bottom;border:1px solid #0d1f35;}
+            th.cat{background:#1e3350;font-size:9.5px;text-transform:uppercase;letter-spacing:0.06em;}
+            th .ct{font-size:9.5px;line-height:1.2;}
+            th .cx,.cw{font-size:8px;font-family:'DM Mono',monospace;margin-top:2px;opacity:0.8;}
+            th.stu,td.stu{text-align:left;white-space:nowrap;min-width:130px;}
+            td{padding:5px 6px;border:1px solid #dce3ed;text-align:center;}
+            td.stu{font-weight:700;}
             tr:nth-child(even) td{background:#f8fafb;}
+            td.avg,th.avg{border-left:2px solid #0d1f35;white-space:nowrap;}
+            .mx{color:#9ab0c6;font-size:9px;}
+            sup{font-size:7px;color:#6b84a0;}
+            .miss{color:#b6c2cf;}
             .hi{color:#065f46;font-weight:700;}
             .mid{color:#78350f;font-weight:700;}
             .lo{color:#7f1d1d;font-weight:700;}
             .mono{font-family:'DM Mono',monospace;}
-            .footer{margin-top:32px;padding-top:10px;border-top:1px solid #e8edf2;font-size:10px;color:#9ab0c6;text-align:center;}
+            .footer{margin-top:24px;padding-top:10px;border-top:1px solid #e8edf2;font-size:10px;color:#9ab0c6;text-align:center;}
+            @page{size:${visible > 6 ? 'landscape' : 'portrait'};margin:12mm;}
+            @media print{
+                body{padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+                th{background:#0d1f35 !important;color:#fff !important;}
+                th.cat{background:#1e3350 !important;}
+            }
         </style>
     </head>
     <body>
         <div class="header">
             <img src="${session.logo || ''}" alt="${escHtml(schoolName)}" class="logo" onerror="this.style.display='none'">
-            <p class="doc-title">Class Gradebook</p>
-            <p class="meta">${escHtml(session.teacherData.name)} &nbsp;·&nbsp; ${escHtml(semName)} &nbsp;·&nbsp; ${rows.length} records &nbsp;·&nbsp; ${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</p>
+            <p class="doc-title">Class Gradebook${sfSubjectValue ? ' — ' + escHtml(sfSubjectValue) : ''}</p>
+            <p class="meta">${escHtml(session.teacherData.name)}${activeClass ? ' &nbsp;·&nbsp; ' + escHtml(activeClass.name) : ''} &nbsp;·&nbsp; ${escHtml(semName)} &nbsp;·&nbsp; ${students.length} students &nbsp;·&nbsp; ${cols.length} assignments &nbsp;·&nbsp; ${gradeCount} grades &nbsp;·&nbsp; ${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</p>
         </div>
-        <table>
-            <thead>
-                <tr><th>Student</th><th>Subject</th><th>Assignment</th><th>Type</th><th>Date</th><th>Score</th><th>%</th><th>Grade</th></tr>
-            </thead>
-            <tbody>
-                ${rows.map(g=>{
-                    const p=g.max?Math.round(g.score/g.max*100):null;
-                    const cls=p>=75?'hi':p>=65?'mid':'lo';
-                    return `<tr><td><strong>${escHtml(g.studentName)}</strong></td><td>${escHtml(g.subject||'—')}</td><td>${escHtml(g.title||'—')}</td><td>${escHtml(g.type||'—')}</td><td>${escHtml(g.date||'—')}</td><td class="mono">${g.score}/${g.max||'?'}</td><td class="mono ${cls}">${p!==null?p+'%':'—'}</td><td class="${cls}">${p!==null?letterGrade(p):'—'}</td></tr>`;
-                }).join('')}
-            </tbody>
-        </table>
+        ${cols.length ? `<table><thead>${head1}${head2}</thead><tbody>${bodyRows}</tbody></table>` : `<p style="text-align:center;color:#6b84a0;font-size:12px;">No grades match the selected filters.</p>`}
         <div class="footer" style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+            <span>"-" = no grade recorded. ×N = N grades recorded for that assignment (newest shown). Category averages use every grade in that category; the final column is the weighted average.</span>
             <span>Generated for ${escHtml(schoolName)}</span>
             <div style="display:flex; justify-content:center; align-items:center; gap:8px; margin-top:5px;">
                 <img src="../../assets/images/logo.png" style="max-height:16px; opacity:0.8;">

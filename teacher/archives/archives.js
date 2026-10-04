@@ -1,4 +1,5 @@
-import { db } from '../../assets/js/firebase-init.js';
+import { db, functions } from '../../assets/js/firebase-init.js';
+import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
 import { collection, query, where, getDocs, getDoc, doc, updateDoc, deleteDoc, writeBatch, arrayRemove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { requireAuth, setSessionData } from '../../assets/js/auth.js';
 import { injectTeacherLayout } from '../../assets/js/layout-teachers.js';
@@ -231,21 +232,21 @@ window.restoreStudent = async function(id) {
     }
 };
 
+// Grades and attendance are deleted server-side (functions/index.js →
+// permanentDeleteStudent, Admin SDK): firestore.rules blocks client grade
+// deletes for released students and locked semesters.
+const permanentDeleteStudentFn = httpsCallable(functions, 'permanentDeleteStudent');
+
 window.permanentDeleteStudent = async function(id, studentName) {
     if (!confirm(`Permanently delete ${studentName} and ALL their grades?\n\nWARNING: This action CANNOT be undone.`)) return;
-    
+
     try {
-        // Grades still at siloed path; student doc now global
-        const gradesSnap = await getDocs(collection(db, 'students', id, 'grades'));
-        const batch = writeBatch(db);
-        gradesSnap.forEach(d => batch.delete(d.ref));
-        if (!gradesSnap.empty) { await batch.commit(); }
-        // CHANGED: delete from global /students
-        await deleteDoc(doc(db, 'students', id));
-        loadArchivesTab(); 
+        await permanentDeleteStudentFn({ studentId: id });
+        loadArchivesTab();
     } catch (e) {
         console.error('[Archives] Deletion error:', e);
-        alert("Failed to permanently delete student data.");
+        const detail = e && e.code && String(e.code).startsWith('functions/') && e.message && e.message !== 'internal' ? `\n\n${e.message}` : '';
+        alert(`Failed to permanently delete student data.${detail}`);
     }
 };
 

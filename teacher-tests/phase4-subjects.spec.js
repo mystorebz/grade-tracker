@@ -96,7 +96,7 @@ function subjectTile(page, name) {
 
 async function openSubject(page, name) {
     await subjectTile(page, name).click();
-    await expect(page.locator('#subjectPanel')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+    await expect(page.locator('#subjectPanel')).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('#spPanelTitle')).toHaveText(name);
 }
 
@@ -109,11 +109,11 @@ async function switchTab(page, tab) {
 // isolated, disposable subject rather than touching SUBJECT_NAME.
 async function createSubjectViaUI(page, name, className) {
     await page.locator('button', { hasText: 'Add Subject' }).click();
-    await expect(page.locator('#subjectFormModal')).not.toHaveClass(/hidden/);
+    await expect(page.locator('#subjectFormModal')).toBeVisible();
     await page.locator('#subjectFormClass').selectOption({ label: className });
     await page.locator('#subjectFormName').fill(name);
     await page.locator('#saveSubjectFormBtn').click();
-    await expect(page.locator('#subjectFormModal')).toHaveClass(/hidden/, { timeout: 10_000 });
+    await expect(page.locator('#subjectFormModal')).toBeHidden({ timeout: 10_000 });
     await expect(subjectTile(page, name)).toBeVisible({ timeout: 10_000 });
 }
 
@@ -143,7 +143,7 @@ test.describe('Phase 4: Subjects & Classes', () => {
         await expect(page.locator('#subjectFormMsg')).toBeVisible({ timeout: 5_000 });
         await expect(page.locator('#subjectFormMsg')).toContainText('Please choose a class.');
         // Modal must still be open — nothing was saved.
-        await expect(page.locator('#subjectFormModal')).not.toHaveClass(/hidden/);
+        await expect(page.locator('#subjectFormModal')).toBeVisible();
         await page.locator('button[onclick="closeSubjectFormModal()"]').click();
 
         // -- Missing-name and duplicate-name branches, plus a valid create,
@@ -180,7 +180,7 @@ test.describe('Phase 4: Subjects & Classes', () => {
         await page.locator('#subjectFormDesc').fill('Created by phase4-subjects.spec.js test 4.1.');
         await page.locator('#saveSubjectFormBtn').click();
 
-        await expect(page.locator('#subjectFormModal')).toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#subjectFormModal')).toBeHidden({ timeout: 10_000 });
         await expect(subjectTile(page, newName)).toBeVisible({ timeout: 10_000 });
     });
 
@@ -252,7 +252,7 @@ test.describe('Phase 4: Subjects & Classes', () => {
         await switchTab(page, 'assignments');
 
         await page.locator('button', { hasText: 'Create Assignment / Assessment' }).click();
-        await expect(page.locator('#addWorkModalOverlay')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#addWorkModalOverlay')).toBeVisible({ timeout: 10_000 });
 
         // -- Missing title (type + points valid) --------------------------
         await page.locator('#awType').selectOption({ index: 1 });
@@ -289,7 +289,7 @@ test.describe('Phase 4: Subjects & Classes', () => {
         const uniqueTitle = `E2E Standard Work ${Date.now()}`;
         await page.locator('#awTitle').fill(uniqueTitle);
         await page.locator('#awSaveBtn').click();
-        await expect(page.locator('#addWorkModalOverlay')).toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#addWorkModalOverlay')).toBeHidden({ timeout: 10_000 });
         await expect(page.locator('#subjectPanelBody')).toContainText(uniqueTitle);
     });
 
@@ -301,7 +301,7 @@ test.describe('Phase 4: Subjects & Classes', () => {
         await switchTab(page, 'assignments');
 
         await page.locator('button', { hasText: 'Create Assignment / Assessment' }).click();
-        await expect(page.locator('#addWorkModalOverlay')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#addWorkModalOverlay')).toBeVisible({ timeout: 10_000 });
 
         const uniqueTitle = `E2E Assessment ${Date.now()}`;
         await page.locator('#awTitle').fill(uniqueTitle);
@@ -354,7 +354,7 @@ test.describe('Phase 4: Subjects & Classes', () => {
 
         // -- All 5 questions now valid: save succeeds. -----------------------
         await page.locator('#awSaveBtn').click();
-        await expect(page.locator('#addWorkModalOverlay')).toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#addWorkModalOverlay')).toBeHidden({ timeout: 10_000 });
         await expect(page.locator('#subjectPanelBody')).toContainText(uniqueTitle);
     });
 
@@ -369,7 +369,7 @@ test.describe('Phase 4: Subjects & Classes', () => {
         // the review button is unambiguous without row-scoping.
         await page.locator('button[title="Review submissions and grade inline"]').click();
 
-        await expect(page.locator('#reviewSubmissionsModal')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#reviewSubmissionsModal')).toBeVisible({ timeout: 10_000 });
         await expect(page.locator('#reviewTitle')).toHaveText(ASSIGNMENT_TITLE);
         await expect(page.locator('#reviewMeta')).toContainText(SUBJECT_NAME);
         await expect(page.locator('#reviewMeta')).toContainText(CLASS_ROSTER_NAME);
@@ -400,7 +400,7 @@ test.describe('Phase 4: Subjects & Classes', () => {
         // is a 'standard' category assignment, not an assessment, so
         // renderViewAnswersBody() takes the plain responseText branch).
         await rowA.locator('button', { hasText: 'View Answers' }).click();
-        await expect(page.locator('#viewAnswersModal')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#viewAnswersModal')).toBeVisible({ timeout: 10_000 });
         await expect(page.locator('#viewAnswersMeta')).toContainText(ASSIGNMENT_TITLE);
         await expect(page.locator('#viewAnswersBody')).toContainText('E2E seeded submission text.');
         await page.locator('button[onclick="closeViewAnswers()"]').click();
@@ -477,7 +477,7 @@ test.describe('Phase 4: Subjects & Classes', () => {
         await page.locator('#awType').selectOption({ index: 1 });
         await page.locator('#awPoints').fill('10');
         await page.locator('#awSaveBtn').click();
-        await expect(page.locator('#addWorkModalOverlay')).toHaveClass(/hidden/, { timeout: 10_000 });
+        await expect(page.locator('#addWorkModalOverlay')).toBeHidden({ timeout: 10_000 });
         await expect(page.locator('#subjectPanelBody')).toContainText(disposableTitle);
 
         // Simulate "a grade already recorded with this title" — exactly

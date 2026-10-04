@@ -2,6 +2,7 @@ functions/node_modules/
 paypal-test.html
 rules-tests/node_modules/
 firestore-debug.log
+*.log
 ui-debug.log
 firebase-debug.log
 # Local scratch/log files (not part of the app)

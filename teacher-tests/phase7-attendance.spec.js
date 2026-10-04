@@ -206,7 +206,7 @@ test.describe('Phase 7: Attendance', () => {
         // class="hidden" and is only ever un-hidden by a page that
         // explicitly checks isSemesterLocked — attendance.js never does, so
         // it stays hidden here (present in the DOM, just never toggled).
-        await expect(page.locator('#topbarLockedBadge')).toHaveClass(/hidden/);
+        await expect(page.locator('#topbarLockedBadge')).toBeHidden();
 
         const today = ymd(new Date());
         await setStatus(page, 'E2E Attendance Student A1', 'Absent');

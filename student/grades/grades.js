@@ -11,5 +11,10 @@ import { initGradesPage } from '../../assets/js/render-grades.js';
 const session = requireAuth('student', '../login.html');
 if (session) {
     injectStudentLayout('gradebook', 'My Gradebook', 'Full grade breakdown by subject');
-    initGradesPage({ studentId: session.studentId, schoolId: session.schoolId });
+    initGradesPage({
+        studentId: session.studentId,
+        schoolId: session.schoolId,
+        // Each subject tile opens its own page (student/grades/subject.html).
+        subjectHref: (subject) => `subject.html?${new URLSearchParams({ subject }).toString()}`,
+    });
 }

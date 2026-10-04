@@ -699,10 +699,31 @@ async function seed() {
             createdAt: new Date().toISOString(),
         });
 
-    const assignmentRef = db.collection('schools').doc(SCHOOL_ID)
+    // Wipe the ENTIRE assignments subcollection before reseeding the one
+    // known fixture below — not just re-.set() the known ASSIGNMENT_ID doc.
+    // subjects.js's real "Add Work" flow (openReviewSubmissions() /
+    // saveWorkTask()) writes NEW assignment docs here with dynamically
+    // generated ids (genAssignmentId(), e.g. "asg_mu38o8er_nuv") whenever a
+    // test in this same suite exercises that UI against this subject. Those
+    // dynamic docs are untouched by a bare .set(ASSIGNMENT_ID, ...) and
+    // persist across every subsequent beforeEach(seed), so a later test
+    // that assumes "only one assignment exists under this subject on a
+    // fresh seed" (e.g. 4.12's unscoped `button[title="Review submissions
+    // and grade inline"]` locator) starts finding 2-3 matching buttons and
+    // fails on a Playwright strict-mode violation. Confirmed root cause of
+    // the real 4.12 failure.
+    const assignmentsColRef = db.collection('schools').doc(SCHOOL_ID)
         .collection('classes').doc(CLASS_ROSTER_ID)
         .collection('subjects').doc(SUBJECT_ID)
-        .collection('assignments').doc(ASSIGNMENT_ID);
+        .collection('assignments');
+    const staleRosterAssignments = await assignmentsColRef.get();
+    if (!staleRosterAssignments.empty) {
+        const batch = db.batch();
+        staleRosterAssignments.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+    }
+
+    const assignmentRef = assignmentsColRef.doc(ASSIGNMENT_ID);
     await assignmentRef.set({
         id: ASSIGNMENT_ID,
         title: ASSIGNMENT_TITLE,
@@ -942,12 +963,21 @@ async function seed() {
         });
 
     // ── Phase 7 (Attendance) sandbox: two real classes + roster ─────────
+    // teacherIds is REQUIRED here (unlike the other phases' class docs
+    // above): firestore.rules' classes/{classId}/attendance/{attendanceId}
+    // read/create/update/delete rules all do a get() on this class doc and
+    // check `request.auth.token.teacherId in ... .data.teacherIds` — with
+    // no teacherIds field at all, that `in` check throws a rules-evaluation
+    // error ("Property teacherIds is undefined on object") rather than
+    // simply evaluating to false. Confirmed as the root cause of all three
+    // real attendance.spec.js failures (7.1, "7.2 & 7.3", 7.7), which all
+    // surfaced as an identical [Attendance] loadAndRender console error.
     await db.collection('schools').doc(SCHOOL_ID)
         .collection('classes').doc(CLASS_ATT_A_ID)
-        .set({ name: CLASS_ATT_A_NAME, order: 4 });
+        .set({ name: CLASS_ATT_A_NAME, order: 4, teacherIds: [TEACHER_ATTENDANCE_ID] });
     await db.collection('schools').doc(SCHOOL_ID)
         .collection('classes').doc(CLASS_ATT_B_ID)
-        .set({ name: CLASS_ATT_B_NAME, order: 5 });
+        .set({ name: CLASS_ATT_B_NAME, order: 5, teacherIds: [TEACHER_ATTENDANCE_ID] });
 
     await db.collection('teachers').doc(TEACHER_ATTENDANCE_ID).set(baseTeacher({
         pin: sha256Trim(TEACHER_ATTENDANCE_PIN),

@@ -1,0 +1,20 @@
+{
+  "name": "grade-tracker-tools",
+  "private": true,
+  "description": "Test-All diagnostic tooling (local Firebase emulators only)",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "seed": "node seed_accounts.js",
+    "seed:verify": "node seed_accounts.js --verify",
+    "seed:cleanup": "node seed_accounts.js --cleanup",
+    "rules": "node --test rules-audit.spec.js",
+    "audit": "bash audit-all.sh"
+  },
+  "dependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase": "^12.0.0",
+    "firebase-admin": "^13.10.0"
+  }
+}

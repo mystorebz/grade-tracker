@@ -11,7 +11,7 @@ import { initAttendancePage } from '../../assets/js/render-attendance.js';
 const session = requireAuth('parent', '../../student/login.html');
 const activeChild = session ? getActiveChild(session) : null;
 
-injectParentLayout('attendance', 'Attendance', "A read-only mirror of your child's attendance record");
+injectParentLayout('attendance', 'Attendance', "Your child's attendance record");
 
 if (activeChild) {
     initAttendancePage({ studentId: activeChild.studentId, schoolId: activeChild.schoolId });

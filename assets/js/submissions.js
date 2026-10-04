@@ -86,7 +86,7 @@ export async function loadSubmissionsForAssignments(schoolId, assignments, stude
 // both shapes. submittedAt/updatedAt stay ISO strings, matching this
 // function's existing convention, rather than mixing in serverTimestamp()
 // for only one of the two submission shapes.
-export async function saveSubmission(schoolId, assignment, studentId, studentName, { responseText, linkUrl, responses } = {}) {
+export async function saveSubmission(schoolId, assignment, studentId, studentName, { responseText, linkUrl, responses, pdfAnswers, workUploads, collectedBy } = {}) {
     const ref = assignmentSubmissionRef(schoolId, assignment, studentId);
     const existing = await getDoc(ref);
     const now = new Date().toISOString();
@@ -114,6 +114,12 @@ export async function saveSubmission(schoolId, assignment, studentId, studentNam
         record.linkUrl = (linkUrl || '').trim() || null;
     }
 
+    // Assessment engine (Phase 2/4): PDF worksheet answers, compressed
+    // "show your work" photos, and who collected it (teacher force-collect).
+    if (pdfAnswers && typeof pdfAnswers === 'object') record.pdfAnswers = pdfAnswers;
+    if (Array.isArray(workUploads)) record.workUploads = workUploads.slice(0, 10);
+    if (collectedBy) record.collectedBy = collectedBy;
+
     await setDoc(ref, record, { merge: true });
     return record;
 }
@@ -136,7 +142,7 @@ function dataUrlToBlob(dataUrl) {
     return new Blob([bytes], { type: mime });
 }
 
-const EXT_BY_MIME = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'application/pdf': 'pdf' };
+const EXT_BY_MIME = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/webp': 'webp', 'application/pdf': 'pdf' };
 
 export async function uploadSubmissionAttachment(schoolId, assignment, studentId, questionId, source) {
     const blob = typeof source === 'string' ? dataUrlToBlob(source) : source;

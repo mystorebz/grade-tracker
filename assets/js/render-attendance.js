@@ -27,7 +27,7 @@ let viewYear, viewMonth; // viewMonth is 0-indexed, same as Date's own conventio
 const STATUS_META = {
     present: { label: 'Present', color: '#059669', bg: '#ecfdf5', border: '#a7f3d0' },
     absent:  { label: 'Absent',  color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
-    tardy:   { label: 'Tardy',   color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+    tardy:   { label: 'Late',    color: '#d97706', bg: '#fffbeb', border: '#fde68a' }, // stored as 'tardy'; shown as Late (matches the teacher roll call)
     excused: { label: 'Excused', color: '#475569', bg: '#f1f5f9', border: '#cbd5e1' },
 };
 

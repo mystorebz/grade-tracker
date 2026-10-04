@@ -21,7 +21,7 @@ const activeChild = session ? getActiveChild(session) : null;
 const studentId = activeChild?.studentId || null;
 const schoolId = activeChild?.schoolId || null;
 
-injectParentLayout('evaluations', 'Evaluations', 'Read-only teacher rubrics and notes');
+injectParentLayout('evaluations', 'Evaluations', 'Teacher rubrics and notes');
 
 const els = {};
 

@@ -10,7 +10,8 @@
 // and its comment, which explicitly anticipates "class-stream posts"), so no
 // rules changes are needed for this collection.
 import { db } from './firebase-init.js';
-import { collection, doc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot }
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot,
+         query, where, orderBy, limit, startAfter, arrayUnion, runTransaction, Timestamp }
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 function genPostId() {
@@ -135,14 +136,17 @@ export function subscribeToPostsForSubjects(schoolId, postContexts, onChange) {
 // postData: { type: 'announcement'|'lesson_plan', title, body, lessonDate,
 //             objectives, pinned }
 // authorContext: { authorId, authorName }
-export async function createPost(schoolId, postContext, authorContext, postData) {
+export async function createPost(schoolId, postContext, authorContext, postData, { id: fixedId } = {}) {
     const { classId, className, subjectId, subjectName } = postContext;
     const isLessonPlan = postData.type === 'lesson_plan';
-    const id = genPostId();
+    const isLive = postData.type === 'live_session';
+    const isPoll = postData.type === 'poll';
+    const isQuestion = postData.type === 'question';
+    const id = fixedId || genPostId();
     const now = new Date().toISOString();
 
     const post = {
-        type: isLessonPlan ? 'lesson_plan' : 'announcement',
+        type: isLessonPlan ? 'lesson_plan' : isLive ? 'live_session' : isPoll ? 'poll' : isQuestion ? 'question' : 'announcement',
         title: (postData.title || '').trim(),
         body: (postData.body || '').trim(),
         lessonDate: isLessonPlan ? (postData.lessonDate || null) : null,
@@ -152,10 +156,23 @@ export async function createPost(schoolId, postContext, authorContext, postData)
         authorId: authorContext.authorId,
         authorName: authorContext.authorName,
 
-        schoolId, classId, className,
-        subjectId, subjectName,
+        schoolId, classId, className: className || '',
+        subjectId, subjectName: subjectName || '',
+        semesterId: postData.semesterId || null,
 
         attachments: [],   // reserved for a later milestone — always empty for now
+        comments: [],      // inline discussion — see addPostComment()
+
+        // live_session posts: { linkedLessonId, liveSessionId, live } — set
+        // in the same write so no client ever sees a half-built card.
+        // Module 3.5: poll + open votes (map keyed by studentId), question settings.
+        ...(isPoll ? buildPollFields(postData.poll) : {}),
+        ...(isQuestion ? { question: { blindReplies: !!(postData.question && postData.question.blindReplies) } } : {}),
+        ...(isLive ? {
+            linkedLessonId: postData.linkedLessonId || null,
+            liveSessionId: postData.liveSessionId || null,
+            live: true,
+        } : {}),
 
         createdAt: now,
         updatedAt: now
@@ -163,6 +180,24 @@ export async function createPost(schoolId, postContext, authorContext, postData)
 
     await setDoc(doc(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'posts', id), post);
     return { id, ...post };
+}
+
+// options: [text…] (2–6, trimmed, blanks dropped). closesAt: Date|null.
+export const POLL_MIN_OPTIONS = 2;
+export const POLL_MAX_OPTIONS = 6;
+function buildPollFields(poll = {}) {
+    const texts = (poll.options || []).map(t => String(t || '').trim().slice(0, 120)).filter(Boolean).slice(0, POLL_MAX_OPTIONS);
+    const options = texts.map((text, i) => ({ id: `opt${i + 1}`, text }));
+    return {
+        poll: {
+            options,
+            optionIds: options.map(o => o.id),
+            allowChange: !!poll.allowChange,
+            closesAt: poll.closesAt instanceof Date && !isNaN(poll.closesAt) ? Timestamp.fromDate(poll.closesAt) : null,
+            closed: false,
+        },
+        votes: {},
+    };
 }
 
 export async function updatePost(schoolId, postContext, postId, patch) {
@@ -209,4 +244,210 @@ export async function createLessonLinkedPost(schoolId, postContext, authorContex
     await updateDoc(doc(db, 'schools', schoolId, 'classes', classId, 'subjects', subjectId, 'posts', post.id),
         { linkedLessonId: lessonId });
     return { ...post, linkedLessonId: lessonId };
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MODULE 3: SEMESTER-SCOPED, PAGINATED, REAL-TIME FEED + INLINE COMMENTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const FEED_PAGE_SIZE = 20;
+
+// Active term window for the stream: posts created on/after the active
+// semester's startDate. Scoping by createdAt (not a semesterId field) keeps
+// every post written before semesterId existed in the right term, and
+// needs only the automatic single-field index on createdAt.
+export async function resolveActiveTermWindow(schoolId) {
+    try {
+        const schoolSnap = await getDoc(doc(db, 'schools', schoolId));
+        const semesterId = schoolSnap.exists() ? (schoolSnap.data().activeSemesterId || null) : null;
+        if (!semesterId) return { semesterId: null, sinceIso: null, semesterName: '' };
+        const semSnap = await getDoc(doc(db, 'schools', schoolId, 'semesters', semesterId));
+        const sem = semSnap.exists() ? semSnap.data() : {};
+        return { semesterId, sinceIso: sem.startDate || null, semesterName: sem.name || '' };
+    } catch (e) {
+        console.error('[posts] resolveActiveTermWindow:', e);
+        return { semesterId: null, sinceIso: null, semesterName: '' };
+    }
+}
+
+function postsCol(schoolId, ctx) {
+    return collection(db, 'schools', schoolId, 'classes', ctx.classId, 'subjects', ctx.subjectId, 'posts');
+}
+
+function sortFeed(list) {
+    return list.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+}
+
+// One feed over one or more subjects. Per subject:
+//   • a live onSnapshot on the newest FEED_PAGE_SIZE posts of the term,
+//   • a live onSnapshot on that subject's pinned posts (few; kept visible
+//     even when older than the newest page),
+//   • older pages fetched on demand with loadOlder() (one-time reads,
+//     FEED_PAGE_SIZE per subject, cursor = oldest createdAt seen so far).
+// onChange(posts, { hasMore }) fires with the merged list (pinned first,
+// then newest first) on every change. Call stop() when leaving the page.
+export function createPostFeed(schoolId, contexts, { sinceIso = null, pageSize = FEED_PAGE_SIZE, onChange, onError } = {}) {
+    const state = new Map(); // subjectId -> { ctx, live: Map, pinned: Map, older: Map, hasMore, ready }
+    const unsubs = [];
+
+    const emit = () => {
+        const merged = new Map();
+        state.forEach(st => {
+            st.older.forEach((p, id) => merged.set(id, p));
+            st.pinned.forEach((p, id) => merged.set(id, p));
+            st.live.forEach((p, id) => merged.set(id, p));
+        });
+        const list = sortFeed([...merged.values()]);
+        const hasMore = [...state.values()].some(st => st.hasMore);
+        const ready = [...state.values()].every(st => st.ready);
+        onChange && onChange(list, { hasMore, ready });
+    };
+
+    contexts.forEach(ctx => {
+        const st = { ctx, live: new Map(), pinned: new Map(), older: new Map(), hasMore: false, ready: false };
+        state.set(ctx.subjectId, st);
+
+        const constraints = [];
+        if (sinceIso) constraints.push(where('createdAt', '>=', sinceIso));
+        constraints.push(orderBy('createdAt', 'desc'), limit(pageSize));
+
+        unsubs.push(onSnapshot(query(postsCol(schoolId, ctx), ...constraints), (snap) => {
+            const next = new Map(snap.docs.map(d => [d.id, { id: d.id, ...d.data() }]));
+            const windowFloor = snap.size === pageSize ? String(snap.docs[snap.size - 1].data().createdAt || '') : null;
+            // A post that slid out of the newest-N window because newer ones
+            // arrived is still a real post — keep it as an "older" post
+            // instead of making it vanish until the next page load.
+            snap.docChanges().forEach(ch => {
+                if (ch.type !== 'removed') return;
+                const old = st.live.get(ch.doc.id);
+                if (old && windowFloor && String(old.createdAt || '') <= windowFloor) st.older.set(ch.doc.id, old);
+                else st.older.delete(ch.doc.id); // genuinely deleted
+            });
+            next.forEach((_, id) => st.older.delete(id));
+            st.live = next;
+            if (!st.ready) st.hasMore = snap.size === pageSize;
+            st.ready = true;
+            emit();
+        }, (err) => {
+            console.error(`[posts] feed listener failed for subject ${ctx.subjectId}:`, err);
+            st.ready = true;
+            onError && onError(err, ctx);
+            emit();
+        }));
+
+        unsubs.push(onSnapshot(query(postsCol(schoolId, ctx), where('pinned', '==', true)), (snap) => {
+            st.pinned = new Map(snap.docs
+                .map(d => [d.id, { id: d.id, ...d.data() }])
+                .filter(([, p]) => !sinceIso || String(p.createdAt || '') >= sinceIso));
+            emit();
+        }, (err) => console.error(`[posts] pinned listener failed for subject ${ctx.subjectId}:`, err)));
+    });
+
+    async function loadOlder() {
+        await Promise.all([...state.values()].filter(st => st.hasMore).map(async st => {
+            const all = [...st.live.values(), ...st.older.values()];
+            if (!all.length) { st.hasMore = false; return; }
+            const oldest = all.reduce((m, p) => (String(p.createdAt || '') < m ? String(p.createdAt || '') : m), String(all[0].createdAt || ''));
+            const constraints = [];
+            if (sinceIso) constraints.push(where('createdAt', '>=', sinceIso));
+            constraints.push(orderBy('createdAt', 'desc'), startAfter(oldest), limit(pageSize));
+            try {
+                const snap = await getDocs(query(postsCol(schoolId, st.ctx), ...constraints));
+                snap.docs.forEach(d => { if (!st.live.has(d.id)) st.older.set(d.id, { id: d.id, ...d.data() }); });
+                st.hasMore = snap.size === pageSize;
+            } catch (e) {
+                console.error(`[posts] loadOlder failed for subject ${st.ctx.subjectId}:`, e);
+                st.hasMore = false;
+            }
+        }));
+        emit();
+    }
+
+    // Older pages aren't live — after a comment add/delete on one of them,
+    // patch the local copy so the UI reflects it without a re-fetch.
+    function patchLocal(postId, fields) {
+        state.forEach(st => {
+            if (st.older.has(postId)) st.older.set(postId, { ...st.older.get(postId), ...fields });
+        });
+        emit();
+    }
+
+    return { loadOlder, patchLocal, stop: () => unsubs.splice(0).forEach(u => u()) };
+}
+
+// ── INLINE COMMENTS (stored on the post doc: zero extra reads) ───────────
+// comments: [{ id, text, authorId, authorName, role, createdAt }]
+// firestore.rules lets an enrolled student append exactly one comment
+// authored by themselves; class teachers/admins may append or remove.
+export const COMMENT_MAX_LENGTH = 1000;
+
+function postRef(schoolId, ctx, postId) {
+    return doc(db, 'schools', schoolId, 'classes', ctx.classId, 'subjects', ctx.subjectId, 'posts', postId);
+}
+
+export async function addPostComment(schoolId, ctx, postId, { text, authorId, authorName, role }) {
+    const clean = String(text || '').trim().slice(0, COMMENT_MAX_LENGTH);
+    if (!clean) throw new Error('empty-comment');
+    const comment = {
+        id: 'c_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+        text: clean,
+        authorId: String(authorId || ''),
+        authorName: String(authorName || '').slice(0, 80),
+        role,
+        createdAt: new Date().toISOString(),
+    };
+    await updateDoc(postRef(schoolId, ctx, postId), { comments: arrayUnion(comment) });
+    return comment;
+}
+
+// Removes one comment by id (transaction: no stale-object arrayRemove misses).
+export async function deletePostComment(schoolId, ctx, postId, commentId) {
+    const ref = postRef(schoolId, ctx, postId);
+    return runTransaction(db, async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists()) return [];
+        const next = (snap.data().comments || []).filter(c => c && c.id !== commentId);
+        tx.update(ref, { comments: next });
+        return next;
+    });
+}
+
+// Join URL for a lesson-linked / live-session post (student viewer follows
+// the live session pointer on its own).
+export function lessonViewerUrl(post, base = '../lessons/view.html') {
+    const params = new URLSearchParams({
+        lessonId: post.linkedLessonId,
+        classId: post.classId,
+        subjectId: post.subjectId,
+        subjectName: post.subjectName || '',
+    });
+    return `${base}?${params.toString()}`;
+}
+
+// Deterministic id so the live-session post can be flipped to "ended".
+export function liveSessionPostId(lessonId, sessionId) {
+    return `live_${lessonId}_${sessionId}`.replace(/[^A-Za-z0-9_-]/g, '_');
+}
+
+export const LIVE_ENDED_BODY = 'This live session has ended. You can review the lesson anytime.';
+
+// Title/body to show for a post: an ended live-session bulletin reads as a
+// past session (older ended posts still carry the "Live now" wording).
+export function displayPostText(post) {
+    if (post && post.type === 'live_session' && !post.live) {
+        return {
+            title: String(post.title || '').replace(/^Live now:\s*/, 'Live lesson: '),
+            body: LIVE_ENDED_BODY,
+        };
+    }
+    return { title: post ? post.title : '', body: post ? post.body : '' };
+}
+
+export async function markLiveSessionPostEnded(schoolId, ctx, lessonId, sessionId) {
+    try {
+        await updateDoc(postRef(schoolId, ctx, liveSessionPostId(lessonId, sessionId)), { live: false, endedAt: new Date().toISOString(), body: LIVE_ENDED_BODY });
+    } catch (e) {
+        if (e && e.code !== 'not-found') console.error('[posts] markLiveSessionPostEnded:', e);
+    }
 }

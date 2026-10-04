@@ -1,4 +1,5 @@
-import { logout, requireAuth } from './auth.js';
+import { logout, requireAuth, getSessionData } from './auth.js';
+import { initStreamBadge } from './stream-badge.js';
 
 /**
  * Injects the Family/Student Sidebar and Topbar into the page.
@@ -98,6 +99,12 @@ export function injectStudentLayout(activePageId, pageTitle, pageSub) {
     const overlay  = document.createElement('div');
     overlay.id     = 'sidebarOverlay';
     document.body.appendChild(overlay);
+
+    // ── 3b. CLASS STREAM "NEW" BADGE (cached quick check, see stream-badge.js) ──
+    const badgeSession = getSessionData('student');
+    if (badgeSession && badgeSession.studentId) {
+        initStreamBadge({ role: 'student', userId: badgeSession.studentId, schoolId: badgeSession.schoolId, onStreamPage: activePageId === 'stream' });
+    }
 
     // ── 4. ACTIVE NAV ─────────────────────────────────────────────────────
     const activeNav = document.getElementById(`nav-${activePageId}`);

@@ -212,7 +212,11 @@ async function checkAuthDrift(role, redirectUrl) {
     try {
         const tokenResult = await auth.currentUser.getIdTokenResult(false);
         const tokenRole = tokenResult.claims?.role;
-        if (tokenRole && tokenRole !== role) {
+        // Admin pages require 'admin', but admin tokens carry the specific
+        // admin tier ('super_admin' | 'sub_admin', see functions/index.js and
+        // firestore.rules isSchoolAdmin). Any other mismatch is real drift.
+        const accepted = role === 'admin' ? ['admin', 'super_admin', 'sub_admin'] : [role];
+        if (tokenRole && !accepted.includes(tokenRole)) {
             console.warn(`[ConnectUs] Auth identity drift detected: page requires '${role}' but the live Firebase Auth session is '${tokenRole}'. This browser profile is signed in as a different role in another tab. Forcing re-authentication.`);
             await logout(redirectUrl);
             return true;

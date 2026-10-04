@@ -72,12 +72,36 @@ function forwardBrowserLogs(page) {
     page.on('pageerror', err => console.log('BROWSER ERROR:', err.message));
 }
 
+// NOTE: unlike every other phase's shared loginAsTeacher() helper, this one
+// does NOT wait for home.html. TEACHER_SETTINGS_ID is deliberately seeded
+// with securityQuestionsSet:false (needed for 15.4's own "Not Set" -> "Set"
+// transition test), and login.js's real finalizeLogin() routing —
+//   if (isGlobalTeacher && !tempSession.teacherData.securityQuestionsSet) {
+//       window.location.href = '../onboarding/first-time-setup.html?role=teacher';
+//   }
+// — checks ONLY securityQuestionsSet here, never requiresPinReset. So this
+// fixture always redirects to first-time-setup after login, never to
+// home.html, contradicting this file's original assumption. Confirmed as
+// the real cause of all five Phase 15 test failures (every one of them
+// shares this same login helper).
+//
+// Fix: wait for login to land SOMEWHERE post-auth (home, onboarding, or
+// first-time-setup — whichever finalizeLogin() picks), then navigate
+// straight to settings.html ourselves. This is safe specifically because
+// Firebase Auth's own sign-in (unlike the app's local-storage session
+// object) already completed during the login click, before finalizeLogin()
+// even runs — so by the time we redirect ourselves, auth.currentUser is
+// already populated and settings.js's requireAuth() finds a live session
+// instead of racing its own onAuthStateChanged(null) logout path.
 async function loginAsTeacher(page, teacherId, pin) {
     await page.goto('/teacher/login.html');
     await page.locator('#loginTeacherId').fill(teacherId);
     await page.locator('#loginTeacherCode').fill(pin);
     await page.locator('#loginBtn').click();
-    await page.waitForURL(/\/teacher\/home\/home(\.html)?\/?$/, { timeout: 15_000 });
+    await page.waitForURL(
+        /\/teacher\/(home\/home|onboarding\/onboarding|onboarding\/first-time-setup)(\.html)?(\?.*)?\/?$/,
+        { timeout: 15_000 }
+    );
 }
 
 async function gotoSettings(page) {
@@ -103,7 +127,7 @@ test.describe('Phase 15: Settings', () => {
         await page.locator('#settingName').fill('');
         await page.locator('#saveProfileBtn').click();
         await expect(page.locator('#profileMsg')).toHaveText('Name is required.');
-        await expect(page.locator('#profileMsg')).not.toHaveClass(/hidden/);
+        await expect(page.locator('#profileMsg')).toBeVisible();
 
         await page.locator('#settingName').fill('E2E Settings Teacher');
         await page.locator('#settingEmail').fill('');
@@ -151,8 +175,8 @@ test.describe('Phase 15: Settings', () => {
         await gotoSettings(page);
 
         // Incomplete at seed time (no license/education/employment/city).
-        await expect(page.locator('#profileIncompleteWarning')).not.toHaveClass(/hidden/);
-        await expect(page.locator('#profileCompleteBadge')).toHaveClass(/hidden/);
+        await expect(page.locator('#profileIncompleteWarning')).toBeVisible();
+        await expect(page.locator('#profileCompleteBadge')).toBeHidden();
         expect((await page.locator('#profileCompleteBadge').innerHTML()).trim()).toBe('');
 
         // Fill in every field isProfileComplete() checks, then save.
@@ -166,9 +190,9 @@ test.describe('Phase 15: Settings', () => {
         await expect(page.locator('#profileMsg')).toHaveText('Profile saved successfully!');
 
         // The warning clears immediately, no reload.
-        await expect(page.locator('#profileIncompleteWarning')).toHaveClass(/hidden/);
+        await expect(page.locator('#profileIncompleteWarning')).toBeHidden();
         // The badge is untouched either way — dead markup, characterized rather than worked around.
-        await expect(page.locator('#profileCompleteBadge')).toHaveClass(/hidden/);
+        await expect(page.locator('#profileCompleteBadge')).toBeHidden();
         expect((await page.locator('#profileCompleteBadge').innerHTML()).trim()).toBe('');
 
         const saved = await getTeacherDoc(TEACHER_SETTINGS_ID);
