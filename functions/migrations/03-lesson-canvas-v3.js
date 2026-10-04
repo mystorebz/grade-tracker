@@ -9,7 +9,8 @@
  *   node migrations/03-lesson-canvas-v3.js --cleanup    roll back to v2 (content/main.slides)
  *   add --school=QA-SCHOOL-01 to any mode to limit scope
  *
- * Target: dev-school-grade-tracker ONLY. Auth: Application Default Credentials.
+ * Target: dev-school-grade-tracker by default; production (school-grade-tracker)
+ *   only with --prod (+ --confirm-production for apply/cleanup). Auth: ADC.
  * Prerequisite: migration 02 (lessons carry content/main). Lessons that still
  * have slides on the main doc are reported and skipped.
  *
@@ -31,7 +32,16 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const PROJECT_ID = 'dev-school-grade-tracker';
+// Default target is dev. Production only with --prod; any mode that WRITES on
+// production (apply, cleanup) also needs --confirm-production. --dry-run and
+// --verify only read.
+const ON_PROD = process.argv.includes('--prod');
+const PROJECT_ID = ON_PROD ? 'school-grade-tracker' : 'dev-school-grade-tracker';
+if (ON_PROD && !process.argv.includes('--dry-run') && !process.argv.includes('--verify') &&
+    !process.argv.includes('--confirm-production')) {
+    console.error('[FAIL] Writing to PRODUCTION needs --confirm-production. Nothing was written.');
+    process.exit(2);
+}
 const requested = process.env.QA_PROJECT_ID || PROJECT_ID;
 if (requested !== PROJECT_ID) {
     console.error(`[FAIL] Refusing to run against "${requested}". Only ${PROJECT_ID} is allowed.`);
